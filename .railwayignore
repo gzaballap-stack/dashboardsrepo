@@ -1,0 +1,19 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# misc
+.DS_Store
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+
+# env files — Railway uses its own configured env vars, not the local file
+.env*
+
+# typescript
+*.tsbuildinfo
