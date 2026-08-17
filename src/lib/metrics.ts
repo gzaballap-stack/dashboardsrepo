@@ -32,6 +32,18 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
     ? speedReadings.reduce((a, b) => a + b, 0) / speedReadings.length / 60
     : 0;
 
+  // Each stage below is derived from the previous one scaled by a resolved-only
+  // conversion rate, rather than ad_spend / raw_count directly. Pending appointments
+  // and shows never enter these ratios, so a maturation backlog can't distort them,
+  // and since every rate is <=1, cpl <= cp_appt <= cps <= cost_per_close is guaranteed
+  // by construction. With no pending backlog each still reduces to the naive
+  // ad_spend / count for that stage.
+  const cp_appt = booked > 0 ? ad_spend / booked : 0;
+  const show_rate = shows + no_shows > 0 ? shows / (shows + no_shows) : 0;
+  const cps = cp_appt > 0 && show_rate > 0 ? cp_appt / show_rate : 0;
+  const close_rate_ratio = shows > 0 ? close_count / shows : 0;
+  const cost_per_close = cps > 0 && close_rate_ratio > 0 ? cps / close_rate_ratio : 0;
+
   return {
     new_leads: leads,
     booked_appointments: booked,
@@ -41,17 +53,9 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
     no_shows,
     show_pct: shows + no_shows > 0 ? (shows / (shows + no_shows)) * 100 : 0,
     ad_spend,
-    cpl:     leads  > 0 ? ad_spend / leads  : 0,
-    cp_appt: booked > 0 ? ad_spend / booked : 0,
-    // Derived from cp_appt scaled by the show-up rate among *resolved* appointments
-    // (shows / (shows + no_shows)) rather than ad_spend / shows directly. Pending
-    // appointments (not yet shown or no-showed) never enter this ratio, so a backlog
-    // of unresolved bookings can't dilute it -- and since show-up rate is always <=1,
-    // cps = cp_appt / show_rate is guaranteed >= cp_appt. With no pending backlog
-    // this reduces to exactly ad_spend / shows, same as before.
-    cps: (booked > 0 && shows + no_shows > 0)
-      ? (ad_spend / booked) / (shows / (shows + no_shows))
-      : 0,
+    cpl: leads > 0 ? ad_spend / leads : 0,
+    cp_appt,
+    cps,
     outbound_dials: dial_count,
     dials_per_lead: leads > 0 ? dial_count / leads : 0,
     pickups,
@@ -65,8 +69,8 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
     closes: close_count,
     total_revenue,
     avg_project_revenue: close_count > 0 ? total_revenue / close_count : 0,
-    cost_per_close:      close_count > 0 ? ad_spend / close_count : 0,
-    close_rate:          shows > 0 ? (close_count / shows) * 100 : 0,
+    cost_per_close,
+    close_rate: close_rate_ratio * 100,
     // ROI nets a 40% profit margin against spend, rather than raw revenue/spend (ROAS),
     // so it reflects actual return after cost of goods/labor, not gross revenue multiple.
     roi:                 ad_spend > 0 ? (total_revenue * 0.4 - ad_spend) / ad_spend : 0,
