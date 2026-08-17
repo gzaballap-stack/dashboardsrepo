@@ -75,6 +75,7 @@ export default function ZipMap({
   const zipBoundsRef       = useRef<Map<string, any>>(new Map());
   const prevPinsRef        = useRef<Pin[] | null>(null);
   const prevSelectedPinRef = useRef<string | null>(null);
+  const flewToFocusZipRef  = useRef<string | null>(null);
 
   // Init map once
   useEffect(() => {
@@ -228,15 +229,6 @@ export default function ZipMap({
             layers.push(circle);
           }
 
-          // Deferred fly-to: if focusZip just became available, fly to it
-          const fz = focusZipRef.current;
-          if (fz) {
-            const b = zipBoundsRef.current.get(fz);
-            if (b?.isValid()) {
-              try { map.flyToBounds(b, { padding: [60, 60], maxZoom: 14, duration: 0.6 }); } catch {}
-            }
-          }
-
           // Auto-fly to pin bounds when a newly placed pin finishes loading
           if (justFinishedLoading && pin.id === selectedPinId) {
             let ub: any = null;
@@ -337,14 +329,18 @@ export default function ZipMap({
     });
   }, [flyTrigger]);
 
-  // Fly to zip when focusZip changes
+  // Fly to focusZip when it changes or when its polygon first becomes available (deferred case).
+  // flewToFocusZipRef guards against re-flying on every pins update once we've already flown.
   useEffect(() => {
     if (!focusZip || !mapRef.current) return;
+    if (flewToFocusZipRef.current === focusZip) return;
     const bounds = zipBoundsRef.current.get(focusZip);
     if (bounds?.isValid()) {
       try { mapRef.current.flyToBounds(bounds, { padding: [60, 60], maxZoom: 14, duration: 0.6 }); } catch {}
+      flewToFocusZipRef.current = focusZip;
     }
-  }, [focusZip]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusZip, pins]);
 
   // Wire delete handler for popup button
   useEffect(() => {
