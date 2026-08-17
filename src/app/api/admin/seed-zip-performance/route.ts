@@ -69,7 +69,6 @@ export async function POST(req: Request) {
   for (const client of clients) {
     const clientIdx = mockNames.indexOf(client.name);
 
-    // Pull real performance totals from the events table
     const [
       { count: leads },
       { count: appointments },
@@ -120,34 +119,47 @@ export async function POST(req: Request) {
     }
 
     const zips = Array.from(zipSet);
-
-    // Seeded RNG — same index always produces the same distribution
-    const rng = mulberry32(clientIdx * 9973 + 12345);
+    const rng  = mulberry32(clientIdx * 9973 + 12345);
 
     // ── Leads / appointments / shows ──────────────────────────────────────────
-    // Performance is scored primarily on L/A/S so spread these across the
-    // whole territory (every zip gets prospecting activity).
-    const weights = zips.map(() => 0.3 + rng() * 0.7);
-    const totalWeight = weights.reduce((a, b) => a + b, 0);
-    const fracs = weights.map(w => w / totalWeight);
+    // Use exponential weights (high variance) assigned only to ~30% of zips.
+    // This mirrors reality: a handful of zip codes generate most leads while
+    // the majority of the territory is quiet.
+
+    const activeCount = Math.max(1, Math.round(zips.length * 0.30));
+
+    // Generate exponential weights for every zip, then pick the top activeCount
+    const allWeights = zips.map(() => Math.exp(rng() * 3.5)); // range ~[1, 33]
+    const zipsByWeight = zips
+      .map((zip, i) => ({ zip, i, w: allWeights[i] }))
+      .sort((a, b) => b.w - a.w);
+
+    const totalActiveWeight = zipsByWeight.slice(0, activeCount).reduce((s, z) => s + z.w, 0);
+
+    // Build fraction array: inactive zips stay at 0
+    const fracs = new Array(zips.length).fill(0);
+    zipsByWeight.slice(0, activeCount).forEach(z => {
+      fracs[z.i] = z.w / totalActiveWeight;
+    });
 
     const leadDist = distribute(totalLeads, fracs);
     const apptDist = distribute(totalAppts, fracs);
     const showDist = distribute(totalShows, fracs);
 
     // ── Closes / revenue ──────────────────────────────────────────────────────
-    // Only a subset of zips ever generates a closed job. A client with 6 closes
-    // has ~5 job zips; one with 53 closes has ~45 job zips. Revenue per zip
-    // = closes_in_zip × avg_job_value (derived from actual event revenue),
-    // keeping each zip's value realistically in the $10k–$80k range.
+    // Only ~88% of closes land in unique zips (some get repeat business).
+    // Revenue per close varies widely: small bath ~$10–18k, standard ~$18–35k,
+    // large kitchen ~$35–55k, premium $55–90k. Anchored to the client's actual
+    // avg job value so the spread is realistic for their market segment.
 
-    // Number of unique zips that get at least one job
+    const avgJobValue = totalCloses > 0 ? totalRevenue / totalCloses : 25000;
+
     const jobZipCount = totalCloses === 0 ? 0 : Math.min(
       Math.max(1, Math.round(totalCloses * 0.88)),
       zips.length,
     );
 
-    // Fisher-Yates shuffle to pick which zips are "job zips"
+    // Fisher-Yates shuffle — seeded so it's deterministic
     const shuffled = [...zips];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
@@ -155,7 +167,6 @@ export async function POST(req: Request) {
     }
     const jobZipArr = shuffled.slice(0, jobZipCount);
 
-    // Assign 1 close to each job zip, then spread remaining closes (cap at 3/zip)
     const closesPerZip = new Map<string, number>();
     for (const zip of jobZipArr) closesPerZip.set(zip, 1);
 
@@ -170,22 +181,32 @@ export async function POST(req: Request) {
       attempts++;
     }
 
-    // Revenue per zip = closes × avg job value from real data
-    const avgJobValue = totalCloses > 0 ? totalRevenue / totalCloses : 0;
+    // Revenue: generate each close independently with a realistic spread
+    // anchored to ±the client's own avg ticket so premium clients stay premium.
+    const revenuePerZip = new Map<string, number>();
+    for (const [zip, numCloses] of closesPerZip) {
+      let rev = 0;
+      for (let c = 0; c < numCloses; c++) {
+        const t = rng();
+        let multiplier: number;
+        if      (t < 0.12) multiplier = 0.40 + rng() * 0.35; // ~0.4–0.75× (small partial bath)
+        else if (t < 0.45) multiplier = 0.75 + rng() * 0.50; // ~0.75–1.25× (standard)
+        else if (t < 0.75) multiplier = 1.25 + rng() * 0.75; // ~1.25–2.0×  (large)
+        else               multiplier = 2.00 + rng() * 2.00; // ~2.0–4.0×   (premium)
+        rev += Math.round(avgJobValue * multiplier);
+      }
+      revenuePerZip.set(zip, rev);
+    }
 
-    // Build final rows
-    const rows = zips.map((zip, i) => {
-      const zipCloses = closesPerZip.get(zip) ?? 0;
-      return {
-        client_id:    client.id,
-        zip_code:     zip,
-        leads:        leadDist[i],
-        appointments: apptDist[i],
-        shows:        showDist[i],
-        closes:       zipCloses,
-        revenue:      Math.round(zipCloses * avgJobValue),
-      };
-    });
+    const rows = zips.map((zip, i) => ({
+      client_id:    client.id,
+      zip_code:     zip,
+      leads:        leadDist[i],
+      appointments: apptDist[i],
+      shows:        showDist[i],
+      closes:       closesPerZip.get(zip) ?? 0,
+      revenue:      revenuePerZip.get(zip) ?? 0,
+    }));
 
     const { error } = await service
       .from('zip_performance')
@@ -194,12 +215,14 @@ export async function POST(req: Request) {
     if (error) {
       log.push(`${client.name}: ERROR — ${error.message}`);
     } else {
-      const jobZips = rows.filter(r => r.closes > 0).length;
-      const avgRev  = jobZips > 0 ? Math.round(totalRevenue / jobZips) : 0;
+      const jobZips   = rows.filter(r => r.closes > 0);
+      const maxLeads  = Math.max(...rows.map(r => r.leads));
+      const revValues = jobZips.map(r => r.revenue);
+      const minRev    = revValues.length ? Math.min(...revValues) : 0;
+      const maxRev    = revValues.length ? Math.max(...revValues) : 0;
       log.push(
-        `${client.name}: ${zips.length} zips, ${jobZips} with jobs — ` +
-        `avg $${avgRev.toLocaleString()}/job-zip, ` +
-        `L:${totalLeads} A:${totalAppts} S:${totalShows} C:${totalCloses} R:$${totalRevenue.toLocaleString()}`
+        `${client.name}: ${zips.length} zips, ${activeCount} lead-active, ${jobZips.length} with jobs — ` +
+        `leads 0–${maxLeads}/zip, rev $${Math.round(minRev/1000)}k–$${Math.round(maxRev/1000)}k/job-zip`
       );
       totalRows += rows.length;
     }
