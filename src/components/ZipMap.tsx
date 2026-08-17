@@ -41,6 +41,7 @@ type Props = {
   // zip -> composite performance score/metrics for the connected client, drawn as a
   // circle overlay on top of the existing grade-colored polygons (sized by score).
   perfCircles?: Record<string, ZipPerfCircle>;
+  flyTrigger?: number;
 };
 
 const GRADE_COLORS: Record<string, string> = {
@@ -51,7 +52,7 @@ export default function ZipMap({
   pins, selectedPinId, onMapClick, onSelectPin, onDeletePin,
   onZipClick, focusZip,
   manualExcludes, pinMode = "include", onExcludeToggle,
-  perfCircles,
+  perfCircles, flyTrigger,
 }: Props) {
   // Refs to avoid stale closures in persistent Leaflet event listeners
   const onZipClickRef      = useRef(onZipClick);
@@ -318,6 +319,23 @@ export default function ZipMap({
       prevPinsRef.current = pins.map(p => ({ ...p }));
     });
   }, [pins, selectedPinId, onSelectPin, manualExcludes, perfCircles]);
+
+  // Fly to all pins combined when flyTrigger increments (session load)
+  useEffect(() => {
+    if (!flyTrigger || !mapRef.current) return;
+    import("leaflet").then((L) => {
+      const map = mapRef.current;
+      if (!map) return;
+      let combined: any = null;
+      for (const [, b] of zipBoundsRef.current) {
+        if (!b?.isValid()) continue;
+        combined = combined ? combined.extend(b) : L.latLngBounds(b.getSouthWest(), b.getNorthEast());
+      }
+      if (combined?.isValid()) {
+        try { map.flyToBounds(combined, { padding: [50, 50], maxZoom: 12, duration: 1.0 }); } catch {}
+      }
+    });
+  }, [flyTrigger]);
 
   // Fly to zip when focusZip changes
   useEffect(() => {

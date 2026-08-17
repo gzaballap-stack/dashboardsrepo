@@ -40,6 +40,12 @@ type Metrics = {
   callbacks: number;
   cb_pct: number;
   speed_to_lead_min: number;
+  closes: number;
+  total_revenue: number;
+  avg_project_revenue: number;
+  cost_per_close: number;
+  close_rate: number;
+  roi: number;
 };
 
 type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "all_time" | "custom";
@@ -245,6 +251,7 @@ const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: strin
 
 const NAV_STATE_KEY = "dashboard-nav-state";
 const DISMISSED_ALERTS_KEY = "dismissed-alerts";
+const CLOSED_BANNERS_KEY = "closed-banner-alerts";
 
 // Keys a stale-booking alert to its current staleness episode (anchored to the last
 // booking timestamp) and day count, so dismissing "3 days" today doesn't also suppress
@@ -270,6 +277,7 @@ export default function DashboardView() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [dismissedAlertKeys, setDismissedAlertKeys] = useState<Set<string>>(new Set());
+  const [closedBannerKeys, setClosedBannerKeys] = useState<Set<string>>(new Set());
   const presetRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -292,17 +300,20 @@ export default function DashboardView() {
     } catch {}
   }, [topSection, view, expandedSections]);
 
-  // Restore dismissed alerts + fetch current alerts on mount
+  // Restore dismissed alerts + closed banners, then fetch current alerts on mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem(DISMISSED_ALERTS_KEY);
       if (raw) setDismissedAlertKeys(new Set(JSON.parse(raw)));
     } catch {}
+    try {
+      const raw = localStorage.getItem(CLOSED_BANNERS_KEY);
+      if (raw) setClosedBannerKeys(new Set(JSON.parse(raw)));
+    } catch {}
     fetch("/api/alerts").then(r => r.json()).then(d => setAlerts(d.alerts ?? [])).catch(() => {});
   }, []);
 
-  // Dismissing writes to localStorage synchronously with the state update (not via a
-  // separate effect) so a dismiss immediately followed by a refresh can't lose the write.
+  // Permanently dismiss — persisted to localStorage, removes from bell too
   const dismissAlert = (a: Alert) => {
     setDismissedAlertKeys(prev => {
       const next = new Set(prev);
@@ -312,7 +323,19 @@ export default function DashboardView() {
     });
   };
 
+  // Close popup banner only — stays visible in notification bell. Persisted so it
+  // survives a refresh; keyed on days_since_booking so tomorrow's higher count
+  // reopens the banner as a new episode.
+  const closeBanner = (a: Alert) => {
+    setClosedBannerKeys(prev => {
+      const next = new Set(prev).add(alertKey(a));
+      try { localStorage.setItem(CLOSED_BANNERS_KEY, JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  };
+
   const visibleAlerts = alerts.filter(a => !dismissedAlertKeys.has(alertKey(a)));
+  const bannerAlerts = visibleAlerts.filter(a => !closedBannerKeys.has(alertKey(a)));
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -383,11 +406,11 @@ export default function DashboardView() {
       `} style={{ background: "#050c18", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
 
         {/* Logo */}
-        <div className="flex items-center px-4 py-3.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="flex justify-center items-center overflow-hidden px-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingTop: 4, paddingBottom: 4 }}>
           <img
             src="/Tomsi Media logo (White) copy.png"
             alt="Tomsi Media"
-            style={{ width: 84, height: "auto", objectFit: "contain", opacity: 0.92 }}
+            style={{ width: 140, height: "auto", objectFit: "contain", opacity: 0.92 }}
           />
         </div>
 
@@ -653,7 +676,7 @@ export default function DashboardView() {
 
           {(topSection === "dashboard" || topSection === "tools") && (<>
 
-          <AlertBanner alerts={visibleAlerts} onDismiss={dismissAlert} />
+          <AlertBanner alerts={bannerAlerts} onDismiss={closeBanner} />
 
           {/* ── Dashboard KPIs ── */}
           {view === "dashboard" && (
@@ -686,24 +709,31 @@ export default function DashboardView() {
                     <KpiCard label="CPS" value={fmt$(metrics.cps)} />
                     <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
                   </div>
+                  {metrics.closes > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
+                      <KpiCard label="Closed Jobs" value={fmtInt(metrics.closes)} accent />
+                      <KpiCard label="Close Rate" value={fmtPct(metrics.close_rate)} />
+                      <KpiCard label="Avg Project Revenue" value={fmt$(metrics.avg_project_revenue)} accent />
+                      <KpiCard label="Cost per Closed Job" value={fmt$(metrics.cost_per_close)} />
+                      <KpiCard label="Return Investment" value={`${fmtDec(metrics.roi)}x`} accent />
+                    </div>
+                  )}
                 </section>
 
                 <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
 
                 <section>
                   <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Calling Stats</h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                     <KpiCard label="Speed To Lead (Min)" value={fmtDec(metrics.speed_to_lead_min)} />
                     <KpiCard label="Outbound Dials" value={fmtInt(metrics.outbound_dials)} />
                     <KpiCard label="Dials Per Lead" value={fmtDec(metrics.dials_per_lead)} />
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
                     <KpiCard label="Pickups (40s+)" value={fmtInt(metrics.pickups)} />
                     <KpiCard label="Pick Up Rate" value={fmtPct(metrics.pickup_pct)} accent />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
                     <KpiCard label="Conversations (2m+)" value={fmtInt(metrics.conversations)} />
                     <KpiCard label="Conversation Rate" value={fmtPct(metrics.conversation_pct)} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 mt-3 max-w-sm">
                     <KpiCard label="Callback Requests" value={fmtInt(metrics.callbacks)} />
                     <KpiCard label="Callback Rate" value={fmtPct(metrics.cb_pct)} />
                   </div>

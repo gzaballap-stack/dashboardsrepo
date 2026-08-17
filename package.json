@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:v1": "node scripts/switch-env.js v1 && next dev",
+    "dev:v2": "node scripts/switch-env.js v2 && next dev",
+    "use:v1": "node scripts/switch-env.js v1",
+    "use:v2": "node scripts/switch-env.js v2",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

@@ -57,6 +57,8 @@ export interface ClientConfig {
   appt_rate: number;
   show_rate: number;
   cb_rate: number;
+  close_rate?: number;  // fraction of shows that close (default 0.22)
+  avg_revenue?: number; // average deal value in dollars (default 21000)
 }
 
 // KPI targets (portfolio averages):
@@ -334,6 +336,7 @@ export interface MockEvent {
   stage_booked?: string | null;
   direction?: string | null;
   call_status?: string | null;
+  revenue?: number | null;
 }
 
 export interface MockSpend {
@@ -415,6 +418,9 @@ export function generateDayData(
     if (rng() < config.appt_rate * (0.82 + rng() * 0.36)) numAppts++;
   }
 
+  const now = new Date();
+  let numMaturedAppts = 0; // appointments whose scheduled date has already arrived
+
   for (let i = 0; i < numAppts; i++) {
     const first = pick(rng, FIRST_NAMES);
     const last = pick(rng, LAST_NAMES);
@@ -434,11 +440,15 @@ export function generateDayData(
       calendar_name: pick(rng, CALENDAR_NAMES),
       stage_booked: pick(rng, STAGES),
     });
+
+    if (scheduledAt <= now) numMaturedAppts++;
   }
 
   // ── Shows / No-Shows ───────────────────────────────────────────────────────
-  // Per-appointment coin flip for the same reason as appointments above.
-  for (let i = 0; i < numAppts; i++) {
+  // Only appointments whose scheduled date has already arrived get an outcome —
+  // ones still upcoming stay unresolved so they show up as "Appts To Take Place"
+  // instead of instantly resolving the moment they're booked.
+  for (let i = 0; i < numMaturedAppts; i++) {
     const first = pick(rng, FIRST_NAMES);
     const last = pick(rng, LAST_NAMES);
     events.push({
@@ -447,6 +457,22 @@ export function generateDayData(
       occurred_at: businessHourTs(rng, dateStr),
       lead_name: `${first} ${last}`,
     });
+  }
+
+  // ── Closes ─────────────────────────────────────────────────────────────────
+  const closeRate = config.close_rate ?? 0.22;
+  const avgRevenue = config.avg_revenue ?? 21000;
+  const numShows = events.filter(e => e.event_type === 'show').length;
+  for (let i = 0; i < numShows; i++) {
+    if (rng() < closeRate) {
+      const revenue = Math.round(avgRevenue * (0.8 + rng() * 0.4));
+      events.push({
+        client_id: clientId,
+        event_type: 'closed',
+        occurred_at: businessHourTs(rng, dateStr),
+        revenue,
+      });
+    }
   }
 
   // ── Ad Spend ───────────────────────────────────────────────────────────────

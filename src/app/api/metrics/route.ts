@@ -3,7 +3,7 @@ import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { calculateMetrics } from '@/lib/metrics';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 
-type EventRow = { event_type: string; is_pickup: boolean | null; is_conversation: boolean | null; speed_to_lead_seconds: number | null };
+type EventRow = { event_type: string; is_pickup: boolean | null; is_conversation: boolean | null; speed_to_lead_seconds: number | null; revenue: number | null };
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   // Build base events query (no execute yet — we'll paginate below)
   let eventsBase = ctx.service
     .from('events')
-    .select('event_type, is_pickup, is_conversation, speed_to_lead_seconds');
+    .select('event_type, is_pickup, is_conversation, speed_to_lead_seconds, revenue');
   if (client_id) eventsBase = eventsBase.eq('client_id', client_id);
   else if (liveClientIds) eventsBase = eventsBase.in('client_id', liveClientFilter(liveClientIds));
   if (start_date) eventsBase = eventsBase.gte('occurred_at', `${start_date}T00:00:00.000Z`);

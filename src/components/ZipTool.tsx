@@ -373,6 +373,8 @@ export default function ZipTool() {
   const zipAbortRef     = useRef<AbortController | null>(null);
   const pinCounterRef   = useRef(0);
   const activeSessionRef = useRef<string | null>(null);
+  const [mapFlyTrigger, setMapFlyTrigger] = useState(0);
+  const sessionLoadingRef = useRef(false);
 
   // Restore pins + sessions on mount
   useEffect(() => {
@@ -434,7 +436,17 @@ export default function ZipTool() {
       setClientSessions(allClientSessions);
       if (savedActiveSessionId) {
         const cs = allClientSessions.find(s => s.id === savedActiveSessionId);
-        if (cs) setConnectedClient(allClients.find(c => c.id === cs.client_id) ?? null);
+        if (cs) {
+          setConnectedClient(allClients.find(c => c.id === cs.client_id) ?? null);
+          // If the server record has pins, always use it as the authoritative
+          // source. localStorage can go stale because the persist effect writes
+          // empty state on the very first render before mount-effect updates land.
+          // Only override when the server actually has pins (don't wipe pins that
+          // are in localStorage but not yet synced to the server).
+          if (cs.pins.length > 0) {
+            applySessionPins(cs.id, cs.pins, cs.pin_counter);
+          }
+        }
       }
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -481,6 +493,14 @@ export default function ZipTool() {
         body: JSON.stringify({ pins: payload, pin_counter: pinCounterRef.current }),
       }).catch(() => {});
     }
+  }, [pins]);
+
+  // Fly to all pins when a session finishes loading
+  useEffect(() => {
+    if (!sessionLoadingRef.current || pins.length === 0) return;
+    if (pins.some(p => p.loading)) return;
+    sessionLoadingRef.current = false;
+    setMapFlyTrigger(k => k + 1);
   }, [pins]);
 
   // Load perf data when connected client changes
@@ -569,6 +589,7 @@ export default function ZipTool() {
     for (const ctrl of abortRefs.current.values()) ctrl.abort();
     abortRefs.current.clear();
     setActiveSession(sessionId);
+    if (savedPins.length > 0) sessionLoadingRef.current = true;
 
     const restoredPins: Pin[] = savedPins.map(sp => ({
       ...sp, zips: [], features: [], loading: true, scores: undefined,
@@ -1461,6 +1482,7 @@ export default function ZipTool() {
           pinMode={pinMode}
           onExcludeToggle={handleExcludeToggle}
           perfCircles={perfCircles}
+          flyTrigger={mapFlyTrigger}
         />
         {pins.length === 0 && (
           <div style={{

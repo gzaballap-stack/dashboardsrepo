@@ -3,6 +3,7 @@ type EventRow = {
   is_pickup: boolean | null;
   is_conversation: boolean | null;
   speed_to_lead_seconds: number | null;
+  revenue?: number | null;
 };
 
 type SpendRow = { amount: number | string };
@@ -17,6 +18,10 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
   const pickups      = dials.filter(e => e.is_pickup).length;
   const conversations = dials.filter(e => e.is_conversation).length;
   const callbacks    = events.filter(e => e.event_type === 'callback_booked').length;
+
+  const closes = events.filter(e => e.event_type === 'closed');
+  const close_count = closes.length;
+  const total_revenue = closes.reduce((sum, e) => sum + (Number(e.revenue) || 0), 0);
 
   const ad_spend = spendRows.reduce((sum, r) => sum + Number(r.amount), 0);
 
@@ -36,9 +41,9 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
     no_shows,
     show_pct: shows + no_shows > 0 ? (shows / (shows + no_shows)) * 100 : 0,
     ad_spend,
-    cpl:    leads  > 0 ? ad_spend / leads  : 0,
+    cpl:     leads  > 0 ? ad_spend / leads  : 0,
     cp_appt: booked > 0 ? ad_spend / booked : 0,
-    cps:    shows  > 0 ? ad_spend / shows  : 0,
+    cps:     shows  > 0 ? ad_spend / shows  : 0,
     outbound_dials: dial_count,
     dials_per_lead: leads > 0 ? dial_count / leads : 0,
     pickups,
@@ -48,5 +53,14 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
     callbacks,
     cb_pct: leads > 0 ? (callbacks / leads) * 100 : 0,
     speed_to_lead_min,
+    // Revenue KPIs
+    closes: close_count,
+    total_revenue,
+    avg_project_revenue: close_count > 0 ? total_revenue / close_count : 0,
+    cost_per_close:      close_count > 0 ? ad_spend / close_count : 0,
+    close_rate:          shows > 0 ? (close_count / shows) * 100 : 0,
+    // ROI nets a 40% profit margin against spend, rather than raw revenue/spend (ROAS),
+    // so it reflects actual return after cost of goods/labor, not gross revenue multiple.
+    roi:                 ad_spend > 0 ? (total_revenue * 0.4 - ad_spend) / ad_spend : 0,
   };
 }

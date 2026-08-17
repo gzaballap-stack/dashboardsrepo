@@ -87,8 +87,11 @@ create table if not exists events (
   ghl_contact_id  text,
   raw             jsonb,
 
+  -- Closed deal
+  revenue         numeric not null default 0,
+
   constraint events_event_type_check check (
-    event_type in ('dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked')
+    event_type in ('dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked', 'closed')
   )
 );
 
