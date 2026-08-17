@@ -42,7 +42,7 @@ export async function GET(req: Request) {
     offset += PAGE;
   }
 
-  let spendQuery = ctx.service.from('ad_spend').select('amount');
+  let spendQuery = ctx.service.from('ad_spend').select('amount, spend_date');
   if (client_id) spendQuery = spendQuery.eq('client_id', client_id);
   else if (liveClientIds) spendQuery = spendQuery.in('client_id', liveClientFilter(liveClientIds));
   if (start_date) spendQuery = spendQuery.gte('spend_date', start_date);
