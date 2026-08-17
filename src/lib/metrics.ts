@@ -6,13 +6,7 @@ type EventRow = {
   revenue?: number | null;
 };
 
-type SpendRow = { amount: number | string; spend_date?: string | null };
-
-// Booked appointments are scheduled 3-7 days out (see mock-generator's daysAhead)
-// and don't resolve to a show/no-show until that date arrives. Spend from within
-// this window hasn't had a chance to produce a show yet, so it's excluded from
-// Cost Per Show — otherwise CPS spikes for any range that includes recent days.
-const APPT_MATURITY_DAYS = 7;
+type SpendRow = { amount: number | string };
 
 export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
   const leads    = events.filter(e => e.event_type === 'lead').length;
@@ -30,13 +24,6 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
   const total_revenue = closes.reduce((sum, e) => sum + (Number(e.revenue) || 0), 0);
 
   const ad_spend = spendRows.reduce((sum, r) => sum + Number(r.amount), 0);
-
-  const matureCutoff = new Date();
-  matureCutoff.setDate(matureCutoff.getDate() - APPT_MATURITY_DAYS);
-  const matured_ad_spend = spendRows.reduce((sum, r) => {
-    if (!r.spend_date || new Date(r.spend_date) <= matureCutoff) return sum + Number(r.amount);
-    return sum;
-  }, 0);
 
   const speedReadings = dials
     .filter(e => e.speed_to_lead_seconds != null)
@@ -56,7 +43,12 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
     ad_spend,
     cpl:     leads  > 0 ? ad_spend / leads  : 0,
     cp_appt: booked > 0 ? ad_spend / booked : 0,
-    cps:     shows  > 0 ? matured_ad_spend / shows  : 0,
+    // Must share the same ad_spend basis as cp_appt/cpl above -- shows are a subset
+    // of booked appointments, so cps >= cp_appt is only guaranteed when both divide
+    // the same spend. Splitting spend by maturity here (excluding recent, still-
+    // pending appointments) broke that: shows barely drops for older date ranges
+    // while spend can drop a lot, letting cps fall below cp_appt, which is impossible.
+    cps:     shows  > 0 ? ad_spend / shows  : 0,
     outbound_dials: dial_count,
     dials_per_lead: leads > 0 ? dial_count / leads : 0,
     pickups,

@@ -29,7 +29,7 @@ export async function GET(req: Request) {
   if (start_date) eventsQuery = eventsQuery.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsQuery = eventsQuery.lte('occurred_at', `${end_date}T23:59:59.999Z`);
 
-  let spendQuery = service.from('ad_spend').select('amount, spend_date').eq('client_id', client.id);
+  let spendQuery = service.from('ad_spend').select('amount').eq('client_id', client.id);
   if (start_date) spendQuery = spendQuery.gte('spend_date', start_date);
   if (end_date)   spendQuery = spendQuery.lte('spend_date', end_date);
 
