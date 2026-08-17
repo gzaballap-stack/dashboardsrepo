@@ -43,12 +43,15 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
     ad_spend,
     cpl:     leads  > 0 ? ad_spend / leads  : 0,
     cp_appt: booked > 0 ? ad_spend / booked : 0,
-    // Must share the same ad_spend basis as cp_appt/cpl above -- shows are a subset
-    // of booked appointments, so cps >= cp_appt is only guaranteed when both divide
-    // the same spend. Splitting spend by maturity here (excluding recent, still-
-    // pending appointments) broke that: shows barely drops for older date ranges
-    // while spend can drop a lot, letting cps fall below cp_appt, which is impossible.
-    cps:     shows  > 0 ? ad_spend / shows  : 0,
+    // Derived from cp_appt scaled by the show-up rate among *resolved* appointments
+    // (shows / (shows + no_shows)) rather than ad_spend / shows directly. Pending
+    // appointments (not yet shown or no-showed) never enter this ratio, so a backlog
+    // of unresolved bookings can't dilute it -- and since show-up rate is always <=1,
+    // cps = cp_appt / show_rate is guaranteed >= cp_appt. With no pending backlog
+    // this reduces to exactly ad_spend / shows, same as before.
+    cps: (booked > 0 && shows + no_shows > 0)
+      ? (ad_spend / booked) / (shows / (shows + no_shows))
+      : 0,
     outbound_dials: dial_count,
     dials_per_lead: leads > 0 ? dial_count / leads : 0,
     pickups,
