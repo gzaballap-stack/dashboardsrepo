@@ -1436,23 +1436,26 @@ export default function ZipTool() {
           const allZips = Array.from(new Set(pins.flatMap(p => p.zips)));
           const ranked = allZips
             .filter(z => clientPerf[z])
-            .sort((a, b) => (clientPerf[b]?.leads ?? 0) - (clientPerf[a]?.leads ?? 0))
-            .slice(0, 10);
+            .sort((a, b) => {
+              const ac = clientPerf[a]?.closes ?? 0, bc = clientPerf[b]?.closes ?? 0;
+              if (bc !== ac) return bc - ac;
+              return (clientPerf[b]?.leads ?? 0) - (clientPerf[a]?.leads ?? 0);
+            });
           if (!ranked.length) return null;
           return (
-            <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", padding: "8px 12px", flexShrink: 0 }}>
-              <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
+            <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", padding: "8px 12px 8px", flexShrink: 0, maxHeight: 220, display: "flex", flexDirection: "column" }}>
+              <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6, flexShrink: 0 }}>
                 Rankings · {connectedClient.name}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, overflowY: "auto" }}>
                 {ranked.map(zip => {
                   const p = clientPerf[zip];
                   return (
-                    <div key={zip} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderRadius: 5, background: "rgba(255,255,255,0.03)" }}>
+                    <div key={zip} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderRadius: 5, background: "rgba(255,255,255,0.03)", flexShrink: 0 }}>
                       <span style={{ fontSize: 10, fontWeight: 700, color: "#e2e8f0", fontFamily: "monospace", width: 40, flexShrink: 0 }}>{zip}</span>
                       <span style={{ fontSize: 9, color: "#3b82f6" }}>{p.leads}L</span>
                       <span style={{ fontSize: 9, color: "#475569" }}>{p.appointments}A</span>
-                      <span style={{ fontSize: 9, color: "#475569" }}>{p.closes}C</span>
+                      <span style={{ fontSize: 9, color: p.closes > 0 ? "#4ade80" : "#475569", fontWeight: p.closes > 0 ? 700 : 400 }}>{p.closes}C</span>
                       {p.revenue > 0 && <span style={{ fontSize: 9, color: "#10b981", marginLeft: "auto" }}>{fmt$(p.revenue)}</span>}
                     </div>
                   );
