@@ -335,6 +335,7 @@ export default function ZipTool() {
   const [pinMode,        setPinMode]        = useState<"include" | "exclude">("include");
   const [copied,         setCopied]         = useState(false);
   const [manualExcludes, setManualExcludes] = useState<Set<string>>(new Set());
+  const [mapOverlay,     setMapOverlay]     = useState<"census" | "performance">("census");
 
   const [selectedZip, setSelectedZip] = useState<string | null>(null);
   const [zipData,     setZipData]     = useState<ZipData | null>(null);
@@ -897,8 +898,8 @@ export default function ZipTool() {
   const includeZips = new Set(pins.flatMap(p => p.zips));
   const netZips = Array.from(includeZips).filter(z => !manualExcludes.has(z)).sort();
   const selectedPin = pins.find(p => p.id === selectedId) ?? null;
-  // All zips shown in chip list — excluded ones rendered with strikethrough
-  const allChipZips = selectedPin ? [...selectedPin.zips].sort() : Array.from(includeZips).sort();
+  // All zips shown in chip list — only when a pin is selected; empty otherwise
+  const allChipZips = selectedPin ? [...selectedPin.zips].sort() : [];
   // Net (non-excluded) zips — used for copy count and copy action
   const displayZips = selectedPin ? [...selectedPin.zips].filter(z => !manualExcludes.has(z)).sort() : netZips;
   const totalLoading = pins.some(p => p.loading);
@@ -1344,7 +1345,23 @@ export default function ZipTool() {
             <span style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em" }}>
               {selectedPin ? selectedPin.label : "Targeted Zips"}
             </span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>{totalLoading ? "…" : displayZips.length}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {connectedClient && (
+                <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 5, padding: 2 }}>
+                  {(["census", "performance"] as const).map(mode => (
+                    <button key={mode} onClick={() => setMapOverlay(mode)} style={{
+                      padding: "2px 7px", borderRadius: 4, border: "none", cursor: "pointer", fontSize: 9, fontWeight: 700,
+                      background: mapOverlay === mode ? (mode === "census" ? "rgba(59,130,246,0.35)" : "rgba(245,158,11,0.35)") : "transparent",
+                      color: mapOverlay === mode ? (mode === "census" ? "#60a5fa" : "#f59e0b") : "#475569",
+                      transition: "all 0.15s",
+                    }}>
+                      {mode === "census" ? "Census" : "Perf"}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>{totalLoading ? "…" : displayZips.length}</span>
+            </div>
           </div>
           {selectedPin && (
             <div style={{ padding: "6px 16px 0", flexShrink: 0 }}>
@@ -1395,14 +1412,16 @@ export default function ZipTool() {
                           handleZipClick(zip);
                         }
                       }}
-                      style={{ ...chipStyle(zs?.grade, selectedZip === zip, manualExcludes.has(zip)), display: "inline-flex", alignItems: "center", gap: 2 }}
+                      style={{ ...chipStyle(mapOverlay === "census" ? zs?.grade : undefined, selectedZip === zip, manualExcludes.has(zip)), display: "inline-flex", alignItems: "center", gap: 2 }}
                       title={
                         manualExcludes.has(zip)
                           ? "Excluded — click to restore"
-                          : (zs ? `Score ${zs.score} · Grade ${zs.grade}` : "Click for data")
+                          : mapOverlay === "performance" && clientPerf[zip]
+                            ? `${clientPerf[zip].leads}L · ${clientPerf[zip].appointments}A · ${clientPerf[zip].shows}S · ${clientPerf[zip].closes}C`
+                            : (zs ? `Score ${zs.score} · Grade ${zs.grade}` : "Click for data")
                       }>
                       {zip}
-                      {connectedClient && clientPerf[zip] && clientPerf[zip].leads > 0 && (
+                      {mapOverlay === "performance" && connectedClient && clientPerf[zip] && clientPerf[zip].leads > 0 && (
                         <span style={{ fontSize: 8, background: "#1d4ed8", color: "#fff", borderRadius: 3, padding: "1px 3px", marginLeft: 2 }}>
                           {clientPerf[zip].leads}L
                         </span>
@@ -1415,7 +1434,7 @@ export default function ZipTool() {
           ) : (
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{ fontSize: 12, color: "#334155", textAlign: "center", padding: "0 16px" }}>
-                {totalLoading ? "Loading…" : pins.length === 0 ? "No pins yet" : "No targeted zips"}
+                {totalLoading ? "Loading…" : pins.length === 0 ? "No pins yet" : !selectedPin ? "Select a pin to view its zips" : "No targeted zips"}
               </span>
             </div>
           )}
@@ -1487,7 +1506,7 @@ export default function ZipTool() {
           manualExcludes={manualExcludes}
           pinMode={pinMode}
           onExcludeToggle={handleExcludeToggle}
-          perfCircles={perfCircles}
+          perfCircles={mapOverlay === "performance" ? perfCircles : undefined}
           flyTrigger={mapFlyTrigger}
         />
         {pins.length === 0 && (
