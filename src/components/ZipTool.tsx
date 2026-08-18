@@ -142,7 +142,7 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSav
 
       {/* Tab bar — only shown when a client is connected */}
       {clientName && (
-        <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
+        <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
           {(["census", "performance"] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
               flex: 1, padding: "7px 0", border: "none", cursor: "pointer", fontSize: 10, fontWeight: 700,
@@ -165,43 +165,29 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSav
             <div style={{ fontSize: 9, fontWeight: 700, color: "#334155", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
               {clientName} · ZIP {zip}
             </div>
-            {(["leads", "appointments", "shows", "closes"] as const).map(field => (
-              <div key={field} style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 10, color: "#475569", marginBottom: 3, textTransform: "capitalize" }}>{field}</div>
-                <input
-                  type="number"
-                  min={0}
-                  value={perfForm[field] ?? 0}
-                  onChange={e => setPerfForm(prev => ({ ...prev, [field]: parseInt(e.target.value) || 0 }))}
-                  style={{
-                    width: "100%", padding: "6px 9px", borderRadius: 6, fontSize: 12, fontFamily: "monospace",
-                    background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-                    color: "#e2e8f0", outline: "none", boxSizing: "border-box",
-                  }}
-                />
+            {perfData ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {([
+                  { label: "Leads",        value: perfData.leads,        color: "#3b82f6" },
+                  { label: "Appointments", value: perfData.appointments, color: "#8b5cf6" },
+                  { label: "Shows",        value: perfData.shows,        color: "#f59e0b" },
+                  { label: "Closes",       value: perfData.closes,       color: "#10b981" },
+                ] as const).map(({ label, value, color }) => (
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 6, background: "rgba(255,255,255,0.03)" }}>
+                    <span style={{ fontSize: 11, color: "#475569" }}>{label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color, fontFamily: "monospace" }}>{value}</span>
+                  </div>
+                ))}
+                {perfData.revenue > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 6, background: "rgba(16,185,129,0.06)", marginTop: 2 }}>
+                    <span style={{ fontSize: 11, color: "#475569" }}>Revenue</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#10b981", fontFamily: "monospace" }}>{fmt$(perfData.revenue)}</span>
+                  </div>
+                )}
               </div>
-            ))}
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 10, color: "#475569", marginBottom: 3 }}>Revenue ($)</div>
-              <input
-                type="number"
-                min={0}
-                step={100}
-                value={perfForm.revenue ?? 0}
-                onChange={e => setPerfForm(prev => ({ ...prev, revenue: parseFloat(e.target.value) || 0 }))}
-                style={{
-                  width: "100%", padding: "6px 9px", borderRadius: 6, fontSize: 12, fontFamily: "monospace",
-                  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-                  color: "#e2e8f0", outline: "none", boxSizing: "border-box",
-                }}
-              />
-            </div>
-            <button
-              onClick={() => onSavePerf && onSavePerf(perfForm)}
-              style={{
-                width: "100%", padding: "8px 0", borderRadius: 7, border: "none", cursor: "pointer",
-                background: "#1d4ed8", color: "#fff", fontSize: 11, fontWeight: 700,
-              }}>Save</button>
+            ) : (
+              <p style={{ fontSize: 12, color: "#334155", margin: 0, textAlign: "center", padding: "12px 0" }}>No performance data for this zip.</p>
+            )}
           </div>
         )}
 
@@ -719,21 +705,18 @@ export default function ZipTool() {
   }, []);
 
   const handleMapClick = useCallback(async (lat: number, lng: number) => {
-    // Compute the next pin number inside the functional updater so we always
-    // read the real current pins — not the stale closure value.
-    let id = '', label = '', color = '';
-    setPins(prev => {
-      const usedNums = new Set(
-        prev.map(p => { const m = p.label.match(/(\d+)$/); return m ? parseInt(m[1]) : 0; })
-      );
-      let n = 1;
-      while (usedNums.has(n)) n++;
-      pinCounterRef.current = n;
-      id    = `pin-${n}`;
-      label = `Pin ${n}`;
-      color = PIN_COLORS[(n - 1) % PIN_COLORS.length];
-      return [...prev, { id, lat, lng, label, radius, zips: [], features: [], loading: true, color, type: "include" as const }];
-    });
+    // pins is in the dependency array so this closure always has the current list
+    const usedNums = new Set(
+      pins.map(p => { const m = p.label.match(/(\d+)$/); return m ? parseInt(m[1]) : 0; })
+    );
+    let n = 1;
+    while (usedNums.has(n)) n++;
+    pinCounterRef.current = n;
+    const id    = `pin-${n}`;
+    const color = PIN_COLORS[(n - 1) % PIN_COLORS.length];
+    const label = `Pin ${n}`;
+
+    setPins(prev => [...prev, { id, lat, lng, label, radius, zips: [], features: [], loading: true, color, type: "include" as const }]);
     setSelectedId(id);
 
     abortRefs.current.get(id)?.abort();
@@ -751,7 +734,7 @@ export default function ZipTool() {
     } catch (e: any) {
       if (e?.name !== "AbortError") setPins(prev => prev.map(p => p.id === id ? { ...p, loading: false } : p));
     }
-  }, [radius]);
+  }, [pins, radius]);
 
   const handleDeletePin = useCallback((id: string) => {
     abortRefs.current.get(id)?.abort();
@@ -942,8 +925,11 @@ export default function ZipTool() {
         borderRight: "1px solid rgba(255,255,255,0.07)", background: "#0a1628", overflow: "hidden",
       }}>
 
+        {/* ── Scrollable top block: everything above the zip panel ── */}
+        <div style={{ overflowY: "auto", flexShrink: 1, minHeight: 0 }}>
+
         {/* ── Clients (server-backed sessions, shared across the team) ── */}
-        <div style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
+        <div style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
           <button
             onClick={() => setShowClients(v => !v)}
             style={{
@@ -970,7 +956,7 @@ export default function ZipTool() {
           </button>
 
           {showClients && (
-            <div style={{ padding: "0 10px 10px", maxHeight: 280, overflowY: "auto" }}>
+            <div style={{ padding: "0 10px 10px" }}>
 
               {clientSessionsByClientId.size === 0 && (
                 <p style={{ fontSize: 11, color: "#334155", padding: "6px 2px 4px", margin: 0 }}>
@@ -1049,7 +1035,7 @@ export default function ZipTool() {
         </div>
 
         {/* ── Sessions (unattached, local — sales-call prep etc.) ── */}
-        <div style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
+        <div style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
           <button
             onClick={() => setShowSessions(v => !v)}
             style={{
@@ -1211,7 +1197,7 @@ export default function ZipTool() {
         </div>
 
         {/* Zip code search */}
-        <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
+        <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
           <form onSubmit={e => { e.preventDefault(); handleZipSearch(searchInput); }}
             style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <input
@@ -1244,7 +1230,7 @@ export default function ZipTool() {
 
         {/* Pin mode controls */}
         {(<>
-          <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
+          <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <span style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em" }}>Radius</span>
               <span style={{ fontSize: 13, fontWeight: 700, color: "#f59e0b" }}>{radius} mi</span>
@@ -1276,7 +1262,7 @@ export default function ZipTool() {
               }}>× Exclude Zips</button>
           </div>
           {pinMode === "exclude" && (
-            <div style={{ padding: "6px 14px 8px", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
+            <div style={{ padding: "6px 14px 8px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
               <p style={{ fontSize: 10, color: "#475569", margin: 0, lineHeight: 1.55 }}>
                 Click zip polygons on the map or chips below to exclude individual zips.{manualExcludes.size > 0 ? ` ${manualExcludes.size} excluded.` : ""}
               </p>
@@ -1331,6 +1317,8 @@ export default function ZipTool() {
             ))}
           </div>
         )}
+
+        </div>{/* ── end scrollable top block ── */}
 
         {/* Zip chips */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
