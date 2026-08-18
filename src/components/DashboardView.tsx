@@ -371,10 +371,10 @@ export default function DashboardView() {
     router.refresh();
   }
 
-  const fmt$   = (v: number) => `$${Math.round(v).toLocaleString("en-US")}`;
-  const fmtPct = (v: number) => `${v.toFixed(2)}%`;
-  const fmtDec = (v: number) => v.toFixed(2);
-  const fmtInt = (v: number) => Math.round(v).toString();
+  const fmt$   = (v: number | null | undefined) => v != null ? `$${Math.round(v).toLocaleString("en-US")}` : "—";
+  const fmtPct = (v: number | null | undefined) => v != null ? `${v.toFixed(2)}%` : "—";
+  const fmtDec = (v: number | null | undefined) => v != null ? v.toFixed(2) : "—";
+  const fmtInt = (v: number | null | undefined) => v != null ? Math.round(v).toString() : "—";
 
   const { start: dateStart, end: dateEnd } =
     preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);

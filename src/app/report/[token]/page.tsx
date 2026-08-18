@@ -72,9 +72,9 @@ export default function PublicReportPage() {
       .catch(() => setLoading(false));
   }, [token, preset]);
 
-  const fmt$ = (v: number) => `$${Math.round(v).toLocaleString()}`;
-  const fmtPct = (v: number) => `${v.toFixed(1)}%`;
-  const fmtDec = (v: number) => v.toFixed(2);
+  const fmt$ = (v: number | null | undefined) => v != null ? `$${Math.round(v).toLocaleString()}` : "—";
+  const fmtPct = (v: number | null | undefined) => v != null ? `${v.toFixed(1)}%` : "—";
+  const fmtDec = (v: number | null | undefined) => v != null ? v.toFixed(2) : "—";
 
   if (notFound) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: "#080f1e" }}>
