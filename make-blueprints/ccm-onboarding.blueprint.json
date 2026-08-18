@@ -61,7 +61,7 @@
                 "ca": "",
                 "useMtls": false,
                 "contentType": "application/json",
-                "data": "{\"agency_name\": \"{{1.agency_name}}\", \"email\": \"{{1.email}}\", \"status\": \"{{1.status}}\"}"
+                "data": "{\"agency_name\": \"{{1.agency_name}}\", \"email\": \"{{1.email}}\", \"status\": \"{{1.status}}\", \"zip_code\": \"{{1.zip_code}}\", \"radius_miles\": {{1.radius_miles}}}"
             },
             "metadata": {
                 "designer": { "x": 300, "y": 0, "name": "Create/Update Agency Account" }
