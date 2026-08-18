@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import "leaflet/dist/leaflet.css";
-import { scoreToRadius, fmt$ } from "@/lib/zip-score";
+import { fmt$ } from "@/lib/zip-score";
 
 export type Pin = {
   id: string;
@@ -38,8 +38,7 @@ type Props = {
   manualExcludes?: Set<string>;
   pinMode?: "include" | "exclude";
   onExcludeToggle?: (zip: string) => void;
-  // zip -> composite performance score/metrics for the connected client, drawn as a
-  // circle overlay on top of the existing grade-colored polygons (sized by score).
+  // zip -> composite performance score/metrics for the connected client; drives choropleth fill.
   perfCircles?: Record<string, ZipPerfCircle>;
   flyTrigger?: number;
 };
@@ -47,6 +46,27 @@ type Props = {
 const GRADE_COLORS: Record<string, string> = {
   A: "#10b981", B: "#3b82f6", C: "#f59e0b", D: "#ef4444",
 };
+
+// Choropleth: maps a 0–100 relative perf score (min-max across the client's territory)
+// to a fill color. Blue (cold/low) → green (mid) → amber (hot/high).
+function perfScoreToFill(score: number): { color: string; opacity: number } {
+  const t = Math.max(0, Math.min(100, score)) / 100;
+  let r: number, g: number, b: number;
+  if (t < 0.5) {
+    // #1d4ed8 (blue) → #22c55e (green)
+    const u = t * 2;
+    r = Math.round(29  + u * (34  - 29));
+    g = Math.round(78  + u * (197 - 78));
+    b = Math.round(216 + u * (94  - 216));
+  } else {
+    // #22c55e (green) → #d97706 (amber)
+    const u = (t - 0.5) * 2;
+    r = Math.round(34  + u * (217 - 34));
+    g = Math.round(197 + u * (119 - 197));
+    b = Math.round(94  + u * (6   - 94));
+  }
+  return { color: `rgb(${r},${g},${b})`, opacity: 0.35 + t * 0.35 };
+}
 
 export default function ZipMap({
   pins, selectedPinId, onMapClick, onSelectPin, onDeletePin,
@@ -135,25 +155,37 @@ export default function ZipMap({
 
         // 1. ZCTA polygon fills + labels
         if (pin.features.length > 0 && !pin.loading) {
-          const perfCenters: { zip: string; center: any }[] = [];
-
           const geoLayer = L.geoJSON(
             { type: "FeatureCollection", features: pin.features } as any,
             {
               style: (feat: any) => {
-                const zip  = feat?.properties?.zip ?? feat?.properties?.ZCTA5;
-                const grade = pin.scores?.[zip]?.grade;
+                const zip = feat?.properties?.zip ?? feat?.properties?.ZCTA5;
                 const isExcluded = manualExcludes?.has(zip);
-                const fc = isExcluded
-                  ? "#ef4444"
-                  : (grade ? GRADE_COLORS[grade] : pin.color);
+
+                if (isExcluded) {
+                  return { fillColor: '#ef4444', fillOpacity: 0.22, color: '#ef4444', weight: 1.5, opacity: 0.9, dashArray: '5,4' };
+                }
+
+                // Choropleth when a client is connected
+                if (perfCircles) {
+                  const perf = perfCircles[zip];
+                  if (perf) {
+                    const { color, opacity } = perfScoreToFill(perf.score);
+                    return { fillColor: color, fillOpacity: opacity, color: 'rgba(255,255,255,0.55)', weight: isSelected ? 1.5 : 0.7, opacity: 0.85 };
+                  }
+                  // In territory but no perf row → very faint
+                  return { fillColor: '#94a3b8', fillOpacity: 0.08, color: 'rgba(148,163,184,0.3)', weight: 0.5, opacity: 0.5 };
+                }
+
+                // No connected client → grade-based fill
+                const grade = pin.scores?.[zip]?.grade;
+                const fc = grade ? GRADE_COLORS[grade] : pin.color;
                 return {
-                  fillColor:   fc,
-                  fillOpacity: isExcluded ? 0.22 : (isSelected ? 0.5 : 0.32),
-                  color:       fc,
-                  weight:      isExcluded ? 1.5 : (isSelected ? 1.5 : 0.8),
-                  opacity:     isExcluded ? 0.9 : (isSelected ? 0.9 : 0.6),
-                  dashArray:   isExcluded ? "5,4" : undefined,
+                  fillColor: fc,
+                  fillOpacity: isSelected ? 0.50 : 0.32,
+                  color: fc,
+                  weight: isSelected ? 1.5 : 0.8,
+                  opacity: isSelected ? 0.9 : 0.6,
                 };
               },
               onEachFeature: (feat: any, layer: any) => {
@@ -164,21 +196,42 @@ export default function ZipMap({
                   try {
                     const b = layer.getBounds();
                     if (b?.isValid()) zipBoundsRef.current.set(zip, b);
-                    if (b?.isValid() && perfCircles?.[zip] && !manualExcludes?.has(zip)) {
-                      perfCenters.push({ zip, center: b.getCenter() });
-                    }
                   } catch {}
                 }
 
                 // Zip code label on the polygon
                 if (zip) {
                   layer.bindTooltip(zip, {
-                    permanent:  true,
-                    direction:  "center",
-                    className:  "zip-label",
-                    opacity:    1,
+                    permanent:   true,
+                    direction:   "center",
+                    className:   "zip-label",
+                    opacity:     1,
                     interactive: false,
                   });
+                }
+
+                // Hover popup with perf breakdown (only when client is connected)
+                if (zip && perfCircles?.[zip] && !manualExcludes?.has(zip)) {
+                  const perf = perfCircles[zip];
+                  const { color } = perfScoreToFill(perf.score);
+                  const html = `<div style="font-family:system-ui;min-width:160px;">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                      <div style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0;"></div>
+                      <span style="font-size:12px;font-weight:700;color:#f1f5f9;">${zip}</span>
+                      <span style="font-size:10px;color:#94a3b8;margin-left:auto;">score ${perf.score}</span>
+                    </div>
+                    <div style="font-size:11px;color:#cbd5e1;line-height:2.0;">
+                      <span style="color:#a3e635;">${perf.leads}</span>&thinsp;leads &ensp;
+                      <span style="color:#60a5fa;">${perf.appointments}</span>&thinsp;appts &ensp;
+                      <span style="color:#c084fc;">${perf.shows}</span>&thinsp;shows<br/>
+                      <span style="color:#fb923c;">${perf.closes}</span>&thinsp;closed &ensp;
+                      <span style="color:#4ade80;">${fmt$(perf.revenue)}</span>
+                    </div>
+                  </div>`;
+                  layer.bindPopup(html, { className: 'zip-perf-popup', closeButton: false, autoPan: false });
+                  layer.on('mouseover', () => { try { layer.openPopup(); } catch {} });
+                  layer.on('mouseout',  () => { try { layer.closePopup(); } catch {} });
+                  layer.on('click',     () => { try { layer.closePopup(); } catch {} });
                 }
 
                 // Click handler
@@ -196,38 +249,6 @@ export default function ZipMap({
             },
           ).addTo(map);
           layers.push(geoLayer);
-
-          // 1b. Performance circle overlay — drawn after (on top of) the polygon fills,
-          // sized by each zip's composite lead/appointment/show/close/revenue score.
-          for (const { zip, center } of perfCenters) {
-            const perf = perfCircles![zip];
-            const circle = L.circleMarker(center, {
-              radius:      scoreToRadius(perf.score),
-              color:       "#f8fafc",
-              weight:      2,
-              fillColor:   "#f8fafc",
-              fillOpacity: 0.12,
-              opacity:     0.8,
-            }).addTo(map);
-            circle.bindTooltip(
-              `<div style="font-family:monospace;line-height:1.6;">
-                <b>${zip}</b> · Perf ${perf.score}<br/>
-                ${perf.leads}L · ${perf.appointments}A · ${perf.shows}S · ${perf.closes}C<br/>
-                ${fmt$(perf.revenue)}
-              </div>`,
-              { direction: "top", className: "zip-perf-tooltip", opacity: 1 },
-            );
-            circle.on("click", (e: any) => {
-              L.DomEvent.stopPropagation(e);
-              if (pinModeRef.current === "exclude") {
-                onExcludeToggleRef.current?.(zip);
-              } else {
-                onSelectPin(pin.id);
-                onZipClickRef.current?.(zip);
-              }
-            });
-            layers.push(circle);
-          }
 
           // Auto-fly to pin bounds when a newly placed pin finishes loading
           if (justFinishedLoading && pin.id === selectedPinId) {
@@ -389,13 +410,15 @@ export default function ZipMap({
         }
         .zip-label::before { display: none !important; }
 
-        /* Performance circle hover tooltip */
-        .zip-perf-tooltip.leaflet-tooltip {
-          background: #0c1828; border: 1px solid rgba(255,255,255,0.12);
-          color: #e2e8f0; border-radius: 8px; font-size: 11px; padding: 6px 9px;
-          box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+        /* Choropleth hover popup */
+        .zip-perf-popup .leaflet-popup-content-wrapper {
+          background: #0f172a; border: 1px solid rgba(255,255,255,0.12);
+          color: #e2e8f0; border-radius: 8px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.6); padding: 0;
         }
-        .zip-perf-tooltip.leaflet-tooltip::before { display: none !important; }
+        .zip-perf-popup .leaflet-popup-content { margin: 10px 13px; }
+        .zip-perf-popup .leaflet-popup-tip-container { display: none; }
+        .zip-perf-popup .leaflet-popup-close-button { display: none; }
       `}</style>
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
     </>
