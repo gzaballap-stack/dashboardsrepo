@@ -719,19 +719,21 @@ export default function ZipTool() {
   }, []);
 
   const handleMapClick = useCallback(async (lat: number, lng: number) => {
-    // Find the lowest unused pin number so gaps left by deletions are filled
-    const usedNums = new Set(
-      pins.map(p => { const m = p.label.match(/(\d+)$/); return m ? parseInt(m[1]) : 0; })
-    );
-    let n = 1;
-    while (usedNums.has(n)) n++;
-    pinCounterRef.current = n;
-    const id    = `pin-${n}`;
-    const color = PIN_COLORS[(n - 1) % PIN_COLORS.length];
-    const label = `Pin ${n}`;
-
-    const newPin: Pin = { id, lat, lng, label, radius, zips: [], features: [], loading: true, color, type: "include" };
-    setPins(prev => [...prev, newPin]);
+    // Compute the next pin number inside the functional updater so we always
+    // read the real current pins — not the stale closure value.
+    let id = '', label = '', color = '';
+    setPins(prev => {
+      const usedNums = new Set(
+        prev.map(p => { const m = p.label.match(/(\d+)$/); return m ? parseInt(m[1]) : 0; })
+      );
+      let n = 1;
+      while (usedNums.has(n)) n++;
+      pinCounterRef.current = n;
+      id    = `pin-${n}`;
+      label = `Pin ${n}`;
+      color = PIN_COLORS[(n - 1) % PIN_COLORS.length];
+      return [...prev, { id, lat, lng, label, radius, zips: [], features: [], loading: true, color, type: "include" as const }];
+    });
     setSelectedId(id);
 
     abortRefs.current.get(id)?.abort();
