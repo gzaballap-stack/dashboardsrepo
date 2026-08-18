@@ -898,8 +898,8 @@ export default function ZipTool() {
   const includeZips = new Set(pins.flatMap(p => p.zips));
   const netZips = Array.from(includeZips).filter(z => !manualExcludes.has(z)).sort();
   const selectedPin = pins.find(p => p.id === selectedId) ?? null;
-  // All zips shown in chip list — only when a pin is selected; empty otherwise
-  const allChipZips = selectedPin ? [...selectedPin.zips].sort() : [];
+  // All zips shown in chip list — all pins combined, always visible when pins exist
+  const allChipZips = [...new Set(pins.flatMap(p => p.zips))].sort();
   // Net (non-excluded) zips — used for copy count and copy action
   const displayZips = selectedPin ? [...selectedPin.zips].filter(z => !manualExcludes.has(z)).sort() : netZips;
   const totalLoading = pins.some(p => p.loading);
@@ -1354,7 +1354,7 @@ export default function ZipTool() {
               <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>{totalLoading ? "…" : displayZips.length}</span>
             </div>
           </div>
-          {selectedPin && (
+          {selectedPin && mapOverlay === "census" && (
             <div style={{ padding: "6px 16px 0", flexShrink: 0 }}>
               <div style={{ display: "flex", gap: 4 }}>
                 <input
@@ -1389,7 +1389,39 @@ export default function ZipTool() {
               {addZipError && <p style={{ fontSize: 10, color: "#ef4444", margin: "4px 0 0", lineHeight: 1.4 }}>{addZipError}</p>}
             </div>
           )}
-          {allChipZips.length > 0 ? (
+          {mapOverlay === "performance" && connectedClient ? (() => {
+            const allZips = Array.from(new Set(pins.flatMap(p => p.zips)));
+            const ranked = allZips
+              .filter(z => clientPerf[z] && (clientPerf[z].leads > 0 || clientPerf[z].closes > 0))
+              .sort((a, b) => {
+                const ac = clientPerf[a]?.closes ?? 0, bc = clientPerf[b]?.closes ?? 0;
+                if (bc !== ac) return bc - ac;
+                return (clientPerf[b]?.leads ?? 0) - (clientPerf[a]?.leads ?? 0);
+              });
+            if (!ranked.length) return (
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 12, color: "#334155", textAlign: "center", padding: "0 16px" }}>No performance data yet</span>
+              </div>
+            );
+            return (
+              <div style={{ flex: 1, overflowY: "auto", padding: "8px 12px" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  {ranked.map(zip => {
+                    const p = clientPerf[zip];
+                    return (
+                      <div key={zip} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderRadius: 5, background: "rgba(255,255,255,0.03)", flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#e2e8f0", fontFamily: "monospace", width: 40, flexShrink: 0 }}>{zip}</span>
+                        <span style={{ fontSize: 9, color: "#3b82f6" }}>{p.leads}L</span>
+                        <span style={{ fontSize: 9, color: "#475569" }}>{p.appointments}A</span>
+                        <span style={{ fontSize: 9, color: p.closes > 0 ? "#4ade80" : "#475569", fontWeight: p.closes > 0 ? 700 : 400 }}>{p.closes}C</span>
+                        {p.revenue > 0 && <span style={{ fontSize: 9, color: "#10b981", marginLeft: "auto" }}>{fmt$(p.revenue)}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })() : allChipZips.length > 0 ? (
             <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px" }}>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                 {allChipZips.map(zip => {
@@ -1403,20 +1435,9 @@ export default function ZipTool() {
                           handleZipClick(zip);
                         }
                       }}
-                      style={{ ...chipStyle(mapOverlay === "census" ? zs?.grade : undefined, selectedZip === zip, manualExcludes.has(zip)), display: "inline-flex", alignItems: "center", gap: 2 }}
-                      title={
-                        manualExcludes.has(zip)
-                          ? "Excluded — click to restore"
-                          : mapOverlay === "performance" && clientPerf[zip]
-                            ? `${clientPerf[zip].leads}L · ${clientPerf[zip].appointments}A · ${clientPerf[zip].shows}S · ${clientPerf[zip].closes}C`
-                            : (zs ? `Score ${zs.score} · Grade ${zs.grade}` : "Click for data")
-                      }>
+                      style={{ ...chipStyle(zs?.grade, selectedZip === zip, manualExcludes.has(zip)), display: "inline-flex", alignItems: "center", gap: 2 }}
+                      title={manualExcludes.has(zip) ? "Excluded — click to restore" : (zs ? `Score ${zs.score} · Grade ${zs.grade}` : "Click for data")}>
                       {zip}
-                      {mapOverlay === "performance" && connectedClient && clientPerf[zip] && clientPerf[zip].leads > 0 && (
-                        <span style={{ fontSize: 8, background: "#1d4ed8", color: "#fff", borderRadius: 3, padding: "1px 3px", marginLeft: 2 }}>
-                          {clientPerf[zip].leads}L
-                        </span>
-                      )}
                     </span>
                   );
                 })}
@@ -1425,45 +1446,11 @@ export default function ZipTool() {
           ) : (
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{ fontSize: 12, color: "#334155", textAlign: "center", padding: "0 16px" }}>
-                {totalLoading ? "Loading…" : pins.length === 0 ? "No pins yet" : !selectedPin ? "Select a pin to view its zips" : "No targeted zips"}
+                {totalLoading ? "Loading…" : "No targeted zips yet"}
               </span>
             </div>
           )}
         </div>
-
-        {/* Rankings */}
-        {connectedClient && (() => {
-          const allZips = Array.from(new Set(pins.flatMap(p => p.zips)));
-          const ranked = allZips
-            .filter(z => clientPerf[z])
-            .sort((a, b) => {
-              const ac = clientPerf[a]?.closes ?? 0, bc = clientPerf[b]?.closes ?? 0;
-              if (bc !== ac) return bc - ac;
-              return (clientPerf[b]?.leads ?? 0) - (clientPerf[a]?.leads ?? 0);
-            });
-          if (!ranked.length) return null;
-          return (
-            <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", padding: "8px 12px 8px", flexShrink: 0, maxHeight: 220, display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6, flexShrink: 0 }}>
-                Rankings · {connectedClient.name}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3, overflowY: "auto" }}>
-                {ranked.map(zip => {
-                  const p = clientPerf[zip];
-                  return (
-                    <div key={zip} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderRadius: 5, background: "rgba(255,255,255,0.03)", flexShrink: 0 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "#e2e8f0", fontFamily: "monospace", width: 40, flexShrink: 0 }}>{zip}</span>
-                      <span style={{ fontSize: 9, color: "#3b82f6" }}>{p.leads}L</span>
-                      <span style={{ fontSize: 9, color: "#475569" }}>{p.appointments}A</span>
-                      <span style={{ fontSize: 9, color: p.closes > 0 ? "#4ade80" : "#475569", fontWeight: p.closes > 0 ? 700 : 400 }}>{p.closes}C</span>
-                      {p.revenue > 0 && <span style={{ fontSize: 9, color: "#10b981", marginLeft: "auto" }}>{fmt$(p.revenue)}</span>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Actions */}
         <div style={{ padding: "10px 12px", borderTop: "1px solid rgba(255,255,255,0.07)", display: "flex", gap: 6, flexShrink: 0 }}>

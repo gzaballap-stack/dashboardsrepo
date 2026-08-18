@@ -147,39 +147,22 @@ export async function POST(req: Request) {
     const showDist = distribute(totalShows, fracs);
 
     // ── Closes / revenue ──────────────────────────────────────────────────────
-    // Only ~88% of closes land in unique zips (some get repeat business).
-    // Revenue per close varies widely: small bath ~$10–18k, standard ~$18–35k,
-    // large kitchen ~$35–55k, premium $55–90k. Anchored to the client's actual
-    // avg job value so the spread is realistic for their market segment.
+    // Distribute closes weighted by shows: a close can only come from a show,
+    // so closes follow the same hot-zip distribution and are capped per zip at
+    // its own show count. This guarantees closes ≤ shows ≤ appointments ≤ leads.
 
     const avgJobValue = totalCloses > 0 ? totalRevenue / totalCloses : 25000;
 
-    const jobZipCount = totalCloses === 0 ? 0 : Math.min(
-      Math.max(1, Math.round(totalCloses * 0.88)),
-      zips.length,
-    );
+    const totalShowCount = showDist.reduce((a: number, b: number) => a + b, 0);
+    const showFracs = totalShowCount > 0
+      ? showDist.map(s => s / totalShowCount)
+      : fracs;
 
-    // Fisher-Yates shuffle — seeded so it's deterministic
-    const shuffled = [...zips];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    const jobZipArr = shuffled.slice(0, jobZipCount);
+    const rawCloseDist = distribute(Math.min(totalCloses, totalShowCount), showFracs);
+    const closeDist = rawCloseDist.map((c, i) => Math.min(c, showDist[i]));
 
     const closesPerZip = new Map<string, number>();
-    for (const zip of jobZipArr) closesPerZip.set(zip, 1);
-
-    let extra = totalCloses - jobZipCount;
-    let attempts = 0;
-    while (extra > 0 && attempts < jobZipArr.length * 10) {
-      const zip = jobZipArr[Math.floor(rng() * jobZipArr.length)];
-      if ((closesPerZip.get(zip) ?? 0) < 3) {
-        closesPerZip.set(zip, (closesPerZip.get(zip) ?? 0) + 1);
-        extra--;
-      }
-      attempts++;
-    }
+    zips.forEach((zip, i) => { if (closeDist[i] > 0) closesPerZip.set(zip, closeDist[i]); });
 
     // Revenue: generate each close independently with a realistic spread
     // anchored to ±the client's own avg ticket so premium clients stay premium.
@@ -204,7 +187,7 @@ export async function POST(req: Request) {
       leads:        leadDist[i],
       appointments: apptDist[i],
       shows:        showDist[i],
-      closes:       closesPerZip.get(zip) ?? 0,
+      closes:       closeDist[i],
       revenue:      revenuePerZip.get(zip) ?? 0,
     }));
 
