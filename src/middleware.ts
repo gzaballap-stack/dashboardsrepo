@@ -50,7 +50,18 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    // Corrupted or invalid session cookie — clear sb-* cookies and redirect to login
+    const loginResponse = NextResponse.redirect(new URL('/login', request.url));
+    request.cookies.getAll()
+      .filter(c => c.name.startsWith('sb-'))
+      .forEach(c => loginResponse.cookies.delete(c.name));
+    return loginResponse;
+  }
 
   if (!user) {
     return NextResponse.redirect(new URL('/login', request.url));
