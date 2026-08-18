@@ -718,10 +718,16 @@ export default function ZipTool() {
   }, []);
 
   const handleMapClick = useCallback(async (lat: number, lng: number) => {
-    pinCounterRef.current++;
-    const id    = `pin-${pinCounterRef.current}`;
-    const color = PIN_COLORS[(pinCounterRef.current - 1) % PIN_COLORS.length];
-    const label = `Pin ${pinCounterRef.current}`;
+    // Find the lowest unused pin number so gaps left by deletions are filled
+    const usedNums = new Set(
+      pins.map(p => { const m = p.label.match(/(\d+)$/); return m ? parseInt(m[1]) : 0; })
+    );
+    let n = 1;
+    while (usedNums.has(n)) n++;
+    pinCounterRef.current = n;
+    const id    = `pin-${n}`;
+    const color = PIN_COLORS[(n - 1) % PIN_COLORS.length];
+    const label = `Pin ${n}`;
 
     const newPin: Pin = { id, lat, lng, label, radius, zips: [], features: [], loading: true, color, type: "include" };
     setPins(prev => [...prev, newPin]);
