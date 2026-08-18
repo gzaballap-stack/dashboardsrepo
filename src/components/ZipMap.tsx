@@ -166,15 +166,15 @@ export default function ZipMap({
                   return { fillColor: '#ef4444', fillOpacity: 0.22, color: '#ef4444', weight: 1.5, opacity: 0.9, dashArray: '5,4' };
                 }
 
-                // Choropleth when a client is connected
+                // Perf outline when a client is connected — fill is transparent, stroke is colored
                 if (perfCircles) {
                   const perf = perfCircles[zip];
                   if (perf) {
-                    const { color, opacity } = perfScoreToFill(perf.score);
-                    return { fillColor: color, fillOpacity: opacity, color: 'rgba(255,255,255,0.55)', weight: isSelected ? 1.5 : 0.7, opacity: 0.85 };
+                    const { color } = perfScoreToFill(perf.score);
+                    return { fillOpacity: 0, color, weight: isSelected ? 3 : 2, opacity: 0.9 };
                   }
-                  // In territory but no perf row → very faint
-                  return { fillColor: '#94a3b8', fillOpacity: 0.08, color: 'rgba(148,163,184,0.3)', weight: 0.5, opacity: 0.5 };
+                  // In territory but no perf row → faint outline only
+                  return { fillOpacity: 0, color: 'rgba(148,163,184,0.35)', weight: 0.8, opacity: 0.8 };
                 }
 
                 // No connected client → grade-based fill
