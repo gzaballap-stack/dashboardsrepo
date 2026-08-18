@@ -1327,15 +1327,6 @@ export default function ZipTool() {
             {(["A", "B", "C", "D"] as const).map(g => (
               <span key={g} style={{ fontSize: 9, fontWeight: 700, color: gradeColor(g) }}>● {g}</span>
             ))}
-            {connectedClient && perfCircles && Object.keys(perfCircles).length > 0 && (
-              <span style={{ fontSize: 9, fontWeight: 700, color: "#94a3b8", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                <span style={{
-                  width: 10, height: 10, borderRadius: "50%", display: "inline-block",
-                  border: "1.5px solid #f8fafc", background: "rgba(248,250,252,0.12)",
-                }} />
-                circle = performance
-              </span>
-            )}
           </div>
         )}
 
