@@ -970,7 +970,7 @@ export default function ZipTool() {
           </button>
 
           {showClients && (
-            <div style={{ padding: "0 10px 10px" }}>
+            <div style={{ padding: "0 10px 10px", maxHeight: 280, overflowY: "auto" }}>
 
               {clientSessionsByClientId.size === 0 && (
                 <p style={{ fontSize: 11, color: "#334155", padding: "6px 2px 4px", margin: 0 }}>
