@@ -14,6 +14,7 @@ const BYPASS_ROUTES = [
   '/api/admin/backfill-history',
   '/api/admin/run-schema',
   '/api/cron/seed-daily',
+  '/api/auth/clear',
   '/api/setup',
   '/api/users',
   '/setup',
@@ -55,12 +56,9 @@ export async function middleware(request: NextRequest) {
     const { data } = await supabase.auth.getUser();
     user = data.user;
   } catch {
-    // Corrupted or invalid session cookie — clear sb-* cookies and redirect to login
-    const loginResponse = NextResponse.redirect(new URL('/login', request.url));
-    request.cookies.getAll()
-      .filter(c => c.name.startsWith('sb-'))
-      .forEach(c => loginResponse.cookies.delete(c.name));
-    return loginResponse;
+    // Corrupted session cookie — send to /api/auth/clear which returns a 200 with
+    // Set-Cookie expiry headers (Railway CDN strips Set-Cookie from 3xx redirects).
+    return NextResponse.redirect(new URL('/api/auth/clear', request.url));
   }
 
   if (!user) {
