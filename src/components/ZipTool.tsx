@@ -360,6 +360,10 @@ export default function ZipTool() {
   const zipAbortRef     = useRef<AbortController | null>(null);
   const pinCounterRef   = useRef(0);
   const activeSessionRef = useRef<string | null>(null);
+  const pinsRef         = useRef<Pin[]>([]);
+  const pinHistoryRef   = useRef<Pin[][]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  useEffect(() => { pinsRef.current = pins; }, [pins]);
   const [mapFlyTrigger, setMapFlyTrigger] = useState(0);
   const sessionLoadingRef = useRef(false);
 
@@ -704,7 +708,23 @@ export default function ZipTool() {
     });
   }, []);
 
+  const pushPinHistory = useCallback(() => {
+    pinHistoryRef.current.push(pinsRef.current.map(p => ({ ...p })));
+    if (pinHistoryRef.current.length > 30) pinHistoryRef.current.shift();
+    setCanUndo(true);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const prev = pinHistoryRef.current.pop();
+    if (!prev) { setCanUndo(false); return; }
+    for (const ctrl of abortRefs.current.values()) ctrl.abort();
+    abortRefs.current.clear();
+    setPins(prev);
+    setCanUndo(pinHistoryRef.current.length > 0);
+  }, []);
+
   const handleMapClick = useCallback(async (lat: number, lng: number) => {
+    pushPinHistory();
     // pins is in the dependency array so this closure always has the current list
     const usedNums = new Set(
       pins.map(p => { const m = p.label.match(/(\d+)$/); return m ? parseInt(m[1]) : 0; })
@@ -734,9 +754,10 @@ export default function ZipTool() {
     } catch (e: any) {
       if (e?.name !== "AbortError") setPins(prev => prev.map(p => p.id === id ? { ...p, loading: false } : p));
     }
-  }, [pins, radius]);
+  }, [pins, radius, pushPinHistory]);
 
   const handleDeletePin = useCallback((id: string) => {
+    pushPinHistory(); // snapshot before deletion so it can be restored
     abortRefs.current.get(id)?.abort();
     abortRefs.current.delete(id);
     setPins(prev => {
@@ -745,7 +766,7 @@ export default function ZipTool() {
       return next;
     });
     setSelectedId(prev => prev === id ? null : prev);
-  }, []);
+  }, [pushPinHistory]);
 
   const handleZipSearch = useCallback(async (raw: string) => {
     const zip = raw.trim().replace(/\D/g, "").slice(0, 5);
@@ -1454,6 +1475,13 @@ export default function ZipTool() {
             }}>
             {copied ? "✓ Copied!" : `Copy${selectedPin ? ` (${displayZips.length})` : netZips.length ? ` (${netZips.length})` : ""}`}
           </button>
+          {canUndo && (
+            <button onClick={handleUndo}
+              style={{
+                padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)",
+                background: "transparent", color: "#60a5fa", fontSize: 12, cursor: "pointer",
+              }}>↩ Undo</button>
+          )}
           {pins.length > 0 && (
             <button onClick={clearAll}
               style={{
