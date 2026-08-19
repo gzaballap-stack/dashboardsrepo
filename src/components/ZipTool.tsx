@@ -362,7 +362,9 @@ export default function ZipTool() {
   const activeSessionRef = useRef<string | null>(null);
   const pinsRef         = useRef<Pin[]>([]);
   const pinHistoryRef   = useRef<Pin[][]>([]);
+  const pinFutureRef    = useRef<Pin[][]>([]);
   const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   useEffect(() => { pinsRef.current = pins; }, [pins]);
   const [mapFlyTrigger, setMapFlyTrigger] = useState(0);
   const sessionLoadingRef = useRef(false);
@@ -711,16 +713,31 @@ export default function ZipTool() {
   const pushPinHistory = useCallback(() => {
     pinHistoryRef.current.push(pinsRef.current.map(p => ({ ...p })));
     if (pinHistoryRef.current.length > 30) pinHistoryRef.current.shift();
+    pinFutureRef.current = [];
     setCanUndo(true);
+    setCanRedo(false);
   }, []);
 
   const handleUndo = useCallback(() => {
     const prev = pinHistoryRef.current.pop();
     if (!prev) { setCanUndo(false); return; }
+    pinFutureRef.current.push(pinsRef.current.map(p => ({ ...p })));
     for (const ctrl of abortRefs.current.values()) ctrl.abort();
     abortRefs.current.clear();
     setPins(prev);
     setCanUndo(pinHistoryRef.current.length > 0);
+    setCanRedo(true);
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    const next = pinFutureRef.current.pop();
+    if (!next) { setCanRedo(false); return; }
+    pinHistoryRef.current.push(pinsRef.current.map(p => ({ ...p })));
+    for (const ctrl of abortRefs.current.values()) ctrl.abort();
+    abortRefs.current.clear();
+    setPins(next);
+    setCanRedo(pinFutureRef.current.length > 0);
+    setCanUndo(true);
   }, []);
 
   const handleMapClick = useCallback(async (lat: number, lng: number) => {
@@ -1475,13 +1492,6 @@ export default function ZipTool() {
             }}>
             {copied ? "✓ Copied!" : `Copy${selectedPin ? ` (${displayZips.length})` : netZips.length ? ` (${netZips.length})` : ""}`}
           </button>
-          {canUndo && (
-            <button onClick={handleUndo}
-              style={{
-                padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)",
-                background: "transparent", color: "#60a5fa", fontSize: 12, cursor: "pointer",
-              }}>↩ Undo</button>
-          )}
           {pins.length > 0 && (
             <button onClick={clearAll}
               style={{
@@ -1508,6 +1518,27 @@ export default function ZipTool() {
           perfCircles={mapOverlay === "performance" ? perfCircles : undefined}
           flyTrigger={mapFlyTrigger}
         />
+        {/* Undo / Redo circular buttons — bottom-left of map */}
+        <div style={{ position: "absolute", bottom: 12, left: 12, zIndex: 900, display: "flex", gap: 6 }}>
+          {(["undo", "redo"] as const).map(action => {
+            const active = action === "undo" ? canUndo : canRedo;
+            return (
+              <button key={action} onClick={action === "undo" ? handleUndo : handleRedo} disabled={!active}
+                title={action === "undo" ? "Undo" : "Redo"}
+                style={{
+                  width: 32, height: 32, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.12)",
+                  background: active ? "rgba(10,22,40,0.88)" : "rgba(10,22,40,0.45)",
+                  color: active ? "#e2e8f0" : "#334155",
+                  cursor: active ? "pointer" : "default",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  backdropFilter: "blur(6px)", fontSize: 14, transition: "all 0.15s",
+                }}>
+                {action === "undo" ? "↩" : "↪"}
+              </button>
+            );
+          })}
+        </div>
+
         {pins.length === 0 && (
           <div style={{
             position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
