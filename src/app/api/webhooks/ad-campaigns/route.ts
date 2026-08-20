@@ -33,17 +33,64 @@ type IncomingRow = {
   leads?: number;
 };
 
-// Fed by Make.com pulling each platform's native ads-reporting module (see
-// ccm-ad-campaigns.blueprint.json) — one call per sync, carrying every
-// campaign/ad-set/ad row for that run. Accepts a single row or a { rows: [...] }
-// batch, matching how Make's iterator naturally produces one bundle per entity.
+const META_FIELDS = 'campaign_id,campaign_name,spend,impressions,reach,frequency,inline_link_clicks,unique_inline_link_clicks,cpm,cpc,ctr,unique_link_clicks_ctr';
+
+// Same pattern as /api/ad-spend's meta_entity_id/meta_access_token fetch: rather
+// than requiring Make to iterate the Meta API's response array itself (fragile to
+// hand-author in a blueprint), we take the account id + token straight from the
+// existing ad-spend scenario's fields and pull + upsert every campaign server-side.
+async function fetchMetaCampaignRows(entityId: string, accessToken: string, date: string) {
+  const params = new URLSearchParams({
+    fields: META_FIELDS,
+    time_range: JSON.stringify({ since: date, until: date }),
+    level: 'campaign',
+    access_token: accessToken,
+  });
+  const res = await fetch(`https://graph.facebook.com/v19.0/${entityId}/insights?${params}`);
+  const json = await res.json() as { data?: Record<string, string>[]; error?: { message: string } };
+  if (json.error) throw new Error(`Meta API: ${json.error.message}`);
+
+  return (json.data ?? []).map((d): IncomingRow => ({
+    report_date: date,
+    platform: 'meta',
+    level: 'campaign',
+    campaign_id: d.campaign_id,
+    campaign_name: d.campaign_name,
+    spend: Number(d.spend) || 0,
+    impressions: Number(d.impressions) || 0,
+    reach: Number(d.reach) || 0,
+    frequency: d.frequency ? Number(d.frequency) : undefined,
+    link_clicks: Number(d.inline_link_clicks) || 0,
+    unique_clicks: d.unique_inline_link_clicks ? Number(d.unique_inline_link_clicks) : undefined,
+    cpm: d.cpm ? Number(d.cpm) : undefined,
+    cpc: d.cpc ? Number(d.cpc) : undefined,
+    ctr: d.ctr ? Number(d.ctr) : undefined,
+    unique_ctr: d.unique_link_clicks_ctr ? Number(d.unique_link_clicks_ctr) : undefined,
+  }));
+}
+
+// Fed by Make.com — either a { rows: [...] } / single-row batch already carrying
+// campaign data, or { client_name, date, meta_entity_id, meta_access_token } to have
+// this route pull campaign-level insights from Meta itself (mirrors /api/ad-spend).
 export async function POST(req: Request) {
   if (!validateWebhookSecret(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const body = await req.json();
-  const rows: IncomingRow[] = Array.isArray(body) ? body : Array.isArray(body.rows) ? body.rows : [body];
+  let rows: IncomingRow[];
+
+  if (body.meta_entity_id && body.meta_access_token) {
+    const date = body.date || new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    try {
+      rows = (await fetchMetaCampaignRows(body.meta_entity_id, body.meta_access_token, date))
+        .map(r => ({ ...r, client_name: body.client_name, client_id: body.client_id }));
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'Meta fetch failed' }, { status: 502 });
+    }
+  } else {
+    rows = Array.isArray(body) ? body : Array.isArray(body.rows) ? body.rows : [body];
+  }
 
   if (!rows.length) {
     return NextResponse.json({ error: 'No rows provided' }, { status: 400 });
