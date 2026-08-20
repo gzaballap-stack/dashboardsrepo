@@ -83,6 +83,15 @@ export async function GET(req: Request) {
   const adRows = (adData ?? []) as unknown as CampaignRow[];
   const clientIds = Array.from(new Set(adRows.map(r => r.client_id)));
 
+  // Campaigns hidden per client -- other agencies'/legacy campaigns sharing the same ad
+  // account. Excluded from rollup totals below but still returned per-campaign so the
+  // drill-down can show + toggle them.
+  const { data: exclusionData, error: exclusionError } = await ctx.service
+    .from('ad_campaign_exclusions')
+    .select('client_id, campaign_id');
+  if (exclusionError) return NextResponse.json({ error: exclusionError.message }, { status: 500 });
+  const excluded = new Set((exclusionData ?? []).map(e => `${e.client_id}:${e.campaign_id}`));
+
   // Real CCM funnel data (leads/appointments/shows/closes), not Meta's own reported
   // "leads" field which is frequently 0/unreliable for these accounts.
   const funnelByClient = new Map<string, FunnelRollup>();
@@ -119,7 +128,7 @@ export async function GET(req: Request) {
     client_id: string;
     client_name: string;
     ad: AdRollup;
-    campaigns: Map<string, AdRollup & { campaign_id: string; campaign_name: string; platform: string; status: string | null; budget: number | null }>;
+    campaigns: Map<string, AdRollup & { campaign_id: string; campaign_name: string; platform: string; status: string | null; budget: number | null; excluded: boolean }>;
   }>();
 
   for (const row of adRows) {
@@ -128,14 +137,18 @@ export async function GET(req: Request) {
       c = { client_id: row.client_id, client_name: row.clients?.name ?? 'Unknown', ad: { ...EMPTY_AD }, campaigns: new Map() };
       byClient.set(row.client_id, c);
     }
-    c.ad.spend += Number(row.spend) || 0;
-    c.ad.impressions += row.impressions || 0;
-    c.ad.reach += row.reach || 0;
-    c.ad.link_clicks += row.link_clicks || 0;
+
+    const isExcluded = excluded.has(`${row.client_id}:${row.campaign_id}`);
+    if (!isExcluded) {
+      c.ad.spend += Number(row.spend) || 0;
+      c.ad.impressions += row.impressions || 0;
+      c.ad.reach += row.reach || 0;
+      c.ad.link_clicks += row.link_clicks || 0;
+    }
 
     let camp = c.campaigns.get(row.campaign_id);
     if (!camp) {
-      camp = { campaign_id: row.campaign_id, campaign_name: row.campaign_name, platform: row.platform, status: row.status, budget: row.budget, ...EMPTY_AD };
+      camp = { campaign_id: row.campaign_id, campaign_name: row.campaign_name, platform: row.platform, status: row.status, budget: row.budget, excluded: isExcluded, ...EMPTY_AD };
       c.campaigns.set(row.campaign_id, camp);
     }
     camp.spend += Number(row.spend) || 0;

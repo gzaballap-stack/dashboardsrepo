@@ -252,6 +252,19 @@ create table if not exists ad_campaigns (
 create index if not exists ad_campaigns_client_date on ad_campaigns(client_id, report_date desc);
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 14. Ad Campaign Exclusions (per-client hidden campaigns -- ad accounts often carry
+--     other agencies' or legacy campaigns alongside the ones actually run by the
+--     agency. Opt-out list: absence of a row = included, so new daily syncs never
+--     need to re-apply a hidden state on incoming rows.)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists ad_campaign_exclusions (
+  client_id    uuid not null references clients(id) on delete cascade,
+  campaign_id  text not null,
+  created_at   timestamptz default now(),
+  primary key (client_id, campaign_id)
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- Row-Level Security — every table blocks the public anon key by default (no
 -- policies defined); the app only ever reads/writes via the service-role key
 -- server-side, which bypasses RLS. Keeps a fresh install from being publicly
@@ -269,3 +282,4 @@ alter table pd_schedule            enable row level security;
 alter table zip_performance        enable row level security;
 alter table client_sessions        enable row level security;
 alter table ad_campaigns           enable row level security;
+alter table ad_campaign_exclusions enable row level security;

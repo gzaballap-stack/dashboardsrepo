@@ -14,6 +14,7 @@ type CampaignRollup = {
   link_clicks: number;
   ctr: number;
   cpc: number;
+  excluded: boolean;
 };
 
 type ClientRollup = {
@@ -181,6 +182,27 @@ export default function CampaignOverview({ startDate, endDate }: {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  };
+
+  const [togglingCampaign, setTogglingCampaign] = useState<string | null>(null);
+
+  const toggleCampaignIncluded = async (clientId: string, campaignId: string, currentlyExcluded: boolean) => {
+    const key = clientId + campaignId;
+    setTogglingCampaign(key);
+    try {
+      if (currentlyExcluded) {
+        await fetch(`/api/campaign-exclusions?client_id=${clientId}&campaign_id=${encodeURIComponent(campaignId)}`, { method: "DELETE" });
+      } else {
+        await fetch("/api/campaign-exclusions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ client_id: clientId, campaign_id: campaignId }),
+        });
+      }
+      loadData();
+    } finally {
+      setTogglingCampaign(null);
+    }
   };
 
   const filtered = rows
@@ -354,14 +376,31 @@ export default function CampaignOverview({ startDate, endDate }: {
                           </span>
                         </td>
                       </tr>
-                      {isOpen && r.campaigns.map(camp => (
-                        <tr key={r.client_id + camp.campaign_id} style={{ background: "rgba(255,255,255,0.02)" }}>
-                          <td className="px-4 py-2"></td>
+                      {isOpen && r.campaigns.map(camp => {
+                        const busy = togglingCampaign === r.client_id + camp.campaign_id;
+                        return (
+                        <tr key={r.client_id + camp.campaign_id} style={{ background: "rgba(255,255,255,0.02)", opacity: camp.excluded ? 0.45 : 1 }}>
+                          <td className="px-4 py-2 text-center" onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => toggleCampaignIncluded(r.client_id, camp.campaign_id, camp.excluded)}
+                              disabled={busy}
+                              title={camp.excluded ? "Hidden from dashboard — click to include" : "Included in dashboard — click to hide"}
+                              className="w-3.5 h-3.5 rounded flex items-center justify-center"
+                              style={{ border: `1px solid ${camp.excluded ? "#475569" : "#4ade80"}`, background: camp.excluded ? "transparent" : "rgba(74,222,128,0.15)" }}
+                            >
+                              {!camp.excluded && (
+                                <svg className="w-2.5 h-2.5" fill="none" stroke="#4ade80" strokeWidth={3} viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                            </button>
+                          </td>
                           <td className="px-2 py-2 pl-6 whitespace-nowrap" style={{ color: "#94a3b8" }} colSpan={2}>
                             <span className="text-xs px-1.5 py-0.5 rounded mr-2" style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>
                               {PLATFORM_LABEL[camp.platform] ?? camp.platform}
                             </span>
                             {camp.campaign_name}
+                            {camp.excluded && <span className="ml-2 text-[10px]" style={{ color: "#64748b" }}>(hidden from dashboard)</span>}
                           </td>
                           <td className="text-right px-3 py-2 text-xs" style={{ color: "#cbd5e1" }}>{fmt$(camp.spend)}</td>
                           <td className="text-right px-3 py-2 text-xs" colSpan={2} style={{ color: "#475569" }}>—</td>
@@ -371,7 +410,8 @@ export default function CampaignOverview({ startDate, endDate }: {
                           <td className="px-3 py-2 text-xs" style={{ color: "#475569" }}>{camp.status ?? "—"}</td>
                           <td className="text-right px-4 py-2 text-xs" style={{ color: "#94a3b8" }}>{fmtInt(camp.impressions)} impr</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </>
                   );
                 })}
