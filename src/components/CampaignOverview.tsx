@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type CampaignRollup = {
   campaign_id: string;
@@ -83,14 +83,43 @@ function fmtPct(n: number) {
   return `${n.toFixed(1)}%`;
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl p-4 flex flex-col gap-1"
-      style={{ background: "linear-gradient(135deg, #0f2040 0%, #0c1a30 100%)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <span className="text-xs font-medium tracking-wide" style={{ color: "#64748b" }}>{label}</span>
-      <span className="text-2xl font-bold" style={{ color: "#f1f5f9" }}>{value}</span>
-    </div>
-  );
+type DatePreset = "this_week" | "last_7" | "this_month" | "last_30" | "all_time" | "custom";
+
+const DATE_PRESET_LABELS: Record<DatePreset, string> = {
+  this_week: "This Week", last_7: "Last 7 Days", this_month: "This Month",
+  last_30: "Last 30 Days", all_time: "All Time", custom: "Custom Range",
+};
+
+function toISODate(d: Date) {
+  return d.toISOString().split("T")[0];
+}
+
+function resolvePreset(preset: DatePreset): { start: string; end: string } {
+  const now = new Date();
+  const today = toISODate(now);
+  if (preset === "this_week") {
+    const day = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((day + 6) % 7));
+    return { start: toISODate(monday), end: today };
+  }
+  if (preset === "last_7")  return { start: toISODate(new Date(now.getTime() - 7 * 86400000)), end: today };
+  if (preset === "this_month") return { start: toISODate(new Date(now.getFullYear(), now.getMonth(), 1)), end: today };
+  if (preset === "last_30") return { start: toISODate(new Date(now.getTime() - 30 * 86400000)), end: today };
+  return { start: "", end: "" }; // all_time
+}
+
+function relativeTime(d: Date | null): string {
+  if (!d) return "never";
+  const seconds = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (seconds < 10) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
 export default function CampaignOverview({ startDate, endDate }: {
@@ -104,21 +133,47 @@ export default function CampaignOverview({ startDate, endDate }: {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ClientRollup["status"] | "all">("all");
 
-  useEffect(() => {
+  // Own date range, independent of the global dashboard preset — defaults to
+  // whatever the parent nav is showing, but can be changed locally on this page.
+  const [datePreset, setDatePreset] = useState<DatePreset>("custom");
+  const [customStart, setCustomStart] = useState(startDate);
+  const [customEnd, setCustomEnd] = useState(endDate);
+  const [connected, setConnected] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [, forceTick] = useState(0);
+
+  const { start: rangeStart, end: rangeEnd } = datePreset === "custom"
+    ? { start: customStart, end: customEnd }
+    : resolvePreset(datePreset);
+
+  const loadData = () => {
     setLoading(true);
     setError("");
     const params = new URLSearchParams();
-    if (startDate) params.set("start_date", startDate);
-    if (endDate) params.set("end_date", endDate);
+    if (rangeStart) params.set("start_date", rangeStart);
+    if (rangeEnd) params.set("end_date", rangeEnd);
     fetch(`/api/campaign-overview?${params}`)
       .then(r => r.json())
       .then(d => {
-        if (d.error) { setError(d.error); setRows([]); }
-        else setRows(d.clients ?? []);
+        if (d.error) { setError(d.error); setRows([]); setConnected(false); }
+        else { setRows(d.clients ?? []); setConnected(true); setLastUpdated(new Date()); }
       })
-      .catch(() => setError("Failed to load campaign data"))
+      .catch(() => { setError("Failed to load campaign data"); setConnected(false); })
       .finally(() => setLoading(false));
-  }, [startDate, endDate]);
+  };
+
+  const loadDataRef = useRef(loadData);
+  loadDataRef.current = loadData;
+
+  useEffect(() => {
+    loadDataRef.current();
+  }, [rangeStart, rangeEnd]);
+
+  // Re-render every 15s just to keep the "X minutes ago" label fresh
+  useEffect(() => {
+    const id = setInterval(() => forceTick(t => t + 1), 15000);
+    return () => clearInterval(id);
+  }, []);
 
   const toggleExpanded = (id: string) => {
     setExpanded(prev => {
@@ -137,31 +192,57 @@ export default function CampaignOverview({ startDate, endDate }: {
     return acc;
   }, {} as Record<string, number>);
 
-  const totals = filtered.reduce((acc, r) => ({
-    spend: acc.spend + r.spend,
-    impressions: acc.impressions + r.impressions,
-    link_clicks: acc.link_clicks + r.link_clicks,
-    leads: acc.leads + r.leads,
-    appts: acc.appts + r.appts,
-    closes: acc.closes + r.closes,
-  }), { spend: 0, impressions: 0, link_clicks: 0, leads: 0, appts: 0, closes: 0 });
-  const portfolioCpl = totals.leads > 0 ? totals.spend / totals.leads : 0;
-  const portfolioCtr = totals.impressions > 0 ? (totals.link_clicks / totals.impressions) * 100 : 0;
-  const portfolioL2a = totals.leads > 0 ? (totals.appts / totals.leads) * 100 : 0;
-
   return (
     <div className="space-y-6 max-w-[1400px]">
-      <section>
-        <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Portfolio Totals</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard label="Total Spend" value={fmt$(totals.spend)} />
-          <StatCard label="Total Leads" value={fmtInt(totals.leads)} />
-          <StatCard label="Portfolio CPL" value={totals.leads > 0 ? fmt$(portfolioCpl) : "—"} />
-          <StatCard label="Booked Appts" value={fmtInt(totals.appts)} />
-          <StatCard label="L2A %" value={totals.leads > 0 ? fmtPct(portfolioL2a) : "—"} />
-          <StatCard label="CTR" value={fmtPct(portfolioCtr)} />
+      <div className="flex items-center justify-between flex-wrap gap-3 rounded-xl px-4 py-3"
+        style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.07)" }}>
+        <div className="flex items-center gap-5 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full" style={{ background: connected ? "#4ade80" : "#f87171", boxShadow: connected ? "0 0 6px #4ade80" : "none" }} />
+            <span className="text-xs font-semibold" style={{ color: connected ? "#4ade80" : "#f87171" }}>
+              {connected ? "Live Connection" : "Connection Error"}
+            </span>
+          </div>
+          <div className="text-xs" style={{ color: "#64748b" }}>
+            Last updated <span style={{ color: "#94a3b8" }}>{relativeTime(lastUpdated)}</span>
+          </div>
         </div>
-      </section>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            value={datePreset}
+            onChange={e => setDatePreset(e.target.value as DatePreset)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium outline-none cursor-pointer"
+            style={{ background: "#0c1a30", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+          >
+            {(Object.keys(DATE_PRESET_LABELS) as DatePreset[]).map(p => (
+              <option key={p} value={p}>{DATE_PRESET_LABELS[p]}</option>
+            ))}
+          </select>
+          {datePreset === "custom" && (
+            <>
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                className="px-2 py-1.5 rounded-lg text-xs outline-none"
+                style={{ background: "#0c1a30", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
+              <span className="text-xs" style={{ color: "#475569" }}>–</span>
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+                className="px-2 py-1.5 rounded-lg text-xs outline-none"
+                style={{ background: "#0c1a30", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
+            </>
+          )}
+          <button
+            onClick={loadData}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity"
+            style={{ background: "rgba(29,78,216,0.15)", color: "#60a5fa", border: "1px solid rgba(29,78,216,0.3)", opacity: loading ? 0.6 : 1 }}
+          >
+            <svg className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh Data
+          </button>
+        </div>
+      </div>
 
       <section>
         <div className="flex items-center gap-2 mb-4 flex-wrap">
