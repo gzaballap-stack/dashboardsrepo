@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
 
 type CampaignRow = {
   client_id: string;
@@ -70,10 +71,13 @@ export async function GET(req: Request) {
   const start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
 
+  const liveClientIds = await getLiveClientIds(ctx.service);
+
   let adQuery = ctx.service
     .from('ad_campaigns')
     .select('client_id, campaign_id, campaign_name, platform, status, budget, spend, impressions, reach, link_clicks, clients(name)')
-    .eq('level', 'campaign');
+    .eq('level', 'campaign')
+    .in('client_id', liveClientFilter(liveClientIds));
   if (start_date) adQuery = adQuery.gte('report_date', start_date);
   if (end_date)   adQuery = adQuery.lte('report_date', end_date);
 
