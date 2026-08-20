@@ -1,0 +1,114 @@
+{
+    "name": "CCM - Ad Campaigns (Meta/Google) -> Supabase",
+    "flow": [
+        {
+            "id": 1,
+            "module": "app#call-center-mastery-qeqot5:watchEventsManualPlacement",
+            "version": 1,
+            "parameters": {
+                "__IMTHOOK__": 0
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": { "x": 0, "y": 0 },
+                "restore": {
+                    "parameters": {
+                        "__IMTHOOK__": {
+                            "data": { "editable": "false" },
+                            "label": "Ad Campaigns Sync Webhook — trigger daily via Make schedule"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTHOOK__",
+                        "type": "hook:app#call-center-mastery-qeqot53",
+                        "label": "Webhook",
+                        "required": true
+                    }
+                ]
+            }
+        },
+        {
+            "id": 2,
+            "module": "http:ActionSendData",
+            "version": 3,
+            "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompression": true
+            },
+            "mapper": {
+                "url": "REPLACE_WITH_META_OR_GOOGLE_ADS_ACCOUNT_INSIGHTS_ENDPOINT",
+                "serializeUrl": false,
+                "method": "GET",
+                "headers": [],
+                "qs": [
+                    { "name": "level", "value": "campaign" },
+                    { "name": "fields", "value": "campaign_id,campaign_name,status,spend,impressions,reach,frequency,inline_link_clicks,unique_inline_link_clicks,cpm,cpc,ctr,unique_ctr" },
+                    { "name": "access_token", "value": "REPLACE_WITH_YOUR_ACCESS_TOKEN" }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "authUser": "",
+                "authPass": "",
+                "timeout": "",
+                "shareCookies": false,
+                "ca": "",
+                "useMtls": false,
+                "contentType": "application/json"
+            },
+            "metadata": {
+                "designer": { "x": 300, "y": 0, "name": "Pull campaign insights (one level per module — duplicate for adset/ad by changing 'level')" }
+            }
+        },
+        {
+            "id": 3,
+            "module": "http:ActionSendData",
+            "version": 3,
+            "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompression": true
+            },
+            "mapper": {
+                "url": "https://REPLACE_WITH_YOUR_RAILWAY_URL/api/webhooks/ad-campaigns",
+                "serializeUrl": false,
+                "method": "POST",
+                "headers": [
+                    { "name": "Authorization", "value": "Bearer REPLACE_WITH_YOUR_ADMIN_WEBHOOK_SECRET" },
+                    { "name": "Content-Type", "value": "application/json" }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "authUser": "",
+                "authPass": "",
+                "timeout": "",
+                "shareCookies": false,
+                "ca": "",
+                "useMtls": false,
+                "contentType": "application/json",
+                "data": "{\"rows\": [{\"client_name\": \"REPLACE_WITH_CLIENT_NAME\", \"report_date\": \"{{formatDate(addDays(now; -1); \\\"YYYY-MM-DD\\\")}}\", \"platform\": \"meta\", \"level\": \"campaign\", \"campaign_id\": \"REPLACE_WITH_ITERATOR_FIELD.campaign_id\", \"campaign_name\": \"REPLACE_WITH_ITERATOR_FIELD.campaign_name\", \"status\": \"REPLACE_WITH_ITERATOR_FIELD.status\", \"spend\": REPLACE_WITH_ITERATOR_FIELD.spend, \"impressions\": REPLACE_WITH_ITERATOR_FIELD.impressions, \"reach\": REPLACE_WITH_ITERATOR_FIELD.reach, \"frequency\": REPLACE_WITH_ITERATOR_FIELD.frequency, \"link_clicks\": REPLACE_WITH_ITERATOR_FIELD.inline_link_clicks, \"unique_clicks\": REPLACE_WITH_ITERATOR_FIELD.unique_inline_link_clicks, \"cpm\": REPLACE_WITH_ITERATOR_FIELD.cpm, \"cpc\": REPLACE_WITH_ITERATOR_FIELD.cpc, \"ctr\": REPLACE_WITH_ITERATOR_FIELD.ctr, \"unique_ctr\": REPLACE_WITH_ITERATOR_FIELD.unique_ctr}]}"
+            },
+            "metadata": {
+                "designer": { "x": 600, "y": 0, "name": "IMPORTANT: insert a Flow Control > Iterator on module 2's 'data' array BEFORE this step, then replace each REPLACE_WITH_ITERATOR_FIELD.x below with that iterator's actual output field (drag-and-drop from the mapping panel) -- Make's array syntax can't be hand-authored in this JSON reliably" }
+            }
+        }
+    ],
+    "metadata": {
+        "instant": true,
+        "version": 1,
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": false,
+            "confidential": false,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": { "orphans": [] },
+        "zone": "eu1.make.com"
+    }
+}

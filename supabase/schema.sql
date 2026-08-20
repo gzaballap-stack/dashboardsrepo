@@ -209,3 +209,63 @@ create table if not exists client_sessions (
 );
 
 create index if not exists client_sessions_client on client_sessions(client_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 13. Ad Campaigns (campaign/ad-set/ad level performance, fed by Make.com from
+--     each platform's native ads reporting — see ccm-ad-campaigns.blueprint.json.
+--     One row per client/date/platform/level/entity; level distinguishes which
+--     tier of the hierarchy a row describes.)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists ad_campaigns (
+  id             uuid    primary key default gen_random_uuid(),
+  client_id      uuid    not null references clients(id) on delete cascade,
+  report_date    date    not null,
+  platform       text    not null,
+  level          text    not null,
+  campaign_id    text    not null,
+  campaign_name  text    not null,
+  adset_id       text    not null default '',
+  adset_name     text,
+  ad_id          text    not null default '',
+  ad_name        text,
+  status         text,
+  objective      text,
+  budget         numeric,
+  spend          numeric not null default 0,
+  impressions    integer not null default 0,
+  reach          integer not null default 0,
+  frequency      numeric,
+  link_clicks    integer not null default 0,
+  unique_clicks  integer,
+  cpm            numeric,
+  cpc            numeric,
+  ctr            numeric,
+  unique_ctr     numeric,
+  leads          integer not null default 0,
+  created_at     timestamptz default now(),
+  updated_at     timestamptz default now(),
+  constraint ad_campaigns_platform_check check (platform in ('meta', 'google', 'local_services')),
+  constraint ad_campaigns_level_check    check (level in ('campaign', 'adset', 'ad')),
+  unique(client_id, report_date, platform, level, campaign_id, adset_id, ad_id)
+);
+
+create index if not exists ad_campaigns_client_date on ad_campaigns(client_id, report_date desc);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Row-Level Security — every table blocks the public anon key by default (no
+-- policies defined); the app only ever reads/writes via the service-role key
+-- server-side, which bypasses RLS. Keeps a fresh install from being publicly
+-- readable/writable the moment it's created.
+-- ─────────────────────────────────────────────────────────────────────────────
+alter table profiles               enable row level security;
+alter table clients                enable row level security;
+alter table agents                 enable row level security;
+alter table events                 enable row level security;
+alter table ad_spend               enable row level security;
+alter table setter_availability    enable row level security;
+alter table client_calling_windows enable row level security;
+alter table watch_schedule         enable row level security;
+alter table pd_schedule            enable row level security;
+alter table zip_performance        enable row level security;
+alter table client_sessions        enable row level security;
+alter table ad_campaigns           enable row level security;
