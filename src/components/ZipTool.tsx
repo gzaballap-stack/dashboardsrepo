@@ -27,7 +27,7 @@ type Session = {
 // table) shared across the team, not just this browser.
 type ClientSession = {
   id: string;
-  client_id: string;
+  client_id: string | null;
   name: string;
   pins: SavedPin[];
   pin_counter: number;
@@ -676,6 +676,22 @@ export default function ZipTool() {
     } catch {}
   };
 
+  const assignSession = async (cs: ClientSession, clientId: string) => {
+    const client = clients.find(c => c.id === clientId);
+    if (!client) return;
+    try {
+      const r = await fetch(`/api/client-sessions/${cs.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId }),
+      });
+      const d = await r.json();
+      if (!d.session) return;
+      setClientSessions(prev => prev.map(s => s.id === cs.id ? d.session : s));
+      if (activeSession === cs.id) setConnectedClient(client);
+    } catch {}
+  };
+
   const zipScores = useMemo(() => {
     const map: Record<string, { score: number; grade: "A" | "B" | "C" | "D" }> = {};
     for (const pin of pins) {
@@ -944,12 +960,18 @@ export default function ZipTool() {
   const clientSessionsByClientId = useMemo(() => {
     const map = new Map<string, ClientSession[]>();
     for (const cs of clientSessions) {
+      if (!cs.client_id) continue;
       const list = map.get(cs.client_id) ?? [];
       list.push(cs);
       map.set(cs.client_id, list);
     }
     return map;
   }, [clientSessions]);
+
+  const unattributedClientSessions = useMemo(
+    () => clientSessions.filter(cs => !cs.client_id),
+    [clientSessions]
+  );
 
   const activeLocalSessionLabel  = activeSession ? sessions.find(s => s.id === activeSession)?.name : undefined;
   const activeClientSessionLabel = activeSession ? clientSessions.find(s => s.id === activeSession)?.name : undefined;
@@ -1176,6 +1198,65 @@ export default function ZipTool() {
                   );
                 })}
               </div>
+
+              {/* Unattributed DB sessions — created automatically from GHL sales calls */}
+              {unattributedClientSessions.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>
+                    From GHL ({unattributedClientSessions.length})
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {unattributedClientSessions.map(cs => {
+                      const isActive   = activeSession === cs.id;
+                      const isExpanded = expandedSessionId === cs.id;
+                      return (
+                        <div key={cs.id} style={{
+                          borderRadius: 8, border: `1px solid ${isActive ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.07)"}`,
+                          background: isActive ? "rgba(245,158,11,0.06)" : "rgba(255,255,255,0.02)",
+                          overflow: "hidden",
+                        }}>
+                          <div onClick={() => setExpandedSessionId(prev => prev === cs.id ? null : cs.id)}
+                            style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 8, cursor: "pointer" }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? "#f59e0b" : "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                {cs.name}
+                              </div>
+                              <div style={{ fontSize: 10, color: "#334155", marginTop: 1 }}>
+                                {cs.pins.length} pin{cs.pins.length !== 1 ? "s" : ""}
+                              </div>
+                            </div>
+                            <button onClick={e => { e.stopPropagation(); isActive ? deselectSession() : loadClientSession(cs); }}
+                              style={{
+                                padding: "4px 8px", borderRadius: 5, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 700,
+                                background: isActive ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.07)",
+                                color: isActive ? "#f59e0b" : "#64748b",
+                              }}>{isActive ? "Loaded" : "Load"}</button>
+                            <button onClick={e => { e.stopPropagation(); deleteClientSession(cs); }}
+                              style={{ background: "none", border: "none", color: "#334155", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>×</button>
+                          </div>
+                          {isExpanded && (
+                            <div style={{ padding: "0 10px 8px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                              <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em", margin: "6px 0 4px" }}>Assign to client</div>
+                              <select value="" onClick={e => e.stopPropagation()}
+                                onChange={e => { if (e.target.value) assignSession(cs, e.target.value); setExpandedSessionId(null); }}
+                                style={{
+                                  width: "100%", padding: "5px 8px", borderRadius: 6, fontSize: 11,
+                                  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+                                  color: "#64748b", cursor: "pointer", outline: "none",
+                                }}>
+                                <option value="">— Choose a client —</option>
+                                {clients.filter(c => c.is_live).map(c => (
+                                  <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Save form */}
               {savingSession ? (

@@ -200,7 +200,7 @@ create index if not exists zip_perf_client on zip_performance(client_id);
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists client_sessions (
   id          uuid    primary key default gen_random_uuid(),
-  client_id   uuid    not null references clients(id) on delete cascade,
+  client_id   uuid    references clients(id) on delete cascade,
   name        text    not null,
   pins        jsonb   not null default '[]'::jsonb,
   pin_counter int     not null default 0,

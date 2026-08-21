@@ -25,13 +25,13 @@ export async function POST(req: Request) {
 
   const body = await req.json();
   const { client_id, name, pins, pin_counter } = body;
-  if (!client_id || !name) {
-    return NextResponse.json({ error: 'client_id and name are required' }, { status: 400 });
+  if (!name) {
+    return NextResponse.json({ error: 'name is required' }, { status: 400 });
   }
 
   const { data, error } = await ctx.service
     .from('client_sessions')
-    .insert({ client_id, name, pins: pins ?? [], pin_counter: pin_counter ?? 0 })
+    .insert({ client_id: client_id ?? null, name, pins: pins ?? [], pin_counter: pin_counter ?? 0 })
     .select('id, client_id, name, pins, pin_counter, created_at, updated_at, clients(name)')
     .single();
 
