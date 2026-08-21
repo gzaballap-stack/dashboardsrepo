@@ -1,0 +1,130 @@
+{
+    "name": "CCM - Sales Call Territory Scoring",
+    "flow": [
+        {
+            "id": 1,
+            "module": "app#call-center-mastery-qeqot5:watchEventsManualPlacement",
+            "version": 1,
+            "parameters": {
+                "__IMTHOOK__": 0
+            },
+            "mapper": {},
+            "metadata": {
+                "designer": { "x": 0, "y": 0 },
+                "restore": {
+                    "parameters": {
+                        "__IMTHOOK__": {
+                            "data": { "editable": "false" },
+                            "label": "Sales Call Booked Webhook — point GHL workflow here"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "__IMTHOOK__",
+                        "type": "hook:app#call-center-mastery-qeqot53",
+                        "label": "Webhook",
+                        "required": true
+                    }
+                ]
+            }
+        },
+        {
+            "id": 2,
+            "module": "http:ActionSendData",
+            "version": 3,
+            "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompression": true
+            },
+            "mapper": {
+                "url": "https://REPLACE_WITH_YOUR_RAILWAY_URL/api/admin/onboard",
+                "serializeUrl": false,
+                "method": "POST",
+                "headers": [
+                    {
+                        "name": "Authorization",
+                        "value": "Bearer REPLACE_WITH_YOUR_WEBHOOK_SECRET"
+                    },
+                    {
+                        "name": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "authUser": "",
+                "authPass": "",
+                "timeout": "",
+                "shareCookies": false,
+                "ca": "",
+                "useMtls": false,
+                "contentType": "application/json",
+                "data": "{\"contact_name\": \"{{1.contact.name}}\", \"zip_code\": \"{{1.contact.postalCode}}\", \"zip_code_targeted\": \"{{1.contact.customField.zip_code_targeted}}\", \"zip_code_list\": \"{{1.contact.customField.zip_code_list}}\", \"radius_miles\": \"{{1.contact.customField.targeting_radius}}\"}"
+            },
+            "metadata": {
+                "designer": { "x": 300, "y": 0, "name": "Score Territory & Create Session" }
+            }
+        },
+        {
+            "id": 3,
+            "module": "http:ActionSendData",
+            "version": 3,
+            "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompression": true
+            },
+            "mapper": {
+                "url": "https://services.leadconnectorhq.com/contacts/{{1.contact.id}}",
+                "serializeUrl": false,
+                "method": "PUT",
+                "headers": [
+                    {
+                        "name": "Authorization",
+                        "value": "Bearer REPLACE_WITH_YOUR_GHL_API_KEY"
+                    },
+                    {
+                        "name": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "name": "Version",
+                        "value": "2021-07-28"
+                    }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": false,
+                "authUser": "",
+                "authPass": "",
+                "timeout": "",
+                "shareCookies": false,
+                "ca": "",
+                "useMtls": false,
+                "contentType": "application/json",
+                "data": "{\"customFields\": [{\"key\": \"worst_performing_zip_code\", \"field_value\": \"{{2.data.worst_zip}}\"}]}"
+            },
+            "metadata": {
+                "designer": { "x": 600, "y": 0, "name": "Write Worst Zip to GHL Contact" }
+            }
+        }
+    ],
+    "metadata": {
+        "instant": true,
+        "version": 1,
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": false,
+            "confidential": false,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": { "orphans": [] },
+        "zone": "eu1.make.com"
+    }
+}
