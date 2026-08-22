@@ -10,14 +10,21 @@ export async function geocodeZip(zip: string): Promise<{ lat: number; lng: numbe
     outSR: '4326',
     outFields: 'ZCTA5',
     returnCentroid: 'true',
+    returnGeometry: 'true',
     f: 'json',
   });
   const r = await fetch(`${TIGER_BASE}/query?${params}`);
   if (!r.ok) return null;
   const data = await r.json();
   const feat = data.features?.[0];
-  if (!feat?.centroid) return null;
-  return { lat: feat.centroid.y, lng: feat.centroid.x };
+  if (!feat) return null;
+  // Prefer explicit centroid; fall back to averaging the outer polygon ring
+  if (feat.centroid) return { lat: feat.centroid.y, lng: feat.centroid.x };
+  const ring: [number, number][] = feat.geometry?.rings?.[0];
+  if (!ring?.length) return null;
+  const lng = ring.reduce((s, p) => s + p[0], 0) / ring.length;
+  const lat = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+  return { lat, lng };
 }
 
 export async function getZctasNearPoint(lat: number, lng: number, radiusMiles: number): Promise<string[]> {
