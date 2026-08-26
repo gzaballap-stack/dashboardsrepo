@@ -33,21 +33,23 @@ export async function GET(req: Request) {
   const totalRevenue = (type: string) =>
     events?.filter(e => e.event_type === type).reduce((s, e) => s + (e.revenue ?? 0), 0) ?? 0;
 
-  const totalSpend = spend?.reduce((s, r) => s + (r.amount ?? 0), 0) ?? 0;
-  const closes     = count('close');
-  const cash       = totalRevenue('cash_collected');
-  const introsBookd = count('intro_booked');
+  const totalSpend   = spend?.reduce((s, r) => s + (r.amount ?? 0), 0) ?? 0;
+  const closes       = count('close');
+  const cash         = totalRevenue('cash_collected');
+  const leads        = count('lead');
+  const introsBooked = count('intro_booked');
 
   return NextResponse.json({
     ad_spend:           totalSpend,
-    intros_booked:      introsBookd,
+    leads,
+    intros_booked:      introsBooked,
     intros_shown:       count('intro_shown'),
     sales_calls_booked: count('sales_call_booked'),
     sales_calls_shown:  count('sales_call_shown'),
     closes,
     cash_collected:     cash,
-    intro_show_rate:    introsBookd > 0 ? count('intro_shown') / introsBookd : 0,
-    cost_per_intro:     introsBookd > 0 ? totalSpend / introsBookd : 0,
+    intro_show_rate:    introsBooked > 0 ? count('intro_shown') / introsBooked : 0,
+    cost_per_lead:      leads > 0 ? totalSpend / leads : 0,
     cost_per_close:     closes > 0 ? totalSpend / closes : 0,
   });
 }

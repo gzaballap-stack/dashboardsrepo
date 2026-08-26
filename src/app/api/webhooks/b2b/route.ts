@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 
 const VALID_EVENT_TYPES = [
+  'lead',
   'intro_booked', 'intro_shown',
   'sales_call_booked', 'sales_call_shown',
   'close', 'cash_collected',

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 interface B2BMetrics {
   ad_spend: number;
+  leads: number;
   intros_booked: number;
   intros_shown: number;
   sales_calls_booked: number;
@@ -11,7 +12,7 @@ interface B2BMetrics {
   closes: number;
   cash_collected: number;
   intro_show_rate: number;
-  cost_per_intro: number;
+  cost_per_lead: number;
   cost_per_close: number;
 }
 
@@ -101,6 +102,10 @@ export default function B2BTracking({ startDate, endDate }: Props) {
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           <StatCard
+            label="New Leads"
+            value={fmt(data.leads)}
+          />
+          <StatCard
             label="Intros Booked"
             value={fmt(data.intros_booked)}
           />
@@ -141,8 +146,8 @@ export default function B2BTracking({ startDate, endDate }: Props) {
             value={fmt(data.ad_spend, "$")}
           />
           <StatCard
-            label="Cost per Intro"
-            value={data.intros_booked > 0 ? fmt(data.cost_per_intro, "$", 2) : "—"}
+            label="Cost per Lead"
+            value={data.leads > 0 ? fmt(data.cost_per_lead, "$", 2) : "—"}
           />
           <StatCard
             label="Cost per Close"
