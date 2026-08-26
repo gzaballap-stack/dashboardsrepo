@@ -11,6 +11,13 @@ interface B2BMetrics {
   sales_calls_shown: number;
   closes: number;
   cash_collected: number;
+  impressions: number;
+  reach: number;
+  link_clicks: number;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+  intro_show_rate: number;
   cost_per_lead: number;
   cost_per_close: number;
 }
@@ -38,19 +45,37 @@ function fmtPct(n: number) {
 function fmtN(n: number) {
   return n.toLocaleString();
 }
+function fmtDec(n: number, digits = 2) {
+  return n.toFixed(digits);
+}
 
 function computeBottleneck(d: B2BMetrics): { label: string; action: string } {
   if (!d.leads && !d.ad_spend) return { label: "No Data", action: "No events yet — wire up GHL workflows" };
 
-  const cbr     = d.leads > 0 ? d.intros_booked / d.leads : 0;
-  const showRate = d.intros_booked > 0 ? d.intros_shown / d.intros_booked : 0;
+  const cbr      = d.leads > 0 ? d.intros_booked / d.leads : 0;
+  const showRate  = d.intros_booked > 0 ? d.intros_shown / d.intros_booked : 0;
   const closeRate = d.sales_calls_shown > 0 ? d.closes / d.sales_calls_shown : 0;
 
-  if (d.leads === 0)        return { label: "Targeting",    action: "No leads coming in — review audience and creative" };
-  if (cbr < 0.05)          return { label: "Funnel",       action: "Low booking rate — improve follow-up sequences" };
-  if (showRate < 0.5)      return { label: "Post-Funnel",  action: "Low intro show rate — improve confirmation/reminder flow" };
-  if (closeRate < 0.2)     return { label: "Post-Funnel",  action: "Low close rate — review sales call process" };
+  if (d.leads === 0)    return { label: "Targeting",    action: "No leads — review audience and creative" };
+  if (cbr < 0.05)      return { label: "Funnel",       action: "Low booking rate — improve follow-up sequences" };
+  if (showRate < 0.5)  return { label: "Post-Funnel",  action: "Low intro show rate — improve confirmation/reminder flow" };
+  if (closeRate < 0.2) return { label: "Post-Funnel",  action: "Low close rate — review sales call process" };
   return { label: "Healthy", action: "All funnel stages performing well" };
+}
+
+interface StatCardProps {
+  label: string;
+  value: string;
+  sub?: string;
+}
+function StatCard({ label, value, sub }: StatCardProps) {
+  return (
+    <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-4">
+      <p className="text-[11px] uppercase tracking-wider font-semibold text-[var(--muted)] mb-1">{label}</p>
+      <p className="text-2xl font-bold text-[var(--foreground)] tabular-nums">{value}</p>
+      {sub && <p className="text-xs text-[var(--muted)] mt-0.5">{sub}</p>}
+    </div>
+  );
 }
 
 export default function B2BTracking({ startDate, endDate }: Props) {
@@ -92,129 +117,117 @@ export default function B2BTracking({ startDate, endDate }: Props) {
 
   if (!data) return null;
 
-  const cbr      = data.leads > 0 ? data.intros_booked / data.leads : 0;
-  const cpa      = data.intros_booked > 0 ? data.ad_spend / data.intros_booked : 0;
-  const l2a      = data.leads > 0 ? data.intros_booked / data.leads : 0;
+  const cbr     = data.leads > 0 ? data.intros_booked / data.leads : 0;
+  const cpa     = data.intros_booked > 0 ? data.ad_spend / data.intros_booked : 0;
+  const l2a     = data.leads > 0 ? data.intros_booked / data.leads : 0;
   const { label: bottleneck, action } = computeBottleneck(data);
-  const bnStyle  = BOTTLENECK_STYLE[bottleneck] ?? BOTTLENECK_STYLE["No Data"];
+  const bnStyle = BOTTLENECK_STYLE[bottleneck] ?? BOTTLENECK_STYLE["No Data"];
 
-  const COL_HEADER = "text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)] px-3 py-2 text-right whitespace-nowrap";
-  const COL_LEFT   = "text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)] px-3 py-2 text-left whitespace-nowrap";
-  const CELL       = "px-3 py-3 text-sm text-right tabular-nums text-[var(--foreground)] whitespace-nowrap";
-  const CELL_LEFT  = "px-3 py-3 text-sm text-left text-[var(--foreground)] whitespace-nowrap";
+  const COL_H = "text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)] px-3 py-2 text-right whitespace-nowrap";
+  const COL_L = "text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)] px-3 py-2 text-left whitespace-nowrap";
+  const CELL  = "px-3 py-3 text-sm text-right tabular-nums text-[var(--foreground)] whitespace-nowrap";
+  const CEL_L = "px-3 py-3 text-sm text-left text-[var(--foreground)] whitespace-nowrap";
+  const dash  = <span className="text-[var(--muted)]">—</span>;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-[var(--foreground)]">B2B Tracking</h2>
-          <p className="text-xs text-[var(--muted)] mt-0.5">{startDate} — {endDate}</p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-semibold text-[var(--foreground)]">B2B Tracking</h2>
+        <p className="text-xs text-[var(--muted)] mt-0.5">{startDate} — {endDate}</p>
+      </div>
+
+      {/* ── Stat Cards: Ad Metrics ── */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-2">Ad Performance</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <StatCard label="Ad Spend"   value={data.ad_spend > 0 ? fmt$(data.ad_spend) : "—"} />
+          <StatCard label="Reach"      value={data.reach        > 0 ? fmtN(data.reach)      : "—"} />
+          <StatCard label="Impressions" value={data.impressions > 0 ? fmtN(data.impressions): "—"} />
+          <StatCard label="Link Clicks" value={data.link_clicks > 0 ? fmtN(data.link_clicks): "—"} />
+          <StatCard label="CTR"        value={data.ctr  != null ? fmtPct(data.ctr)  : "—"} sub="click-through rate" />
+          <StatCard label="CPC"        value={data.cpc  != null ? `$${fmtDec(data.cpc)}` : "—"} sub="cost per click" />
         </div>
       </div>
 
-      <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-[var(--border)] bg-[var(--muted)]/5">
-                <th className={COL_LEFT}>Campaign</th>
-                <th className={COL_HEADER}>RAN</th>
-                <th className={COL_HEADER}>SPAN</th>
-                <th className={COL_HEADER}>LEADS</th>
-                <th className={COL_HEADER}>CBOs</th>
-                <th className={COL_HEADER}>CTR</th>
-                <th className={COL_HEADER}>CPC</th>
-                <th className={COL_HEADER}>CBR</th>
-                <th className={COL_HEADER}>Appts</th>
-                <th className={COL_HEADER}>Cost / Appt</th>
-                <th className={COL_HEADER}>Lead → Appt</th>
-                <th className={COL_LEFT}>Bottleneck</th>
-                <th className={COL_LEFT}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b border-[var(--border)]/50 hover:bg-[var(--muted)]/5 transition-colors">
-                {/* Campaign */}
-                <td className={CELL_LEFT}>
-                  <span className="font-semibold text-[var(--foreground)]">B2B</span>
-                </td>
-
-                {/* RAN — Reach (Meta API not yet extended) */}
-                <td className={CELL}>
-                  <span className="text-[var(--muted)]">—</span>
-                </td>
-
-                {/* SPAN — Ad Spend */}
-                <td className={CELL}>
-                  {data.ad_spend > 0 ? fmt$(data.ad_spend) : <span className="text-[var(--muted)]">—</span>}
-                </td>
-
-                {/* LEADS */}
-                <td className={CELL}>
-                  {data.leads > 0 ? fmtN(data.leads) : <span className="text-[var(--muted)]">—</span>}
-                </td>
-
-                {/* CBOs — (Meta API not yet extended) */}
-                <td className={CELL}>
-                  <span className="text-[var(--muted)]">—</span>
-                </td>
-
-                {/* CTR — (Meta API not yet extended) */}
-                <td className={CELL}>
-                  <span className="text-[var(--muted)]">—</span>
-                </td>
-
-                {/* CPC — (Meta API not yet extended) */}
-                <td className={CELL}>
-                  <span className="text-[var(--muted)]">—</span>
-                </td>
-
-                {/* CBR — Click Booking Rate (leads → intros booked) */}
-                <td className={CELL}>
-                  {data.leads > 0 ? fmtPct(cbr * 100) : <span className="text-[var(--muted)]">—</span>}
-                </td>
-
-                {/* Appointments (Intros Booked) */}
-                <td className={CELL}>
-                  {data.intros_booked > 0 ? fmtN(data.intros_booked) : <span className="text-[var(--muted)]">—</span>}
-                </td>
-
-                {/* Cost per Appointment */}
-                <td className={CELL}>
-                  {cpa > 0 ? fmt$(cpa) : <span className="text-[var(--muted)]">—</span>}
-                </td>
-
-                {/* Lead → Appointment % */}
-                <td className={CELL}>
-                  {data.leads > 0 ? fmtPct(l2a * 100) : <span className="text-[var(--muted)]">—</span>}
-                </td>
-
-                {/* Bottleneck */}
-                <td className={CELL_LEFT}>
-                  <span
-                    className="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap"
-                    style={{ color: bnStyle.color, background: bnStyle.bg }}
-                  >
-                    {bottleneck}
-                  </span>
-                </td>
-
-                {/* Action */}
-                <td className={CELL_LEFT}>
-                  <span className="text-xs text-[var(--muted)] max-w-[220px] block">{action}</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+      {/* ── Stat Cards: Funnel ── */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-2">Funnel</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <StatCard label="Leads"         value={fmtN(data.leads)}         sub={data.cost_per_lead > 0 ? `${fmt$(data.cost_per_lead)} / lead` : undefined} />
+          <StatCard label="Intros Booked" value={fmtN(data.intros_booked)} sub={data.leads > 0 ? `${fmtPct(cbr*100)} booking rate` : undefined} />
+          <StatCard label="Intros Shown"  value={fmtN(data.intros_shown)}  sub={data.intros_booked > 0 ? `${fmtPct(data.intro_show_rate*100)} show rate` : undefined} />
+          <StatCard label="Sales Calls Booked" value={fmtN(data.sales_calls_booked)} />
+          <StatCard label="Sales Calls Shown"  value={fmtN(data.sales_calls_shown)} />
+          <StatCard label="Closes"        value={fmtN(data.closes)}        sub={data.cash_collected > 0 ? `${fmt$(data.cash_collected)} collected` : undefined} />
         </div>
+      </div>
 
-        {/* Summary footer */}
-        <div className="px-4 py-3 border-t border-[var(--border)]/50 flex flex-wrap gap-6 text-xs text-[var(--muted)]">
-          <span>Closes: <strong className="text-[var(--foreground)]">{fmtN(data.closes)}</strong></span>
-          <span>Cash Collected: <strong className="text-[var(--foreground)]">{fmt$(data.cash_collected)}</strong></span>
-          <span>Intros Shown: <strong className="text-[var(--foreground)]">{fmtN(data.intros_shown)}</strong></span>
-          <span>Sales Calls Booked: <strong className="text-[var(--foreground)]">{fmtN(data.sales_calls_booked)}</strong></span>
-          <span>Sales Calls Shown: <strong className="text-[var(--foreground)]">{fmtN(data.sales_calls_shown)}</strong></span>
+      {/* ── Campaign Overview-style Table Row ── */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-2">Summary Row</p>
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-[var(--border)] bg-[var(--muted)]/5">
+                  <th className={COL_L}>Campaign</th>
+                  <th className={COL_H}>RAN</th>
+                  <th className={COL_H}>SPAN</th>
+                  <th className={COL_H}>LEAD</th>
+                  <th className={COL_H}>CBOs</th>
+                  <th className={COL_H}>CTR</th>
+                  <th className={COL_H}>CPC</th>
+                  <th className={COL_H}>CBR</th>
+                  <th className={COL_H}>Appts</th>
+                  <th className={COL_H}>Cost / Appt</th>
+                  <th className={COL_H}>Lead → Appt</th>
+                  <th className={COL_L}>Bottleneck</th>
+                  <th className={COL_L}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="hover:bg-[var(--muted)]/5 transition-colors">
+                  <td className={CEL_L}>
+                    <span className="font-semibold">B2B</span>
+                  </td>
+                  {/* RAN — Reach */}
+                  <td className={CELL}>{data.reach > 0 ? fmtN(data.reach) : dash}</td>
+                  {/* SPAN — Ad Spend */}
+                  <td className={CELL}>{data.ad_spend > 0 ? fmt$(data.ad_spend) : dash}</td>
+                  {/* LEAD */}
+                  <td className={CELL}>{data.leads > 0 ? fmtN(data.leads) : dash}</td>
+                  {/* CBOs — not yet available */}
+                  <td className={CELL}>{dash}</td>
+                  {/* CTR */}
+                  <td className={CELL}>{data.ctr != null ? fmtPct(data.ctr) : dash}</td>
+                  {/* CPC */}
+                  <td className={CELL}>{data.cpc != null ? `$${fmtDec(data.cpc)}` : dash}</td>
+                  {/* CBR — booking rate */}
+                  <td className={CELL}>{data.leads > 0 ? fmtPct(cbr * 100) : dash}</td>
+                  {/* Appts */}
+                  <td className={CELL}>{data.intros_booked > 0 ? fmtN(data.intros_booked) : dash}</td>
+                  {/* Cost / Appt */}
+                  <td className={CELL}>{cpa > 0 ? fmt$(cpa) : dash}</td>
+                  {/* Lead → Appt */}
+                  <td className={CELL}>{data.leads > 0 ? fmtPct(l2a * 100) : dash}</td>
+                  {/* Bottleneck */}
+                  <td className={CEL_L}>
+                    <span
+                      className="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap"
+                      style={{ color: bnStyle.color, background: bnStyle.bg }}
+                    >
+                      {bottleneck}
+                    </span>
+                  </td>
+                  {/* Action */}
+                  <td className={CEL_L}>
+                    <span className="text-xs text-[var(--muted)] max-w-[220px] block">{action}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

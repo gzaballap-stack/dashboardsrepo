@@ -316,10 +316,24 @@ create table if not exists b2b_ad_spend (
   spend_date  date    not null,
   platform    text    not null,
   amount      numeric not null default 0,
+  impressions integer,
+  reach       integer,
+  link_clicks integer,
+  ctr         numeric,
+  cpc         numeric,
+  cpm         numeric,
   created_at  timestamptz default now(),
   constraint b2b_ad_spend_platform_check check (platform in ('meta', 'google', 'local_services')),
   unique(spend_date, platform)
 );
+
+-- Migration: add Meta ad metric columns if they don't exist yet (safe to re-run)
+alter table b2b_ad_spend add column if not exists impressions integer;
+alter table b2b_ad_spend add column if not exists reach       integer;
+alter table b2b_ad_spend add column if not exists link_clicks integer;
+alter table b2b_ad_spend add column if not exists ctr         numeric;
+alter table b2b_ad_spend add column if not exists cpc         numeric;
+alter table b2b_ad_spend add column if not exists cpm         numeric;
 
 create index if not exists b2b_ad_spend_date on b2b_ad_spend(spend_date desc);
 
