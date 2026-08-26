@@ -17,6 +17,7 @@ import ClientRoster from "./ClientRoster";
 import UserManager from "./UserManager";
 import ZipTool from "./ZipTool";
 import CampaignOverview from "./CampaignOverview";
+import B2BTracking from "./B2BTracking";
 
 type Client = { id: string; name: string; is_live?: boolean };
 
@@ -71,7 +72,8 @@ type View =
   | "admin_share"
   | "admin_users"
   | "schedule"
-  | "zip_tool";
+  | "zip_tool"
+  | "b2b_tracking";
 
 const PRESET_LABELS: Record<Preset, string> = {
   this_month: "This Month",
@@ -85,6 +87,7 @@ const PRESET_LABELS: Record<Preset, string> = {
 const NAV: { view: View; label: string; group?: string }[] = [
   { view: "dashboard",      label: "Dashboard",     group: "Overview"  },
   { view: "campaign_overview", label: "Campaign Overview", group: "Overview" },
+  { view: "b2b_tracking",     label: "B2B Tracking",     group: "Overview" },
   { view: "leads",          label: "New Leads",      group: "Raw Data"  },
   { view: "dials",          label: "All Dials",      group: "Raw Data"  },
   { view: "appointments",   label: "Appointments",   group: "Raw Data"  },
@@ -108,6 +111,7 @@ const NAV: { view: View; label: string; group?: string }[] = [
 const NAV_ICONS: Record<View, string> = {
   dashboard:     "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
   campaign_overview: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+  b2b_tracking:      "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
   leads:         "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z",
   dials:         "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z",
   appointments:  "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z",
@@ -790,6 +794,9 @@ export default function DashboardView() {
           {/* ── Campaign Overview (all clients) ── */}
           {view === "campaign_overview" && (
             <CampaignOverview startDate={dateStart} endDate={dateEnd} />
+          )}
+          {view === "b2b_tracking" && (
+            <B2BTracking startDate={dateStart} endDate={dateEnd} />
           )}
 
           {/* ── Admin ── */}

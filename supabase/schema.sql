@@ -283,3 +283,45 @@ alter table zip_performance        enable row level security;
 alter table client_sessions        enable row level security;
 alter table ad_campaigns           enable row level security;
 alter table ad_campaign_exclusions enable row level security;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 15. B2B Events (intros, sales calls, closes, cash collected — single campaign)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists b2b_events (
+  id              uuid    primary key default gen_random_uuid(),
+  event_type      text    not null,
+  occurred_at     timestamptz default now(),
+  lead_name       text,
+  lead_phone      text,
+  lead_email      text,
+  ghl_contact_id  text,
+  external_id     text,
+  revenue         numeric not null default 0,
+  raw             jsonb,
+  constraint b2b_events_event_type_check check (
+    event_type in ('intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close', 'cash_collected')
+  )
+);
+
+create unique index if not exists b2b_events_external_id_unique
+  on b2b_events(external_id) where external_id is not null;
+
+create index if not exists b2b_events_type_date on b2b_events(event_type, occurred_at desc);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 16. B2B Ad Spend (daily Meta / Google spend for the B2B campaign)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists b2b_ad_spend (
+  id          uuid    primary key default gen_random_uuid(),
+  spend_date  date    not null,
+  platform    text    not null,
+  amount      numeric not null default 0,
+  created_at  timestamptz default now(),
+  constraint b2b_ad_spend_platform_check check (platform in ('meta', 'google', 'local_services')),
+  unique(spend_date, platform)
+);
+
+create index if not exists b2b_ad_spend_date on b2b_ad_spend(spend_date desc);
+
+alter table b2b_events    enable row level security;
+alter table b2b_ad_spend  enable row level security;
