@@ -35,7 +35,7 @@ export async function GET(req: Request) {
 
   const totalSpend   = spend?.reduce((s, r) => s + (r.amount ?? 0), 0) ?? 0;
   const closes       = count('close');
-  const cash         = totalRevenue('cash_collected');
+  const cash         = totalRevenue('close');
   const leads        = count('lead');
   const introsBooked = count('intro_booked');
 

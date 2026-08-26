@@ -299,7 +299,7 @@ create table if not exists b2b_events (
   revenue         numeric not null default 0,
   raw             jsonb,
   constraint b2b_events_event_type_check check (
-    event_type in ('lead', 'intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close', 'cash_collected')
+    event_type in ('lead', 'intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close')
   )
 );
 
