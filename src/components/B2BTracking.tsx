@@ -151,28 +151,29 @@ export default function B2BTracking({ startDate, endDate }: Props) {
   return (
     <div className="space-y-8 max-w-7xl">
 
-      {/* ── Row 1: Funnel KPIs ── */}
+      {/* ── Row 1: Pipeline ── */}
       <section>
-        <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Funnel</h2>
+        <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Pipeline</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <KpiCard label="Leads"              value={fmtN(data.leads)} />
-          <KpiCard label="Intros Booked"      value={fmtN(data.intros_booked)} />
-          <KpiCard label="Intros Shown"       value={fmtN(data.intros_shown)} accent />
-          <KpiCard label="Sales Calls Booked" value={fmtN(data.sales_calls_booked)} />
-          <KpiCard label="Sales Calls Shown"  value={fmtN(data.sales_calls_shown)} accent />
-          <KpiCard label="Closes"             value={fmtN(data.closes)} accent />
+          <KpiCard label="Ad Spend"           value={data.ad_spend > 0 ? fmt$(data.ad_spend) : "—"} />
+          <KpiCard label="Booked Intros"      value={fmtN(data.intros_booked)} />
+          <KpiCard label="Intro Show Rate"    value={data.intros_booked > 0 ? fmtPct((data.intros_shown / data.intros_booked) * 100) : "—"} accent />
+          <KpiCard label="Booked Demos"       value={fmtN(data.sales_calls_booked)} />
+          <KpiCard label="Demos"              value={fmtN(data.sales_calls_shown)} accent />
+          <KpiCard label="Demo Show Rate"     value={data.sales_calls_booked > 0 ? fmtPct((data.sales_calls_shown / data.sales_calls_booked) * 100) : "—"} accent />
         </div>
       </section>
 
-      {/* ── Row 2: Ad / Revenue KPIs ── */}
+      {/* ── Row 2: Results ── */}
       <section>
-        <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Ad Performance</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <KpiCard label="Ad Spend"       value={data.ad_spend    > 0 ? fmt$(data.ad_spend)          : "—"} />
-          <KpiCard label="Cost per Lead"  value={data.cost_per_lead > 0 ? fmt$(data.cost_per_lead)   : "—"} />
-          <KpiCard label="CP Appointment" value={cpa              > 0 ? fmt$(cpa)                    : "—"} />
-          <KpiCard label="Cash Collected" value={data.cash_collected > 0 ? fmt$(data.cash_collected) : "—"} accent />
-          <KpiCard label="Reach"          value={data.reach       > 0 ? fmtN(data.reach)             : "—"} />
+        <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Results</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <KpiCard label="Closes"               value={fmtN(data.closes)} accent />
+          <KpiCard label="Closing Rate"         value={data.sales_calls_shown > 0 ? fmtPct((data.closes / data.sales_calls_shown) * 100) : "—"} accent />
+          <KpiCard label="Cost per Info"        value={data.intros_booked > 0 ? fmt$(data.ad_spend / data.intros_booked) : "—"} />
+          <KpiCard label="Cost per Demo"        value={data.sales_calls_shown > 0 ? fmt$(data.ad_spend / data.sales_calls_shown) : "—"} />
+          <KpiCard label="Cost per Acquisition" value={data.closes > 0 ? fmt$(data.ad_spend / data.closes) : "—"} />
+          <KpiCard label="Cash Collected"       value={data.cash_collected > 0 ? fmt$(data.cash_collected) : "—"} accent />
         </div>
       </section>
 
@@ -184,15 +185,15 @@ export default function B2BTracking({ startDate, endDate }: Props) {
             <thead>
               <tr style={{ background: "#0c1a30", color: "#64748b" }}>
                 <th className="text-left font-medium px-4 py-3">Campaign</th>
-                <th className="text-right font-medium px-3 py-3">RAN</th>
-                <th className="text-right font-medium px-3 py-3">SPAN</th>
-                <th className="text-right font-medium px-3 py-3">LEAD</th>
+                <th className="text-right font-medium px-3 py-3">Spend</th>
+                <th className="text-right font-medium px-3 py-3">Schedules</th>
+                <th className="text-right font-medium px-3 py-3">CPL</th>
                 <th className="text-right font-medium px-3 py-3">CTR</th>
                 <th className="text-right font-medium px-3 py-3">CPC</th>
-                <th className="text-right font-medium px-3 py-3">CBR</th>
-                <th className="text-right font-medium px-3 py-3">Appts</th>
-                <th className="text-right font-medium px-3 py-3">CP Appt</th>
-                <th className="text-right font-medium px-3 py-3">L2A %</th>
+                <th className="text-right font-medium px-3 py-3">CVR</th>
+                <th className="text-right font-medium px-3 py-3">Demos</th>
+                <th className="text-right font-medium px-3 py-3">CP Demo</th>
+                <th className="text-right font-medium px-3 py-3">L2D %</th>
                 <th className="text-left font-medium px-3 py-3">Bottleneck</th>
                 <th className="text-left font-medium px-3 py-3">Action</th>
                 <th className="text-right font-medium px-4 py-3">Overall</th>
@@ -201,20 +202,18 @@ export default function B2BTracking({ startDate, endDate }: Props) {
             <tbody>
               <tr style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
                 {/* Campaign */}
-                <td className="px-4 py-3 font-semibold whitespace-nowrap" style={{ color: "#e2e8f0" }}>
-                  B2B
-                </td>
-                {/* RAN — Reach */}
-                <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.reach > 0 ? fmtN(data.reach) : dash}
-                </td>
-                {/* SPAN — Ad Spend */}
+                <td className="px-4 py-3 font-semibold whitespace-nowrap" style={{ color: "#e2e8f0" }}>B2B</td>
+                {/* Spend */}
                 <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
                   {data.ad_spend > 0 ? fmt$(data.ad_spend) : dash}
                 </td>
-                {/* LEAD */}
+                {/* Schedules — Intros Booked */}
                 <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.leads > 0 ? fmtN(data.leads) : dash}
+                  {data.intros_booked > 0 ? fmtN(data.intros_booked) : dash}
+                </td>
+                {/* CPL */}
+                <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                  {data.cost_per_lead > 0 ? fmt$(data.cost_per_lead) : dash}
                 </td>
                 {/* CTR */}
                 <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
@@ -224,21 +223,21 @@ export default function B2BTracking({ startDate, endDate }: Props) {
                 <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
                   {data.cpc != null ? `$${fmtDec(data.cpc)}` : dash}
                 </td>
-                {/* CBR — booking rate */}
+                {/* CVR — leads → intros booked */}
                 <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
                   {data.leads > 0 ? fmtPct(cbr * 100) : dash}
                 </td>
-                {/* Appts */}
+                {/* Demos — Intros Shown */}
                 <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.intros_booked > 0 ? fmtN(data.intros_booked) : dash}
+                  {data.intros_shown > 0 ? fmtN(data.intros_shown) : dash}
                 </td>
-                {/* CP Appt */}
+                {/* CP Demo — Spend / Intros Shown */}
                 <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {cpa > 0 ? fmt$(cpa) : dash}
+                  {data.intros_shown > 0 ? fmt$(data.ad_spend / data.intros_shown) : dash}
                 </td>
-                {/* L2A % */}
+                {/* L2D % — Intros Shown / Leads */}
                 <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.leads > 0 ? fmtPct(l2a * 100) : dash}
+                  {data.leads > 0 ? fmtPct((data.intros_shown / data.leads) * 100) : dash}
                 </td>
                 {/* Bottleneck */}
                 <td className="px-3 py-3">
@@ -251,7 +250,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
                 <td className="px-3 py-3 text-xs max-w-[200px]" style={{ color: "#475569" }}>
                   {action}
                 </td>
-                {/* Overall status */}
+                {/* Overall */}
                 <td className="text-right px-4 py-3">
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap"
                     style={{ color: stStyle.color, background: stStyle.bg }}>
