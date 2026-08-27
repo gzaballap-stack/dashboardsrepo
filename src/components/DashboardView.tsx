@@ -75,6 +75,9 @@ type View =
   | "zip_tool"
   | "b2b_tracking";
 
+// B2B view type alias — rendered under Tomsi Media section
+type TomsiView = "b2b_tracking";
+
 const PRESET_LABELS: Record<Preset, string> = {
   this_month: "This Month",
   last_month: "Last Month",
@@ -87,7 +90,6 @@ const PRESET_LABELS: Record<Preset, string> = {
 const NAV: { view: View; label: string; group?: string }[] = [
   { view: "dashboard",      label: "Dashboard",     group: "Overview"  },
   { view: "campaign_overview", label: "Campaign Overview", group: "Overview" },
-  { view: "b2b_tracking",     label: "B2B Tracking",     group: "Overview" },
   { view: "leads",          label: "New Leads",      group: "Raw Data"  },
   { view: "dials",          label: "All Dials",      group: "Raw Data"  },
   { view: "appointments",   label: "Appointments",   group: "Raw Data"  },
@@ -234,26 +236,16 @@ function ShareReports({ clients }: { clients: Client[] }) {
   );
 }
 
-type TopSection = "dashboard" | "clients" | "tools" | "payments";
+type TopSection = "clients_dashboard" | "tomsi_media";
 
-const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: string }[] = [
+const TOP_SECTIONS: { id: TopSection; label: string; icon: string }[] = [
   {
-    id: "dashboard", label: "Dashboard",
+    id: "clients_dashboard", label: "Clients Dashboard",
     icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
   },
   {
-    id: "clients", label: "Clients",
-    icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z",
-    badge: "Coming Soon",
-  },
-  {
-    id: "tools", label: "Tools",
-    icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z",
-  },
-  {
-    id: "payments", label: "Payments",
-    icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",
-    badge: "Coming Soon",
+    id: "tomsi_media", label: "Tomsi Media Dashboard",
+    icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
   },
 ];
 
@@ -269,8 +261,9 @@ function alertKey(a: Alert) {
 }
 
 export default function DashboardView() {
-  const [topSection, setTopSection] = useState<TopSection>("dashboard");
-  const [expandedSections, setExpandedSections] = useState<Set<TopSection>>(new Set(["dashboard"]));
+  const [topSection, setTopSection] = useState<TopSection>("clients_dashboard");
+  const [tomsiView, setTomsiView] = useState<TomsiView>("b2b_tracking");
+  const [expandedSections, setExpandedSections] = useState<Set<TopSection>>(new Set(["clients_dashboard"]));
   const [view, setView] = useState<View>("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
@@ -293,8 +286,10 @@ export default function DashboardView() {
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(NAV_STATE_KEY) ?? "{}");
-      if (saved.topSection) setTopSection(saved.topSection as TopSection);
+      if (saved.topSection && ["clients_dashboard","tomsi_media"].includes(saved.topSection))
+        setTopSection(saved.topSection as TopSection);
       if (saved.view) setView(saved.view as View);
+      if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
       if (saved.expandedSections) setExpandedSections(new Set(saved.expandedSections as TopSection[]));
     } catch {}
   }, []);
@@ -303,7 +298,7 @@ export default function DashboardView() {
   useEffect(() => {
     try {
       localStorage.setItem(NAV_STATE_KEY, JSON.stringify({
-        topSection, view, expandedSections: Array.from(expandedSections),
+        topSection, view, tomsiView, expandedSections: Array.from(expandedSections),
       }));
     } catch {}
   }, [topSection, view, expandedSections]);
@@ -434,8 +429,8 @@ export default function DashboardView() {
                 <button
                   onClick={() => {
                     setTopSection(sec.id);
-                    if (sec.id === "dashboard") setView("dashboard");
-                    if (sec.id === "tools") setView("zip_tool");
+                    if (sec.id === "clients_dashboard") setView("dashboard");
+                    if (sec.id === "tomsi_media") setTomsiView("b2b_tracking");
                     setExpandedSections(prev => {
                       const next = new Set(prev);
                       if (next.has(sec.id)) next.delete(sec.id);
@@ -455,11 +450,6 @@ export default function DashboardView() {
                     <path strokeLinecap="round" strokeLinejoin="round" d={sec.icon} />
                   </svg>
                   <span className="text-sm font-semibold flex-1">{sec.label}</span>
-                  {sec.badge && (
-                    <span style={{ fontSize: 9, padding: "2px 5px", borderRadius: 4, background: "rgba(255,255,255,0.06)", color: "#334155", fontWeight: 600, letterSpacing: "0.04em" }}>
-                      SOON
-                    </span>
-                  )}
                   <svg
                     className="w-3 h-3 flex-shrink-0 transition-transform duration-200"
                     style={{ transform: expandedSections.has(sec.id) ? "rotate(90deg)" : "rotate(0deg)", opacity: 0.5 }}
@@ -469,10 +459,10 @@ export default function DashboardView() {
                   </svg>
                 </button>
 
-                {/* Sub-nav for Dashboard */}
-                {isActive && sec.id === "dashboard" && expandedSections.has("dashboard") && (
+                {/* Sub-nav for Clients Dashboard */}
+                {isActive && sec.id === "clients_dashboard" && expandedSections.has("clients_dashboard") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", marginLeft: 20, paddingLeft: 8 }}>
-                    {groups.filter(g => g !== "Tools").map(group => (
+                    {groups.map(group => (
                       <div key={group} className="mb-3">
                         <p className="text-[9px] font-bold uppercase tracking-widest px-2 mb-1" style={{ color: "#1e3a5f" }}>
                           {group}
@@ -502,23 +492,31 @@ export default function DashboardView() {
                   </div>
                 )}
 
-                {/* Sub-nav for Tools */}
-                {isActive && sec.id === "tools" && expandedSections.has("tools") && (
+                {/* Sub-nav for Tomsi Media Dashboard */}
+                {isActive && sec.id === "tomsi_media" && expandedSections.has("tomsi_media") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", marginLeft: 20, paddingLeft: 8 }}>
-                    <button
-                      onClick={() => { setView("zip_tool"); setSidebarOpen(false); }}
-                      className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150"
-                      style={view === "zip_tool"
-                        ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b" }
-                        : { color: "#475569" }}
-                      onMouseEnter={e => { if (view !== "zip_tool") (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
-                      onMouseLeave={e => { if (view !== "zip_tool") (e.currentTarget as HTMLElement).style.color = "#475569"; }}
-                    >
-                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      Zip Code Tool
-                    </button>
+                    {([
+                      { id: "b2b_tracking" as TomsiView, label: "B2B Tracking", icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
+                    ] as const).map(item => {
+                      const active = tomsiView === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => { setTomsiView(item.id); setSidebarOpen(false); }}
+                          className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
+                          style={active
+                            ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b" }
+                            : { color: "#475569" }}
+                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
+                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+                        >
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                          </svg>
+                          {item.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -558,10 +556,15 @@ export default function DashboardView() {
           </button>
 
           <h1 className="text-base font-semibold mr-auto" style={{ color: "#e2e8f0" }}>
-            {NAV.find(n => n.view === view)?.group
-              ? <span style={{ color: "#334155" }}>{NAV.find(n => n.view === view)?.group} / </span>
-              : null}
-            {NAV.find(n => n.view === view)?.label ?? "Dashboard"}
+            {topSection === "tomsi_media"
+              ? <><span style={{ color: "#334155" }}>Tomsi Media / </span>B2B Tracking</>
+              : <>
+                  {NAV.find(n => n.view === view)?.group
+                    ? <span style={{ color: "#334155" }}>{NAV.find(n => n.view === view)?.group} / </span>
+                    : null}
+                  {NAV.find(n => n.view === view)?.label ?? "Dashboard"}
+                </>
+            }
           </h1>
 
           {/* Dashboard, raw data, and agent/recording views filters */}
@@ -644,45 +647,16 @@ export default function DashboardView() {
         {/* Content */}
         <main className={`flex-1 overflow-auto ${view === "zip_tool" ? "p-0 flex flex-col" : "p-6 md:p-8"}`} style={{ background: "#080f1e" }}>
 
-          {topSection === "clients" && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 20, padding: 40 }}>
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg style={{ width: 28, height: 28, color: "#334155" }} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <p style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0", marginBottom: 6 }}>Client Management</p>
-                <p style={{ fontSize: 13, color: "#334155", maxWidth: 320, lineHeight: 1.6 }}>
-                  A CSM tool is being built here. You'll be able to manage client accounts, track health scores, and monitor key milestones.
-                </p>
-              </div>
-              <div style={{ padding: "6px 14px", borderRadius: 20, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.06em" }}>
-                COMING SOON
-              </div>
-            </div>
+          {/* ── Tomsi Media Dashboard ── */}
+          {topSection === "tomsi_media" && (
+            <>
+              {tomsiView === "b2b_tracking" && (
+                <B2BTracking startDate={dateStart} endDate={dateEnd} />
+              )}
+            </>
           )}
 
-          {topSection === "payments" && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 20, padding: 40 }}>
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg style={{ width: 28, height: 28, color: "#334155" }} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                </svg>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <p style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0", marginBottom: 6 }}>Payment Tracking</p>
-                <p style={{ fontSize: 13, color: "#334155", maxWidth: 320, lineHeight: 1.6 }}>
-                  A payment tracking platform is being built here. You'll be able to track invoices, payments, and revenue across all clients.
-                </p>
-              </div>
-              <div style={{ padding: "6px 14px", borderRadius: 20, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.06em" }}>
-                COMING SOON
-              </div>
-            </div>
-          )}
-
-          {(topSection === "dashboard" || topSection === "tools") && (<>
+          {topSection === "clients_dashboard" && (<>
 
           <AlertBanner alerts={bannerAlerts} onDismiss={closeBanner} />
 
@@ -795,10 +769,6 @@ export default function DashboardView() {
           {view === "campaign_overview" && (
             <CampaignOverview startDate={dateStart} endDate={dateEnd} />
           )}
-          {view === "b2b_tracking" && (
-            <B2BTracking startDate={dateStart} endDate={dateEnd} />
-          )}
-
           {/* ── Admin ── */}
           {view === "admin_agents"  && <AgentAdmin />}
           {view === "admin_clients" && <ClientRoster />}
