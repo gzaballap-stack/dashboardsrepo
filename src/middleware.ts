@@ -15,6 +15,7 @@ const BYPASS_ROUTES = [
   '/api/admin/seed-sessions',
   '/api/admin/backfill-history',
   '/api/admin/run-schema',
+  '/api/admin/run-b2b-migration',
   '/api/cron/seed-daily',
   '/api/auth/clear',
   '/api/setup',

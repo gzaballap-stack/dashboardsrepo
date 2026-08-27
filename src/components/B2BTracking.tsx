@@ -2,6 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 
+interface CampaignRow {
+  campaign_id: string;
+  campaign_name: string | null;
+  spend: number;
+  impressions: number;
+  reach: number;
+  link_clicks: number;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+}
+
 interface B2BMetrics {
   ad_spend: number;
   leads: number;
@@ -20,6 +32,7 @@ interface B2BMetrics {
   intro_show_rate: number;
   cost_per_lead: number;
   cost_per_close: number;
+  campaigns: CampaignRow[];
 }
 
 interface Props {
@@ -200,64 +213,77 @@ export default function B2BTracking({ startDate, endDate }: Props) {
               </tr>
             </thead>
             <tbody>
-              <tr style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                {/* Campaign */}
-                <td className="px-4 py-3 font-semibold whitespace-nowrap" style={{ color: "#e2e8f0" }}>B2B</td>
-                {/* Spend */}
-                <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.ad_spend > 0 ? fmt$(data.ad_spend) : dash}
-                </td>
-                {/* Schedules — Intros Booked */}
-                <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.intros_booked > 0 ? fmtN(data.intros_booked) : dash}
-                </td>
-                {/* CPL */}
-                <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.cost_per_lead > 0 ? fmt$(data.cost_per_lead) : dash}
-                </td>
-                {/* CTR */}
-                <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.ctr != null ? fmtPct(data.ctr) : dash}
-                </td>
-                {/* CPC */}
-                <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.cpc != null ? `$${fmtDec(data.cpc)}` : dash}
-                </td>
-                {/* CVR — leads → intros booked */}
-                <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.leads > 0 ? fmtPct(cbr * 100) : dash}
-                </td>
-                {/* Demos — Intros Shown */}
-                <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.intros_shown > 0 ? fmtN(data.intros_shown) : dash}
-                </td>
-                {/* CP Demo — Spend / Intros Shown */}
-                <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.intros_shown > 0 ? fmt$(data.ad_spend / data.intros_shown) : dash}
-                </td>
-                {/* L2D % — Intros Shown / Leads */}
-                <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
-                  {data.leads > 0 ? fmtPct((data.intros_shown / data.leads) * 100) : dash}
-                </td>
-                {/* Bottleneck */}
-                <td className="px-3 py-3">
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap"
-                    style={{ color: bnStyle.color, background: bnStyle.bg }}>
-                    {bottleneck}
-                  </span>
-                </td>
-                {/* Action */}
-                <td className="px-3 py-3 text-xs max-w-[200px]" style={{ color: "#475569" }}>
-                  {action}
-                </td>
-                {/* Overall */}
-                <td className="text-right px-4 py-3">
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap"
-                    style={{ color: stStyle.color, background: stStyle.bg }}>
-                    {stStyle.label}
-                  </span>
-                </td>
-              </tr>
+              {(data.campaigns.length > 0 ? data.campaigns : [null]).map((camp, i) => {
+                const singleCamp = data.campaigns.length === 1 || camp === null;
+                const campSpend = camp ? camp.spend : data.ad_spend;
+                const campCtr   = camp ? camp.ctr   : data.ctr;
+                const campCpc   = camp ? camp.cpc   : data.cpc;
+                const campName  = camp?.campaign_name || (camp?.campaign_id ? `Campaign ${camp.campaign_id}` : "All Campaigns");
+                return (
+                  <tr key={camp?.campaign_id ?? 'total'} style={{ borderTop: i === 0 ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(255,255,255,0.03)" }}>
+                    {/* Campaign */}
+                    <td className="px-4 py-3 font-semibold whitespace-nowrap" style={{ color: "#e2e8f0" }}>{campName}</td>
+                    {/* Spend */}
+                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                      {campSpend > 0 ? fmt$(campSpend) : dash}
+                    </td>
+                    {/* Schedules — account total (per-campaign pending attribution) */}
+                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                      {singleCamp && data.intros_booked > 0 ? fmtN(data.intros_booked) : singleCamp ? dash : dash}
+                    </td>
+                    {/* CPL */}
+                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                      {singleCamp && data.cost_per_lead > 0 ? fmt$(data.cost_per_lead) : singleCamp ? dash : campSpend > 0 && data.leads > 0 ? fmt$(campSpend / data.leads * data.campaigns.length) : dash}
+                    </td>
+                    {/* CTR */}
+                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                      {campCtr != null ? fmtPct(campCtr) : dash}
+                    </td>
+                    {/* CPC */}
+                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                      {campCpc != null ? `$${fmtDec(campCpc)}` : dash}
+                    </td>
+                    {/* CVR */}
+                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                      {singleCamp && data.leads > 0 ? fmtPct(cbr * 100) : dash}
+                    </td>
+                    {/* Demos */}
+                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                      {singleCamp && data.intros_shown > 0 ? fmtN(data.intros_shown) : dash}
+                    </td>
+                    {/* CP Demo */}
+                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                      {singleCamp && data.intros_shown > 0 ? fmt$(data.ad_spend / data.intros_shown) : dash}
+                    </td>
+                    {/* L2D % */}
+                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                      {singleCamp && data.leads > 0 ? fmtPct((data.intros_shown / data.leads) * 100) : dash}
+                    </td>
+                    {/* Bottleneck */}
+                    <td className="px-3 py-3">
+                      {singleCamp ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap"
+                          style={{ color: bnStyle.color, background: bnStyle.bg }}>
+                          {bottleneck}
+                        </span>
+                      ) : dash}
+                    </td>
+                    {/* Action */}
+                    <td className="px-3 py-3 text-xs max-w-[200px]" style={{ color: "#475569" }}>
+                      {singleCamp ? action : ""}
+                    </td>
+                    {/* Overall */}
+                    <td className="text-right px-4 py-3">
+                      {singleCamp ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap"
+                          style={{ color: stStyle.color, background: stStyle.bg }}>
+                          {stStyle.label}
+                        </span>
+                      ) : dash}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

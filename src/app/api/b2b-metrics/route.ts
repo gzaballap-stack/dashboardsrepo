@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 
   let spendQ = ctx.service
     .from('b2b_ad_spend')
-    .select('platform, amount, spend_date, impressions, reach, link_clicks, ctr, cpc, cpm');
+    .select('platform, amount, spend_date, impressions, reach, link_clicks, ctr, cpc, cpm, campaign_id, campaign_name');
 
   if (start_date) spendQ = spendQ.gte('spend_date', start_date);
   if (end_date)   spendQ = spendQ.lte('spend_date', end_date);
@@ -57,6 +57,42 @@ export async function GET(req: Request) {
       rowsWithCpm.reduce((s, r) => s + (r.impressions ?? 1), 0)
     : null;
 
+  // Per-campaign breakdown for the table
+  const campaignMap = new Map<string, {
+    campaign_id: string; campaign_name: string | null;
+    spend: number; impressions: number; reach: number; link_clicks: number;
+    ctr_sum: number; ctr_weight: number; cpc_sum: number; cpc_weight: number; cpm_sum: number; cpm_weight: number;
+  }>();
+  for (const row of spend ?? []) {
+    const key = row.campaign_id ?? '';
+    if (!campaignMap.has(key)) {
+      campaignMap.set(key, {
+        campaign_id: key, campaign_name: row.campaign_name ?? null,
+        spend: 0, impressions: 0, reach: 0, link_clicks: 0,
+        ctr_sum: 0, ctr_weight: 0, cpc_sum: 0, cpc_weight: 0, cpm_sum: 0, cpm_weight: 0,
+      });
+    }
+    const c = campaignMap.get(key)!;
+    c.spend       += row.amount ?? 0;
+    c.impressions += row.impressions ?? 0;
+    c.reach       += row.reach ?? 0;
+    c.link_clicks += row.link_clicks ?? 0;
+    if (row.ctr != null) { c.ctr_sum += row.ctr * (row.impressions ?? 1); c.ctr_weight += row.impressions ?? 1; }
+    if (row.cpc != null) { c.cpc_sum += row.cpc * (row.link_clicks ?? 1); c.cpc_weight += row.link_clicks ?? 1; }
+    if (row.cpm != null) { c.cpm_sum += row.cpm * (row.impressions ?? 1); c.cpm_weight += row.impressions ?? 1; }
+  }
+  const campaigns = Array.from(campaignMap.values()).map(c => ({
+    campaign_id:   c.campaign_id,
+    campaign_name: c.campaign_name,
+    spend:         c.spend,
+    impressions:   c.impressions,
+    reach:         c.reach,
+    link_clicks:   c.link_clicks,
+    ctr: c.ctr_weight > 0 ? c.ctr_sum / c.ctr_weight : null,
+    cpc: c.cpc_weight > 0 ? c.cpc_sum / c.cpc_weight : null,
+    cpm: c.cpm_weight > 0 ? c.cpm_sum / c.cpm_weight : null,
+  }));
+
   const closes       = count('close');
   const cash         = totalRevenue('close');
   const leads        = count('lead');
@@ -80,5 +116,6 @@ export async function GET(req: Request) {
     intro_show_rate:    introsBooked > 0 ? count('intro_shown') / introsBooked : 0,
     cost_per_lead:      leads > 0 ? totalSpend / leads : 0,
     cost_per_close:     closes > 0 ? totalSpend / closes : 0,
+    campaigns,
   });
 }

@@ -69,7 +69,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'platform must be "meta", "google", or "local_services"' }, { status: 400 });
     }
 
-    const record: Record<string, unknown> = { spend_date: date, platform, amount };
+    const campaign_id   = payload.campaign_id   ? String(payload.campaign_id)   : '';
+    const campaign_name = payload.campaign_name ? String(payload.campaign_name) : null;
+
+    const record: Record<string, unknown> = { spend_date: date, platform, amount, campaign_id };
+    if (campaign_name !== null) record.campaign_name = campaign_name;
     if (impressions !== undefined) record.impressions = impressions;
     if (reach       !== undefined) record.reach       = reach;
     if (link_clicks !== undefined) record.link_clicks = link_clicks;
@@ -79,7 +83,7 @@ export async function POST(req: Request) {
 
     const { error } = await service
       .from('b2b_ad_spend')
-      .upsert(record, { onConflict: 'spend_date,platform' });
+      .upsert(record, { onConflict: 'spend_date,platform,campaign_id' });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ success: true, date, platform, amount });

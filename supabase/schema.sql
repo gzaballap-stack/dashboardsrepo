@@ -328,12 +328,30 @@ create table if not exists b2b_ad_spend (
 );
 
 -- Migration: add Meta ad metric columns if they don't exist yet (safe to re-run)
-alter table b2b_ad_spend add column if not exists impressions integer;
-alter table b2b_ad_spend add column if not exists reach       integer;
-alter table b2b_ad_spend add column if not exists link_clicks integer;
-alter table b2b_ad_spend add column if not exists ctr         numeric;
-alter table b2b_ad_spend add column if not exists cpc         numeric;
-alter table b2b_ad_spend add column if not exists cpm         numeric;
+alter table b2b_ad_spend add column if not exists impressions   integer;
+alter table b2b_ad_spend add column if not exists reach         integer;
+alter table b2b_ad_spend add column if not exists link_clicks   integer;
+alter table b2b_ad_spend add column if not exists ctr           numeric;
+alter table b2b_ad_spend add column if not exists cpc           numeric;
+alter table b2b_ad_spend add column if not exists cpm           numeric;
+
+-- Migration: add campaign-level attribution columns (safe to re-run)
+alter table b2b_ad_spend add column if not exists campaign_id   text not null default '';
+alter table b2b_ad_spend add column if not exists campaign_name text;
+-- Drop the old (spend_date, platform) unique constraint and replace with one that
+-- includes campaign_id so multiple campaigns can coexist for the same date/platform.
+alter table b2b_ad_spend drop constraint if exists b2b_ad_spend_spend_date_platform_key;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'b2b_ad_spend_spend_date_platform_campaign_key'
+  ) then
+    alter table b2b_ad_spend
+      add constraint b2b_ad_spend_spend_date_platform_campaign_key
+      unique(spend_date, platform, campaign_id);
+  end if;
+end$$;
 
 create index if not exists b2b_ad_spend_date on b2b_ad_spend(spend_date desc);
 

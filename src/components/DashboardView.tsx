@@ -277,7 +277,7 @@ function alertKey(a: Alert) {
 export default function DashboardView() {
   const [topSection, setTopSection] = useState<TopSection>("clients_dashboard");
   const [tomsiView, setTomsiView] = useState<TomsiView>("b2b_tracking");
-  const [tomsiPreset, setTomsiPreset] = useState<"last_7" | "last_30">("last_7");
+  const [tomsiPreset, setTomsiPreset] = useState<Preset>("last_7");
   const [expandedSections, setExpandedSections] = useState<Set<TopSection>>(new Set(["clients_dashboard"]));
   const [view, setView] = useState<View>("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
@@ -397,7 +397,9 @@ export default function DashboardView() {
   const { start: dateStart, end: dateEnd } =
     preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
 
-  const tomsiDateRange = getDateRange(tomsiPreset);
+  const tomsiDateRange = tomsiPreset === "custom"
+    ? { start: customStart, end: customEnd }
+    : getDateRange(tomsiPreset);
 
   const today = new Date().toISOString().split("T")[0];
   const heatmapStart = heatmapDays > 0
@@ -614,22 +616,46 @@ export default function DashboardView() {
 
           {/* Tomsi Media date range selector */}
           {topSection === "tomsi_media" && (
-            <div className="flex items-center gap-1 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.10)" }}>
-              {(["last_7", "last_30"] as const).map((p, i) => (
-                <button
-                  key={p}
-                  onClick={() => setTomsiPreset(p)}
-                  className="px-4 py-2 text-sm font-medium transition-colors"
-                  style={{
-                    background: tomsiPreset === p ? "#f59e0b" : "#0f2040",
-                    color: tomsiPreset === p ? "#fff" : "#64748b",
-                    borderRight: i === 0 ? "1px solid rgba(255,255,255,0.10)" : "none",
-                  }}
-                >
-                  {p === "last_7" ? "Last 7 Days" : "Last Month"}
-                </button>
-              ))}
+            <div className="relative" ref={presetRef}>
+              <button
+                onClick={() => setShowPresetMenu(v => !v)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                style={{ background: "#f59e0b", color: "#fff", minWidth: "9rem" }}
+              >
+                <span className="flex-1 text-left">{PRESET_LABELS[tomsiPreset]}</span>
+                <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showPresetMenu && (
+                <div className="absolute top-full right-0 mt-1.5 rounded-xl overflow-hidden z-20 w-48"
+                  style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
+                  {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
+                    <button key={p} onClick={() => { setTomsiPreset(p); setShowPresetMenu(false); }}
+                      className="block w-full text-left px-4 py-2.5 text-sm transition-colors"
+                      style={tomsiPreset === p
+                        ? { background: "rgba(245,158,11,0.15)", color: "#f59e0b", fontWeight: 600 }
+                        : { color: "#94a3b8" }}
+                      onMouseEnter={e => { if (tomsiPreset !== p) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)"; }}
+                      onMouseLeave={e => { if (tomsiPreset !== p) (e.currentTarget as HTMLElement).style.background = ""; }}
+                    >
+                      {PRESET_LABELS[p]}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+          )}
+          {topSection === "tomsi_media" && tomsiPreset === "custom" && (
+            <>
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                className="px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
+              <span className="text-sm" style={{ color: "#334155" }}>to</span>
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+                className="px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
+            </>
           )}
 
           {/* Dashboard, raw data, and agent/recording views filters */}

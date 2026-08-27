@@ -1,0 +1,96 @@
+{
+  "name": "CCM - B2B Meta Spend → Supabase",
+  "flow": [
+    {
+      "id": 1,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {"handleErrors": false, "useNewZLibDeCompression": true},
+      "mapper": {
+        "url": "https://graph.facebook.com/v19.0/act_1080664784142903/insights",
+        "method": "get",
+        "headers": [],
+        "qs": [
+          {"name": "fields",       "value": "campaign_id,campaign_name,spend,impressions,reach,inline_link_clicks,ctr,cpc,cpm"},
+          {"name": "time_range",   "value": "{\"since\": \"{{formatDate(addDays(now; -1); \\\"YYYY-MM-DD\\\")}}\", \"until\": \"{{formatDate(addDays(now; -1); \\\"YYYY-MM-DD\\\")}}\"}"},
+          {"name": "level",        "value": "campaign"},
+          {"name": "access_token", "value": "<META_B2B_ACCESS_TOKEN>"}
+        ],
+        "bodyType": "raw",
+        "contentType": "application/json",
+        "data": "",
+        "parseResponse": true,
+        "serializeUrl": false,
+        "followAllRedirects": false,
+        "useQuerystring": false,
+        "gzip": true,
+        "shareCookies": false,
+        "ca": "",
+        "useMtls": false,
+        "followRedirect": true,
+        "rejectUnauthorized": true,
+        "authUser": "",
+        "authPass": "",
+        "timeout": ""
+      },
+      "metadata": {"designer": {"x": 0, "y": 0, "name": "Fetch Meta Campaign Insights"}}
+    },
+    {
+      "id": 2,
+      "module": "tools:BasicIterator",
+      "version": 1,
+      "parameters": {},
+      "mapper": {"array": "{{1.data}}"},
+      "metadata": {"designer": {"x": 300, "y": 0, "name": "For Each Campaign"}}
+    },
+    {
+      "id": 3,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {"handleErrors": false, "useNewZLibDeCompression": true},
+      "mapper": {
+        "url": "https://dashboard.tomsimedia.com/api/b2b-ad-spend",
+        "method": "post",
+        "headers": [
+          {"name": "Authorization", "value": "Bearer TomsiMedia1!"},
+          {"name": "Content-Type",  "value": "application/json"}
+        ],
+        "qs": [],
+        "bodyType": "raw",
+        "contentType": "application/json",
+        "data": "{\"date\": \"{{formatDate(addDays(now; -1); \\\"YYYY-MM-DD\\\")}}\", \"platform\": \"meta\", \"campaign_id\": \"{{2.campaign_id}}\", \"campaign_name\": \"{{2.campaign_name}}\", \"spend\": \"{{2.spend}}\", \"impressions\": \"{{2.impressions}}\", \"reach\": \"{{2.reach}}\", \"link_clicks\": \"{{2.inline_link_clicks}}\", \"ctr\": \"{{2.ctr}}\", \"cpc\": \"{{2.cpc}}\", \"cpm\": \"{{2.cpm}}\"}",
+        "parseResponse": false,
+        "serializeUrl": false,
+        "followAllRedirects": false,
+        "useQuerystring": false,
+        "gzip": true,
+        "shareCookies": false,
+        "ca": "",
+        "useMtls": false,
+        "followRedirect": true,
+        "rejectUnauthorized": true,
+        "authUser": "",
+        "authPass": "",
+        "timeout": ""
+      },
+      "metadata": {"designer": {"x": 600, "y": 0, "name": "Send Campaign to Dashboard"}}
+    }
+  ],
+  "metadata": {
+    "instant": false,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {"orphans": []},
+    "zone": "eu1.make.com"
+  }
+}
