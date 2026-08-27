@@ -29,7 +29,8 @@ export async function GET(req: Request) {
   if (evErr) return NextResponse.json({ error: evErr.message }, { status: 500 });
 
   // Graceful fallback if campaign columns haven't been migrated yet
-  let spend = fullSpendResult.data;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let spend: any[] | null = fullSpendResult.data;
   if (fullSpendResult.error?.message?.includes('campaign_id') ||
       fullSpendResult.error?.message?.includes('campaign_name')) {
     let fallbackQ = ctx.service
