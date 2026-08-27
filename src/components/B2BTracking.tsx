@@ -170,7 +170,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard label="Closes"               value={fmtN(data.closes)} accent />
           <KpiCard label="Closing Rate"         value={data.sales_calls_shown > 0 ? fmtPct((data.closes / data.sales_calls_shown) * 100) : "—"} accent />
-          <KpiCard label="Cost per Info"        value={data.intros_booked > 0 ? fmt$(data.ad_spend / data.intros_booked) : "—"} />
+          <KpiCard label="Cost per Intro"       value={data.intros_booked > 0 ? fmt$(data.ad_spend / data.intros_booked) : "—"} />
           <KpiCard label="Cost per Demo"        value={data.sales_calls_shown > 0 ? fmt$(data.ad_spend / data.sales_calls_shown) : "—"} />
           <KpiCard label="Cost per Acquisition" value={data.closes > 0 ? fmt$(data.ad_spend / data.closes) : "—"} />
           <KpiCard label="Cash Collected"       value={data.cash_collected > 0 ? fmt$(data.cash_collected) : "—"} accent />

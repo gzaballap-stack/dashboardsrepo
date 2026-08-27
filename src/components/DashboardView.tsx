@@ -277,6 +277,7 @@ function alertKey(a: Alert) {
 export default function DashboardView() {
   const [topSection, setTopSection] = useState<TopSection>("clients_dashboard");
   const [tomsiView, setTomsiView] = useState<TomsiView>("b2b_tracking");
+  const [tomsiPreset, setTomsiPreset] = useState<"last_7" | "last_30">("last_7");
   const [expandedSections, setExpandedSections] = useState<Set<TopSection>>(new Set(["clients_dashboard"]));
   const [view, setView] = useState<View>("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
@@ -395,6 +396,8 @@ export default function DashboardView() {
 
   const { start: dateStart, end: dateEnd } =
     preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
+
+  const tomsiDateRange = getDateRange(tomsiPreset);
 
   const today = new Date().toISOString().split("T")[0];
   const heatmapStart = heatmapDays > 0
@@ -609,8 +612,28 @@ export default function DashboardView() {
             }
           </h1>
 
+          {/* Tomsi Media date range selector */}
+          {topSection === "tomsi_media" && (
+            <div className="flex items-center gap-1 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.10)" }}>
+              {(["last_7", "last_30"] as const).map((p, i) => (
+                <button
+                  key={p}
+                  onClick={() => setTomsiPreset(p)}
+                  className="px-4 py-2 text-sm font-medium transition-colors"
+                  style={{
+                    background: tomsiPreset === p ? "#f59e0b" : "#0f2040",
+                    color: tomsiPreset === p ? "#fff" : "#64748b",
+                    borderRight: i === 0 ? "1px solid rgba(255,255,255,0.10)" : "none",
+                  }}
+                >
+                  {p === "last_7" ? "Last 7 Days" : "Last Month"}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Dashboard, raw data, and agent/recording views filters */}
-          {(view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "recordings") && !view.startsWith("admin_") && (
+          {topSection !== "tomsi_media" && (view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "recordings") && !view.startsWith("admin_") && (
             <>
               {view === "dashboard" && (
                 <Select value={selectedClientId} onChange={v => setSelectedClientId(v)}>
@@ -693,7 +716,7 @@ export default function DashboardView() {
           {topSection === "tomsi_media" && (
             <>
               {tomsiView === "b2b_tracking" && (
-                <B2BTracking startDate={dateStart} endDate={dateEnd} />
+                <B2BTracking startDate={tomsiDateRange.start} endDate={tomsiDateRange.end} />
               )}
             </>
           )}
