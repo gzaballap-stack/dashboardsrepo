@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       rows.push({
         event_type,
         occurred_at: `${date}T12:00:00.000Z`,
-        revenue: revenue ?? null,
+        revenue: revenue ?? 0,
       });
     }
   }
