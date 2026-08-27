@@ -23,11 +23,26 @@ export async function GET(req: Request) {
   if (start_date) spendQ = spendQ.gte('spend_date', start_date);
   if (end_date)   spendQ = spendQ.lte('spend_date', end_date);
 
-  const [{ data: events, error: evErr }, { data: spend, error: spErr }] =
+  const [{ data: events, error: evErr }, fullSpendResult] =
     await Promise.all([eventsQ, spendQ]);
 
   if (evErr) return NextResponse.json({ error: evErr.message }, { status: 500 });
-  if (spErr) return NextResponse.json({ error: spErr.message }, { status: 500 });
+
+  // Graceful fallback if campaign columns haven't been migrated yet
+  let spend = fullSpendResult.data;
+  if (fullSpendResult.error?.message?.includes('campaign_id') ||
+      fullSpendResult.error?.message?.includes('campaign_name')) {
+    let fallbackQ = ctx.service
+      .from('b2b_ad_spend')
+      .select('platform, amount, spend_date, impressions, reach, link_clicks, ctr, cpc, cpm');
+    if (start_date) fallbackQ = fallbackQ.gte('spend_date', start_date);
+    if (end_date)   fallbackQ = fallbackQ.lte('spend_date', end_date);
+    const { data: fbData, error: fbErr } = await fallbackQ;
+    if (fbErr) return NextResponse.json({ error: fbErr.message }, { status: 500 });
+    spend = fbData;
+  } else if (fullSpendResult.error) {
+    return NextResponse.json({ error: fullSpendResult.error.message }, { status: 500 });
+  }
 
   const count = (type: string) => events?.filter(e => e.event_type === type).length ?? 0;
   const totalRevenue = (type: string) =>
