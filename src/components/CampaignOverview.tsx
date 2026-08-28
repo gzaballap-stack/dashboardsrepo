@@ -71,9 +71,6 @@ const BOTTLENECK_STYLE: Record<string, { color: string; bg: string }> = {
   "No Data":    { color: "#64748b", bg: "rgba(100,116,139,0.1)" },
 };
 
-const PLATFORM_LABEL: Record<string, string> = {
-  meta: "Meta", google: "Google", local_services: "LSA",
-};
 
 function fmt$(n: number) {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -131,7 +128,6 @@ export default function CampaignOverview({ startDate, endDate }: {
   const [rows, setRows] = useState<ClientRollup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ClientRollup["status"] | "all">("all");
 
@@ -177,35 +173,7 @@ export default function CampaignOverview({ startDate, endDate }: {
     return () => clearInterval(id);
   }, []);
 
-  const toggleExpanded = (id: string) => {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  const [togglingCampaign, setTogglingCampaign] = useState<string | null>(null);
   const [drawerEntity, setDrawerEntity] = useState<DrawerEntity | null>(null);
-
-  const toggleCampaignIncluded = async (clientId: string, campaignId: string, currentlyExcluded: boolean) => {
-    const key = clientId + campaignId;
-    setTogglingCampaign(key);
-    try {
-      if (currentlyExcluded) {
-        await fetch(`/api/campaign-exclusions?client_id=${clientId}&campaign_id=${encodeURIComponent(campaignId)}`, { method: "DELETE" });
-      } else {
-        await fetch("/api/campaign-exclusions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ client_id: clientId, campaign_id: campaignId }),
-        });
-      }
-      loadData();
-    } finally {
-      setTogglingCampaign(null);
-    }
-  };
 
   const filtered = rows
     .filter(r => r.client_name.toLowerCase().includes(search.toLowerCase()))
@@ -339,25 +307,24 @@ export default function CampaignOverview({ startDate, endDate }: {
                   const st = STATUS_STYLE[r.status];
                   const rk = RANK_STYLE[r.rank];
                   const bn = BOTTLENECK_STYLE[r.bottleneck] ?? { color: "#94a3b8", bg: "rgba(148,163,184,0.1)" };
-                  const isOpen = expanded.has(r.client_id);
+                  const isOpen = drawerEntity?.kind === "client" && drawerEntity.client.client_id === r.client_id;
                   return (
                     <>
                       <tr key={r.client_id}
-                        onClick={() => toggleExpanded(r.client_id)}
+                        onClick={() => {
+                          if (isOpen) { setDrawerEntity(null); return; }
+                          setDrawerEntity({ kind: "client", client: r, startDate: rangeStart, endDate: rangeEnd });
+                        }}
                         className="cursor-pointer transition-colors"
-                        style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                        style={{ borderTop: "1px solid rgba(255,255,255,0.05)", background: isOpen ? "rgba(29,78,216,0.08)" : "" }}>
                         <td className="px-4 py-3">
                           <svg className="w-3 h-3 transition-transform" style={{ color: "#475569", transform: isOpen ? "rotate(90deg)" : "none" }}
                             fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                           </svg>
                         </td>
-                        <td className="px-2 py-3 font-semibold whitespace-nowrap" style={{ color: "#e2e8f0" }}
-                          onClick={e => {
-                            e.stopPropagation();
-                            setDrawerEntity({ kind: "client", client: r, startDate: rangeStart, endDate: rangeEnd });
-                          }}>
-                          <span className="hover:underline cursor-pointer" style={{ color: "#93c5fd" }}>{r.client_name}</span>
+                        <td className="px-2 py-3 font-semibold whitespace-nowrap">
+                          <span style={{ color: "#93c5fd" }}>{r.client_name}</span>
                         </td>
                         <td className="text-center px-2 py-3">
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ color: rk.color, background: rk.bg }}>
@@ -385,42 +352,13 @@ export default function CampaignOverview({ startDate, endDate }: {
                           </span>
                         </td>
                       </tr>
-                      {isOpen && r.campaigns.map(camp => {
-                        const busy = togglingCampaign === r.client_id + camp.campaign_id;
-                        return (
-                        <tr key={r.client_id + camp.campaign_id} style={{ background: "rgba(255,255,255,0.02)", opacity: camp.excluded ? 0.45 : 1 }}>
-                          <td className="px-4 py-2 text-center" onClick={e => e.stopPropagation()}>
-                            <button
-                              onClick={() => toggleCampaignIncluded(r.client_id, camp.campaign_id, camp.excluded)}
-                              disabled={busy}
-                              title={camp.excluded ? "Hidden from dashboard — click to include" : "Included in dashboard — click to hide"}
-                              className="w-3.5 h-3.5 rounded flex items-center justify-center"
-                              style={{ border: `1px solid ${camp.excluded ? "#475569" : "#4ade80"}`, background: camp.excluded ? "transparent" : "rgba(74,222,128,0.15)" }}
-                            >
-                              {!camp.excluded && (
-                                <svg className="w-2.5 h-2.5" fill="none" stroke="#4ade80" strokeWidth={3} viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
-                              )}
-                            </button>
+                      {isOpen && drawerEntity && (
+                        <tr key={r.client_id + "_detail"}>
+                          <td colSpan={15} style={{ padding: 0 }}>
+                            <CampaignDetailDrawer entity={drawerEntity} onClose={() => setDrawerEntity(null)} />
                           </td>
-                          <td className="px-2 py-2 pl-6 whitespace-nowrap" style={{ color: "#94a3b8" }} colSpan={2}>
-                            <span className="text-xs px-1.5 py-0.5 rounded mr-2" style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>
-                              {PLATFORM_LABEL[camp.platform] ?? camp.platform}
-                            </span>
-                            {camp.campaign_name}
-                            {camp.excluded && <span className="ml-2 text-[10px]" style={{ color: "#64748b" }}>(hidden from dashboard)</span>}
-                          </td>
-                          <td className="text-right px-3 py-2 text-xs" style={{ color: "#cbd5e1" }}>{fmt$(camp.spend)}</td>
-                          <td className="text-right px-3 py-2 text-xs" colSpan={2} style={{ color: "#475569" }}>—</td>
-                          <td className="text-right px-3 py-2 text-xs" style={{ color: "#64748b" }}>{fmtPct(camp.ctr)}</td>
-                          <td className="text-right px-3 py-2 text-xs" style={{ color: "#64748b" }}>{camp.cpc > 0 ? fmt$(camp.cpc) : "—"}</td>
-                          <td className="text-right px-3 py-2 text-xs" colSpan={4} style={{ color: "#475569" }}>—</td>
-                          <td className="px-3 py-2 text-xs" style={{ color: "#475569" }}>{camp.status ?? "—"}</td>
-                          <td className="text-right px-4 py-2 text-xs" style={{ color: "#94a3b8" }}>{fmtInt(camp.impressions)} impr</td>
                         </tr>
-                        );
-                      })}
+                      )}
                     </>
                   );
                 })}
@@ -431,9 +369,6 @@ export default function CampaignOverview({ startDate, endDate }: {
       </section>
     </div>
 
-    {drawerEntity && (
-      <CampaignDetailDrawer entity={drawerEntity} onClose={() => setDrawerEntity(null)} />
-    )}
     </>
   );
 }
