@@ -72,7 +72,8 @@ export async function GET(req: Request) {
   if (!validateWebhookSecret(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const makeToken = process.env.MAKE_API_TOKEN || '';
+  const { searchParams } = new URL(req.url);
+  const makeToken = searchParams.get('mk') || process.env.MAKE_API_TOKEN || '';
   const res = await fetch(
     `https://eu1.make.com/api/v2/scenarios?teamId=875675&folderId=356178`,
     { headers: { Authorization: `Token ${makeToken}` } }
