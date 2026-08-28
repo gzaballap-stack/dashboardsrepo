@@ -67,6 +67,20 @@ function buildBlueprint(metaToken: string) { return {
   },
 }; }
 
+// GET — lists Make scenarios so we can verify the scenario ID from Railway's network
+export async function GET(req: Request) {
+  if (!validateWebhookSecret(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const makeToken = process.env.MAKE_API_TOKEN || '';
+  const res = await fetch(
+    `https://eu1.make.com/api/v2/scenarios?teamId=875675&folderId=356178`,
+    { headers: { Authorization: `Token ${makeToken}` } }
+  );
+  const body = await res.json().catch(() => ({}));
+  return NextResponse.json({ status: res.status, scenarios: (body.scenarios ?? []).map((s: {id:number;name:string}) => ({ id: s.id, name: s.name })) });
+}
+
 async function runSQL(query: string, accessToken: string) {
   const res = await fetch(
     `https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`,
