@@ -176,6 +176,18 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
     { id: "ai",         label: "AI"         },
   ];
 
+  type AdSetRow = {
+    adset_id: string; adset_name: string | null; campaign_id: string; campaign_name: string | null;
+    platform?: string; spend: number; impressions: number; reach: number; link_clicks: number;
+    ctr: number; cpc: number; cpm: number; leads?: number;
+  };
+  type AdRow = {
+    ad_id: string; ad_name: string | null; adset_id: string; adset_name: string | null;
+    campaign_id: string; campaign_name: string | null; platform?: string;
+    spend: number; impressions: number; reach: number; link_clicks: number;
+    ctr: number; cpc: number; cpm: number;
+  };
+
   const [tab, setTab]           = useState<Tab>("campaigns");
   const [lastUpdated]           = useState(new Date());
   const [, forceTick]           = useState(0);
@@ -185,6 +197,11 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError]   = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const [adSetData, setAdSetData]     = useState<AdSetRow[] | null>(null);
+  const [adSetLoading, setAdSetLoading] = useState(false);
+  const [adData, setAdData]           = useState<AdRow[] | null>(null);
+  const [adLoading, setAdLoading]     = useState(false);
 
   // Keep "last updated" clock ticking
   useEffect(() => {
@@ -265,6 +282,50 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
   useEffect(() => {
     if (tab === "comparison") fetchComparison();
   }, [tab, fetchComparison]);
+
+  // ── Ad Set fetch ────────────────────────────────────────────────────
+  const fetchAdSets = useCallback(async () => {
+    if (adSetData !== null) return; // already loaded
+    setAdSetLoading(true);
+    try {
+      const start = entity.startDate;
+      const end   = entity.endDate;
+      if (entity.kind === "b2b") {
+        const r = await fetch(`/api/b2b-adsets?campaign_id=${encodeURIComponent(entity.id)}&start_date=${start}&end_date=${end}`).then(r => r.json());
+        setAdSetData(r.adsets ?? []);
+      } else {
+        const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+        const r = await fetch(`/api/client-ad-breakdown?client_id=${c.client_id}&level=adset&start_date=${start}&end_date=${end}`).then(r => r.json());
+        setAdSetData((r.rows ?? []) as AdSetRow[]);
+      }
+    } catch { setAdSetData([]); }
+    finally  { setAdSetLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity]);
+
+  useEffect(() => { if (tab === "adsets") fetchAdSets(); }, [tab, fetchAdSets]);
+
+  // ── Ad fetch ────────────────────────────────────────────────────────
+  const fetchAds = useCallback(async () => {
+    if (adData !== null) return;
+    setAdLoading(true);
+    try {
+      const start = entity.startDate;
+      const end   = entity.endDate;
+      if (entity.kind === "b2b") {
+        const r = await fetch(`/api/b2b-ads?campaign_id=${encodeURIComponent(entity.id)}&start_date=${start}&end_date=${end}`).then(r => r.json());
+        setAdData(r.ads ?? []);
+      } else {
+        const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+        const r = await fetch(`/api/client-ad-breakdown?client_id=${c.client_id}&level=ad&start_date=${start}&end_date=${end}`).then(r => r.json());
+        setAdData((r.rows ?? []) as AdRow[]);
+      }
+    } catch { setAdData([]); }
+    finally  { setAdLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity]);
+
+  useEffect(() => { if (tab === "ads") fetchAds(); }, [tab, fetchAds]);
 
   // ── AI context builder ──────────────────────────────────────────────
   const buildContext = () => {
@@ -681,103 +742,181 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
     </div>
   );
 
+  const COL_HEADER = "text-[10px] font-bold uppercase tracking-wider text-right px-3 py-2";
+  const COL_CELL   = "text-right px-3 py-2.5 text-xs";
+
+  const renderAdSets = () => {
+    if (adSetLoading) return <div className="py-10 text-center text-sm" style={{ color: "#334155" }}>Loading ad sets…</div>;
+    if (!adSetData || adSetData.length === 0) return renderPlaceholder(
+      "No Ad Set Data",
+      isBb
+        ? "Run the updated Make scenario to populate ad set data. It fetches adset-level insights from Meta daily."
+        : "No ad set data found for this date range. Make sure your client Make scenario sends adset-level data."
+    );
+    return (
+      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+        <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
+          <thead style={{ background: "#080e1c", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+            <tr>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Ad Set</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>Spend</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>Impressions</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>Clicks</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>CTR</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>CPC</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>CPM</th>
+              {!isBb && <th className={COL_HEADER} style={{ color: "#475569" }}>Leads</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {adSetData.map((a, i) => (
+              <tr key={a.adset_id || i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                <td className="px-3 py-2.5">
+                  <div className="text-xs font-medium" style={{ color: "#e2e8f0" }}>{a.adset_name ?? a.adset_id}</div>
+                  {a.campaign_name && <div className="text-[10px] mt-0.5" style={{ color: "#475569" }}>{a.campaign_name}</div>}
+                </td>
+                <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{fmt$(a.spend)}</td>
+                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.impressions ?? 0)}</td>
+                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.link_clicks ?? 0)}</td>
+                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.ctr > 0 ? fmtPct(a.ctr) : "—"}</td>
+                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.cpc > 0 ? fmtDec(a.cpc) : "—"}</td>
+                <td className={COL_CELL} style={{ color: "#64748b" }}>{a.cpm > 0 ? fmtDec(a.cpm) : "—"}</td>
+                {!isBb && <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{fmtN(a.leads ?? 0)}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const renderAds = () => {
+    if (adLoading) return <div className="py-10 text-center text-sm" style={{ color: "#334155" }}>Loading ads…</div>;
+    if (!adData || adData.length === 0) return renderPlaceholder(
+      "No Ad Creative Data",
+      isBb
+        ? "Run the updated Make scenario to populate ad-level data. It fetches ad-level insights from Meta daily."
+        : "No ad creative data found for this date range. Make sure your client Make scenario sends ad-level data."
+    );
+    return (
+      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+        <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
+          <thead style={{ background: "#080e1c", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+            <tr>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Ad</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>Spend</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>Impressions</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>Clicks</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>CTR</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>CPC</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>CPM</th>
+            </tr>
+          </thead>
+          <tbody>
+            {adData.map((a, i) => (
+              <tr key={a.ad_id || i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                <td className="px-3 py-2.5">
+                  <div className="text-xs font-medium" style={{ color: "#e2e8f0" }}>{a.ad_name ?? a.ad_id}</div>
+                  {a.adset_name && <div className="text-[10px] mt-0.5" style={{ color: "#475569" }}>↳ {a.adset_name}</div>}
+                  {a.campaign_name && <div className="text-[10px]" style={{ color: "#334155" }}>{a.campaign_name}</div>}
+                </td>
+                <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{fmt$(a.spend)}</td>
+                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.impressions ?? 0)}</td>
+                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.link_clicks ?? 0)}</td>
+                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.ctr > 0 ? fmtPct(a.ctr) : "—"}</td>
+                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.cpc > 0 ? fmtDec(a.cpc) : "—"}</td>
+                <td className={COL_CELL} style={{ color: "#64748b" }}>{a.cpm > 0 ? fmtDec(a.cpm) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   const tabContent: Record<Tab, React.ReactNode> = {
     calls:      renderCalls(),
     campaigns:  renderCampaigns(),
-    adsets:     renderPlaceholder("Ad Set Data", "Ad set level data requires ad-set level reporting in your Make scenarios. Currently aggregated at campaign level."),
-    ads:        renderPlaceholder("Ad Creative Data", "Individual ad performance requires ad-level reporting in your Make scenarios."),
+    adsets:     renderAdSets(),
+    ads:        renderAds(),
     funnel:     renderFunnel(),
     comparison: renderComparison(),
     ai:         renderAI(),
   };
 
+  // Inline expansion panel — no overlay, renders directly in page flow inside a table <td>
   return (
-    <div className="fixed inset-0 z-50 flex" onClick={onClose} style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }}>
-      {/* Panel — stops propagation so clicks inside don't close */}
-      <div
-        className="ml-auto flex flex-col h-full overflow-hidden"
-        style={{ width: "min(92vw, 1100px)", background: "#060f1e", borderLeft: "1px solid rgba(255,255,255,0.08)" }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* ── Panel header ── */}
-        <div className="flex-none px-5 py-3 flex items-center gap-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", background: "#080e1c" }}>
-          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors" style={{ color: "#475569" }}
+    <div style={{ background: "#070d1a", borderTop: "2px solid #1d4ed8" }}>
+      {/* ── Identity + Status bar ── */}
+      <div className="px-5 py-2.5 flex items-center justify-between flex-wrap gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "#080e1c" }}>
+        <div className="flex items-center gap-3">
+          <button onClick={onClose} className="p-1 rounded" style={{ color: "#475569" }}
             onMouseEnter={e => (e.currentTarget.style.color = "#94a3b8")}
             onMouseLeave={e => (e.currentTarget.style.color = "#475569")}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-base truncate" style={{ color: "#f1f5f9" }}>{name}</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-                style={{ color: st.color, background: st.bg, border: `1px solid ${st.color}44` }}>
-                {st.label}
-              </span>
-            </div>
+          <span className="font-bold text-sm" style={{ color: "#f1f5f9" }}>{name}</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
+            style={{ color: st.color, background: st.bg, border: `1px solid ${st.color}44` }}>
+            {st.label}
+          </span>
+          <div className="flex items-center gap-1.5 ml-2">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#4ade80", boxShadow: "0 0 5px #4ade80" }} />
+            <span className="text-[11px] font-semibold" style={{ color: "#4ade80" }}>Live</span>
           </div>
+          <span className="text-[11px]" style={{ color: "#334155" }}>
+            Updated <span style={{ color: "#64748b" }}>{relativeTime(lastUpdated)}</span>
+          </span>
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] px-2 py-1 rounded font-medium" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.08)", color: "#64748b" }}>
+            {entity.startDate} → {entity.endDate}
+          </span>
+          <button
+            onClick={() => { if (tab === "comparison") fetchComparison(); }}
+            className="flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold"
+            style={{ background: "rgba(29,78,216,0.12)", border: "1px solid rgba(29,78,216,0.25)", color: "#60a5fa" }}>
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh Data
+          </button>
+          <button className="p-1 rounded" style={{ color: "#334155", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+          </button>
+        </div>
+      </div>
 
-        {/* ── Status bar (Dashboard Status | date range | Refresh | Bell) ── */}
-        <div className="flex-none px-5 py-2 flex items-center justify-between flex-wrap gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "#070d1a" }}>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full" style={{ background: "#4ade80", boxShadow: "0 0 6px #4ade80" }} />
-              <span className="text-xs font-semibold" style={{ color: "#4ade80" }}>Live Connection</span>
-            </div>
-            <span className="text-xs" style={{ color: "#334155" }}>
-              Last updated <span style={{ color: "#64748b" }}>{relativeTime(lastUpdated)}</span>
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs px-2 py-1 rounded-lg font-medium" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.1)", color: "#94a3b8" }}>
-              {entity.startDate} → {entity.endDate}
-            </span>
-            <button
-              onClick={() => { if (tab === "comparison") fetchComparison(); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-              style={{ background: "rgba(29,78,216,0.12)", border: "1px solid rgba(29,78,216,0.25)", color: "#60a5fa" }}>
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Refresh Data
-            </button>
-            <button className="p-1.5 rounded-lg" style={{ color: "#475569", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-              </svg>
-            </button>
-          </div>
-        </div>
+      {/* ── 4-quadrant overview ── */}
+      <div className="px-5 py-4 grid grid-cols-2 lg:grid-cols-4 gap-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        {renderLeadGen()}
+        {renderCallPerf()}
+        {renderAppts()}
+        {renderSummary()}
+      </div>
 
-        {/* ── 4-quadrant overview ── */}
-        <div className="flex-none px-5 py-4 grid grid-cols-2 gap-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          {renderLeadGen()}
-          {renderCallPerf()}
-          {renderAppts()}
-          {renderSummary()}
-        </div>
+      {/* ── Tab bar ── */}
+      <div className="flex items-center gap-0 px-5 overflow-x-auto" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", background: "#070d1a" }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className="px-4 py-2.5 text-xs font-semibold whitespace-nowrap transition-colors"
+            style={{
+              color: tab === t.id ? "#f1f5f9" : "#475569",
+              borderBottom: tab === t.id ? "2px solid #3b82f6" : "2px solid transparent",
+              background: "transparent",
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-        {/* ── Tab bar ── */}
-        <div className="flex-none flex items-center gap-0 px-5 overflow-x-auto" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", background: "#070d1a" }}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className="px-4 py-3 text-xs font-semibold whitespace-nowrap transition-colors"
-              style={{
-                color: tab === t.id ? "#f1f5f9" : "#475569",
-                borderBottom: tab === t.id ? "2px solid #3b82f6" : "2px solid transparent",
-                background: "transparent",
-              }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* ── Tab content ── */}
-        <div className="flex-1 overflow-y-auto p-5">
-          {tab === "ai" ? renderAI() : <div>{tabContent[tab]}</div>}
-        </div>
+      {/* ── Tab content (max-height so it doesn't push page too far) ── */}
+      <div className="p-5 overflow-y-auto" style={{ maxHeight: 480 }}>
+        {tab === "ai" ? renderAI() : tabContent[tab]}
       </div>
     </div>
   );

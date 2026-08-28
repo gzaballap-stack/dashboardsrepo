@@ -221,25 +221,32 @@ export default function B2BTracking({ startDate, endDate }: Props) {
                 const campSpend = camp ? camp.spend : data.ad_spend;
                 const campCtr   = camp ? camp.ctr   : data.ctr;
                 const campCpc   = camp ? camp.cpc   : data.cpc;
+                const campId    = camp?.campaign_id ?? 'total';
                 const campName  = camp?.campaign_name || (camp?.campaign_id ? `Campaign ${camp.campaign_id}` : "All Campaigns");
+                const isSelected = drawerEntity?.kind === "b2b" && drawerEntity.id === campId;
                 return (
-                  <tr key={camp?.campaign_id ?? 'total'}
+                  <>
+                  <tr key={campId}
                     onClick={() => {
-                      setDrawerEntity({
-                        kind: "b2b",
-                        name: campName,
-                        id: camp?.campaign_id ?? "total",
-                        data,
-                        startDate,
-                        endDate,
-                      });
+                      if (isSelected) { setDrawerEntity(null); return; }
+                      setDrawerEntity({ kind: "b2b", name: campName, id: campId, data, startDate, endDate });
                     }}
                     className="cursor-pointer transition-colors"
-                    style={{ borderTop: i === 0 ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(255,255,255,0.03)" }}
-                    onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
-                    onMouseLeave={e => (e.currentTarget.style.background = "")}>
+                    style={{
+                      borderTop: i === 0 ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(255,255,255,0.03)",
+                      background: isSelected ? "rgba(29,78,216,0.08)" : "",
+                    }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
+                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = ""; }}>
                     {/* Campaign */}
-                    <td className="px-4 py-3 font-semibold whitespace-nowrap" style={{ color: "#93c5fd" }}>{campName}</td>
+                    <td className="px-4 py-3 font-semibold whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-3 h-3 flex-none transition-transform" style={{ color: "#475569", transform: isSelected ? "rotate(90deg)" : "none" }} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                        <span style={{ color: "#93c5fd" }}>{campName}</span>
+                      </div>
+                    </td>
                     {/* Spend */}
                     <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
                       {campSpend > 0 ? fmt$(campSpend) : dash}
@@ -299,6 +306,14 @@ export default function B2BTracking({ startDate, endDate }: Props) {
                       ) : dash}
                     </td>
                   </tr>
+                  {isSelected && drawerEntity && (
+                    <tr key={campId + "_detail"}>
+                      <td colSpan={13} style={{ padding: 0 }}>
+                        <CampaignDetailDrawer entity={drawerEntity} onClose={() => setDrawerEntity(null)} />
+                      </td>
+                    </tr>
+                  )}
+                  </>
                 );
               })}
             </tbody>
@@ -308,9 +323,6 @@ export default function B2BTracking({ startDate, endDate }: Props) {
 
     </div>
 
-    {drawerEntity && (
-      <CampaignDetailDrawer entity={drawerEntity} onClose={() => setDrawerEntity(null)} />
-    )}
     </>
   );
 }

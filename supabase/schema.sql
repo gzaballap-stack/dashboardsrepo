@@ -357,3 +357,55 @@ create index if not exists b2b_ad_spend_date on b2b_ad_spend(spend_date desc);
 
 alter table b2b_events    enable row level security;
 alter table b2b_ad_spend  enable row level security;
+
+-- 17. B2B Ad Sets (adset-level daily spend, fed by Make.com from Meta)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists b2b_ad_sets (
+  id            uuid    primary key default gen_random_uuid(),
+  spend_date    date    not null,
+  platform      text    not null,
+  campaign_id   text    not null,
+  campaign_name text,
+  adset_id      text    not null,
+  adset_name    text,
+  spend         numeric not null default 0,
+  impressions   integer,
+  reach         integer,
+  link_clicks   integer,
+  ctr           numeric,
+  cpc           numeric,
+  cpm           numeric,
+  created_at    timestamptz default now(),
+  constraint b2b_ad_sets_platform_check check (platform in ('meta', 'google', 'local_services')),
+  unique(spend_date, platform, campaign_id, adset_id)
+);
+
+create index if not exists b2b_ad_sets_date on b2b_ad_sets(spend_date desc);
+alter table b2b_ad_sets enable row level security;
+
+-- 18. B2B Ads (ad-level daily spend, fed by Make.com from Meta)
+-- ─────────────────────────────────────────────────────────────────────────────
+create table if not exists b2b_ads (
+  id            uuid    primary key default gen_random_uuid(),
+  spend_date    date    not null,
+  platform      text    not null,
+  campaign_id   text    not null,
+  campaign_name text,
+  adset_id      text    not null default '',
+  adset_name    text,
+  ad_id         text    not null,
+  ad_name       text,
+  spend         numeric not null default 0,
+  impressions   integer,
+  reach         integer,
+  link_clicks   integer,
+  ctr           numeric,
+  cpc           numeric,
+  cpm           numeric,
+  created_at    timestamptz default now(),
+  constraint b2b_ads_platform_check check (platform in ('meta', 'google', 'local_services')),
+  unique(spend_date, platform, campaign_id, adset_id, ad_id)
+);
+
+create index if not exists b2b_ads_date on b2b_ads(spend_date desc);
+alter table b2b_ads enable row level security;
