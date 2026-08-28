@@ -204,20 +204,25 @@ export async function POST(req: Request) {
   const metaToken     = process.env.META_B2B_TOKEN        || body.meta_token;
 
   if (!supabaseToken) return NextResponse.json({ error: 'SUPABASE_ACCESS_TOKEN not set' }, { status: 500 });
-  if (!makeToken)     return NextResponse.json({ error: 'MAKE_API_TOKEN not set' }, { status: 500 });
-  if (!metaToken)     return NextResponse.json({ error: 'META_B2B_TOKEN not set' }, { status: 500 });
 
-  // 1. Run DB migration
+  // 1. Run DB migration (runs even without Make/Meta tokens)
   const dbResults = [];
   for (const sql of MIGRATION_STEPS) {
     const r = await runSQL(sql, supabaseToken);
     dbResults.push({ sql: sql.slice(0, 80), ok: r.ok, status: r.status });
   }
 
-  // 2. Update Make scenario blueprint
+  // 2. Update Make scenario blueprint (only if both tokens are present)
+  if (!makeToken || !metaToken) {
+    return NextResponse.json({
+      success: true,
+      db: dbResults,
+      make: { skipped: true, reason: !makeToken ? 'MAKE_API_TOKEN not set' : 'META_B2B_TOKEN not set' },
+    });
+  }
+
   const webhookSecret = process.env.ADMIN_WEBHOOK_SECRET || '';
   const blueprint = buildBlueprint(metaToken, webhookSecret);
-  // PATCH /scenarios/{id} with blueprint as stringified JSON (confirmed working endpoint)
   const makeRes = await fetch(
     `https://eu1.make.com/api/v2/scenarios/${MAKE_SCENARIO}?teamId=875675`,
     {
