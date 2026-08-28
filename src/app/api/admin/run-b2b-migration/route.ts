@@ -14,7 +14,9 @@ const MIGRATION_STEPS = [
   `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'b2b_ad_spend_spend_date_platform_campaign_key') THEN ALTER TABLE b2b_ad_spend ADD CONSTRAINT b2b_ad_spend_spend_date_platform_campaign_key UNIQUE(spend_date, platform, campaign_id); END IF; END$$`,
 ];
 
-function buildBlueprint(metaToken: string) { return {
+// 2-module blueprint: fetch all campaigns from Meta in one call → POST array to /batch endpoint.
+// Avoids the Iterator module (tools:BasicIterator) which Make rejects via API.
+function buildBlueprint(metaToken: string, webhookSecret: string) { return {
   name: "CCM - B2B Meta Spend → Supabase",
   flow: [
     {
@@ -37,27 +39,22 @@ function buildBlueprint(metaToken: string) { return {
       metadata: { designer: { x: 0, y: 0, name: "Fetch Meta Campaign Insights" } },
     },
     {
-      id: 2, module: "tools:BasicIterator", version: 1,
-      parameters: {}, mapper: { array: "{{1.data}}" },
-      metadata: { designer: { x: 300, y: 0, name: "For Each Campaign" } },
-    },
-    {
-      id: 3, module: "http:ActionSendData", version: 3,
+      id: 2, module: "http:ActionSendData", version: 3,
       parameters: { handleErrors: false, useNewZLibDeCompression: true },
       mapper: {
-        url: "https://dashboard.tomsimedia.com/api/b2b-ad-spend",
+        url: "https://dashboard.tomsimedia.com/api/b2b-ad-spend/batch",
         method: "post", qs: [], parseResponse: false, gzip: true,
         bodyType: "raw", contentType: "application/json",
         serializeUrl: false, followAllRedirects: false, useQuerystring: false,
         shareCookies: false, ca: "", useMtls: false, followRedirect: true,
         rejectUnauthorized: true, authUser: "", authPass: "", timeout: "",
         headers: [
-          { name: "Authorization", value: "Bearer TomsiMedia1!" },
+          { name: "Authorization", value: `Bearer ${webhookSecret}` },
           { name: "Content-Type",  value: "application/json" },
         ],
-        data: '{"date":"{{formatDate(addDays(now;-1);\\"YYYY-MM-DD\\")}}","platform":"meta","campaign_id":"{{2.campaign_id}}","campaign_name":"{{2.campaign_name}}","spend":"{{2.spend}}","impressions":"{{2.impressions}}","reach":"{{2.reach}}","link_clicks":"{{2.inline_link_clicks}}","ctr":"{{2.ctr}}","cpc":"{{2.cpc}}","cpm":"{{2.cpm}}"}',
+        data: '{"date":"{{formatDate(addDays(now;-1);\\"YYYY-MM-DD\\")}}","platform":"meta","campaigns":{{1.data}}}',
       },
-      metadata: { designer: { x: 600, y: 0, name: "Send Campaign to Dashboard" } },
+      metadata: { designer: { x: 400, y: 0, name: "Send All Campaigns to Dashboard" } },
     },
   ],
   metadata: {
@@ -115,44 +112,18 @@ export async function POST(req: Request) {
   }
 
   // 2. Update Make scenario blueprint
-  const blueprint = buildBlueprint(metaToken);
-  // Try PUT /blueprint with raw blueprint object
-  let makeRes = await fetch(
-    `https://eu1.make.com/api/v2/scenarios/${MAKE_SCENARIO}/blueprint?teamId=875675`,
+  const webhookSecret = process.env.ADMIN_WEBHOOK_SECRET || '';
+  const blueprint = buildBlueprint(metaToken, webhookSecret);
+  // PATCH /scenarios/{id} with blueprint as stringified JSON (confirmed working endpoint)
+  const makeRes = await fetch(
+    `https://eu1.make.com/api/v2/scenarios/${MAKE_SCENARIO}?teamId=875675`,
     {
-      method: 'PUT',
+      method: 'PATCH',
       headers: { Authorization: `Token ${makeToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(blueprint),
+      body: JSON.stringify({ blueprint: JSON.stringify(blueprint) }),
     }
   );
-  let makeBody = await makeRes.json().catch(() => ({}));
-
-  // If that fails, try PUT with { blueprint: <object> } wrapper
-  if (!makeRes.ok) {
-    const res2 = await fetch(
-      `https://eu1.make.com/api/v2/scenarios/${MAKE_SCENARIO}/blueprint?teamId=875675`,
-      {
-        method: 'PUT',
-        headers: { Authorization: `Token ${makeToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blueprint }),
-      }
-    );
-    const body2 = await res2.json().catch(() => ({}));
-    if (res2.ok) { makeRes = res2; makeBody = body2; }
-    else {
-      // Last try: PATCH /scenarios with blueprint as stringified JSON
-      const res3 = await fetch(
-        `https://eu1.make.com/api/v2/scenarios/${MAKE_SCENARIO}?teamId=875675`,
-        {
-          method: 'PATCH',
-          headers: { Authorization: `Token ${makeToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ blueprint: JSON.stringify(blueprint) }),
-        }
-      );
-      const body3 = await res3.json().catch(() => ({}));
-      makeRes = res3; makeBody = { attempt: 'PATCH', ...body3 };
-    }
-  }
+  const makeBody = await makeRes.json().catch(() => ({}));
 
   return NextResponse.json({
     success: true,
