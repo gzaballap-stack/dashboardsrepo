@@ -116,7 +116,8 @@ export async function POST(req: Request) {
 
   // 2. Update Make scenario blueprint
   const blueprint = buildBlueprint(metaToken);
-  const makeRes = await fetch(
+  // Try PUT /blueprint with raw blueprint object
+  let makeRes = await fetch(
     `https://eu1.make.com/api/v2/scenarios/${MAKE_SCENARIO}/blueprint?teamId=875675`,
     {
       method: 'PUT',
@@ -124,7 +125,34 @@ export async function POST(req: Request) {
       body: JSON.stringify(blueprint),
     }
   );
-  const makeBody = await makeRes.json().catch(() => ({}));
+  let makeBody = await makeRes.json().catch(() => ({}));
+
+  // If that fails, try PUT with { blueprint: <object> } wrapper
+  if (!makeRes.ok) {
+    const res2 = await fetch(
+      `https://eu1.make.com/api/v2/scenarios/${MAKE_SCENARIO}/blueprint?teamId=875675`,
+      {
+        method: 'PUT',
+        headers: { Authorization: `Token ${makeToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blueprint }),
+      }
+    );
+    const body2 = await res2.json().catch(() => ({}));
+    if (res2.ok) { makeRes = res2; makeBody = body2; }
+    else {
+      // Last try: PATCH /scenarios with blueprint as stringified JSON
+      const res3 = await fetch(
+        `https://eu1.make.com/api/v2/scenarios/${MAKE_SCENARIO}?teamId=875675`,
+        {
+          method: 'PATCH',
+          headers: { Authorization: `Token ${makeToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ blueprint: JSON.stringify(blueprint) }),
+        }
+      );
+      const body3 = await res3.json().catch(() => ({}));
+      makeRes = res3; makeBody = { attempt: 'PATCH', ...body3 };
+    }
+  }
 
   return NextResponse.json({
     success: true,
