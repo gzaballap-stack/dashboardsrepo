@@ -17,6 +17,7 @@ import ClientRoster from "./ClientRoster";
 import UserManager from "./UserManager";
 import ZipTool from "./ZipTool";
 import CampaignOverview from "./CampaignOverview";
+import CSMDashboard from "./CSMDashboard";
 import B2BTracking from "./B2BTracking";
 
 type Client = { id: string; name: string; is_live?: boolean };
@@ -250,7 +251,6 @@ const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: strin
   {
     id: "clients", label: "Clients",
     icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z",
-    badge: "Coming Soon",
   },
   {
     id: "tools", label: "Tools",
@@ -747,24 +747,7 @@ export default function DashboardView() {
             </>
           )}
 
-          {topSection === "clients" && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 20, padding: 40 }}>
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg style={{ width: 28, height: 28, color: "#334155" }} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <p style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0", marginBottom: 6 }}>Client Management</p>
-                <p style={{ fontSize: 13, color: "#334155", maxWidth: 320, lineHeight: 1.6 }}>
-                  A CSM tool is being built here. You&apos;ll be able to manage client accounts, track health scores, and monitor key milestones.
-                </p>
-              </div>
-              <div style={{ padding: "6px 14px", borderRadius: 20, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.06em" }}>
-                COMING SOON
-              </div>
-            </div>
-          )}
+          {topSection === "clients" && <CSMDashboard />}
 
           {topSection === "payments" && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 20, padding: 40 }}>
