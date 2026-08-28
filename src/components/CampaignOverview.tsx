@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import CampaignDetailDrawer, { type DrawerEntity } from "./CampaignDetailDrawer";
 
 type CampaignRollup = {
   campaign_id: string;
@@ -185,6 +186,7 @@ export default function CampaignOverview({ startDate, endDate }: {
   };
 
   const [togglingCampaign, setTogglingCampaign] = useState<string | null>(null);
+  const [drawerEntity, setDrawerEntity] = useState<DrawerEntity | null>(null);
 
   const toggleCampaignIncluded = async (clientId: string, campaignId: string, currentlyExcluded: boolean) => {
     const key = clientId + campaignId;
@@ -215,6 +217,7 @@ export default function CampaignOverview({ startDate, endDate }: {
   }, {} as Record<string, number>);
 
   return (
+    <>
     <div className="space-y-6 max-w-[1400px]">
       <div className="flex items-center justify-between flex-wrap gap-3 rounded-xl px-4 py-3"
         style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.07)" }}>
@@ -349,7 +352,13 @@ export default function CampaignOverview({ startDate, endDate }: {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                           </svg>
                         </td>
-                        <td className="px-2 py-3 font-semibold whitespace-nowrap" style={{ color: "#e2e8f0" }}>{r.client_name}</td>
+                        <td className="px-2 py-3 font-semibold whitespace-nowrap" style={{ color: "#e2e8f0" }}
+                          onClick={e => {
+                            e.stopPropagation();
+                            setDrawerEntity({ kind: "client", client: r, startDate: rangeStart, endDate: rangeEnd });
+                          }}>
+                          <span className="hover:underline cursor-pointer" style={{ color: "#93c5fd" }}>{r.client_name}</span>
+                        </td>
                         <td className="text-center px-2 py-3">
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ color: rk.color, background: rk.bg }}>
                             {r.rank}
@@ -421,5 +430,10 @@ export default function CampaignOverview({ startDate, endDate }: {
         )}
       </section>
     </div>
+
+    {drawerEntity && (
+      <CampaignDetailDrawer entity={drawerEntity} onClose={() => setDrawerEntity(null)} />
+    )}
+    </>
   );
 }

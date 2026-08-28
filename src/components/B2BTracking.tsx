@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import CampaignDetailDrawer, { type DrawerEntity } from "./CampaignDetailDrawer";
 
 interface CampaignRow {
   campaign_id: string;
@@ -110,6 +111,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
   const [data, setData] = useState<B2BMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [drawerEntity, setDrawerEntity] = useState<DrawerEntity | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -162,6 +164,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
   const dash = <span style={{ color: "#334155" }}>—</span>;
 
   return (
+    <>
     <div className="space-y-8 max-w-7xl">
 
       {/* ── Row 1: Pipeline ── */}
@@ -220,9 +223,23 @@ export default function B2BTracking({ startDate, endDate }: Props) {
                 const campCpc   = camp ? camp.cpc   : data.cpc;
                 const campName  = camp?.campaign_name || (camp?.campaign_id ? `Campaign ${camp.campaign_id}` : "All Campaigns");
                 return (
-                  <tr key={camp?.campaign_id ?? 'total'} style={{ borderTop: i === 0 ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(255,255,255,0.03)" }}>
+                  <tr key={camp?.campaign_id ?? 'total'}
+                    onClick={() => {
+                      setDrawerEntity({
+                        kind: "b2b",
+                        name: campName,
+                        id: camp?.campaign_id ?? "total",
+                        data,
+                        startDate,
+                        endDate,
+                      });
+                    }}
+                    className="cursor-pointer transition-colors"
+                    style={{ borderTop: i === 0 ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(255,255,255,0.03)" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "")}>
                     {/* Campaign */}
-                    <td className="px-4 py-3 font-semibold whitespace-nowrap" style={{ color: "#e2e8f0" }}>{campName}</td>
+                    <td className="px-4 py-3 font-semibold whitespace-nowrap" style={{ color: "#93c5fd" }}>{campName}</td>
                     {/* Spend */}
                     <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
                       {campSpend > 0 ? fmt$(campSpend) : dash}
@@ -290,5 +307,10 @@ export default function B2BTracking({ startDate, endDate }: Props) {
       </section>
 
     </div>
+
+    {drawerEntity && (
+      <CampaignDetailDrawer entity={drawerEntity} onClose={() => setDrawerEntity(null)} />
+    )}
+    </>
   );
 }

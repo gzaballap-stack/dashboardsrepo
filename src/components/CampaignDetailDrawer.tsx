@@ -1,0 +1,784 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+// ─── Shared types (re-declared here to keep the drawer self-contained) ────────
+export interface B2BDrawerData {
+  ad_spend: number; leads: number; intros_booked: number; intros_shown: number;
+  sales_calls_booked: number; sales_calls_shown: number; closes: number;
+  cash_collected: number; impressions: number; reach: number; link_clicks: number;
+  ctr: number | null; cpc: number | null; cpm: number | null;
+  intro_show_rate: number; cost_per_lead: number; cost_per_close: number;
+  campaigns: Array<{
+    campaign_id: string; campaign_name: string | null;
+    spend: number; impressions: number; reach: number; link_clicks: number;
+    ctr: number | null; cpc: number | null; cpm: number | null;
+  }>;
+}
+
+export interface ClientDrawerData {
+  client_id: string; client_name: string; rank: string; status: string;
+  bottleneck: string; action: string; spend: number; leads: number; cpl: number;
+  cvr: number; appts: number; cp_appt: number; l2a_pct: number;
+  shows: number; no_shows: number; show_rate: number; closes: number;
+  close_rate: number; ctr: number; cpc: number;
+  campaigns: Array<{
+    campaign_id: string; campaign_name: string; platform: string;
+    status: string | null; spend: number; impressions: number; reach: number;
+    link_clicks: number; ctr: number; cpc: number; excluded?: boolean;
+  }>;
+}
+
+export type DrawerEntity =
+  | { kind: "b2b"; name: string; id: string; data: B2BDrawerData; startDate: string; endDate: string; }
+  | { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string; };
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const fmt$ = (n: number) => n > 0 ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—";
+const fmtDec = (n: number | null, pre = "$") => n != null && n > 0 ? `${pre}${n.toFixed(2)}` : "—";
+const fmtPct = (n: number, digits = 1) => `${n.toFixed(digits)}%`;
+const fmtN = (n: number) => n.toLocaleString();
+const dash = () => <span style={{ color: "#334155" }}>—</span>;
+
+const STATUS_STYLE: Record<string, { label: string; color: string; bg: string }> = {
+  excellent:    { label: "Excellent",    color: "#4ade80", bg: "rgba(74,222,128,0.12)"  },
+  on_target:    { label: "On Target",    color: "#38bdf8", bg: "rgba(56,189,248,0.12)"  },
+  above_target: { label: "Above Target", color: "#f59e0b", bg: "rgba(245,158,11,0.12)"  },
+  critical:     { label: "Critical",     color: "#f87171", bg: "rgba(248,113,113,0.12)" },
+  hold:         { label: "Hold",         color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
+  no_data:      { label: "No Data",      color: "#64748b", bg: "rgba(100,116,139,0.12)" },
+};
+
+const BOTTLENECK_COLOR: Record<string, string> = {
+  Healthy: "#4ade80", Creative: "#f472b6", Targeting: "#f59e0b",
+  Funnel: "#fb923c", "Post-Funnel": "#a78bfa", Hold: "#94a3b8", "No Data": "#64748b",
+};
+
+const PLATFORM_LABEL: Record<string, string> = { meta: "Meta", google: "Google", local_services: "LSA" };
+
+function relativeTime(d: Date): string {
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 10) return "just now";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m / 60)}h ago`;
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+function MetricRow({ label, value, status }: { label: string; value: string; status?: string }) {
+  const st = status ? STATUS_STYLE[status] : null;
+  return (
+    <div className="flex items-center justify-between py-1.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+      <span className="text-xs" style={{ color: "#64748b" }}>{label}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>{value}</span>
+        {st && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ color: st.color, background: st.bg }}>
+            {st.label}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SectionCard({ title, children, badge }: { title: string; children: React.ReactNode; badge?: React.ReactNode }) {
+  return (
+    <div className="rounded-xl p-4 flex flex-col" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#475569" }}>{title}</span>
+        {badge}
+      </div>
+      <div className="flex-1 flex flex-col gap-0">{children}</div>
+    </div>
+  );
+}
+
+// ─── Funnel bar ───────────────────────────────────────────────────────────────
+function FunnelStage({ label, count, pct, color }: { label: string; count: number; pct: number; color: string }) {
+  return (
+    <div className="flex items-center gap-3 mb-3">
+      <div className="w-28 text-right">
+        <span className="text-xs font-medium" style={{ color: "#94a3b8" }}>{label}</span>
+      </div>
+      <div className="flex-1 relative h-9 rounded-lg overflow-hidden" style={{ background: "rgba(255,255,255,0.05)" }}>
+        <div className="h-full rounded-lg transition-all" style={{ width: `${Math.max(pct, 2)}%`, background: color, opacity: 0.85 }} />
+        <div className="absolute inset-0 flex items-center px-3">
+          <span className="text-sm font-bold" style={{ color: "#f1f5f9" }}>{fmtN(count)}</span>
+        </div>
+      </div>
+      <div className="w-14 text-right">
+        <span className="text-xs" style={{ color: "#64748b" }}>{pct.toFixed(1)}%</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Comparison cell ──────────────────────────────────────────────────────────
+function CompCell({ label, value, baseline, isBaseline, loading }: {
+  label: string; value: number | null; baseline: number | null;
+  isBaseline: boolean; loading: boolean;
+}) {
+  if (loading) return <div className="py-2 text-xs text-center" style={{ color: "#334155" }}>…</div>;
+  const numVal = value ?? 0;
+  const numBase = baseline ?? 0;
+  const delta = numBase > 0 ? ((numVal - numBase) / numBase) * 100 : 0;
+  const up = delta > 2;
+  const dn = delta < -2;
+  return (
+    <div className="py-2 px-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+      <div className="text-xs mb-0.5" style={{ color: "#475569" }}>{label}</div>
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>
+          {label.toLowerCase().includes("$") || label.toLowerCase().includes("cpl") || label.toLowerCase().includes("spend")
+            ? fmt$(numVal) : label.toLowerCase().includes("%") || label.toLowerCase().includes("rate")
+            ? fmtPct(numVal) : fmtN(numVal)}
+        </span>
+        {!isBaseline && numBase > 0 && (
+          <span className="text-[10px] font-semibold" style={{ color: up ? "#4ade80" : dn ? "#f87171" : "#64748b" }}>
+            {up ? "▲" : dn ? "▼" : "≈"} {Math.abs(delta).toFixed(1)}%
+          </span>
+        )}
+        {isBaseline && <span className="text-[10px] uppercase font-bold px-1 rounded" style={{ color: "#60a5fa", background: "rgba(96,165,250,0.1)" }}>Baseline</span>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Chat message bubble ──────────────────────────────────────────────────────
+function ChatBubble({ msg }: { msg: { role: string; content: string } }) {
+  const isUser = msg.role === "user";
+  return (
+    <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
+      <div className="max-w-[80%] rounded-xl px-4 py-2.5 text-sm" style={{
+        background: isUser ? "rgba(29,78,216,0.25)" : "#0f2040",
+        border: `1px solid ${isUser ? "rgba(29,78,216,0.4)" : "rgba(255,255,255,0.07)"}`,
+        color: "#e2e8f0",
+        whiteSpace: "pre-wrap",
+      }}>
+        {msg.content}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function CampaignDetailDrawer({ entity, onClose }: { entity: DrawerEntity; onClose: () => void }) {
+  type Tab = "calls" | "campaigns" | "adsets" | "ads" | "funnel" | "comparison" | "ai";
+  const TABS: { id: Tab; label: string }[] = [
+    { id: "calls",      label: "Calls"      },
+    { id: "campaigns",  label: "Campaigns"  },
+    { id: "adsets",     label: "Ad Sets"    },
+    { id: "ads",        label: "Ads"        },
+    { id: "funnel",     label: "Funnel"     },
+    { id: "comparison", label: "Comparison" },
+    { id: "ai",         label: "AI"         },
+  ];
+
+  const [tab, setTab]           = useState<Tab>("campaigns");
+  const [lastUpdated]           = useState(new Date());
+  const [, forceTick]           = useState(0);
+  const [compData, setCompData] = useState<Array<{ label: string; start: string; end: string; data: Record<string, number>; loading: boolean }>>([]);
+  const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
+  const [input, setInput]       = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError]   = useState("");
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Keep "last updated" clock ticking
+  useEffect(() => {
+    const id = setInterval(() => forceTick(t => t + 1), 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  // ── Derived values ──────────────────────────────────────────────────
+  const isBb = entity.kind === "b2b";
+  const name = isBb ? entity.name : (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client.client_name;
+  const statusKey = isBb
+    ? (() => {
+        const d = entity.data;
+        if (!d.leads && !d.ad_spend) return "no_data";
+        const r = d.leads > 0 ? d.intros_booked / d.leads : 0;
+        if (r >= 0.15) return "excellent";
+        if (r >= 0.08) return "on_target";
+        if (r >= 0.04) return "above_target";
+        return "critical";
+      })()
+    : (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client.status;
+  const st = STATUS_STYLE[statusKey] ?? STATUS_STYLE.no_data;
+
+  // ── Comparison data ─────────────────────────────────────────────────
+  const iso = (d: Date) => d.toISOString().split("T")[0];
+  const daysAgo = (n: number) => {
+    const d = new Date(); d.setDate(d.getDate() - n); return iso(d);
+  };
+
+  const fetchComparison = useCallback(async () => {
+    const periods = [
+      { label: "Last 3 Days",     start: daysAgo(3),  end: iso(new Date()) },
+      { label: "Last 7 Days",     start: daysAgo(7),  end: iso(new Date()) },
+      { label: "Previous 7 Days", start: daysAgo(14), end: daysAgo(7)      },
+    ];
+    setCompData(periods.map(p => ({ ...p, data: {}, loading: true })));
+
+    await Promise.all(periods.map(async (p, i) => {
+      try {
+        let data: Record<string, number> = {};
+        if (entity.kind === "b2b") {
+          const r = await fetch(`/api/b2b-metrics?start_date=${p.start}&end_date=${p.end}`).then(r => r.json());
+          data = {
+            "Spend": r.ad_spend ?? 0,
+            "Leads": r.leads ?? 0,
+            "CPL ($)": r.cost_per_lead ?? 0,
+            "Intros Booked": r.intros_booked ?? 0,
+            "Intro Show Rate (%)": (r.intro_show_rate ?? 0) * 100,
+            "Demos": r.sales_calls_shown ?? 0,
+            "Closes": r.closes ?? 0,
+            "Cash ($)": r.cash_collected ?? 0,
+          };
+        } else {
+          const ent = entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string };
+          const r = await fetch(`/api/campaign-overview?start_date=${p.start}&end_date=${p.end}`).then(r => r.json());
+          const c = (r.clients ?? []).find((x: ClientDrawerData) => x.client_id === ent.client.client_id);
+          if (c) {
+            data = {
+              "Spend": c.spend,
+              "Leads": c.leads,
+              "CPL ($)": c.cpl,
+              "Appts": c.appts,
+              "Show Rate (%)": c.show_rate,
+              "Closes": c.closes,
+              "CTR (%)": c.ctr,
+              "CPC ($)": c.cpc,
+            };
+          }
+        }
+        setCompData(prev => prev.map((cp, j) => j === i ? { ...cp, data, loading: false } : cp));
+      } catch {
+        setCompData(prev => prev.map((cp, j) => j === i ? { ...cp, loading: false } : cp));
+      }
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity]);
+
+  useEffect(() => {
+    if (tab === "comparison") fetchComparison();
+  }, [tab, fetchComparison]);
+
+  // ── AI context builder ──────────────────────────────────────────────
+  const buildContext = () => {
+    if (entity.kind === "b2b") {
+      const d = entity.data;
+      return [
+        `Campaign: ${entity.name} | ID: ${entity.id}`,
+        `Date Range: ${entity.startDate} → ${entity.endDate}`,
+        `Ad Spend: $${d.ad_spend.toFixed(0)} | Leads: ${d.leads} | CPL: $${d.cost_per_lead.toFixed(2)}`,
+        `Intros Booked: ${d.intros_booked} | Intros Shown: ${d.intros_shown} | Show Rate: ${(d.intro_show_rate * 100).toFixed(1)}%`,
+        `Demos Booked: ${d.sales_calls_booked} | Demos Shown: ${d.sales_calls_shown}`,
+        `Demo Show Rate: ${d.sales_calls_booked > 0 ? ((d.sales_calls_shown / d.sales_calls_booked) * 100).toFixed(1) : 0}%`,
+        `Closes: ${d.closes} | Cash Collected: $${d.cash_collected.toFixed(0)}`,
+        `Close Rate: ${d.sales_calls_shown > 0 ? ((d.closes / d.sales_calls_shown) * 100).toFixed(1) : 0}%`,
+        `Cost per Intro: $${d.intros_booked > 0 ? (d.ad_spend / d.intros_booked).toFixed(0) : "N/A"}`,
+        `Cost per Demo: $${d.sales_calls_shown > 0 ? (d.ad_spend / d.sales_calls_shown).toFixed(0) : "N/A"}`,
+        `Cost per Acquisition: $${d.closes > 0 ? (d.ad_spend / d.closes).toFixed(0) : "N/A"}`,
+        `CTR: ${d.ctr != null ? d.ctr.toFixed(2) + "%" : "N/A"} | CPC: ${d.cpc != null ? "$" + d.cpc.toFixed(2) : "N/A"} | CPM: ${d.cpm != null ? "$" + d.cpm.toFixed(2) : "N/A"}`,
+        `Impressions: ${d.impressions.toLocaleString()} | Reach: ${d.reach.toLocaleString()} | Link Clicks: ${d.link_clicks.toLocaleString()}`,
+      ].join("\n");
+    } else {
+      const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+      return [
+        `Client: ${c.client_name}`,
+        `Date Range: ${entity.startDate} → ${entity.endDate}`,
+        `Ad Spend: $${c.spend.toFixed(0)} | Leads: ${c.leads} | CPL: $${c.cpl.toFixed(2)}`,
+        `CTR: ${c.ctr.toFixed(2)}% | CPC: $${c.cpc.toFixed(2)} | CVR: ${c.cvr.toFixed(1)}%`,
+        `Appointments: ${c.appts} | CP Appt: $${c.cp_appt.toFixed(0)} | L2A: ${c.l2a_pct.toFixed(1)}%`,
+        `Shows: ${c.shows} | No Shows: ${c.no_shows} | Show Rate: ${c.show_rate.toFixed(1)}%`,
+        `Closes: ${c.closes} | Close Rate: ${c.close_rate.toFixed(1)}%`,
+        `Status: ${c.status} | Bottleneck: ${c.bottleneck}`,
+        `Action: ${c.action}`,
+        `Campaigns: ${c.campaigns.length} total (${c.campaigns.filter(x => !x.excluded).length} included)`,
+      ].join("\n");
+    }
+  };
+
+  // ── AI send ─────────────────────────────────────────────────────────
+  const sendMessage = async () => {
+    if (!input.trim() || aiLoading) return;
+    const userMsg = { role: "user", content: input.trim() };
+    const newMsgs = [...messages, userMsg];
+    setMessages(newMsgs);
+    setInput("");
+    setAiLoading(true);
+    setAiError("");
+    try {
+      const r = await fetch("/api/ai-campaign-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ context: buildContext(), messages: newMsgs }),
+      });
+      const d = await r.json();
+      if (d.error) { setAiError(d.error); }
+      else setMessages([...newMsgs, { role: "assistant", content: d.reply }]);
+    } catch {
+      setAiError("Connection failed. Please try again.");
+    } finally { setAiLoading(false); }
+  };
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  // ── Funnel data ─────────────────────────────────────────────────────
+  const funnelStages = isBb
+    ? (() => {
+        const d = entity.data;
+        const top = Math.max(d.leads, d.impressions > 0 ? 1 : 0, d.intros_booked, 1);
+        return [
+          { label: "Impressions",    count: d.impressions,        color: "#3b82f6", pct: 100 },
+          { label: "Link Clicks",    count: d.link_clicks,        color: "#60a5fa", pct: d.impressions > 0 ? (d.link_clicks / d.impressions) * 100 : 0 },
+          { label: "Leads",          count: d.leads,              color: "#22d3ee", pct: d.link_clicks > 0 ? (d.leads / d.link_clicks) * 100 : 0 },
+          { label: "Intros Booked",  count: d.intros_booked,      color: "#4ade80", pct: d.leads > 0 ? (d.intros_booked / d.leads) * 100 : 0 },
+          { label: "Intros Shown",   count: d.intros_shown,       color: "#a3e635", pct: d.intros_booked > 0 ? (d.intros_shown / d.intros_booked) * 100 : 0 },
+          { label: "Demos Booked",   count: d.sales_calls_booked, color: "#fbbf24", pct: d.intros_shown > 0 ? (d.sales_calls_booked / d.intros_shown) * 100 : 0 },
+          { label: "Demos Shown",    count: d.sales_calls_shown,  color: "#fb923c", pct: d.sales_calls_booked > 0 ? (d.sales_calls_shown / d.sales_calls_booked) * 100 : 0 },
+          { label: "Closes",         count: d.closes,             color: "#f472b6", pct: d.sales_calls_shown > 0 ? (d.closes / d.sales_calls_shown) * 100 : 0 },
+        ];
+        void top;
+      })()
+    : (() => {
+        const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+        return [
+          { label: "Leads",      count: c.leads,  color: "#3b82f6", pct: 100 },
+          { label: "Appts",      count: c.appts,  color: "#22d3ee", pct: c.leads > 0 ? (c.appts / c.leads) * 100 : 0 },
+          { label: "Shows",      count: c.shows,  color: "#4ade80", pct: c.appts > 0 ? (c.shows / c.appts) * 100 : 0 },
+          { label: "Closes",     count: c.closes, color: "#f472b6", pct: c.shows > 0 ? (c.closes / c.shows) * 100 : 0 },
+        ];
+      })();
+
+  // ── Overview sections ──────────────────────────────────────────────
+  const renderLeadGen = () => {
+    if (isBb) {
+      const d = entity.data;
+      const cpi = d.intros_booked > 0 ? d.ad_spend / d.intros_booked : 0;
+      return (
+        <SectionCard title="Lead Generation" badge={<span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ color: st.color, background: st.bg }}>{d.ad_spend > 0 ? "ACTIVE" : "NO DATA"}</span>}>
+          <MetricRow label="Ad Spend" value={d.ad_spend > 0 ? fmt$(d.ad_spend) : "—"} />
+          <MetricRow label="Leads" value={fmtN(d.leads)} />
+          <MetricRow label="CPL" value={d.cost_per_lead > 0 ? fmtDec(d.cost_per_lead) : "—"} />
+          <MetricRow label="CTR" value={d.ctr != null ? fmtPct(d.ctr) : "—"} />
+          <MetricRow label="CPC" value={d.cpc != null ? fmtDec(d.cpc) : "—"} />
+          <MetricRow label="CPM" value={d.cpm != null ? fmtDec(d.cpm) : "—"} />
+          <MetricRow label="Cost per Intro" value={cpi > 0 ? fmt$(cpi) : "—"} />
+        </SectionCard>
+      );
+    } else {
+      const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+      return (
+        <SectionCard title="Lead Generation" badge={<span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ color: st.color, background: st.bg }}>{c.leads > 0 ? "ACTIVE" : "NO DATA"}</span>}>
+          <MetricRow label="Spend" value={fmt$(c.spend)} />
+          <MetricRow label="Leads" value={fmtN(c.leads)} />
+          <MetricRow label="CPL" value={c.cpl > 0 ? fmtDec(c.cpl) : "—"} />
+          <MetricRow label="CTR" value={fmtPct(c.ctr)} />
+          <MetricRow label="CPC" value={c.cpc > 0 ? fmtDec(c.cpc) : "—"} />
+          <MetricRow label="CVR" value={c.cvr > 0 ? fmtPct(c.cvr) : "—"} />
+        </SectionCard>
+      );
+    }
+  };
+
+  const renderCallPerf = () => (
+    <SectionCard title="Call Performance">
+      <div className="flex-1 flex flex-col items-center justify-center gap-2 py-8" style={{ color: "#334155" }}>
+        <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+        </svg>
+        <p className="text-sm font-medium" style={{ color: "#475569" }}>No Call Data</p>
+        <p className="text-xs text-center max-w-[180px]" style={{ color: "#334155" }}>No call records for this date range</p>
+      </div>
+    </SectionCard>
+  );
+
+  const renderAppts = () => {
+    if (isBb) {
+      const d = entity.data;
+      const demoShowRate = d.sales_calls_booked > 0 ? (d.sales_calls_shown / d.sales_calls_booked) * 100 : 0;
+      const closeRate = d.sales_calls_shown > 0 ? (d.closes / d.sales_calls_shown) * 100 : 0;
+      const cpDemo = d.sales_calls_shown > 0 ? d.ad_spend / d.sales_calls_shown : 0;
+      return (
+        <SectionCard title="Intros & Demos">
+          <MetricRow label="Intros Booked" value={fmtN(d.intros_booked)} />
+          <MetricRow label="Intros Shown" value={fmtN(d.intros_shown)} />
+          <MetricRow label="Intro Show Rate" value={d.intros_booked > 0 ? fmtPct(d.intro_show_rate * 100) : "—"} />
+          <MetricRow label="Demos Booked" value={fmtN(d.sales_calls_booked)} />
+          <MetricRow label="Demos Shown" value={fmtN(d.sales_calls_shown)} />
+          <MetricRow label="Demo Show Rate" value={demoShowRate > 0 ? fmtPct(demoShowRate) : "—"} />
+          <MetricRow label="CP Demo" value={cpDemo > 0 ? fmt$(cpDemo) : "—"} />
+          <MetricRow label="Close Rate" value={closeRate > 0 ? fmtPct(closeRate) : "—"} />
+        </SectionCard>
+      );
+    } else {
+      const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+      return (
+        <SectionCard title="Appointments">
+          <MetricRow label="Booked" value={fmtN(c.appts)} />
+          <MetricRow label="Shown" value={fmtN(c.shows)} />
+          <MetricRow label="No Show" value={fmtN(c.no_shows)} />
+          <MetricRow label="Show Rate" value={c.appts > 0 ? fmtPct(c.show_rate) : "—"} />
+          <MetricRow label="CP Appt" value={c.cp_appt > 0 ? fmtDec(c.cp_appt) : "—"} />
+          <MetricRow label="L2A %" value={c.l2a_pct > 0 ? fmtPct(c.l2a_pct) : "—"} />
+          <MetricRow label="Close Rate" value={c.close_rate > 0 ? fmtPct(c.close_rate) : "—"} />
+        </SectionCard>
+      );
+    }
+  };
+
+  const renderSummary = () => {
+    const bottleneck = isBb
+      ? (() => {
+          const d = entity.data;
+          if (!d.leads) return "No Data";
+          const cbr = d.leads > 0 ? d.intros_booked / d.leads : 0;
+          const showRate = d.intros_booked > 0 ? d.intros_shown / d.intros_booked : 0;
+          const closeRate = d.sales_calls_shown > 0 ? d.closes / d.sales_calls_shown : 0;
+          if (d.leads === 0) return "Targeting";
+          if (cbr < 0.05) return "Funnel";
+          if (showRate < 0.5) return "Post-Funnel";
+          if (closeRate < 0.2) return "Post-Funnel";
+          return "Healthy";
+        })()
+      : (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client.bottleneck;
+
+    const action = isBb
+      ? (() => {
+          if (bottleneck === "Funnel") return "Low booking rate — improve follow-up sequence";
+          if (bottleneck === "Post-Funnel") return "Low show/close rate — review reminders & sales";
+          if (bottleneck === "Targeting") return "No leads — review audience & creative";
+          if (bottleneck === "Healthy") return "All stages performing well";
+          return "No events yet";
+        })()
+      : (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client.action;
+
+    const bnColor = BOTTLENECK_COLOR[bottleneck] ?? "#64748b";
+
+    const resultRows = isBb
+      ? (() => {
+          const d = entity.data;
+          return [
+            { label: "Closes",               value: fmtN(d.closes)                                                        },
+            { label: "Cash Collected",        value: d.cash_collected > 0 ? fmt$(d.cash_collected) : "—"                  },
+            { label: "Cost per Acquisition",  value: d.closes > 0 ? fmt$(d.ad_spend / d.closes) : "—"                     },
+          ];
+        })()
+      : (() => {
+          const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+          return [
+            { label: "Closes",      value: fmtN(c.closes)                                     },
+            { label: "Close Rate",  value: c.close_rate > 0 ? fmtPct(c.close_rate) : "—"      },
+            { label: "CP Close",    value: c.closes > 0 ? fmt$(c.spend / c.closes) : "—"       },
+          ];
+        })();
+
+    return (
+      <SectionCard title="Overall Summary"
+        badge={<span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ color: st.color, background: st.bg }}>{st.label}</span>}>
+        {resultRows.map(r => <MetricRow key={r.label} label={r.label} value={r.value} />)}
+        <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[10px] uppercase font-bold" style={{ color: "#475569" }}>Bottleneck</span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-semibold" style={{ color: bnColor, background: `${bnColor}22` }}>{bottleneck}</span>
+          </div>
+          <p className="text-xs" style={{ color: "#475569" }}>{action}</p>
+        </div>
+      </SectionCard>
+    );
+  };
+
+  // ── Tab content renderers ──────────────────────────────────────────
+  const renderCalls = () => (
+    <div className="flex flex-col items-center justify-center py-20 gap-3">
+      <svg className="w-12 h-12" fill="none" stroke="currentColor" strokeWidth={1} viewBox="0 0 24 24" style={{ color: "#1e3a5f" }}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+      </svg>
+      <p className="text-base font-semibold" style={{ color: "#334155" }}>No Call Data</p>
+      <p className="text-sm" style={{ color: "#1e3a5f" }}>No call records for this date range</p>
+    </div>
+  );
+
+  const renderCampaigns = () => {
+    const camps = isBb
+      ? entity.data.campaigns
+      : (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client.campaigns;
+
+    if (!camps.length) return (
+      <div className="text-center py-16 text-sm" style={{ color: "#334155" }}>No campaign data for this period</div>
+    );
+
+    return (
+      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+        <table className="w-full text-sm" style={{ minWidth: 700 }}>
+          <thead>
+            <tr style={{ background: "#0a1628", color: "#64748b" }}>
+              <th className="text-left font-medium px-4 py-3">Campaign</th>
+              {!isBb && <th className="text-left font-medium px-3 py-3">Platform</th>}
+              {!isBb && <th className="text-left font-medium px-3 py-3">Status</th>}
+              <th className="text-right font-medium px-3 py-3">Spend</th>
+              <th className="text-right font-medium px-3 py-3">Impressions</th>
+              <th className="text-right font-medium px-3 py-3">Clicks</th>
+              <th className="text-right font-medium px-3 py-3">CTR</th>
+              <th className="text-right font-medium px-3 py-3">CPC</th>
+              {isBb && <th className="text-right font-medium px-3 py-3">CPM</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {camps.map((c, i) => {
+              const ctr = "ctr" in c ? c.ctr : null;
+              const cpc = "cpc" in c ? c.cpc : null;
+              const cpm = "cpm" in c && typeof (c as { cpm?: number | null }).cpm !== "undefined" ? (c as { cpm?: number | null }).cpm : null;
+              const campName = "campaign_name" in c && c.campaign_name ? c.campaign_name : ("name" in c ? (c as { name: string }).name : c.campaign_id);
+              const platform = "platform" in c ? (c as { platform: string }).platform : null;
+              const campStatus = "status" in c ? (c as { status: string | null }).status : null;
+              return (
+                <tr key={i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                  <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0", maxWidth: 240 }}>
+                    <span className="truncate block">{campName}</span>
+                  </td>
+                  {!isBb && platform && (
+                    <td className="px-3 py-3">
+                      <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>
+                        {PLATFORM_LABEL[platform] ?? platform}
+                      </span>
+                    </td>
+                  )}
+                  {!isBb && <td className="px-3 py-3 text-xs" style={{ color: "#64748b" }}>{campStatus ?? "—"}</td>}
+                  <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>{fmt$(c.spend)}</td>
+                  <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{c.impressions > 0 ? fmtN(c.impressions) : "—"}</td>
+                  <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{c.link_clicks > 0 ? fmtN(c.link_clicks) : "—"}</td>
+                  <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{ctr != null ? fmtPct(ctr) : "—"}</td>
+                  <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{cpc != null && cpc > 0 ? fmtDec(cpc) : "—"}</td>
+                  {isBb && <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{cpm != null && cpm > 0 ? fmtDec(cpm) : "—"}</td>}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const renderPlaceholder = (title: string, msg: string) => (
+    <div className="rounded-xl p-8 text-center" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.07)" }}>
+      <p className="text-sm font-medium mb-1" style={{ color: "#475569" }}>{title}</p>
+      <p className="text-xs" style={{ color: "#334155" }}>{msg}</p>
+    </div>
+  );
+
+  const renderFunnel = () => {
+    const topCount = funnelStages[0]?.count ?? 1;
+    const stages = funnelStages.map(s => ({
+      ...s,
+      widthPct: topCount > 0 ? Math.max((s.count / topCount) * 100, s.count > 0 ? 4 : 0) : 0,
+    }));
+    return (
+      <div className="rounded-xl p-6" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.07)" }}>
+        <h3 className="text-xs font-bold uppercase tracking-widest mb-6" style={{ color: "#475569" }}>Conversion Funnel</h3>
+        <div className="space-y-1">
+          {stages.map((s, i) => (
+            <div key={i}>
+              <FunnelStage label={s.label} count={s.count} pct={s.widthPct} color={s.color} />
+              {i < stages.length - 1 && stages[i + 1].count > 0 && (
+                <div className="flex items-center gap-3 mb-2 ml-28 pl-3">
+                  <div className="h-4 border-l" style={{ borderColor: "rgba(255,255,255,0.06)" }} />
+                  <span className="text-[10px]" style={{ color: "#334155" }}>
+                    {s.count > 0 ? `${((stages[i + 1].count / s.count) * 100).toFixed(1)}% conversion` : "—"}
+                  </span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderComparison = () => {
+    if (!compData.length) return (
+      <div className="flex items-center justify-center py-10 text-sm" style={{ color: "#334155" }}>Loading comparison data…</div>
+    );
+    const baseline = compData[1];
+    const rowKeys = compData[0]?.data ? Object.keys(compData[0].data) : [];
+    return (
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+        <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          {compData.map((period, pi) => (
+            <div key={pi} style={{ borderRight: pi < 2 ? "1px solid rgba(255,255,255,0.07)" : "none" }}>
+              <div className="px-4 py-3" style={{ background: pi === 1 ? "rgba(96,165,250,0.08)" : "#0a1628", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+                <div className="text-xs font-bold" style={{ color: pi === 1 ? "#60a5fa" : "#94a3b8" }}>{period.label}</div>
+                <div className="text-[10px]" style={{ color: "#334155" }}>{period.start} → {period.end}</div>
+              </div>
+              {rowKeys.map(key => (
+                <CompCell key={key} label={key} value={period.data[key] ?? null}
+                  baseline={baseline.data[key] ?? null} isBaseline={pi === 1} loading={period.loading} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderAI = () => (
+    <div className="flex flex-col h-full" style={{ minHeight: 400 }}>
+      <div className="flex-1 overflow-y-auto p-4 space-y-1" style={{ minHeight: 300 }}>
+        {messages.length === 0 && (
+          <div className="text-center py-10">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(29,78,216,0.15)", border: "1px solid rgba(29,78,216,0.3)" }}>
+              <svg className="w-6 h-6" fill="none" stroke="#60a5fa" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium mb-1" style={{ color: "#64748b" }}>Ask about {name}</p>
+            <p className="text-xs" style={{ color: "#334155" }}>The AI has full context about this {isBb ? "campaign" : "client"}'s metrics.</p>
+            <div className="mt-4 flex flex-wrap gap-2 justify-center">
+              {["What's the main bottleneck?", "How can we improve CVR?", "What should we optimize first?"].map(s => (
+                <button key={s} onClick={() => setInput(s)}
+                  className="px-3 py-1.5 rounded-lg text-xs"
+                  style={{ background: "rgba(29,78,216,0.12)", border: "1px solid rgba(29,78,216,0.25)", color: "#93c5fd" }}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
+        {aiLoading && (
+          <div className="flex justify-start">
+            <div className="px-4 py-2.5 rounded-xl" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <div className="flex gap-1">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: "#475569", animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        {aiError && <div className="text-xs rounded-lg px-3 py-2 mt-2" style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", color: "#fca5a5" }}>{aiError}</div>}
+        <div ref={chatEndRef} />
+      </div>
+      <div className="p-4 flex gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendMessage())}
+          placeholder={`Ask about ${name}…`}
+          className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+          style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+        />
+        <button onClick={sendMessage} disabled={aiLoading || !input.trim()}
+          className="px-4 py-2 rounded-lg text-sm font-semibold transition-opacity"
+          style={{ background: "rgba(29,78,216,0.2)", border: "1px solid rgba(29,78,216,0.35)", color: "#93c5fd", opacity: aiLoading || !input.trim() ? 0.5 : 1 }}>
+          Send
+        </button>
+      </div>
+    </div>
+  );
+
+  const tabContent: Record<Tab, React.ReactNode> = {
+    calls:      renderCalls(),
+    campaigns:  renderCampaigns(),
+    adsets:     renderPlaceholder("Ad Set Data", "Ad set level data requires ad-set level reporting in your Make scenarios. Currently aggregated at campaign level."),
+    ads:        renderPlaceholder("Ad Creative Data", "Individual ad performance requires ad-level reporting in your Make scenarios."),
+    funnel:     renderFunnel(),
+    comparison: renderComparison(),
+    ai:         renderAI(),
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose} style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }}>
+      {/* Panel — stops propagation so clicks inside don't close */}
+      <div
+        className="ml-auto flex flex-col h-full overflow-hidden"
+        style={{ width: "min(92vw, 1100px)", background: "#060f1e", borderLeft: "1px solid rgba(255,255,255,0.08)" }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* ── Panel header ── */}
+        <div className="flex-none px-5 py-3 flex items-center gap-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", background: "#080e1c" }}>
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors" style={{ color: "#475569" }}
+            onMouseEnter={e => (e.currentTarget.style.color = "#94a3b8")}
+            onMouseLeave={e => (e.currentTarget.style.color = "#475569")}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-base truncate" style={{ color: "#f1f5f9" }}>{name}</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
+                style={{ color: st.color, background: st.bg, border: `1px solid ${st.color}44` }}>
+                {st.label}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Status bar (Dashboard Status | date range | Refresh | Bell) ── */}
+        <div className="flex-none px-5 py-2 flex items-center justify-between flex-wrap gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "#070d1a" }}>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full" style={{ background: "#4ade80", boxShadow: "0 0 6px #4ade80" }} />
+              <span className="text-xs font-semibold" style={{ color: "#4ade80" }}>Live Connection</span>
+            </div>
+            <span className="text-xs" style={{ color: "#334155" }}>
+              Last updated <span style={{ color: "#64748b" }}>{relativeTime(lastUpdated)}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-2 py-1 rounded-lg font-medium" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.1)", color: "#94a3b8" }}>
+              {entity.startDate} → {entity.endDate}
+            </span>
+            <button
+              onClick={() => { if (tab === "comparison") fetchComparison(); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+              style={{ background: "rgba(29,78,216,0.12)", border: "1px solid rgba(29,78,216,0.25)", color: "#60a5fa" }}>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh Data
+            </button>
+            <button className="p-1.5 rounded-lg" style={{ color: "#475569", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* ── 4-quadrant overview ── */}
+        <div className="flex-none px-5 py-4 grid grid-cols-2 gap-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          {renderLeadGen()}
+          {renderCallPerf()}
+          {renderAppts()}
+          {renderSummary()}
+        </div>
+
+        {/* ── Tab bar ── */}
+        <div className="flex-none flex items-center gap-0 px-5 overflow-x-auto" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", background: "#070d1a" }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className="px-4 py-3 text-xs font-semibold whitespace-nowrap transition-colors"
+              style={{
+                color: tab === t.id ? "#f1f5f9" : "#475569",
+                borderBottom: tab === t.id ? "2px solid #3b82f6" : "2px solid transparent",
+                background: "transparent",
+              }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Tab content ── */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {tab === "ai" ? renderAI() : <div>{tabContent[tab]}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
