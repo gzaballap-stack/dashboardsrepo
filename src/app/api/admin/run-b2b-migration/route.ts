@@ -43,8 +43,9 @@ const MIGRATION_STEPS = [
   "ALTER TABLE b2b_ads ENABLE ROW LEVEL SECURITY",
 ];
 
-// 2-module blueprint: fetch all campaigns from Meta in one call → POST array to /batch endpoint.
-// Avoids the Iterator module (tools:BasicIterator) which Make rejects via API.
+// 1-module blueprint: single POST to /sync-all — Railway fetches ad-level data from Meta,
+// aggregates to adset + campaign levels server-side, and upserts all three tables.
+// Replaces the previous 6-module approach (3× Meta GET + 3× dashboard POST).
 function buildBlueprint(metaToken: string, webhookSecret: string) { return {
   name: "CCM - B2B Meta Spend → Supabase",
   flow: [
@@ -52,26 +53,7 @@ function buildBlueprint(metaToken: string, webhookSecret: string) { return {
       id: 1, module: "http:ActionSendData", version: 3,
       parameters: { handleErrors: false, useNewZLibDeCompression: true },
       mapper: {
-        url: "https://graph.facebook.com/v19.0/act_1080664784142903/insights",
-        method: "get", headers: [], parseResponse: true, gzip: true,
-        bodyType: "raw", contentType: "application/json", data: "",
-        serializeUrl: false, followAllRedirects: false, useQuerystring: false,
-        shareCookies: false, ca: "", useMtls: false, followRedirect: true,
-        rejectUnauthorized: true, authUser: "", authPass: "", timeout: "",
-        qs: [
-          { name: "fields",       value: "campaign_id,campaign_name,spend,impressions,reach,inline_link_clicks,ctr,cpc,cpm" },
-          { name: "time_range",   value: '{"since": "{{formatDate(addDays(now; -1); \\"YYYY-MM-DD\\")}}", "until": "{{formatDate(addDays(now; -1); \\"YYYY-MM-DD\\")}}"}' },
-          { name: "level",        value: "campaign" },
-          { name: "access_token", value: metaToken },
-        ],
-      },
-      metadata: { designer: { x: 0, y: 0, name: "Fetch Meta Campaign Insights" } },
-    },
-    {
-      id: 2, module: "http:ActionSendData", version: 3,
-      parameters: { handleErrors: false, useNewZLibDeCompression: true },
-      mapper: {
-        url: "https://dashboard.tomsimedia.com/api/b2b-ad-spend/batch",
+        url: "https://dashboard.tomsimedia.com/api/b2b-ad-spend/sync-all",
         method: "post", qs: [], parseResponse: false, gzip: true,
         bodyType: "raw", contentType: "application/json",
         serializeUrl: false, followAllRedirects: false, useQuerystring: false,
@@ -81,83 +63,9 @@ function buildBlueprint(metaToken: string, webhookSecret: string) { return {
           { name: "Authorization", value: `Bearer ${webhookSecret}` },
           { name: "Content-Type",  value: "application/json" },
         ],
-        data: '{"date":"{{formatDate(addDays(now;-1);\\"YYYY-MM-DD\\")}}","platform":"meta","campaigns":{{1.data}}}',
+        data: `{"date":"{{formatDate(addDays(now;-1);\\"YYYY-MM-DD\\")}}","platform":"meta","meta_token":"${metaToken}"}`,
       },
-      metadata: { designer: { x: 400, y: 0, name: "Send All Campaigns to Dashboard" } },
-    },
-    {
-      id: 3, module: "http:ActionSendData", version: 3,
-      parameters: { handleErrors: false, useNewZLibDeCompression: true },
-      mapper: {
-        url: "https://graph.facebook.com/v19.0/act_1080664784142903/insights",
-        method: "get", headers: [], parseResponse: true, gzip: true,
-        bodyType: "raw", contentType: "application/json", data: "",
-        serializeUrl: false, followAllRedirects: false, useQuerystring: false,
-        shareCookies: false, ca: "", useMtls: false, followRedirect: true,
-        rejectUnauthorized: true, authUser: "", authPass: "", timeout: "",
-        qs: [
-          { name: "fields",       value: "adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,inline_link_clicks,ctr,cpc,cpm" },
-          { name: "time_range",   value: '{"since": "{{formatDate(addDays(now; -1); \\"YYYY-MM-DD\\")}}", "until": "{{formatDate(addDays(now; -1); \\"YYYY-MM-DD\\")}}"}' },
-          { name: "level",        value: "adset" },
-          { name: "access_token", value: metaToken },
-        ],
-      },
-      metadata: { designer: { x: 0, y: 200, name: "Fetch Meta Ad Set Insights" } },
-    },
-    {
-      id: 4, module: "http:ActionSendData", version: 3,
-      parameters: { handleErrors: false, useNewZLibDeCompression: true },
-      mapper: {
-        url: "https://dashboard.tomsimedia.com/api/b2b-ad-spend/batch-adsets",
-        method: "post", qs: [], parseResponse: false, gzip: true,
-        bodyType: "raw", contentType: "application/json",
-        serializeUrl: false, followAllRedirects: false, useQuerystring: false,
-        shareCookies: false, ca: "", useMtls: false, followRedirect: true,
-        rejectUnauthorized: true, authUser: "", authPass: "", timeout: "",
-        headers: [
-          { name: "Authorization", value: `Bearer ${webhookSecret}` },
-          { name: "Content-Type",  value: "application/json" },
-        ],
-        data: '{"date":"{{formatDate(addDays(now;-1);\\"YYYY-MM-DD\\")}}","platform":"meta","adsets":{{3.data}}}',
-      },
-      metadata: { designer: { x: 400, y: 200, name: "Send All Ad Sets to Dashboard" } },
-    },
-    {
-      id: 5, module: "http:ActionSendData", version: 3,
-      parameters: { handleErrors: false, useNewZLibDeCompression: true },
-      mapper: {
-        url: "https://graph.facebook.com/v19.0/act_1080664784142903/insights",
-        method: "get", headers: [], parseResponse: true, gzip: true,
-        bodyType: "raw", contentType: "application/json", data: "",
-        serializeUrl: false, followAllRedirects: false, useQuerystring: false,
-        shareCookies: false, ca: "", useMtls: false, followRedirect: true,
-        rejectUnauthorized: true, authUser: "", authPass: "", timeout: "",
-        qs: [
-          { name: "fields",       value: "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,inline_link_clicks,ctr,cpc,cpm" },
-          { name: "time_range",   value: '{"since": "{{formatDate(addDays(now; -1); \\"YYYY-MM-DD\\")}}", "until": "{{formatDate(addDays(now; -1); \\"YYYY-MM-DD\\")}}"}' },
-          { name: "level",        value: "ad" },
-          { name: "access_token", value: metaToken },
-        ],
-      },
-      metadata: { designer: { x: 0, y: 400, name: "Fetch Meta Ad Insights" } },
-    },
-    {
-      id: 6, module: "http:ActionSendData", version: 3,
-      parameters: { handleErrors: false, useNewZLibDeCompression: true },
-      mapper: {
-        url: "https://dashboard.tomsimedia.com/api/b2b-ad-spend/batch-ads",
-        method: "post", qs: [], parseResponse: false, gzip: true,
-        bodyType: "raw", contentType: "application/json",
-        serializeUrl: false, followAllRedirects: false, useQuerystring: false,
-        shareCookies: false, ca: "", useMtls: false, followRedirect: true,
-        rejectUnauthorized: true, authUser: "", authPass: "", timeout: "",
-        headers: [
-          { name: "Authorization", value: `Bearer ${webhookSecret}` },
-          { name: "Content-Type",  value: "application/json" },
-        ],
-        data: '{"date":"{{formatDate(addDays(now;-1);\\"YYYY-MM-DD\\")}}","platform":"meta","ads":{{5.data}}}',
-      },
-      metadata: { designer: { x: 400, y: 400, name: "Send All Ads to Dashboard" } },
+      metadata: { designer: { x: 0, y: 0, name: "Sync All Levels to Dashboard" } },
     },
   ],
   metadata: {
