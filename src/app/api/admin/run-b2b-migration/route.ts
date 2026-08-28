@@ -117,11 +117,11 @@ export async function POST(req: Request) {
   // 2. Update Make scenario blueprint
   const blueprint = buildBlueprint(metaToken);
   const makeRes = await fetch(
-    `https://eu1.make.com/api/v2/scenarios/${MAKE_SCENARIO}`,
+    `https://eu1.make.com/api/v2/scenarios/${MAKE_SCENARIO}/blueprint`,
     {
       method: 'PUT',
       headers: { Authorization: `Token ${makeToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ blueprint: JSON.stringify(blueprint) }),
+      body: JSON.stringify(blueprint),
     }
   );
   const makeBody = await makeRes.json().catch(() => ({}));
