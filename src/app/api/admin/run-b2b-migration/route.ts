@@ -81,9 +81,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const supabaseToken = process.env.SUPABASE_ACCESS_TOKEN;
-  const makeToken     = process.env.MAKE_API_TOKEN;
-  const metaToken     = process.env.META_B2B_TOKEN;
+  const body = await req.json().catch(() => ({}));
+
+  // Prefer env vars; accept body overrides for one-shot admin calls
+  const supabaseToken = process.env.SUPABASE_ACCESS_TOKEN || body.supabase_token;
+  const makeToken     = process.env.MAKE_API_TOKEN        || body.make_token;
+  const metaToken     = process.env.META_B2B_TOKEN        || body.meta_token;
 
   if (!supabaseToken) return NextResponse.json({ error: 'SUPABASE_ACCESS_TOKEN not set' }, { status: 500 });
   if (!makeToken)     return NextResponse.json({ error: 'MAKE_API_TOKEN not set' }, { status: 500 });
