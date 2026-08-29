@@ -9,7 +9,7 @@ function mulberry32(seed: number) {
   };
 }
 
-function seedForDay(dateStr: string, clientIndex: number) {
+export function seedForDay(dateStr: string, clientIndex: number) {
   let h = clientIndex * 999983;
   for (let i = 0; i < dateStr.length; i++) {
     h = (Math.imul(31, h) + dateStr.charCodeAt(i)) | 0;
@@ -346,12 +346,90 @@ export interface MockSpend {
   amount: number;
 }
 
+export interface MockCampaign {
+  client_id: string;
+  report_date: string;
+  platform: string;
+  level: 'campaign';
+  campaign_id: string;
+  campaign_name: string;
+  status: string;
+  spend: number;
+  impressions: number;
+  reach: number;
+  frequency: number;
+  link_clicks: number;
+  cpm: number;
+  cpc: number;
+  ctr: number;
+  leads: number;
+}
+
+const PLATFORM_LABEL: Record<string, string> = { meta: 'Meta', google: 'Google', local_services: 'LSA' };
+
+// Two recurring campaigns per platform per client (stable campaign_id across days, so
+// they accumulate into two persistent named campaigns in ad_campaigns rather than a
+// fresh fake campaign every day) splitting that day's already-generated ad_spend.
+// Exported standalone so a one-off backfill route can populate ad_campaigns for
+// already-seeded historical days without needing to regenerate events/spend at all.
+const CAMPAIGN_THEMES = [
+  { suffix: 'Qualified Leads', weight: 0.65 },
+  { suffix: 'Retargeting', weight: 0.35 },
+] as const;
+
+export function generateCampaignsForSpend(
+  clientId: string,
+  clientIndex: number,
+  dateStr: string,
+  spends: { platform: string; amount: number }[],
+  rng: RNG,
+): MockCampaign[] {
+  const campaigns: MockCampaign[] = [];
+
+  for (const s of spends) {
+    if (s.amount <= 0) continue;
+    CAMPAIGN_THEMES.forEach((theme, ti) => {
+      const spend = Math.round(s.amount * theme.weight * (0.9 + rng() * 0.2) * 100) / 100;
+      if (spend <= 0) return;
+
+      const cpm = 12 + rng() * 20; // $12-32 CPM
+      const impressions = Math.round((spend / cpm) * 1000);
+      const frequency = 1.1 + rng() * 0.4;
+      const reach = Math.round(impressions / frequency);
+      const ctr = 0.8 + rng() * 2.2; // 0.8%-3.0%
+      const link_clicks = Math.max(0, Math.round(impressions * (ctr / 100)));
+      const cpc = link_clicks > 0 ? spend / link_clicks : 0;
+
+      campaigns.push({
+        client_id: clientId,
+        report_date: dateStr,
+        platform: s.platform,
+        level: 'campaign',
+        campaign_id: `mock-camp-${clientIndex}-${s.platform}-${ti + 1}`,
+        campaign_name: `${PLATFORM_LABEL[s.platform] ?? s.platform} | ${theme.suffix}`,
+        status: 'ACTIVE',
+        spend,
+        impressions,
+        reach,
+        frequency: Math.round(frequency * 100) / 100,
+        link_clicks,
+        cpm: Math.round(cpm * 100) / 100,
+        cpc: Math.round(cpc * 100) / 100,
+        ctr: Math.round(ctr * 100) / 100,
+        leads: 0,
+      });
+    });
+  }
+
+  return campaigns;
+}
+
 export function generateDayData(
   dateStr: string,
   clientId: string,
   clientIndex: number,
   config: ClientConfig,
-): { events: MockEvent[]; spends: MockSpend[] } {
+): { events: MockEvent[]; spends: MockSpend[]; campaigns: MockCampaign[] } {
   const rng = seedForDay(dateStr, clientIndex);
   const dow = new Date(dateStr + 'T12:00:00Z').getUTCDay();
   const isWeekend = dow === 0 || dow === 6;
@@ -500,5 +578,7 @@ export function generateDayData(
     dialSample[i].speed_to_lead_seconds = ri(rng, 20, 110);
   }
 
-  return { events, spends };
+  const campaigns = generateCampaignsForSpend(clientId, clientIndex, dateStr, spends, rng);
+
+  return { events, spends, campaigns };
 }

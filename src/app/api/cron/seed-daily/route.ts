@@ -55,13 +55,14 @@ export async function POST(req: Request) {
 
   let totalEvents = 0;
   let totalSpends = 0;
+  let totalCampaigns = 0;
 
   for (let ci = 0; ci < MOCK_CLIENT_CONFIGS.length; ci++) {
     const config = MOCK_CLIENT_CONFIGS[ci];
     const client = clients.find(c => c.name === config.name);
     if (!client) continue;
 
-    const { events, spends } = generateDayData(dateStr, client.id, ci, config);
+    const { events, spends, campaigns } = generateDayData(dateStr, client.id, ci, config);
 
     if (events.length > 0) {
       const { error } = await service.from('events').insert(events as never);
@@ -76,7 +77,15 @@ export async function POST(req: Request) {
       if (error) return NextResponse.json({ error: `Spend for ${config.name}: ${error.message}` }, { status: 500 });
       totalSpends += spends.length;
     }
+
+    if (campaigns.length > 0) {
+      const { error } = await service
+        .from('ad_campaigns')
+        .upsert(campaigns as never, { onConflict: 'client_id,report_date,platform,level,campaign_id,adset_id,ad_id' });
+      if (error) return NextResponse.json({ error: `Campaigns for ${config.name}: ${error.message}` }, { status: 500 });
+      totalCampaigns += campaigns.length;
+    }
   }
 
-  return NextResponse.json({ success: true, date: dateStr, events: totalEvents, spends: totalSpends });
+  return NextResponse.json({ success: true, date: dateStr, events: totalEvents, spends: totalSpends, campaigns: totalCampaigns });
 }
