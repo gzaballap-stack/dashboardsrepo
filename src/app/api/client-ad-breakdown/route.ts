@@ -6,7 +6,7 @@ interface Acc {
   adset_id: string; adset_name: string | null;
   campaign_id: string; campaign_name: string; platform: string; status: string | null;
   spend: number; impressions: number; reach: number; link_clicks: number;
-  ctr_sum: number; cpc_sum: number; cpm_sum: number; leads: number; rows: number;
+  leads: number;
 }
 
 export async function GET(req: Request) {
@@ -50,19 +50,14 @@ export async function GET(req: Request) {
         campaign_id: r.campaign_id, campaign_name: r.campaign_name,
         platform: r.platform, status: r.status,
         spend: r.spend ?? 0, impressions: r.impressions ?? 0, reach: r.reach ?? 0,
-        link_clicks: r.link_clicks ?? 0, ctr_sum: r.ctr ?? 0, cpc_sum: r.cpc ?? 0,
-        cpm_sum: r.cpm ?? 0, leads: r.leads ?? 0, rows: 1,
+        link_clicks: r.link_clicks ?? 0, leads: r.leads ?? 0,
       });
     } else {
       ex.spend       += r.spend       ?? 0;
       ex.impressions += r.impressions ?? 0;
       ex.reach       += r.reach       ?? 0;
       ex.link_clicks += r.link_clicks ?? 0;
-      ex.ctr_sum     += r.ctr         ?? 0;
-      ex.cpc_sum     += r.cpc         ?? 0;
-      ex.cpm_sum     += r.cpm         ?? 0;
       ex.leads       += r.leads       ?? 0;
-      ex.rows++;
     }
   }
 
@@ -74,9 +69,9 @@ export async function GET(req: Request) {
       campaign_id: a.campaign_id, campaign_name: a.campaign_name,
       platform: a.platform, status: a.status,
       spend: a.spend, impressions: a.impressions, reach: a.reach, link_clicks: a.link_clicks,
-      ctr: a.rows > 0 ? a.ctr_sum / a.rows : 0,
-      cpc: a.rows > 0 ? a.cpc_sum / a.rows : 0,
-      cpm: a.rows > 0 ? a.cpm_sum / a.rows : 0,
+      ctr: a.impressions > 0 ? (a.link_clicks / a.impressions) * 100 : 0,
+      cpc: a.link_clicks > 0 ? a.spend / a.link_clicks : 0,
+      cpm: a.impressions > 0 ? (a.spend / a.impressions) * 1000 : 0,
       leads: a.leads,
     }))
     .sort((a, b) => b.spend - a.spend);
