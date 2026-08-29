@@ -102,7 +102,9 @@ export default function ZipMap({
     if (!containerRef.current || mapRef.current) return;
     import("leaflet").then((L) => {
       const map = L.map(containerRef.current!, { zoomControl: true, center: [39, -98], zoom: 4 });
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+      const cartoKey = process.env.NEXT_PUBLIC_CARTO_API_KEY;
+      const tileUrl = `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png${cartoKey ? `?key=${cartoKey}` : ""}`;
+      L.tileLayer(tileUrl, {
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a> © <a href="https://carto.com/">CARTO</a>',
         maxZoom: 19,
       }).addTo(map);
