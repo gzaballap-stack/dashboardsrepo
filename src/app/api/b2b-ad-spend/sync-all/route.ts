@@ -115,6 +115,11 @@ export async function POST(req: Request) {
     // ── 3. Upsert all three tables ──────────────────────────────────────
     const service = createServiceClient();
 
+    // Remove any pre-migration "total" row (campaign_id='') for this date/platform
+    // so it doesn't double-count against the per-campaign rows we're about to write.
+    await service.from('b2b_ad_spend').delete()
+      .eq('spend_date', date).eq('platform', platform).eq('campaign_id', '');
+
     const [campErr, adsetErr, adErr] = await Promise.all([
       service.from('b2b_ad_spend').upsert(campaignRecords, { onConflict: 'spend_date,platform,campaign_id' }).then(r => r.error),
       service.from('b2b_ad_sets').upsert(adsetRecords,    { onConflict: 'spend_date,platform,campaign_id,adset_id' }).then(r => r.error),

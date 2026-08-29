@@ -24,7 +24,6 @@ export async function GET(req: Request) {
     ad_id: string; ad_name: string | null; adset_id: string; adset_name: string | null;
     campaign_id: string; campaign_name: string | null;
     spend: number; impressions: number; reach: number; link_clicks: number;
-    ctr_sum: number; cpc_sum: number; cpm_sum: number; rows: number;
   }>();
 
   for (const r of data ?? []) {
@@ -35,17 +34,12 @@ export async function GET(req: Request) {
         ad_id: r.ad_id, ad_name: r.ad_name, adset_id: r.adset_id, adset_name: r.adset_name,
         campaign_id: r.campaign_id, campaign_name: r.campaign_name,
         spend: r.spend ?? 0, impressions: r.impressions ?? 0, reach: r.reach ?? 0, link_clicks: r.link_clicks ?? 0,
-        ctr_sum: r.ctr ?? 0, cpc_sum: r.cpc ?? 0, cpm_sum: r.cpm ?? 0, rows: 1,
       });
     } else {
       ex.spend       += r.spend       ?? 0;
       ex.impressions += r.impressions ?? 0;
       ex.reach       += r.reach       ?? 0;
       ex.link_clicks += r.link_clicks ?? 0;
-      ex.ctr_sum     += r.ctr         ?? 0;
-      ex.cpc_sum     += r.cpc         ?? 0;
-      ex.cpm_sum     += r.cpm         ?? 0;
-      ex.rows++;
     }
   }
 
@@ -60,9 +54,9 @@ export async function GET(req: Request) {
     impressions:  a.impressions,
     reach:        a.reach,
     link_clicks:  a.link_clicks,
-    ctr:          a.rows > 0 ? a.ctr_sum / a.rows : 0,
-    cpc:          a.rows > 0 ? a.cpc_sum / a.rows : 0,
-    cpm:          a.rows > 0 ? a.cpm_sum / a.rows : 0,
+    ctr: a.impressions > 0 ? (a.link_clicks / a.impressions) * 100 : 0,
+    cpc: a.link_clicks  > 0 ? a.spend / a.link_clicks : 0,
+    cpm: a.impressions  > 0 ? (a.spend / a.impressions) * 1000 : 0,
   })).sort((a, b) => b.spend - a.spend);
 
   return NextResponse.json({ ads });

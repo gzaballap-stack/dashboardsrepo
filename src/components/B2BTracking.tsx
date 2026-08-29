@@ -222,7 +222,8 @@ export default function B2BTracking({ startDate, endDate }: Props) {
                 const campCtr   = camp ? camp.ctr   : data.ctr;
                 const campCpc   = camp ? camp.cpc   : data.cpc;
                 const campId    = camp?.campaign_id ?? 'total';
-                const campName  = camp?.campaign_name || (camp?.campaign_id ? `Campaign ${camp.campaign_id}` : "All Campaigns");
+                const campName  = camp?.campaign_name
+                  || (camp?.campaign_id ? `Campaign …${camp.campaign_id.slice(-8)}` : "B2B Account Total");
                 const isSelected = drawerEntity?.kind === "b2b" && drawerEntity.id === campId;
                 return (
                   <>
