@@ -30,7 +30,16 @@ type Touchpoint = {
   type: string;
   summary: string | null;
   csm_name: string | null;
+  agent_name?: string | null;
+  duration_seconds?: number | null;
+  recording_url?: string | null;
+  source?: "client" | "b2b";
 };
+
+function mmss(sec: number | null | undefined) {
+  if (sec === null || sec === undefined) return null;
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
 
 const TOUCHPOINT_TYPES = ["call", "email", "meeting", "text", "other"] as const;
 const UPSELL_LABELS: Record<ClientCSMRow["upsell_status"], string> = {
@@ -84,11 +93,31 @@ export default function CSMDashboard() {
 
   useEffect(() => { load(); }, []);
 
+  // Conversation history is two sources merged: CSM touchpoints logged against
+  // the client, and B2B calls that resolved to this client.
   const loadTouchpoints = (clientId: string) => {
     setTpLoading(true);
-    fetch(`/api/client-touchpoints?client_id=${clientId}`)
-      .then(r => r.json())
-      .then(d => setTouchpoints(d.touchpoints ?? []))
+    Promise.all([
+      fetch(`/api/client-touchpoints?client_id=${clientId}`).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/csm-recordings?client_id=${clientId}&source=b2b`).then(r => r.json()).catch(() => ({})),
+    ])
+      .then(([tp, rec]) => {
+        const logged: Touchpoint[] = (tp.touchpoints ?? []).map((t: Touchpoint) => ({ ...t, source: "client" as const }));
+        const b2bCalls: Touchpoint[] = (rec.rows ?? []).map((r: {
+          id: string; occurred_at: string; summary: string | null; csm_name: string | null;
+          agent_name: string | null; duration_seconds: number | null; recording_url: string;
+        }) => ({
+          id: r.id, client_id: clientId, occurred_at: r.occurred_at,
+          type: "b2b call", summary: r.summary, csm_name: r.csm_name,
+          agent_name: r.agent_name, duration_seconds: r.duration_seconds,
+          recording_url: r.recording_url, source: "b2b" as const,
+        }));
+        setTouchpoints(
+          [...logged, ...b2bCalls].sort(
+            (a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime()
+          )
+        );
+      })
       .finally(() => setTpLoading(false));
   };
 
@@ -333,20 +362,40 @@ export default function CSMDashboard() {
                     {/* Touchpoint history */}
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#64748b" }}>
-                        Touchpoint History {tpLoading ? "…" : `(${touchpoints.length})`}
+                        Conversation History {tpLoading ? "…" : `(${touchpoints.length})`}
+                        {!tpLoading && touchpoints.some(t => t.recording_url) && (
+                          <span className="ml-2 font-normal normal-case" style={{ color: "#475569" }}>
+                            {touchpoints.filter(t => t.recording_url).length} recorded
+                          </span>
+                        )}
                       </p>
                       {touchpoints.length === 0 && !tpLoading ? (
                         <p className="text-xs" style={{ color: "#475569" }}>No touchpoints logged yet.</p>
                       ) : (
                         <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                          {touchpoints.map(tp => (
-                            <div key={tp.id} className="flex items-start gap-3 px-3 py-2 rounded-lg text-xs" style={{ background: "rgba(255,255,255,0.02)" }}>
-                              <span className="px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>{tp.type}</span>
-                              <span className="flex-shrink-0" style={{ color: "#64748b" }}>{fmtDateTime(tp.occurred_at)}</span>
-                              {tp.csm_name && <span className="flex-shrink-0" style={{ color: "#475569" }}>· {tp.csm_name}</span>}
-                              <span className="flex-1" style={{ color: "#cbd5e1" }}>{tp.summary ?? "—"}</span>
-                            </div>
-                          ))}
+                          {touchpoints.map(tp => {
+                            const isB2B = tp.source === "b2b";
+                            const dur = mmss(tp.duration_seconds);
+                            return (
+                              <div key={tp.id} className="px-3 py-2 rounded-lg text-xs" style={{ background: "rgba(255,255,255,0.02)" }}>
+                                <div className="flex items-start gap-3">
+                                  <span className="px-1.5 py-0.5 rounded flex-shrink-0"
+                                    style={isB2B
+                                      ? { background: "rgba(168,85,247,0.15)", color: "#c084fc" }
+                                      : { background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>{tp.type}</span>
+                                  <span className="flex-shrink-0" style={{ color: "#64748b" }}>{fmtDateTime(tp.occurred_at)}</span>
+                                  {tp.csm_name && <span className="flex-shrink-0" style={{ color: "#475569" }}>· {tp.csm_name}</span>}
+                                  {tp.agent_name && !tp.csm_name && <span className="flex-shrink-0" style={{ color: "#475569" }}>· {tp.agent_name}</span>}
+                                  {dur && <span className="flex-shrink-0" style={{ color: "#475569" }}>· {dur}</span>}
+                                  <span className="flex-1" style={{ color: "#cbd5e1" }}>{tp.summary ?? "—"}</span>
+                                </div>
+                                {tp.recording_url && (
+                                  <audio controls preload="none" src={tp.recording_url}
+                                    className="mt-1.5" style={{ height: 30, width: "100%", maxWidth: 340 }} />
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

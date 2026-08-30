@@ -164,28 +164,41 @@ function ChatBubble({ msg }: { msg: { role: string; content: string } }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function CampaignDetailDrawer({ entity, onClose }: { entity: DrawerEntity; onClose: () => void }) {
-  type Tab = "calls" | "campaigns" | "adsets" | "ads" | "funnel" | "comparison" | "ai";
+export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChange }: { entity: DrawerEntity; onClose: () => void; onExclusionsChange?: () => void }) {
+  type Tab = "calls" | "campaigns" | "adsets" | "ads" | "recordings" | "funnel" | "comparison" | "ai";
   const TABS: { id: Tab; label: string }[] = [
     { id: "calls",      label: "Calls"      },
     { id: "campaigns",  label: "Campaigns"  },
     { id: "adsets",     label: "Ad Sets"    },
     { id: "ads",        label: "Ads"        },
+    { id: "recordings", label: "Recordings" },
     { id: "funnel",     label: "Funnel"     },
     { id: "comparison", label: "Comparison" },
     { id: "ai",         label: "AI"         },
   ];
 
-  type AdSetRow = {
-    adset_id: string; adset_name: string | null; campaign_id: string; campaign_name: string | null;
-    platform?: string; spend: number; impressions: number; reach: number; link_clicks: number;
-    ctr: number; cpc: number; cpm: number; leads?: number;
-  };
-  type AdRow = {
-    ad_id: string; ad_name: string | null; adset_id: string; adset_name: string | null;
-    campaign_id: string; campaign_name: string | null; platform?: string;
+  // Shared metric shape for the Ad Sets / Ads tables. B2B sources supply only the
+  // basic fields, so the extras are optional and render as "—" when absent.
+  type AdMetrics = {
     spend: number; impressions: number; reach: number; link_clicks: number;
     ctr: number; cpc: number; cpm: number;
+    budget?: number | null; frequency?: number; unique_clicks?: number;
+    unique_ctr?: number; leads?: number; cvr?: number; cost_per_result?: number;
+  };
+  type AdSetRow = AdMetrics & {
+    adset_id: string; adset_name: string | null; campaign_id: string; campaign_name: string | null;
+    platform?: string;
+  };
+  type AdRow = AdMetrics & {
+    ad_id: string; ad_name: string | null; adset_id: string; adset_name: string | null;
+    campaign_id: string; campaign_name: string | null; platform?: string;
+  };
+
+  type RecordingRow = {
+    id: string; occurred_at: string;
+    lead_name: string | null; lead_phone: string | null; agent_name: string | null;
+    duration_seconds: number | null; is_pickup: boolean | null; is_conversation: boolean | null;
+    call_status: string | null; recording_url: string;
   };
 
   const [tab, setTab]           = useState<Tab>("campaigns");
@@ -202,6 +215,12 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
   const [adSetLoading, setAdSetLoading] = useState(false);
   const [adData, setAdData]           = useState<AdRow[] | null>(null);
   const [adLoading, setAdLoading]     = useState(false);
+  // Local optimistic view of which campaigns are tracked, keyed by campaign_id.
+  // Absent = fall back to the server's `excluded` flag on the campaign row.
+  const [trackOverrides, setTrackOverrides] = useState<Record<string, boolean>>({});
+  const [savingCampaign, setSavingCampaign] = useState<string | null>(null);
+  const [recData, setRecData]         = useState<RecordingRow[] | null>(null);
+  const [recLoading, setRecLoading]   = useState(false);
 
   // Keep "last updated" clock ticking
   useEffect(() => {
@@ -326,6 +345,53 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
   }, [entity]);
 
   useEffect(() => { if (tab === "ads") fetchAds(); }, [tab, fetchAds]);
+
+  // ── Campaign tracking toggle ────────────────────────────────────────
+  // Untracking a campaign removes its spend from every rollup that reads
+  // ad_spend (dashboard KPIs, client reports), not just this table.
+  const toggleTracked = async (campaignId: string, nextTracked: boolean) => {
+    if (entity.kind === "b2b") return;
+    const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+    setSavingCampaign(campaignId);
+    setTrackOverrides(prev => ({ ...prev, [campaignId]: nextTracked }));
+    try {
+      if (nextTracked) {
+        await fetch(`/api/campaign-exclusions?client_id=${c.client_id}&campaign_id=${encodeURIComponent(campaignId)}`, { method: "DELETE" });
+      } else {
+        await fetch("/api/campaign-exclusions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ client_id: c.client_id, campaign_id: campaignId }),
+        });
+      }
+      onExclusionsChange?.();
+    } catch {
+      // Put the switch back if the write did not land.
+      setTrackOverrides(prev => ({ ...prev, [campaignId]: !nextTracked }));
+    } finally {
+      setSavingCampaign(null);
+    }
+  };
+
+  // ── Recording fetch ─────────────────────────────────────────────────
+  // Recordings hang off dial events, which are keyed to a client rather than an
+  // ad campaign, so this is client-scoped even inside a campaign drawer.
+  const fetchRecordings = useCallback(async () => {
+    if (recData !== null || entity.kind === "b2b") return;
+    setRecLoading(true);
+    try {
+      const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+      const params = new URLSearchParams({ clientId: c.client_id, outcome: "all" });
+      if (entity.startDate) params.set("startDate", entity.startDate);
+      if (entity.endDate)   params.set("endDate", entity.endDate);
+      const r = await fetch(`/api/recordings?${params}`).then(r => r.json());
+      setRecData((r.rows ?? []) as RecordingRow[]);
+    } catch { setRecData([]); }
+    finally  { setRecLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity]);
+
+  useEffect(() => { if (tab === "recordings") fetchRecordings(); }, [tab, fetchRecordings]);
 
   // ── AI context builder ──────────────────────────────────────────────
   const buildContext = () => {
@@ -574,10 +640,19 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
     );
 
     return (
+      <div>
+        {!isBb && (
+          <p className="text-xs mb-2" style={{ color: "#475569" }}>
+            Untick a campaign to stop tracking it. Its spend is removed from this client&apos;s
+            dashboard KPIs and shared report — useful when an ad account carries campaigns
+            for more than one company.
+          </p>
+        )}
       <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
         <table className="w-full text-sm" style={{ minWidth: 700 }}>
           <thead>
             <tr style={{ background: "#0a1628", color: "#64748b" }}>
+              {!isBb && <th className="text-center font-medium px-3 py-3">Tracked</th>}
               <th className="text-left font-medium px-4 py-3">Campaign</th>
               {!isBb && <th className="text-left font-medium px-3 py-3">Platform</th>}
               {!isBb && <th className="text-left font-medium px-3 py-3">Status</th>}
@@ -597,8 +672,23 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
               const campName = "campaign_name" in c && c.campaign_name ? c.campaign_name : ("name" in c ? (c as { name: string }).name : c.campaign_id);
               const platform = "platform" in c ? (c as { platform: string }).platform : null;
               const campStatus = "status" in c ? (c as { status: string | null }).status : null;
+              const tracked = isBb
+                ? true
+                : trackOverrides[c.campaign_id] ?? !(c as { excluded?: boolean }).excluded;
               return (
-                <tr key={i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                <tr key={i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", opacity: tracked ? 1 : 0.45 }}>
+                  {!isBb && (
+                    <td className="px-3 py-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={tracked}
+                        disabled={savingCampaign === c.campaign_id}
+                        onChange={e => toggleTracked(c.campaign_id, e.target.checked)}
+                        style={{ accentColor: "#3b82f6", width: 15, height: 15, cursor: "pointer" }}
+                        title={tracked ? "Tracked — counted in all metrics" : "Not tracked — excluded from all metrics"}
+                      />
+                    </td>
+                  )}
                   <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0", maxWidth: 240 }}>
                     <span className="truncate block">{campName}</span>
                   </td>
@@ -621,6 +711,7 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
             })}
           </tbody>
         </table>
+      </div>
       </div>
     );
   };
@@ -745,6 +836,73 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
   const COL_HEADER = "text-[10px] font-bold uppercase tracking-wider text-right px-3 py-2";
   const COL_CELL   = "text-right px-3 py-2.5 text-xs";
 
+  // ── Shared metric table for Ad Sets / Ads ───────────────────────────
+  // Column set requested for Meta reporting: budget, spend, impressions, reach,
+  // frequency, CPM, unique link clicks, unique CTR, CPC, results (leads), CVR
+  // (leads / unique link clicks) and cost per result.
+  const METRIC_COLS = [
+    "Budget", "Spend", "Impressions", "Reach", "Frequency", "CPM",
+    "Uniq. Clicks", "Uniq. CTR", "CPC", "Results", "CVR", "Cost / Result",
+  ];
+
+  const renderMetricCells = (m: AdMetrics) => {
+    const freq = m.frequency ?? (m.reach > 0 ? m.impressions / m.reach : 0);
+    const uClicks = m.unique_clicks;
+    const uCtr = m.unique_ctr ?? (m.reach > 0 && uClicks ? (uClicks / m.reach) * 100 : undefined);
+    const leads = m.leads;
+    const cvr = m.cvr ?? (uClicks && leads !== undefined && uClicks > 0 ? (leads / uClicks) * 100 : undefined);
+    const cpr = m.cost_per_result ?? (leads ? m.spend / leads : undefined);
+    const dash = <span style={{ color: "#334155" }}>—</span>;
+    return (
+      <>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.budget ? fmt$(m.budget) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{fmt$(m.spend)}</td>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.impressions > 0 ? fmtN(m.impressions) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.reach > 0 ? fmtN(m.reach) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{freq > 0 ? freq.toFixed(2) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.cpm > 0 ? fmtDec(m.cpm) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{uClicks ? fmtN(uClicks) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{uCtr ? fmtPct(uCtr) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.cpc > 0 ? fmtDec(m.cpc) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{leads ? fmtN(leads) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{cvr ? fmtPct(cvr) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{cpr ? fmtDec(cpr) : dash}</td>
+      </>
+    );
+  };
+
+  const renderMetricTable = (
+    label: string,
+    rows: (AdSetRow | AdRow)[],
+    nameOf: (r: AdSetRow | AdRow) => string,
+    subOf: (r: AdSetRow | AdRow) => string | null,
+    keyOf: (r: AdSetRow | AdRow, i: number) => string,
+  ) => (
+    <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+      <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 1180 }}>
+        <thead style={{ background: "#080e1c", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+          <tr>
+            <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>{label}</th>
+            {METRIC_COLS.map(c => (
+              <th key={c} className={COL_HEADER} style={{ color: "#475569" }}>{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={keyOf(r, i)} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+              <td className="px-3 py-2.5" style={{ maxWidth: 240 }}>
+                <div className="text-xs font-medium truncate" style={{ color: "#e2e8f0" }}>{nameOf(r)}</div>
+                {subOf(r) && <div className="text-[10px] mt-0.5 truncate" style={{ color: "#475569" }}>{subOf(r)}</div>}
+              </td>
+              {renderMetricCells(r)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   const renderAdSets = () => {
     if (adSetLoading) return <div className="py-10 text-center text-sm" style={{ color: "#334155" }}>Loading ad sets…</div>;
     if (!adSetData || adSetData.length === 0) return renderPlaceholder(
@@ -753,81 +911,89 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
         ? "Run the updated Make scenario to populate ad set data. It fetches adset-level insights from Meta daily."
         : "No ad set data found for this date range. Make sure your client Make scenario sends adset-level data."
     );
-    return (
-      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
-        <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
-          <thead style={{ background: "#080e1c", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-            <tr>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Ad Set</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>Spend</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>Impressions</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>Clicks</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>CTR</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>CPC</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>CPM</th>
-              {!isBb && <th className={COL_HEADER} style={{ color: "#475569" }}>Leads</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {adSetData.map((a, i) => (
-              <tr key={a.adset_id || i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                <td className="px-3 py-2.5">
-                  <div className="text-xs font-medium" style={{ color: "#e2e8f0" }}>{a.adset_name ?? a.adset_id}</div>
-                  {a.campaign_name && <div className="text-[10px] mt-0.5" style={{ color: "#475569" }}>{a.campaign_name}</div>}
-                </td>
-                <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{fmt$(a.spend)}</td>
-                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.impressions ?? 0)}</td>
-                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.link_clicks ?? 0)}</td>
-                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.ctr > 0 ? fmtPct(a.ctr) : "—"}</td>
-                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.cpc > 0 ? fmtDec(a.cpc) : "—"}</td>
-                <td className={COL_CELL} style={{ color: "#64748b" }}>{a.cpm > 0 ? fmtDec(a.cpm) : "—"}</td>
-                {!isBb && <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{fmtN(a.leads ?? 0)}</td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    return renderMetricTable(
+      "Ad Set",
+      adSetData,
+      r => (r as AdSetRow).adset_name ?? (r as AdSetRow).adset_id,
+      r => r.campaign_name ?? null,
+      (r, i) => (r as AdSetRow).adset_id || String(i),
     );
   };
 
   const renderAds = () => {
     if (adLoading) return <div className="py-10 text-center text-sm" style={{ color: "#334155" }}>Loading ads…</div>;
     if (!adData || adData.length === 0) return renderPlaceholder(
-      "No Ad Creative Data",
+      "No Ad Data",
       isBb
-        ? "Run the updated Make scenario to populate ad-level data. It fetches ad-level insights from Meta daily."
-        : "No ad creative data found for this date range. Make sure your client Make scenario sends ad-level data."
+        ? "Run the updated Make scenario to populate ad-level data."
+        : "No ad data found for this date range. Make sure your client Make scenario sends ad-level data."
     );
+    return renderMetricTable(
+      "Ad",
+      adData,
+      r => (r as AdRow).ad_name ?? (r as AdRow).ad_id,
+      r => (r as AdRow).adset_name ?? r.campaign_name ?? null,
+      (r, i) => (r as AdRow).ad_id || String(i),
+    );
+  };
+
+  const renderRecordings = () => {
+    if (isBb) return renderPlaceholder(
+      "Not Tracked Here",
+      "B2B call recordings are attributed to a CSM and live on the CSM dashboard, not the campaign drawer."
+    );
+    if (recLoading) return <div className="py-10 text-center text-sm" style={{ color: "#334155" }}>Loading recordings…</div>;
+    if (!recData || recData.length === 0) return renderPlaceholder(
+      "No Recordings",
+      "No call recordings for this client in this date range. Recordings appear once the GHL dial workflow passes a recording URL through to the webhook."
+    );
+
+    const mmss = (sec: number | null) => {
+      if (!sec && sec !== 0) return "—";
+      return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+    };
+    const outcomeOf = (r: RecordingRow) =>
+      r.is_conversation ? { label: "Conversation", color: "#22c55e" }
+      : r.is_pickup     ? { label: "Pickup",       color: "#eab308" }
+      :                   { label: "No Answer",    color: "#475569" };
+
     return (
       <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
         <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
           <thead style={{ background: "#080e1c", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
             <tr>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Ad</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>Spend</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>Impressions</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>Clicks</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>CTR</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>CPC</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>CPM</th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Lead</th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Agent</th>
+              <th className={COL_HEADER} style={{ color: "#475569" }}>Duration</th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Outcome</th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Recording</th>
             </tr>
           </thead>
           <tbody>
-            {adData.map((a, i) => (
-              <tr key={a.ad_id || i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                <td className="px-3 py-2.5">
-                  <div className="text-xs font-medium" style={{ color: "#e2e8f0" }}>{a.ad_name ?? a.ad_id}</div>
-                  {a.adset_name && <div className="text-[10px] mt-0.5" style={{ color: "#475569" }}>↳ {a.adset_name}</div>}
-                  {a.campaign_name && <div className="text-[10px]" style={{ color: "#334155" }}>{a.campaign_name}</div>}
-                </td>
-                <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{fmt$(a.spend)}</td>
-                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.impressions ?? 0)}</td>
-                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.link_clicks ?? 0)}</td>
-                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.ctr > 0 ? fmtPct(a.ctr) : "—"}</td>
-                <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.cpc > 0 ? fmtDec(a.cpc) : "—"}</td>
-                <td className={COL_CELL} style={{ color: "#64748b" }}>{a.cpm > 0 ? fmtDec(a.cpm) : "—"}</td>
-              </tr>
-            ))}
+            {recData.map((r, i) => {
+              const o = outcomeOf(r);
+              return (
+                <tr key={r.id || i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                  <td className="px-3 py-2.5">
+                    <div className="text-xs font-medium" style={{ color: "#e2e8f0" }}>{r.lead_name ?? r.lead_phone ?? "Unknown"}</div>
+                    <div className="text-[10px] mt-0.5" style={{ color: "#475569" }}>
+                      {new Date(r.occurred_at).toLocaleString()}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5 text-xs" style={{ color: "#94a3b8" }}>{r.agent_name ?? "—"}</td>
+                  <td className={COL_CELL} style={{ color: "#94a3b8" }}>{mmss(r.duration_seconds)}</td>
+                  <td className="px-3 py-2.5">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                      style={{ color: o.color, background: `${o.color}1a`, border: `1px solid ${o.color}33` }}>
+                      {o.label}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <audio controls preload="none" src={r.recording_url} style={{ height: 32, maxWidth: 260 }} />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -839,6 +1005,7 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
     campaigns:  renderCampaigns(),
     adsets:     renderAdSets(),
     ads:        renderAds(),
+    recordings: renderRecordings(),
     funnel:     renderFunnel(),
     comparison: renderComparison(),
     ai:         renderAI(),
@@ -901,7 +1068,7 @@ export default function CampaignDetailDrawer({ entity, onClose }: { entity: Draw
 
       {/* ── Tab bar ── */}
       <div className="flex items-center gap-0 px-5 overflow-x-auto" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", background: "#070d1a" }}>
-        {TABS.map(t => (
+        {TABS.filter(t => !(isBb && t.id === "recordings")).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className="px-4 py-2.5 text-xs font-semibold whitespace-nowrap transition-colors"
             style={{

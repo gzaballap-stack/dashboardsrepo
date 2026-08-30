@@ -13,7 +13,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await ctx.service
     .from('client_touchpoints')
-    .select('id, client_id, occurred_at, type, summary, csm_name, created_at')
+    .select('id, client_id, occurred_at, type, summary, csm_name, created_at, recording_url, duration_seconds, agent_name, call_status')
     .eq('client_id', client_id)
     .order('occurred_at', { ascending: false });
 
@@ -26,7 +26,8 @@ export async function POST(req: Request) {
   if (isAuthError(ctx)) return ctx;
 
   const body = await req.json();
-  const { client_id, type, summary, csm_name, occurred_at } = body;
+  const { client_id, type, summary, csm_name, occurred_at,
+          recording_url, duration_seconds, agent_name, call_status, external_id } = body;
 
   if (!client_id) return NextResponse.json({ error: 'client_id is required' }, { status: 400 });
   if (type && !VALID_TYPES.includes(type)) {
@@ -41,8 +42,13 @@ export async function POST(req: Request) {
       summary: summary ?? null,
       csm_name: csm_name ?? null,
       occurred_at: occurred_at ?? new Date().toISOString(),
+      recording_url: recording_url ?? null,
+      duration_seconds: duration_seconds ?? null,
+      agent_name: agent_name ?? null,
+      call_status: call_status ?? null,
+      external_id: external_id ?? null,
     })
-    .select('id, client_id, occurred_at, type, summary, csm_name')
+    .select('id, client_id, occurred_at, type, summary, csm_name, recording_url, duration_seconds, agent_name, call_status')
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

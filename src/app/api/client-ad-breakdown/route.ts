@@ -6,7 +6,7 @@ interface Acc {
   adset_id: string; adset_name: string | null;
   campaign_id: string; campaign_name: string; platform: string; status: string | null;
   spend: number; impressions: number; reach: number; link_clicks: number;
-  leads: number;
+  unique_clicks: number; leads: number; budget: number | null; objective: string | null;
 }
 
 export async function GET(req: Request) {
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 
   let q = ctx.service
     .from('ad_campaigns')
-    .select('adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,platform,spend,impressions,reach,link_clicks,ctr,cpc,cpm,leads,status')
+    .select('adset_id,adset_name,ad_id,ad_name,campaign_id,campaign_name,platform,spend,impressions,reach,frequency,link_clicks,unique_clicks,unique_ctr,ctr,cpc,cpm,leads,status,budget,objective')
     .eq('client_id', client_id)
     .eq('level', level);
 
@@ -50,14 +50,19 @@ export async function GET(req: Request) {
         campaign_id: r.campaign_id, campaign_name: r.campaign_name,
         platform: r.platform, status: r.status,
         spend: r.spend ?? 0, impressions: r.impressions ?? 0, reach: r.reach ?? 0,
-        link_clicks: r.link_clicks ?? 0, leads: r.leads ?? 0,
+        link_clicks: r.link_clicks ?? 0, unique_clicks: r.unique_clicks ?? 0,
+        leads: r.leads ?? 0, budget: r.budget ?? null, objective: r.objective ?? null,
       });
     } else {
       ex.spend       += r.spend       ?? 0;
       ex.impressions += r.impressions ?? 0;
       ex.reach       += r.reach       ?? 0;
-      ex.link_clicks += r.link_clicks ?? 0;
-      ex.leads       += r.leads       ?? 0;
+      ex.link_clicks   += r.link_clicks   ?? 0;
+      ex.unique_clicks += r.unique_clicks ?? 0;
+      ex.leads         += r.leads         ?? 0;
+      // Budget is a property of the entity, not the day — keep the first non-null.
+      ex.budget    = ex.budget    ?? r.budget    ?? null;
+      ex.objective = ex.objective ?? r.objective ?? null;
     }
   }
 
@@ -69,10 +74,18 @@ export async function GET(req: Request) {
       campaign_id: a.campaign_id, campaign_name: a.campaign_name,
       platform: a.platform, status: a.status,
       spend: a.spend, impressions: a.impressions, reach: a.reach, link_clicks: a.link_clicks,
+      budget: a.budget, objective: a.objective,
+      unique_clicks: a.unique_clicks,
       ctr: a.impressions > 0 ? (a.link_clicks / a.impressions) * 100 : 0,
       cpc: a.link_clicks > 0 ? a.spend / a.link_clicks : 0,
       cpm: a.impressions > 0 ? (a.spend / a.impressions) * 1000 : 0,
+      // Meta defines frequency as impressions/reach and unique CTR over reach.
+      frequency:  a.reach > 0 ? a.impressions / a.reach : 0,
+      unique_ctr: a.reach > 0 ? (a.unique_clicks / a.reach) * 100 : 0,
       leads: a.leads,
+      // CVR is a custom metric: results over unique link clicks.
+      cvr: a.unique_clicks > 0 ? (a.leads / a.unique_clicks) * 100 : 0,
+      cost_per_result: a.leads > 0 ? a.spend / a.leads : 0,
     }))
     .sort((a, b) => b.spend - a.spend);
 
