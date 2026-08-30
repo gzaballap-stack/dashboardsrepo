@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   // Build base events query (no execute yet — we'll paginate below)
   let eventsBase = ctx.service
     .from('events')
-    .select('event_type, is_pickup, is_conversation, speed_to_lead_seconds, revenue');
+    .select('event_type, is_pickup, is_conversation, speed_to_lead_seconds, duration_seconds, revenue');
   if (client_id) eventsBase = eventsBase.eq('client_id', client_id);
   else if (liveClientIds) eventsBase = eventsBase.in('client_id', liveClientFilter(liveClientIds));
   if (start_date) eventsBase = eventsBase.gte('occurred_at', `${start_date}T00:00:00.000Z`);

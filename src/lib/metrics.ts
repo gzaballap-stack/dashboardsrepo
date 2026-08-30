@@ -3,6 +3,7 @@ type EventRow = {
   is_pickup: boolean | null;
   is_conversation: boolean | null;
   speed_to_lead_seconds: number | null;
+  duration_seconds?: number | null;
   revenue?: number | null;
 };
 
@@ -29,6 +30,13 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[], excl
     0,
     spendRows.reduce((sum, r) => sum + Number(r.amount), 0) - excludedSpend,
   );
+
+  const durations = dials
+    .map(e => Number(e.duration_seconds))
+    .filter(n => Number.isFinite(n) && n > 0);
+  const avg_duration_sec = durations.length > 0
+    ? durations.reduce((a, b) => a + b, 0) / durations.length
+    : 0;
 
   const speedReadings = dials
     .filter(e => e.speed_to_lead_seconds != null)
@@ -70,6 +78,9 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[], excl
     callbacks,
     cb_pct: leads > 0 ? (callbacks / leads) * 100 : 0,
     speed_to_lead_min,
+    avg_duration_sec,
+    answer_rate: dial_count > 0 ? (pickups / dial_count) * 100 : 0,
+    conversation_rate: dial_count > 0 ? (conversations / dial_count) * 100 : 0,
     // Revenue KPIs
     closes: close_count,
     total_revenue,

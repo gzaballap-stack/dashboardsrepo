@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { KPI_TARGETS, kpiVerdict, overallVerdict, callHealth, VERDICT_STYLE, type KpiKey } from "@/lib/kpi-targets";
 
 // ─── Shared types (re-declared here to keep the drawer self-contained) ────────
 export interface B2BDrawerData {
@@ -223,6 +224,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     outbound_dials: number; pickups: number; pickup_pct: number;
     conversations: number; conversation_pct: number;
     speed_to_lead_min: number; dials_per_lead: number;
+    avg_duration_sec: number; answer_rate: number; conversation_rate: number;
   };
   type AgentCallRow = {
     agent_name: string; dials: number; pickups: number; pickup_rate: number;
@@ -379,7 +381,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entity]);
 
-  useEffect(() => { if (tab === "calls") fetchCalls(); }, [tab, fetchCalls]);
+  useEffect(() => { fetchCalls(); }, [fetchCalls]);
 
   // ── Campaign tracking toggle ────────────────────────────────────────
   // Untracking a campaign removes its spend from every rollup that reads
@@ -547,17 +549,36 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     }
   };
 
-  const renderCallPerf = () => (
-    <SectionCard title="Call Performance">
-      <div className="flex-1 flex flex-col items-center justify-center gap-2 py-8" style={{ color: "#334155" }}>
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
-        </svg>
-        <p className="text-sm font-medium" style={{ color: "#475569" }}>No Call Data</p>
-        <p className="text-xs text-center max-w-[180px]" style={{ color: "#334155" }}>No call records for this date range</p>
-      </div>
-    </SectionCard>
+  const HealthPill = ({ v }: { v: keyof typeof VERDICT_STYLE }) => (
+    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+      style={{ color: VERDICT_STYLE[v].color, background: `${VERDICT_STYLE[v].color}1f` }}>
+      {VERDICT_STYLE[v].label}
+    </span>
   );
+
+  const renderCallPerf = () => {
+    if (isBb) return (
+      <SectionCard title="Call Performance">
+        <div className="flex-1 flex items-center justify-center py-8 text-xs text-center" style={{ color: "#334155" }}>
+          Tracked per client, not on B2B campaigns
+        </div>
+      </SectionCard>
+    );
+    const k = callKpis;
+    const dials = k?.outbound_dials ?? 0;
+    const health = callHealth(k?.answer_rate ?? 0, k?.conversation_rate ?? 0, dials);
+    const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
+    return (
+      <SectionCard title="Call Performance" badge={<HealthPill v={health} />}>
+        <MetricRow label="Total Dials"       value={dials > 0 ? fmtN(dials) : "—"} />
+        <MetricRow label="Pickups (45s+)"    value={k && k.pickups > 0 ? fmtN(k.pickups) : "—"} />
+        <MetricRow label="Answer Rate"       value={k && k.answer_rate > 0 ? fmtPct(k.answer_rate) : "—"} />
+        <MetricRow label="Conversation Rate" value={k && k.conversation_rate > 0 ? fmtPct(k.conversation_rate) : "—"} />
+        <MetricRow label="Avg Duration"      value={k && k.avg_duration_sec > 0 ? mmss(k.avg_duration_sec) : "—"} />
+        <MetricRow label="Speed to Lead"     value={k && k.speed_to_lead_min > 0 ? `${k.speed_to_lead_min.toFixed(1)}m` : "—"} />
+      </SectionCard>
+    );
+  };
 
   const renderAppts = () => {
     if (isBb) {
@@ -580,14 +601,16 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     } else {
       const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
       return (
-        <SectionCard title="Appointments">
+        <SectionCard title="Appointments" badge={<HealthPill v={kpiVerdict("cp_appt", c.cp_appt)} />}>
           <MetricRow label="Booked" value={fmtN(c.appts)} />
           <MetricRow label="Shown" value={fmtN(c.shows)} />
           <MetricRow label="No Show" value={fmtN(c.no_shows)} />
+          {/* Cancellations aren't ingested — appointment-status only accepts
+              show/no_show — so this stays blank rather than showing a false 0. */}
+          <MetricRow label="Cancelled" value="—" />
           <MetricRow label="Show Rate" value={c.appts > 0 ? fmtPct(c.show_rate) : "—"} />
-          <MetricRow label="CP Appt" value={c.cp_appt > 0 ? fmtDec(c.cp_appt) : "—"} />
-          <MetricRow label="L2A %" value={c.l2a_pct > 0 ? fmtPct(c.l2a_pct) : "—"} />
           <MetricRow label="Close Rate" value={c.close_rate > 0 ? fmtPct(c.close_rate) : "—"} />
+          <MetricRow label="CP Appt" value={c.cp_appt > 0 ? fmtDec(c.cp_appt) : "—"} />
         </SectionCard>
       );
     }
@@ -630,19 +653,47 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
             { label: "Cost per Acquisition",  value: d.closes > 0 ? fmt$(d.ad_spend / d.closes) : "—"                     },
           ];
         })()
-      : (() => {
-          const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
-          return [
-            { label: "Closes",      value: fmtN(c.closes)                                     },
-            { label: "Close Rate",  value: c.close_rate > 0 ? fmtPct(c.close_rate) : "—"      },
-            { label: "CP Close",    value: c.closes > 0 ? fmt$(c.spend / c.closes) : "—"       },
-          ];
-        })();
+      : [];
+
+    // Client summary scores each KPI against its absolute target (lib/kpi-targets)
+    // rather than against the portfolio average, so it answers "is this good
+    // enough" rather than "who is worst".
+    const kpiRows: { key: KpiKey; value: number; display: string }[] = isBb ? [] : (() => {
+      const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+      return [
+        { key: "cpl"     as KpiKey, value: c.cpl,     display: c.cpl > 0 ? fmtDec(c.cpl) : "—" },
+        { key: "cp_appt" as KpiKey, value: c.cp_appt, display: c.cp_appt > 0 ? fmtDec(c.cp_appt) : "—" },
+        { key: "l2a_pct" as KpiKey, value: c.l2a_pct, display: c.l2a_pct > 0 ? fmtPct(c.l2a_pct) : "—" },
+        { key: "ctr"     as KpiKey, value: c.ctr,     display: c.ctr > 0 ? fmtPct(c.ctr) : "—" },
+        { key: "cvr"     as KpiKey, value: c.cvr,     display: c.cvr > 0 ? fmtPct(c.cvr) : "—" },
+        { key: "cpc"     as KpiKey, value: c.cpc,     display: c.cpc > 0 ? fmtDec(c.cpc) : "—" },
+      ];
+    })();
+
+    const overall = isBb ? null : overallVerdict(
+      Object.fromEntries(kpiRows.map(r => [r.key, r.value])) as Partial<Record<KpiKey, number>>
+    );
 
     return (
       <SectionCard title="Overall Summary"
-        badge={<span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ color: st.color, background: st.bg }}>{st.label}</span>}>
+        badge={overall
+          ? <HealthPill v={overall} />
+          : <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ color: st.color, background: st.bg }}>{st.label}</span>}>
         {resultRows.map(r => <MetricRow key={r.label} label={r.label} value={r.value} />)}
+        {kpiRows.map(r => {
+          const v = kpiVerdict(r.key, r.value);
+          const t = KPI_TARGETS[r.key];
+          return (
+            <div key={r.key} className="flex items-center justify-between py-[3px] text-xs">
+              <span style={{ color: "#64748b" }}>{t.label}</span>
+              <span className="flex items-center gap-1.5">
+                <span style={{ color: "#e2e8f0" }}>{r.display}</span>
+                <span title={`Target ${t.lowerIsBetter ? "≤" : "≥"} ${t.target}`}
+                  style={{ width: 6, height: 6, borderRadius: "50%", background: VERDICT_STYLE[v].color, display: "inline-block" }} />
+              </span>
+            </div>
+          );
+        })}
         <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           <div className="flex items-center gap-2 mb-1.5">
             <span className="text-[10px] uppercase font-bold" style={{ color: "#475569" }}>Bottleneck</span>
