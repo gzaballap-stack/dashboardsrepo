@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
+import { pickAttribution, inheritAttribution } from '@/lib/attribution';
 
-const VALID_EVENT_TYPES = ['dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked'] as const;
+const VALID_EVENT_TYPES = ['dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked', 'closed'] as const;
 
 export async function POST(req: Request) {
   try {
@@ -74,6 +75,15 @@ export async function POST(req: Request) {
       }
     }
 
+    // Ad attribution: use what this event carries, else inherit from the
+    // contact's first attributed event (see lib/attribution).
+    const attribution = await inheritAttribution(service, {
+      table: 'events',
+      client_id,
+      ghl_contact_id: payload.ghl_contact_id ?? null,
+      attr: pickAttribution(payload),
+    });
+
     const eventData = {
       client_id,
       event_type: payload.event_type,
@@ -96,6 +106,10 @@ export async function POST(req: Request) {
       call_summary: payload.call_summary ?? null,
       phone_number_used: payload.phone_number_used ?? null,
       stage_booked: payload.stage_booked ?? null,
+      revenue: Number(payload.revenue) || 0,
+
+      ...attribution,
+
       raw: payload,
     };
 

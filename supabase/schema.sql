@@ -87,6 +87,22 @@ create table if not exists events (
   ghl_contact_id  text,
   raw             jsonb,
 
+
+  -- Ad attribution (from GHL contact attribution via Make)
+  ad_platform   text,             -- meta | google | tiktok | other
+  campaign_id   text,
+  campaign_name text,
+  adset_id      text,
+  adset_name    text,
+  ad_id         text,
+  ad_name       text,
+  utm_source    text,
+  utm_medium    text,
+  utm_campaign  text,
+  utm_content   text,
+  utm_term      text,
+  referrer_url  text,
+
   -- Closed deal
   revenue         numeric not null default 0,
 
@@ -298,9 +314,73 @@ create table if not exists b2b_events (
   external_id     text,
   revenue         numeric not null default 0,
   raw             jsonb,
+
+
+  -- Ad attribution (from GHL contact attribution via Make)
+  ad_platform   text,             -- meta | google | tiktok | other
+  campaign_id   text,
+  campaign_name text,
+  adset_id      text,
+  adset_name    text,
+  ad_id         text,
+  ad_name       text,
+  utm_source    text,
+  utm_medium    text,
+  utm_campaign  text,
+  utm_content   text,
+  utm_term      text,
+  referrer_url  text,
+
+  -- Call / recording fields (event_type = 'call')
+  client_id        uuid references clients(id) on delete set null,  -- set once the lead converts
+  csm_name         text,
+  agent_name       text,
+  recording_url    text,
+  duration_seconds int,
+  call_status      text,
+  call_summary     text,
+  is_pickup        boolean,
+  is_conversation  boolean,
+  external_id_call text,
+
   constraint b2b_events_event_type_check check (
-    event_type in ('lead', 'intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close')
+    event_type in ('lead', 'intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close', 'call')
   )
+);
+
+-- ── CSM tracking ─────────────────────────────────────────────────────
+create table if not exists client_touchpoints (
+  id          uuid primary key default gen_random_uuid(),
+  client_id   uuid references clients(id) on delete cascade,
+  occurred_at timestamptz default now(),
+  type        text,                -- call | email | meeting | text | other
+  summary     text,
+  csm_name    text,
+  created_at  timestamptz default now(),
+
+  -- Recording fields, for touchpoints logged as calls
+  recording_url    text,
+  duration_seconds int,
+  agent_name       text,
+  call_status      text,
+  external_id      text            -- upstream call id, keeps webhook replays idempotent
+);
+
+create unique index if not exists client_touchpoints_external_id_key
+  on client_touchpoints (external_id) where external_id is not null;
+
+create table if not exists client_csm_status (
+  client_id       uuid primary key references clients(id) on delete cascade,
+  cadence_days    integer,
+  csm_name        text,
+  left_review     boolean,
+  review_date     date,
+  review_platform text,
+  review_link     text,
+  upsell_status   text,
+  upsell_notes    text,
+  upsell_date     date,
+  updated_at      timestamptz default now()
 );
 
 create unique index if not exists b2b_events_external_id_unique

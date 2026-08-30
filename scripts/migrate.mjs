@@ -128,4 +128,111 @@ await runSQL(`
   CREATE INDEX IF NOT EXISTS client_sessions_client_idx ON client_sessions (client_id);
 `, 'Create client_sessions table');
 
+await runSQL(`
+  CREATE TABLE IF NOT EXISTS client_touchpoints (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id uuid REFERENCES clients(id) ON DELETE CASCADE,
+    occurred_at timestamptz DEFAULT now(),
+    type text,
+    summary text,
+    csm_name text,
+    created_at timestamptz DEFAULT now()
+  );
+  CREATE TABLE IF NOT EXISTS client_csm_status (
+    client_id uuid PRIMARY KEY REFERENCES clients(id) ON DELETE CASCADE,
+    cadence_days integer,
+    csm_name text,
+    left_review boolean,
+    review_date date,
+    review_platform text,
+    review_link text,
+    upsell_status text,
+    upsell_notes text,
+    upsell_date date,
+    updated_at timestamptz DEFAULT now()
+  );
+`, 'Create CSM tables');
+
+await runSQL(`
+  ALTER TABLE client_touchpoints ADD COLUMN IF NOT EXISTS recording_url    text;
+  ALTER TABLE client_touchpoints ADD COLUMN IF NOT EXISTS duration_seconds int;
+  ALTER TABLE client_touchpoints ADD COLUMN IF NOT EXISTS agent_name       text;
+  ALTER TABLE client_touchpoints ADD COLUMN IF NOT EXISTS call_status      text;
+  ALTER TABLE client_touchpoints ADD COLUMN IF NOT EXISTS external_id      text;
+  CREATE UNIQUE INDEX IF NOT EXISTS client_touchpoints_external_id_key
+    ON client_touchpoints (external_id) WHERE external_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS client_touchpoints_recording_idx
+    ON client_touchpoints (client_id, occurred_at DESC) WHERE recording_url IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS client_touchpoints_csm_idx
+    ON client_touchpoints (csm_name) WHERE csm_name IS NOT NULL;
+`, 'Add recording fields to CSM touchpoints');
+
+await runSQL(`
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS ad_platform text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS campaign_id text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS campaign_name text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS adset_id text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS adset_name text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS ad_id text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS ad_name text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_source text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_medium text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_campaign text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_content text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS utm_term text;
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS referrer_url text;
+  CREATE INDEX IF NOT EXISTS events_campaign_idx ON events (client_id, campaign_id) WHERE campaign_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS events_adset_idx ON events (client_id, adset_id) WHERE adset_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS events_ad_idx ON events (client_id, ad_id) WHERE ad_id IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS events_utm_campaign_idx ON events (client_id, utm_campaign) WHERE utm_campaign IS NOT NULL;
+`, 'Add ad attribution to events');
+
+// The B2B tables exist only in V1 -- V2 (demo) has never had them. Guarded so the
+// migration completes on both instead of aborting at the first ALTER.
+await runSQL(`
+  DO $$
+  BEGIN
+    IF to_regclass('public.b2b_events') IS NULL THEN
+      RAISE NOTICE 'b2b_events not present -- skipping B2B migration';
+      RETURN;
+    END IF;
+
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS recording_url    text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS duration_seconds int;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS agent_name       text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS call_status      text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS call_summary     text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS is_pickup        boolean;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS is_conversation  boolean;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS csm_name         text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS external_id_call text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS client_id uuid REFERENCES clients(id) ON DELETE SET NULL;
+
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS ad_platform text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS campaign_id text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS campaign_name text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS adset_id text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS adset_name text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS ad_id text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS ad_name text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS utm_source text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS utm_medium text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS utm_campaign text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS utm_content text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS utm_term text;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS referrer_url text;
+
+    ALTER TABLE b2b_events DROP CONSTRAINT IF EXISTS b2b_events_event_type_check;
+    ALTER TABLE b2b_events ADD CONSTRAINT b2b_events_event_type_check CHECK (
+      event_type IN ('lead','intro_booked','intro_shown','sales_call_booked','sales_call_shown','close','call')
+    );
+
+    CREATE INDEX IF NOT EXISTS b2b_events_recording_idx ON b2b_events (occurred_at DESC) WHERE recording_url IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS b2b_events_client_idx ON b2b_events (client_id) WHERE client_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS b2b_events_campaign_idx ON b2b_events (campaign_id) WHERE campaign_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS b2b_events_adset_idx ON b2b_events (adset_id) WHERE adset_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS b2b_events_ad_idx ON b2b_events (ad_id) WHERE ad_id IS NOT NULL;
+  END $$;
+`, 'Add B2B call recording + attribution fields (skipped where b2b_events absent)');
+
 console.log('\nAll migrations complete.');

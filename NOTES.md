@@ -6,6 +6,24 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
+## 2026-08-29 — V1 outranks V2, always
+
+- Stated explicitly by the user: **V1 (`dashboard.tomsimedia.com`, real client
+  data) is the priority by a wide margin.** V2 is a demo on synthetic data.
+- Rule: never make a change for V2 that could negatively affect V1. If a change
+  helps V2 and carries any risk to V1, **warn first and let the user decide** —
+  do not execute on your own judgement.
+- The trap this guards against: both environments deploy from `main`, so there
+  is no such thing as a "V2-only" code change. Anything pushed for V2 lands on
+  production the same minute.
+- Databases are the exception to "everything is shared" — V1 and V2 are separate
+  Supabase projects. Migrations are NOT applied by deploying: the build is plain
+  `next build`, and the `.sql` files in the repo never execute. Each database has
+  to be migrated explicitly, V1 with production-grade care.
+- Recorded at the top of `CLAUDE.md` so it loads into every session.
+
+---
+
 ## 2026-08-29 — Dropped the standalone zip-tool prototype
 
 - Briefly moved the standalone `zip-market-tool` (`~/Downloads/zip-tool`) into

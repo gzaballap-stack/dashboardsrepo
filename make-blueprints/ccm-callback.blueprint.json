@@ -61,7 +61,7 @@
                 "ca": "",
                 "useMtls": false,
                 "contentType": "application/json",
-                "data": "{\"event_type\": \"callback_booked\", \"client_name\": \"{{trim(1.location.name)}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"occurred_at\": \"{{formatDate(now; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\"}"
+                "data": "{\"event_type\": \"callback_booked\", \"client_name\": \"{{trim(1.location.name)}}\", \"ghl_contact_id\": \"{{1.contact_id}}\", \"occurred_at\": \"{{formatDate(now; \\\"YYYY-MM-DDTHH:mm:ss\\\")}}\", \"ad_platform\": \"{{1.customData.`Ad Platform`}}\", \"campaign_id\": \"{{1.customData.`Campaign ID`}}\", \"campaign_name\": \"{{1.customData.`Campaign Name`}}\", \"adset_id\": \"{{1.customData.`Ad Set ID`}}\", \"adset_name\": \"{{1.customData.`Ad Set Name`}}\", \"ad_id\": \"{{1.customData.`Ad ID`}}\", \"ad_name\": \"{{1.customData.`Ad Name`}}\", \"utm_source\": \"{{1.customData.`UTM Source`}}\", \"utm_medium\": \"{{1.customData.`UTM Medium`}}\", \"utm_campaign\": \"{{1.customData.`UTM Campaign`}}\", \"utm_content\": \"{{1.customData.`UTM Content`}}\", \"utm_term\": \"{{1.customData.`UTM Term`}}\", \"referrer_url\": \"{{1.customData.`Referrer URL`}}\"}"
             },
             "metadata": {
                 "designer": { "x": 300, "y": 0, "name": "Send to Supabase" }

@@ -1,5 +1,22 @@
 # Call Center Reporting Dashboard
 
+> ## ⚠️ V1 is the priority — always
+>
+> **V1 (`dashboard.tomsimedia.com`) is production, with real client data. It
+> outranks V2 in every decision.** V2 is a demo environment running synthetic
+> data; it is never worth degrading V1 for.
+>
+> - **Never make a change for V2's benefit that could harm V1** — not its data,
+>   its numbers, its uptime, or its behaviour.
+> - If a change helps V2 and carries *any* risk to V1, **stop and warn the user
+>   before executing.** Explain the risk and let them decide. Do not proceed on
+>   your own judgement.
+> - When a trade-off between the two is unavoidable, V1 wins by default.
+> - Both environments run the same code, so *any* push affects V1. A change
+>   framed as "just for V2" still ships to production — treat it as a V1 change.
+>
+> See "Two environments" below for what is and isn't shared between them.
+
 ## What This Is
 
 A reporting dashboard for a call center / setter team. Tracks dials, leads,
@@ -17,8 +34,16 @@ across all lead sources.
 
 ## Two environments (V1 and V2)
 
+**V1 is the priority environment — see the warning at the top of this file.**
+
 Both run the **same code** off the `main` branch. Railway's GitHub integration
-auto-deploys both on every push — there is no separate release step.
+auto-deploys both on every push — there is no separate release step. This is why
+a "V2-only" code change does not exist: every push lands on V1 too.
+
+What is *not* shared: the two Supabase databases are entirely separate. Schema
+changes are **not** applied by deploying — the `.sql` files in this repo are
+inert text, and the build runs only `next build`. Each database must be migrated
+explicitly, and V1 should be treated with the caution production deserves.
 
 | | V1 (production) | V2 (demo) |
 |---|---|---|
@@ -41,6 +66,10 @@ other vars stay put.
   `POST https://dashboards.tomsimedia.com/api/cron/seed-daily`, backfills, demo
   client pipeline. If asked about V2 data seeding here, that work belongs in the
   V2 data session.
+
+Work requested for V2 still has to clear the V1 bar. If a V2 request would mean
+changing shared code, shared schema shape, or anything V1 reads, raise it before
+acting — see the priority warning at the top.
 
 ---
 
@@ -120,6 +149,63 @@ Already built: `src/app/api/ai-campaign-chat/route.ts`. `POST { context, message
   (local) **and** Railway env vars (both V1 and V2).
 - Get a key at console.anthropic.com (usage-billed, no monthly fee). Haiku is
   ~$1 / $5 per 1M input/output tokens.
+
+---
+
+## Ad attribution & call recordings (GHL → Make → webhooks)
+
+`ad_campaigns` records what each campaign/ad set/ad **spent**; `events` and
+`b2b_events` record what the funnel **produced**. The join between them is the
+attribution block below, sent by GHL through Make.
+
+The webhooks accept every field already — anything absent is stored as `null`,
+so partial coverage is fine and nothing breaks while GHL is only half wired.
+
+**Set these as custom data on the GHL workflow** (names must match exactly; the
+Make blueprints read `1.customData.\`<Name>\``):
+
+| GHL custom data field | Webhook key | Notes |
+|---|---|---|
+| `Ad Platform` | `ad_platform` | meta / google / tiktok |
+| `Campaign ID` · `Campaign Name` | `campaign_id` · `campaign_name` | joins to `ad_campaigns.campaign_id` |
+| `Ad Set ID` · `Ad Set Name` | `adset_id` · `adset_name` | |
+| `Ad ID` · `Ad Name` | `ad_id` · `ad_name` | |
+| `UTM Source` · `UTM Medium` · `UTM Campaign` · `UTM Content` · `UTM Term` | `utm_*` | GHL fills these far more reliably than the numeric IDs — keep both |
+| `Referrer URL` | `referrer_url` | |
+| `Call Status` · `Agent Name` · `Call Summary` | `call_status` · `agent_name` · `call_summary` | dial events |
+
+> **Call recordings are parked.** Getting a per-call recording URL out of GHL
+> proved impractical, so `Call Recording URL` was removed from the dial
+> blueprint. Whether a call happened, its duration, status and agent are still
+> tracked. The recording plumbing (`events.recording_url`, `/api/recordings`,
+> the drawer's Recordings tab, the CSM recordings view) is built and dormant —
+> it will populate if a URL ever becomes available, and shows empty states
+> until then. Don't invest further here without new information.
+
+### Attribution only needs to be on the New Lead workflow
+
+`/api/webhooks` inherits attribution automatically (`src/lib/attribution.ts`).
+When an event arrives without attribution of its own, it copies it from that
+contact's **earliest attributed event**, matched on `ghl_contact_id`.
+
+This matters because of how Meta lead forms work: Meta attaches
+`ad_id`/`adset_id`/`campaign_id` to the lead submission, but the appointment
+booked three days later carries nothing. Without inheritance, spend could only
+ever be tied to leads — never to appointments, closes or revenue.
+
+So in practice:
+
+- **Required:** attribution custom data on the **New Lead** workflow.
+- **Optional:** the same fields on dial / appointment / show / no-show /
+  callback. An event that carries its own attribution always wins over the
+  inherited value; adding them is a refinement, not a prerequisite.
+
+That reduces the GHL rollout from six workflows per location to one.
+
+> `closed` is now an accepted `event_type` on `/api/webhooks` and carries
+> `revenue`. Until GHL sends real closes, the only ones in the database are
+> synthetic rows generated by `admin/backfill-closes` from shows — do not read
+> them as real revenue.
 
 ---
 

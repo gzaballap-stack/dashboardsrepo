@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
+import { pickAttribution, inheritAttribution } from '@/lib/attribution';
 
 const VALID_EVENT_TYPES = [
   'lead',
   'intro_booked', 'intro_shown',
   'sales_call_booked', 'sales_call_shown',
   'close',
+  'call',
 ] as const;
 
 export async function POST(req: Request) {
@@ -27,6 +29,30 @@ export async function POST(req: Request) {
 
     const revenue = parseFloat(payload.revenue) || 0;
 
+    // A B2B call can name an existing client, which is what pulls the
+    // conversation onto that client's CSM history. Unresolvable names are left
+    // null rather than rejected — the call still belongs in the CSM list, just
+    // grouped under the lead name instead.
+    let client_id = (payload.client_id as string | undefined) ?? null;
+    if (!client_id && payload.client_name) {
+      const { data: client } = await service
+        .from('clients')
+        .select('id')
+        .eq('name', payload.client_name)
+        .single();
+      client_id = client?.id ?? null;
+    }
+
+    const duration = payload.duration_seconds !== undefined && payload.duration_seconds !== null
+      ? Number(payload.duration_seconds)
+      : null;
+
+    const attribution = await inheritAttribution(service, {
+      table: 'b2b_events',
+      ghl_contact_id: payload.ghl_contact_id ?? null,
+      attr: pickAttribution(payload),
+    });
+
     const eventData = {
       event_type:     payload.event_type,
       occurred_at:    payload.occurred_at || new Date().toISOString(),
@@ -36,6 +62,18 @@ export async function POST(req: Request) {
       ghl_contact_id: payload.ghl_contact_id ?? null,
       external_id:    payload.external_id ?? null,
       revenue,
+      client_id,
+      csm_name:         payload.csm_name       ?? null,
+      agent_name:       payload.agent_name     ?? null,
+      recording_url:    payload.recording_url  ?? null,
+      duration_seconds: Number.isFinite(duration) ? duration : null,
+      call_status:      payload.call_status    ?? null,
+      call_summary:     payload.call_summary   ?? null,
+      is_pickup:        payload.is_pickup       ?? null,
+      is_conversation:  payload.is_conversation ?? null,
+
+      ...attribution,
+
       raw:            payload,
     };
 
