@@ -8,13 +8,21 @@ type CampaignRollup = {
   campaign_name: string;
   platform: string;
   status: string | null;
+  objective: string | null;
   budget: number | null;
   spend: number;
   impressions: number;
   reach: number;
+  frequency: number;
   link_clicks: number;
+  unique_clicks: number;
+  unique_ctr: number;
   ctr: number;
   cpc: number;
+  cpm: number;
+  leads: number;
+  cvr: number;
+  cost_per_result: number;
   excluded: boolean;
 };
 

@@ -219,6 +219,18 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   // Absent = fall back to the server's `excluded` flag on the campaign row.
   const [trackOverrides, setTrackOverrides] = useState<Record<string, boolean>>({});
   const [savingCampaign, setSavingCampaign] = useState<string | null>(null);
+  type CallKpis = {
+    outbound_dials: number; pickups: number; pickup_pct: number;
+    conversations: number; conversation_pct: number;
+    speed_to_lead_min: number; dials_per_lead: number;
+  };
+  type AgentCallRow = {
+    agent_name: string; dials: number; pickups: number; pickup_rate: number;
+    conversations: number; conversation_rate: number; appointments: number; shows: number;
+  };
+  const [callKpis, setCallKpis]       = useState<CallKpis | null>(null);
+  const [agentCalls, setAgentCalls]   = useState<AgentCallRow[] | null>(null);
+  const [callLoading, setCallLoading] = useState(false);
   const [recData, setRecData]         = useState<RecordingRow[] | null>(null);
   const [recLoading, setRecLoading]   = useState(false);
 
@@ -345,6 +357,29 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   }, [entity]);
 
   useEffect(() => { if (tab === "ads") fetchAds(); }, [tab, fetchAds]);
+
+  // ── Call performance fetch ──────────────────────────────────────────
+  // Dials are recorded against a client, not a campaign, so this is the client's
+  // call performance for the drawer's date range.
+  const fetchCalls = useCallback(async () => {
+    if (callKpis !== null || entity.kind === "b2b") return;
+    setCallLoading(true);
+    try {
+      const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+      const range = `start_date=${entity.startDate}&end_date=${entity.endDate}`;
+      const [m, a] = await Promise.all([
+        fetch(`/api/metrics?client_id=${c.client_id}&${range}`).then(r => r.json()).catch(() => null),
+        fetch(`/api/agent-stats?clientId=${c.client_id}&startDate=${entity.startDate}&endDate=${entity.endDate}`)
+          .then(r => r.json()).catch(() => null),
+      ]);
+      setCallKpis(m ?? null);
+      setAgentCalls((a?.agents ?? []) as AgentCallRow[]);
+    } catch { setCallKpis(null); setAgentCalls([]); }
+    finally  { setCallLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity]);
+
+  useEffect(() => { if (tab === "calls") fetchCalls(); }, [tab, fetchCalls]);
 
   // ── Campaign tracking toggle ────────────────────────────────────────
   // Untracking a campaign removes its spend from every rollup that reads
@@ -620,15 +655,66 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   };
 
   // ── Tab content renderers ──────────────────────────────────────────
-  const renderCalls = () => (
-    <div className="flex flex-col items-center justify-center py-20 gap-3">
-      <svg className="w-12 h-12" fill="none" stroke="currentColor" strokeWidth={1} viewBox="0 0 24 24" style={{ color: "#1e3a5f" }}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
-      </svg>
-      <p className="text-base font-semibold" style={{ color: "#334155" }}>No Call Data</p>
-      <p className="text-sm" style={{ color: "#1e3a5f" }}>No call records for this date range</p>
-    </div>
-  );
+  const renderCalls = () => {
+    if (isBb) return renderPlaceholder("Not Tracked Here", "Call performance is tracked per client, not on B2B campaigns.");
+    if (callLoading) return <div className="py-10 text-center text-sm" style={{ color: "#334155" }}>Loading call performance…</div>;
+    if (!callKpis || !callKpis.outbound_dials) return renderPlaceholder(
+      "No Call Data",
+      "No dials recorded for this client in this date range."
+    );
+
+    const tiles = [
+      { label: "Dials",          value: fmtN(callKpis.outbound_dials) },
+      { label: "Pickups",        value: fmtN(callKpis.pickups),       sub: `${callKpis.pickup_pct.toFixed(1)}% of dials` },
+      { label: "Conversations",  value: fmtN(callKpis.conversations), sub: `${callKpis.conversation_pct.toFixed(1)}% of pickups` },
+      { label: "Speed to Lead",  value: callKpis.speed_to_lead_min > 0 ? `${callKpis.speed_to_lead_min.toFixed(1)}m` : "—" },
+      { label: "Dials / Lead",   value: callKpis.dials_per_lead > 0 ? callKpis.dials_per_lead.toFixed(1) : "—" },
+    ];
+
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
+          {tiles.map(t => (
+            <div key={t.label} className="rounded-xl px-3 py-2.5"
+              style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>{t.label}</div>
+              <div className="text-lg font-bold mt-0.5" style={{ color: "#e2e8f0" }}>{t.value}</div>
+              {t.sub && <div className="text-[10px] mt-0.5" style={{ color: "#475569" }}>{t.sub}</div>}
+            </div>
+          ))}
+        </div>
+
+        {agentCalls && agentCalls.length > 0 && (
+          <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+            <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
+              <thead style={{ background: "#080e1c", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+                <tr>
+                  <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Agent</th>
+                  {["Dials", "Pickups", "Pickup %", "Convos", "Convo %", "Appts", "Shows"].map(h => (
+                    <th key={h} className={COL_HEADER} style={{ color: "#475569" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {agentCalls.map((a, i) => (
+                  <tr key={a.agent_name || i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                    <td className="px-3 py-2.5 text-xs font-medium" style={{ color: "#e2e8f0" }}>{a.agent_name || "Unattributed"}</td>
+                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.dials)}</td>
+                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.pickups)}</td>
+                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.pickup_rate}%</td>
+                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.conversations)}</td>
+                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.conversation_rate}%</td>
+                    <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{fmtN(a.appointments)}</td>
+                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.shows)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderCampaigns = () => {
     const camps = isBb
@@ -649,19 +735,16 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
           </p>
         )}
       <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
-        <table className="w-full text-sm" style={{ minWidth: 700 }}>
+        <table className="w-full text-sm" style={{ minWidth: 1320 }}>
           <thead>
             <tr style={{ background: "#0a1628", color: "#64748b" }}>
               {!isBb && <th className="text-center font-medium px-3 py-3">Tracked</th>}
               <th className="text-left font-medium px-4 py-3">Campaign</th>
               {!isBb && <th className="text-left font-medium px-3 py-3">Platform</th>}
               {!isBb && <th className="text-left font-medium px-3 py-3">Status</th>}
-              <th className="text-right font-medium px-3 py-3">Spend</th>
-              <th className="text-right font-medium px-3 py-3">Impressions</th>
-              <th className="text-right font-medium px-3 py-3">Clicks</th>
-              <th className="text-right font-medium px-3 py-3">CTR</th>
-              <th className="text-right font-medium px-3 py-3">CPC</th>
-              {isBb && <th className="text-right font-medium px-3 py-3">CPM</th>}
+              {METRIC_COLS.map(c => (
+                <th key={c} className={COL_HEADER} style={{ color: "#64748b" }}>{c}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -700,12 +783,10 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
                     </td>
                   )}
                   {!isBb && <td className="px-3 py-3 text-xs" style={{ color: "#64748b" }}>{campStatus ?? "—"}</td>}
-                  <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>{fmt$(c.spend)}</td>
-                  <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{c.impressions > 0 ? fmtN(c.impressions) : "—"}</td>
-                  <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{c.link_clicks > 0 ? fmtN(c.link_clicks) : "—"}</td>
-                  <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{ctr != null ? fmtPct(ctr) : "—"}</td>
-                  <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{cpc != null && cpc > 0 ? fmtDec(cpc) : "—"}</td>
-                  {isBb && <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{cpm != null && cpm > 0 ? fmtDec(cpm) : "—"}</td>}
+                  {renderMetricCells({
+                    ...(c as unknown as AdMetrics),
+                    ctr: ctr ?? 0, cpc: cpc ?? 0, cpm: cpm ?? 0,
+                  })}
                 </tr>
               );
             })}

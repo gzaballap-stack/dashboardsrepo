@@ -8,18 +8,24 @@ type CampaignRow = {
   campaign_name: string;
   platform: string;
   status: string | null;
+  objective: string | null;
   budget: number | null;
   spend: number;
   impressions: number;
   reach: number;
+  frequency: number | null;
   link_clicks: number;
+  unique_clicks: number | null;
+  unique_ctr: number | null;
+  cpm: number | null;
+  leads: number | null;
   clients: { name: string } | null;
 };
 
-type AdRollup = { spend: number; impressions: number; reach: number; link_clicks: number };
+type AdRollup = { spend: number; impressions: number; reach: number; link_clicks: number; unique_clicks: number; ad_leads: number };
 type FunnelRollup = { leads: number; appts: number; shows: number; no_shows: number; closes: number };
 
-const EMPTY_AD: AdRollup = { spend: 0, impressions: 0, reach: 0, link_clicks: 0 };
+const EMPTY_AD: AdRollup = { spend: 0, impressions: 0, reach: 0, link_clicks: 0, unique_clicks: 0, ad_leads: 0 };
 const EMPTY_FUNNEL: FunnelRollup = { leads: 0, appts: 0, shows: 0, no_shows: 0, closes: 0 };
 
 function median(vals: number[]): number {
@@ -75,7 +81,7 @@ export async function GET(req: Request) {
 
   let adQuery = ctx.service
     .from('ad_campaigns')
-    .select('client_id, campaign_id, campaign_name, platform, status, budget, spend, impressions, reach, link_clicks, clients(name)')
+    .select('client_id, campaign_id, campaign_name, platform, status, objective, budget, spend, impressions, reach, frequency, link_clicks, unique_clicks, unique_ctr, cpm, leads, clients(name)')
     .eq('level', 'campaign')
     .in('client_id', liveClientFilter(liveClientIds));
   if (start_date) adQuery = adQuery.gte('report_date', start_date);
@@ -132,7 +138,7 @@ export async function GET(req: Request) {
     client_id: string;
     client_name: string;
     ad: AdRollup;
-    campaigns: Map<string, AdRollup & { campaign_id: string; campaign_name: string; platform: string; status: string | null; budget: number | null; excluded: boolean }>;
+    campaigns: Map<string, AdRollup & { campaign_id: string; campaign_name: string; platform: string; status: string | null; objective: string | null; budget: number | null; excluded: boolean }>;
   }>();
 
   for (const row of adRows) {
@@ -146,17 +152,25 @@ export async function GET(req: Request) {
     if (!isExcluded) {
       c.ad.spend += Number(row.spend) || 0;
       c.ad.impressions += row.impressions || 0;
+      c.ad.unique_clicks += row.unique_clicks || 0;
+      c.ad.ad_leads += row.leads || 0;
       c.ad.reach += row.reach || 0;
       c.ad.link_clicks += row.link_clicks || 0;
     }
 
     let camp = c.campaigns.get(row.campaign_id);
     if (!camp) {
-      camp = { campaign_id: row.campaign_id, campaign_name: row.campaign_name, platform: row.platform, status: row.status, budget: row.budget, excluded: isExcluded, ...EMPTY_AD };
+      camp = { campaign_id: row.campaign_id, campaign_name: row.campaign_name, platform: row.platform, status: row.status, objective: row.objective, budget: row.budget, excluded: isExcluded, ...EMPTY_AD };
       c.campaigns.set(row.campaign_id, camp);
     }
     camp.spend += Number(row.spend) || 0;
     camp.impressions += row.impressions || 0;
+    camp.unique_clicks += row.unique_clicks || 0;
+    camp.ad_leads += row.leads || 0;
+    // Budget/status/objective describe the entity, not the day — keep the first non-null.
+    camp.budget    = camp.budget    ?? row.budget    ?? null;
+    camp.status    = camp.status    ?? row.status    ?? null;
+    camp.objective = camp.objective ?? row.objective ?? null;
     camp.reach += row.reach || 0;
     camp.link_clicks += row.link_clicks || 0;
   }
@@ -221,8 +235,15 @@ export async function GET(req: Request) {
       campaigns: Array.from(c.campaigns.values())
         .map(camp => ({
           ...camp,
+          leads: camp.ad_leads,
           ctr: camp.impressions > 0 ? (camp.link_clicks / camp.impressions) * 100 : 0,
           cpc: camp.link_clicks > 0 ? camp.spend / camp.link_clicks : 0,
+          // Rates derived from summed totals, never averaged per-day rates.
+          cpm:        camp.impressions   > 0 ? (camp.spend / camp.impressions) * 1000 : 0,
+          frequency:  camp.reach         > 0 ? camp.impressions / camp.reach : 0,
+          unique_ctr: camp.reach         > 0 ? (camp.unique_clicks / camp.reach) * 100 : 0,
+          cvr:        camp.unique_clicks > 0 ? (camp.ad_leads / camp.unique_clicks) * 100 : 0,
+          cost_per_result: camp.ad_leads > 0 ? camp.spend / camp.ad_leads : 0,
         }))
         .sort((a, b) => b.spend - a.spend),
     };
