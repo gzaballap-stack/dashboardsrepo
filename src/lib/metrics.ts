@@ -8,7 +8,9 @@ type EventRow = {
 
 type SpendRow = { amount: number | string };
 
-export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
+// excludedSpend is the spend of campaigns opted out per client (see lib/exclusions).
+// It is subtracted from the stored ad_spend totals, which have no campaign dimension.
+export function calculateMetrics(events: EventRow[], spendRows: SpendRow[], excludedSpend = 0) {
   const leads    = events.filter(e => e.event_type === 'lead').length;
   const booked   = events.filter(e => e.event_type === 'appointment_booked').length;
   const shows    = events.filter(e => e.event_type === 'show').length;
@@ -23,7 +25,10 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[]) {
   const close_count = closes.length;
   const total_revenue = closes.reduce((sum, e) => sum + (Number(e.revenue) || 0), 0);
 
-  const ad_spend = spendRows.reduce((sum, r) => sum + Number(r.amount), 0);
+  const ad_spend = Math.max(
+    0,
+    spendRows.reduce((sum, r) => sum + Number(r.amount), 0) - excludedSpend,
+  );
 
   const speedReadings = dials
     .filter(e => e.speed_to_lead_seconds != null)

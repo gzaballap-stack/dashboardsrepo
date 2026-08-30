@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { calculateMetrics } from '@/lib/metrics';
 import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
+import { getExcludedSpend } from '@/lib/exclusions';
 
 type EventRow = { event_type: string; is_pickup: boolean | null; is_conversation: boolean | null; speed_to_lead_seconds: number | null; revenue: number | null };
 
@@ -42,7 +43,7 @@ export async function GET(req: Request) {
     offset += PAGE;
   }
 
-  let spendQuery = ctx.service.from('ad_spend').select('amount');
+  let spendQuery = ctx.service.from('ad_spend').select('client_id, spend_date, amount');
   if (client_id) spendQuery = spendQuery.eq('client_id', client_id);
   else if (liveClientIds) spendQuery = spendQuery.in('client_id', liveClientFilter(liveClientIds));
   if (start_date) spendQuery = spendQuery.gte('spend_date', start_date);
@@ -51,5 +52,10 @@ export async function GET(req: Request) {
   const { data: spendRows, error: spendError } = await spendQuery;
   if (spendError) return NextResponse.json({ error: spendError.message }, { status: 500 });
 
-  return NextResponse.json(calculateMetrics(allEvents, spendRows ?? []));
+  const excludedSpend = await getExcludedSpend(ctx.service, spendRows ?? [], {
+    client_id,
+    client_ids: client_id ? null : liveClientIds,
+  });
+
+  return NextResponse.json(calculateMetrics(allEvents, spendRows ?? [], excludedSpend));
 }

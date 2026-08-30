@@ -355,7 +355,7 @@ export default function CampaignOverview({ startDate, endDate }: {
                       {isOpen && drawerEntity && (
                         <tr key={r.client_id + "_detail"}>
                           <td colSpan={15} style={{ padding: 0 }}>
-                            <CampaignDetailDrawer entity={drawerEntity} onClose={() => setDrawerEntity(null)} />
+                            <CampaignDetailDrawer entity={drawerEntity} onClose={() => setDrawerEntity(null)} onExclusionsChange={() => loadDataRef.current()} />
                           </td>
                         </tr>
                       )}

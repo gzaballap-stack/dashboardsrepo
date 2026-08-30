@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { calculateMetrics } from '@/lib/metrics';
+import { getExcludedSpend } from '@/lib/exclusions';
 
 // Public endpoint — authenticated by share_token, no user session required.
 export async function GET(req: Request) {
@@ -29,14 +30,16 @@ export async function GET(req: Request) {
   if (start_date) eventsQuery = eventsQuery.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsQuery = eventsQuery.lte('occurred_at', `${end_date}T23:59:59.999Z`);
 
-  let spendQuery = service.from('ad_spend').select('amount').eq('client_id', client.id);
+  let spendQuery = service.from('ad_spend').select('client_id, spend_date, amount').eq('client_id', client.id);
   if (start_date) spendQuery = spendQuery.gte('spend_date', start_date);
   if (end_date)   spendQuery = spendQuery.lte('spend_date', end_date);
 
   const [{ data: events }, { data: spendRows }] = await Promise.all([eventsQuery, spendQuery]);
 
+  const excludedSpend = await getExcludedSpend(service, spendRows ?? [], { client_id: client.id });
+
   return NextResponse.json({
     client_name: client.name,
-    ...calculateMetrics(events ?? [], spendRows ?? []),
+    ...calculateMetrics(events ?? [], spendRows ?? [], excludedSpend),
   });
 }
