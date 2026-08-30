@@ -106,10 +106,10 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "admin_agents",     label: "Agent Roster",      group: "Admin"       },
   { view: "admin_clients",    label: "Client Roster",     group: "Admin"       },
   { view: "schedule",         label: "Power Dialer Schedule", group: "Admin"    },
-  { view: "admin_share",      label: "Share Reports",     group: "Admin"       },
-  { view: "admin_users",      label: "Users",             group: "Admin"       },
   { view: "zip_tool",         label: "Zip Code Tool",     group: "Tools"       },
 ];
+
+const SETTINGS_ICON = "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z";
 
 const NAV_ICONS: Record<View, string> = {
   dashboard:     "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
@@ -237,7 +237,14 @@ function ShareReports({ clients }: { clients: Client[] }) {
   );
 }
 
-type TopSection = "clients_dashboard" | "tomsi_media" | "clients" | "tools" | "payments";
+const CLIENTS_NAV: { id: ClientsView; label: string; icon: string }[] = [
+  { id: "client_roster", label: "Client Roster", icon: NAV_ICONS.admin_clients },
+  { id: "csm_dashboard", label: "CSM Dashboard", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
+  { id: "share_reports", label: "Share Reports", icon: NAV_ICONS.admin_share },
+];
+
+type TopSection = "clients_dashboard" | "tomsi_media" | "clients" | "tools" | "payments" | "settings";
+type ClientsView = "client_roster" | "csm_dashboard" | "share_reports";
 
 const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: string }[] = [
   {
@@ -278,6 +285,7 @@ export default function DashboardView() {
   const [topSection, setTopSection] = useState<TopSection>("clients_dashboard");
   const [tomsiView, setTomsiView] = useState<TomsiView>("b2b_tracking");
   const [tomsiPreset, setTomsiPreset] = useState<Preset>("last_7");
+  const [clientsView, setClientsView] = useState<ClientsView>("client_roster");
   const [expandedSections, setExpandedSections] = useState<Set<TopSection>>(new Set(["clients_dashboard"]));
   const [view, setView] = useState<View>("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
@@ -301,10 +309,16 @@ export default function DashboardView() {
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(NAV_STATE_KEY) ?? "{}");
-      if (saved.topSection && ["clients_dashboard","tomsi_media"].includes(saved.topSection))
-        setTopSection(saved.topSection as TopSection);
-      if (saved.view) setView(saved.view as View);
+      const savedTop = ["clients_dashboard","tomsi_media","tools","clients","settings"].includes(saved.topSection)
+        ? saved.topSection as TopSection
+        : null;
+      if (savedTop) setTopSection(savedTop);
+      // zip_tool only belongs to the Tools section; restoring it anywhere else
+      // would render the tool inside the Clients Dashboard.
+      if (saved.view && !(saved.view === "zip_tool" && savedTop !== "tools"))
+        setView(saved.view as View);
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
+      if (saved.clientsView) setClientsView(saved.clientsView as ClientsView);
       if (saved.expandedSections) setExpandedSections(new Set(saved.expandedSections as TopSection[]));
     } catch {}
   }, []);
@@ -313,10 +327,10 @@ export default function DashboardView() {
   useEffect(() => {
     try {
       localStorage.setItem(NAV_STATE_KEY, JSON.stringify({
-        topSection, view, tomsiView, expandedSections: Array.from(expandedSections),
+        topSection, view, tomsiView, clientsView, expandedSections: Array.from(expandedSections),
       }));
     } catch {}
-  }, [topSection, view, expandedSections]);
+  }, [topSection, view, tomsiView, clientsView, expandedSections]);
 
   // Restore dismissed alerts + closed banners, then fetch current alerts on mount
   useEffect(() => {
@@ -410,7 +424,9 @@ export default function DashboardView() {
   const isHeatmap = view.startsWith("heatmap_");
   const isRaw = ["leads", "dials", "appointments", "speed_to_lead", "ad_spend"].includes(view);
   const isAgentView = ["agent_stats", "agent_scorecards", "recordings"].includes(view);
-  const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Stats", "Admin", "Tools"];
+  // "Tools" is deliberately absent: the Zip Code Tool lives under the Tools
+  // top-level section, not inside the Clients Dashboard sub-nav.
+  const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Stats", "Admin"];
 
   return (
     <div className="h-screen overflow-hidden flex" style={{ background: "#080f1e" }}>
@@ -451,6 +467,7 @@ export default function DashboardView() {
                     if (sec.id === "clients_dashboard") setView("dashboard");
                     if (sec.id === "tomsi_media") setTomsiView("b2b_tracking");
                     if (sec.id === "tools") setView("zip_tool");
+                    if (sec.id === "clients") setClientsView("client_roster");
                     setExpandedSections(prev => {
                       const next = new Set(prev);
                       if (next.has(sec.id)) next.delete(sec.id);
@@ -517,6 +534,32 @@ export default function DashboardView() {
                   </div>
                 )}
 
+                {/* Sub-nav for Clients */}
+                {isActive && sec.id === "clients" && expandedSections.has("clients") && (
+                  <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", marginLeft: 20, paddingLeft: 8 }}>
+                    {CLIENTS_NAV.map(item => {
+                      const active = clientsView === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => { setClientsView(item.id); setSidebarOpen(false); }}
+                          className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
+                          style={active
+                            ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b" }
+                            : { color: "#475569" }}
+                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
+                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+                        >
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                          </svg>
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* Sub-nav for Tools */}
                 {isActive && sec.id === "tools" && expandedSections.has("tools") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", marginLeft: 20, paddingLeft: 8 }}>
@@ -569,20 +612,63 @@ export default function DashboardView() {
           })}
         </nav>
 
-        {/* Sign out */}
+        {/* Settings */}
         <div className="px-3 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
           <button
-            onClick={handleSignOut}
+            onClick={() => {
+              setTopSection("settings");
+              setView("admin_users");
+              setExpandedSections(prev => {
+                const next = new Set(prev);
+                if (next.has("settings")) next.delete("settings");
+                else next.add("settings");
+                return next;
+              });
+              setSidebarOpen(false);
+            }}
             className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors"
-            style={{ color: "#334155" }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#64748b"}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#334155"}
+            style={topSection === "settings"
+              ? { background: "rgba(245,158,11,0.08)", color: "#f59e0b" }
+              : { color: "#334155" }}
+            onMouseEnter={e => { if (topSection !== "settings") (e.currentTarget as HTMLElement).style.color = "#64748b"; }}
+            onMouseLeave={e => { if (topSection !== "settings") (e.currentTarget as HTMLElement).style.color = "#334155"; }}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              <path strokeLinecap="round" strokeLinejoin="round" d={SETTINGS_ICON} />
             </svg>
-            Sign Out
+            Settings
           </button>
+
+          {topSection === "settings" && expandedSections.has("settings") && (
+            <div className="mt-1" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", marginLeft: 20, paddingLeft: 8 }}>
+              <button
+                onClick={() => { setView("admin_users"); setSidebarOpen(false); }}
+                className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
+                style={view === "admin_users"
+                  ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b" }
+                  : { color: "#475569" }}
+                onMouseEnter={e => { if (view !== "admin_users") (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
+                onMouseLeave={e => { if (view !== "admin_users") (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+              >
+                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d={NAV_ICONS.admin_users} />
+                </svg>
+                Users
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150"
+                style={{ color: "#475569" }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#94a3b8"}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#475569"}
+              >
+                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sign Out
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -605,6 +691,10 @@ export default function DashboardView() {
               ? <><span style={{ color: "#334155" }}>Tomsi Media / </span>B2B Tracking</>
               : topSection === "payments"
               ? "Payments"
+              : topSection === "clients"
+              ? <><span style={{ color: "#334155" }}>Clients / </span>{CLIENTS_NAV.find(c => c.id === clientsView)?.label ?? "Clients"}</>
+              : topSection === "settings"
+              ? <><span style={{ color: "#334155" }}>Settings / </span>Users</>
               : <>
                   {NAV.find(n => n.view === view)?.group
                     ? <span style={{ color: "#334155" }}>{NAV.find(n => n.view === view)?.group} / </span>
@@ -736,7 +826,7 @@ export default function DashboardView() {
         </header>
 
         {/* Content */}
-        <main className={`flex-1 overflow-auto ${view === "zip_tool" ? "p-0 flex flex-col" : "p-6 md:p-8"}`} style={{ background: "#080f1e" }}>
+        <main className={`flex-1 overflow-auto ${view === "zip_tool" && topSection === "tools" ? "p-0 flex flex-col" : "p-6 md:p-8"}`} style={{ background: "#080f1e" }}>
 
           {/* ── Tomsi Media Dashboard ── */}
           {topSection === "tomsi_media" && (
@@ -747,7 +837,11 @@ export default function DashboardView() {
             </>
           )}
 
-          {topSection === "clients" && <CSMDashboard />}
+          {topSection === "clients" && clientsView === "client_roster" && <ClientRoster />}
+          {topSection === "clients" && clientsView === "csm_dashboard" && <CSMDashboard />}
+          {topSection === "clients" && clientsView === "share_reports" && <ShareReports clients={clients} />}
+
+          {topSection === "settings" && <UserManager />}
 
           {topSection === "payments" && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 20, padding: 40 }}>
@@ -885,9 +979,7 @@ export default function DashboardView() {
           {view === "admin_agents"  && <AgentAdmin />}
           {view === "admin_clients" && <ClientRoster />}
           {view === "schedule"      && <SetterSchedule clients={clients} />}
-          {view === "admin_share"   && <ShareReports clients={clients} />}
-          {view === "admin_users"   && <UserManager />}
-          {view === "zip_tool"      && <ZipTool />}
+          {view === "zip_tool" && topSection === "tools" && <ZipTool />}
 
           </>)}
 
