@@ -17,6 +17,19 @@
 >
 > See "Two environments" below for what is and isn't shared between them.
 
+## ⚠️ Be concise
+
+The user wants **conclusions, not commentary**. Report only what changes a
+decision they have to make.
+
+- No narration of work in progress. Don't describe what you're about to do, what
+  you're checking, or what you just ran. Do the work, report the outcome.
+- No step-by-step accounts of investigation, tool calls, or reasoning.
+- Lead with the answer. Detail only if it's load-bearing.
+- Say what's broken, what's fixed, what's still empty, and what needs the user.
+- Keep caveats — they're relevant. Cut the process around them.
+- Short paragraphs or tight bullets. No recap of things already said.
+
 ## What This Is
 
 A reporting dashboard for a call center / setter team. Tracks dials, leads,
