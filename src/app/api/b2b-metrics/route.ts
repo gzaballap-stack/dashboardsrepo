@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 
   let spendQ = ctx.service
     .from('b2b_ad_spend')
-    .select('platform, amount, spend_date, impressions, reach, link_clicks, ctr, cpc, cpm, campaign_id, campaign_name');
+    .select('platform, amount, spend_date, impressions, reach, frequency, link_clicks, unique_clicks, unique_ctr, ctr, cpc, cpm, leads, budget, objective, status, campaign_id, campaign_name');
 
   if (start_date) spendQ = spendQ.gte('spend_date', start_date);
   if (end_date)   spendQ = spendQ.lte('spend_date', end_date);
@@ -31,8 +31,8 @@ export async function GET(req: Request) {
   // Graceful fallback if campaign columns haven't been migrated yet
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let spend: any[] | null = fullSpendResult.data;
-  if (fullSpendResult.error?.message?.includes('campaign_id') ||
-      fullSpendResult.error?.message?.includes('campaign_name')) {
+  // Any not-yet-migrated column degrades to the base column set rather than 500ing.
+  if (fullSpendResult.error && /column|schema cache/i.test(fullSpendResult.error.message ?? '')) {
     let fallbackQ = ctx.service
       .from('b2b_ad_spend')
       .select('platform, amount, spend_date, impressions, reach, link_clicks, ctr, cpc, cpm');
@@ -77,7 +77,7 @@ export async function GET(req: Request) {
   const campaignMap = new Map<string, {
     campaign_id: string; campaign_name: string | null;
     spend: number; impressions: number; reach: number; link_clicks: number;
-    ctr_sum: number; ctr_weight: number; cpc_sum: number; cpc_weight: number; cpm_sum: number; cpm_weight: number;
+    unique_clicks: number; leads: number; budget: number | null; objective: string | null; status: string | null;
   }>();
   for (const row of spend ?? []) {
     const key = row.campaign_id ?? '';
@@ -85,7 +85,7 @@ export async function GET(req: Request) {
       campaignMap.set(key, {
         campaign_id: key, campaign_name: row.campaign_name ?? null,
         spend: 0, impressions: 0, reach: 0, link_clicks: 0,
-        ctr_sum: 0, ctr_weight: 0, cpc_sum: 0, cpc_weight: 0, cpm_sum: 0, cpm_weight: 0,
+        unique_clicks: 0, leads: 0, budget: null, objective: null, status: null,
       });
     }
     const c = campaignMap.get(key)!;
@@ -93,9 +93,11 @@ export async function GET(req: Request) {
     c.impressions += row.impressions ?? 0;
     c.reach       += row.reach ?? 0;
     c.link_clicks += row.link_clicks ?? 0;
-    if (row.ctr != null) { c.ctr_sum += row.ctr * (row.impressions ?? 1); c.ctr_weight += row.impressions ?? 1; }
-    if (row.cpc != null) { c.cpc_sum += row.cpc * (row.link_clicks ?? 1); c.cpc_weight += row.link_clicks ?? 1; }
-    if (row.cpm != null) { c.cpm_sum += row.cpm * (row.impressions ?? 1); c.cpm_weight += row.impressions ?? 1; }
+    c.unique_clicks += row.unique_clicks ?? 0;
+    c.leads       += row.leads ?? 0;
+    c.budget    = c.budget    ?? row.budget    ?? null;
+    c.objective = c.objective ?? row.objective ?? null;
+    c.status    = c.status    ?? row.status    ?? null;
   }
   const campaigns = Array.from(campaignMap.values()).map(c => ({
     campaign_id:   c.campaign_id,
@@ -104,9 +106,19 @@ export async function GET(req: Request) {
     impressions:   c.impressions,
     reach:         c.reach,
     link_clicks:   c.link_clicks,
-    ctr: c.ctr_weight > 0 ? c.ctr_sum / c.ctr_weight : null,
-    cpc: c.cpc_weight > 0 ? c.cpc_sum / c.cpc_weight : null,
-    cpm: c.cpm_weight > 0 ? c.cpm_sum / c.cpm_weight : null,
+    budget:        c.budget,
+    objective:     c.objective,
+    status:        c.status,
+    unique_clicks: c.unique_clicks,
+    leads:         c.leads,
+    // Derived from summed totals, not weighted averages of per-day rates.
+    ctr:        c.impressions   > 0 ? (c.link_clicks / c.impressions) * 100 : null,
+    cpc:        c.link_clicks   > 0 ? c.spend / c.link_clicks : null,
+    cpm:        c.impressions   > 0 ? (c.spend / c.impressions) * 1000 : null,
+    frequency:  c.reach         > 0 ? c.impressions / c.reach : null,
+    unique_ctr: c.reach         > 0 ? (c.unique_clicks / c.reach) * 100 : null,
+    cvr:        c.unique_clicks > 0 ? (c.leads / c.unique_clicks) * 100 : null,
+    cost_per_result: c.leads    > 0 ? c.spend / c.leads : null,
   }));
 
   const closes       = count('close');

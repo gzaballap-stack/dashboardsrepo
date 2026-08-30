@@ -235,4 +235,33 @@ await runSQL(`
   END $$;
 `, 'Add B2B call recording + attribution fields (skipped where b2b_events absent)');
 
+await runSQL(`
+  DO $$
+  BEGIN
+    IF to_regclass('public.b2b_ad_spend') IS NULL THEN
+      RAISE NOTICE 'b2b ad tables not present -- skipping';
+      RETURN;
+    END IF;
+
+    ALTER TABLE b2b_ad_spend ADD COLUMN IF NOT EXISTS frequency     numeric;
+    ALTER TABLE b2b_ad_spend ADD COLUMN IF NOT EXISTS unique_clicks integer;
+    ALTER TABLE b2b_ad_spend ADD COLUMN IF NOT EXISTS unique_ctr    numeric;
+    ALTER TABLE b2b_ad_spend ADD COLUMN IF NOT EXISTS leads         integer NOT NULL DEFAULT 0;
+    ALTER TABLE b2b_ad_spend ADD COLUMN IF NOT EXISTS budget        numeric;
+    ALTER TABLE b2b_ad_spend ADD COLUMN IF NOT EXISTS objective     text;
+    ALTER TABLE b2b_ad_spend ADD COLUMN IF NOT EXISTS status        text;
+
+    ALTER TABLE b2b_ad_sets ADD COLUMN IF NOT EXISTS frequency     numeric;
+    ALTER TABLE b2b_ad_sets ADD COLUMN IF NOT EXISTS unique_clicks integer;
+    ALTER TABLE b2b_ad_sets ADD COLUMN IF NOT EXISTS unique_ctr    numeric;
+    ALTER TABLE b2b_ad_sets ADD COLUMN IF NOT EXISTS leads         integer NOT NULL DEFAULT 0;
+    ALTER TABLE b2b_ad_sets ADD COLUMN IF NOT EXISTS budget        numeric;
+
+    ALTER TABLE b2b_ads ADD COLUMN IF NOT EXISTS frequency     numeric;
+    ALTER TABLE b2b_ads ADD COLUMN IF NOT EXISTS unique_clicks integer;
+    ALTER TABLE b2b_ads ADD COLUMN IF NOT EXISTS unique_ctr    numeric;
+    ALTER TABLE b2b_ads ADD COLUMN IF NOT EXISTS leads         integer NOT NULL DEFAULT 0;
+  END $$;
+`, 'Add budget + result metrics to B2B ad tables');
+
 console.log('\nAll migrations complete.');

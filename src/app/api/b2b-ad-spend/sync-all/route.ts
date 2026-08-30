@@ -27,7 +27,7 @@ export async function POST(req: Request) {
 
     // ── 1. Fetch ad-level insights from Meta ────────────────────────────
     const params = new URLSearchParams({
-      fields: 'ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,inline_link_clicks,ctr,cpc,cpm',
+      fields: 'ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,frequency,inline_link_clicks,unique_inline_link_clicks,unique_link_clicks_ctr,ctr,cpc,cpm,actions,cost_per_action_type',
       time_range: JSON.stringify({ since: date, until: date }),
       level: 'ad',
       access_token: meta_token,
@@ -48,9 +48,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, note: 'No data from Meta for this date', campaigns: 0, adsets: 0, ads: 0 });
     }
 
+    // Budget/status/objective are entity fields, not insights — separate call.
+    const campaignMeta = new Map<string, { budget: number | null; status: string | null; objective: string | null }>();
+    try {
+      const mp = new URLSearchParams({ fields: 'id,name,daily_budget,lifetime_budget,status,objective', limit: '500', access_token: meta_token });
+      const cRes = await fetch(`https://graph.facebook.com/v19.0/${acct}/campaigns?${mp}`);
+      const cJson = await cRes.json() as { data?: Record<string, string>[] };
+      for (const c of cJson.data ?? []) {
+        const daily = c.daily_budget ? Number(c.daily_budget) / 100 : null;
+        const life  = c.lifetime_budget ? Number(c.lifetime_budget) / 100 : null;
+        campaignMeta.set(c.id, { budget: daily ?? life ?? null, status: c.status ?? null, objective: c.objective ?? null });
+      }
+    } catch { /* budget stays null */ }
+
     // ── 2. Aggregate to campaign and adset levels ───────────────────────
-    type CampAcc  = { campaign_id: string; campaign_name: string; spend: number; impressions: number; reach: number; link_clicks: number };
-    type AdSetAcc = { campaign_id: string; campaign_name: string; adset_id: string; adset_name: string; spend: number; impressions: number; reach: number; link_clicks: number };
+    type CampAcc  = { campaign_id: string; campaign_name: string; spend: number; impressions: number; reach: number; link_clicks: number; unique_clicks: number; leads: number };
+    type AdSetAcc = { campaign_id: string; campaign_name: string; adset_id: string; adset_name: string; spend: number; impressions: number; reach: number; link_clicks: number; unique_clicks: number; leads: number };
+
+    const LEAD_ACTIONS = new Set(['lead', 'offsite_conversion.fb_pixel_lead', 'onsite_conversion.lead_grouped']);
+    const leadsFrom = (row: Record<string, unknown>) => {
+      const actions = row.actions as { action_type?: string; value?: string }[] | undefined;
+      if (!Array.isArray(actions)) return 0;
+      return actions.filter(a => a.action_type && LEAD_ACTIONS.has(a.action_type))
+        .reduce((sum, a) => sum + (parseInt(a.value ?? '0', 10) || 0), 0);
+    };
 
     const campaigns = new Map<string, CampAcc>();
     const adsets    = new Map<string, AdSetAcc>();
@@ -60,18 +81,20 @@ export async function POST(req: Request) {
       const impressions = parseInt(r.impressions     ?? '0', 10);
       const reach       = parseInt(r.reach           ?? '0', 10);
       const link_clicks = parseInt(r.inline_link_clicks ?? r.link_clicks ?? '0', 10);
+      const unique_clicks = parseInt(r.unique_inline_link_clicks ?? '0', 10) || 0;
+      const leads = leadsFrom(r as unknown as Record<string, unknown>);
 
       // campaign rollup
       const cId = r.campaign_id ?? '';
       const cc  = campaigns.get(cId);
-      if (!cc) campaigns.set(cId, { campaign_id: cId, campaign_name: r.campaign_name ?? '', spend, impressions, reach, link_clicks });
-      else     { cc.spend += spend; cc.impressions += impressions; cc.reach += reach; cc.link_clicks += link_clicks; }
+      if (!cc) campaigns.set(cId, { campaign_id: cId, campaign_name: r.campaign_name ?? '', spend, impressions, reach, link_clicks, unique_clicks, leads });
+      else     { cc.spend += spend; cc.impressions += impressions; cc.reach += reach; cc.link_clicks += link_clicks; cc.unique_clicks += unique_clicks; cc.leads += leads; }
 
       // adset rollup
       const aId = r.adset_id ?? '';
       const ac  = adsets.get(aId);
-      if (!ac) adsets.set(aId, { campaign_id: cId, campaign_name: r.campaign_name ?? '', adset_id: aId, adset_name: r.adset_name ?? '', spend, impressions, reach, link_clicks });
-      else     { ac.spend += spend; ac.impressions += impressions; ac.reach += reach; ac.link_clicks += link_clicks; }
+      if (!ac) adsets.set(aId, { campaign_id: cId, campaign_name: r.campaign_name ?? '', adset_id: aId, adset_name: r.adset_name ?? '', spend, impressions, reach, link_clicks, unique_clicks, leads });
+      else     { ac.spend += spend; ac.impressions += impressions; ac.reach += reach; ac.link_clicks += link_clicks; ac.unique_clicks += unique_clicks; ac.leads += leads; }
 
       return {
         spend_date: date, platform,
@@ -82,6 +105,10 @@ export async function POST(req: Request) {
         impressions: impressions || null,
         reach:       reach       || null,
         link_clicks: link_clicks || null,
+        frequency:     r.frequency ? parseFloat(r.frequency) : (reach > 0 ? impressions / reach : null),
+        unique_clicks: unique_clicks || null,
+        unique_ctr:    r.unique_link_clicks_ctr ? parseFloat(r.unique_link_clicks_ctr) : (reach > 0 ? (unique_clicks / reach) * 100 : null),
+        leads,
         ctr: r.ctr ? parseFloat(r.ctr) : null,
         cpc: r.cpc ? parseFloat(r.cpc) : null,
         cpm: r.cpm ? parseFloat(r.cpm) : null,
@@ -89,10 +116,14 @@ export async function POST(req: Request) {
     });
 
     // Derive CTR/CPC/CPM from totals (more accurate than averaging rates)
-    const toMetrics = (spend: number, impressions: number, link_clicks: number) => ({
-      ctr: impressions > 0 ? (link_clicks / impressions) * 100 : null,
-      cpc: link_clicks > 0 ? spend / link_clicks : null,
-      cpm: impressions > 0 ? (spend / impressions) * 1000 : null,
+    const toMetrics = (a: { spend: number; impressions: number; reach: number; link_clicks: number; unique_clicks: number; leads: number }) => ({
+      ctr:           a.impressions > 0 ? (a.link_clicks / a.impressions) * 100 : null,
+      cpc:           a.link_clicks > 0 ? a.spend / a.link_clicks : null,
+      cpm:           a.impressions > 0 ? (a.spend / a.impressions) * 1000 : null,
+      frequency:     a.reach       > 0 ? a.impressions / a.reach : null,
+      unique_clicks: a.unique_clicks || null,
+      unique_ctr:    a.reach       > 0 ? (a.unique_clicks / a.reach) * 100 : null,
+      leads:         a.leads,
     });
 
     const campaignRecords = Array.from(campaigns.values()).map(c => ({
@@ -100,7 +131,10 @@ export async function POST(req: Request) {
       campaign_id: c.campaign_id, campaign_name: c.campaign_name,
       amount: c.spend,
       impressions: c.impressions || null, reach: c.reach || null, link_clicks: c.link_clicks || null,
-      ...toMetrics(c.spend, c.impressions, c.link_clicks),
+      ...toMetrics(c),
+      budget:    campaignMeta.get(c.campaign_id)?.budget    ?? null,
+      status:    campaignMeta.get(c.campaign_id)?.status    ?? null,
+      objective: campaignMeta.get(c.campaign_id)?.objective ?? null,
     }));
 
     const adsetRecords = Array.from(adsets.values()).map(a => ({
@@ -109,7 +143,7 @@ export async function POST(req: Request) {
       adset_id: a.adset_id, adset_name: a.adset_name,
       spend: a.spend,
       impressions: a.impressions || null, reach: a.reach || null, link_clicks: a.link_clicks || null,
-      ...toMetrics(a.spend, a.impressions, a.link_clicks),
+      ...toMetrics(a),
     }));
 
     // ── 3. Upsert all three tables ──────────────────────────────────────
