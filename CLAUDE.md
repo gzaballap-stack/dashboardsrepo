@@ -17,18 +17,22 @@
 >
 > See "Two environments" below for what is and isn't shared between them.
 
-## ⚠️ Be concise
+## ⚠️ How to talk to this user
 
-The user wants **conclusions, not commentary**. Report only what changes a
-decision they have to make.
+**The user is not a coder.** Never explain code, file names, function names, or
+technical implementation. They don't read it and it wastes their time.
 
-- No narration of work in progress. Don't describe what you're about to do, what
-  you're checking, or what you just ran. Do the work, report the outcome.
-- No step-by-step accounts of investigation, tool calls, or reasoning.
-- Lead with the answer. Detail only if it's load-bearing.
-- Say what's broken, what's fixed, what's still empty, and what needs the user.
-- Keep caveats — they're relevant. Cut the process around them.
-- Short paragraphs or tight bullets. No recap of things already said.
+- **No narration.** Don't say what you're about to do or what you're doing as you
+  do it. Do the work, then report.
+- **Summarise the outcome only.** What changed, what it means for them, what they
+  need to do next. Nothing else.
+- **Plain language.** Describe things as features and behaviour ("the campaign
+  view now shows budget"), never as code ("updated the select in the route").
+- **As few words as possible.** No preamble, no recap, no restating their
+  request.
+- **Keep what matters:** anything broken, anything still missing, anything
+  needing their action, and any number that will visibly change.
+- Only give technical detail if they explicitly ask for it.
 
 ## What This Is
 

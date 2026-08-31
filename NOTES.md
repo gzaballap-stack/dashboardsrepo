@@ -6,6 +6,16 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
+## 2026-08-31 — Communication rules (read before replying)
+
+- The user is **not a coder**. Never explain code, file paths, function names or
+  implementation detail — it's noise to them.
+- Don't narrate work in progress. Do it, then summarise the outcome.
+- Report only: what changed (in plain language), what's still broken or missing,
+  what needs them, and any number that will visibly move.
+- Fewest words possible. No preamble, no recap of their request.
+- Full rule at the top of `CLAUDE.md`.
+
 ## 2026-08-29 — V1 outranks V2, always
 
 - Stated explicitly by the user: **V1 (`dashboard.tomsimedia.com`, real client
