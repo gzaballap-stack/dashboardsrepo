@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL } from '@/lib/ad-funnel';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -18,6 +19,20 @@ export async function GET(req: Request) {
 
   const { data, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Real B2B funnel (lead -> intro booked -> intro shown -> close) keyed on the
+  // same ad_id the spend rows use.
+  let funnel: Awaited<ReturnType<typeof rollupFunnelByAd>>;
+  try {
+    funnel = await rollupFunnelByAd(service, {
+      table: 'b2b_events', level: 'ad', campaign_id, start_date, end_date,
+    });
+  } catch {
+    // The funnel join is an enrichment on top of spend. If it fails (e.g. an
+    // environment that has not run the b2b_events migration yet), still return
+    // the spend rows with a zeroed funnel rather than failing the whole table.
+    funnel = new Map();
+  }
 
   // Aggregate by ad_id across the date range
   const byAd = new Map<string, {
@@ -69,6 +84,10 @@ export async function GET(req: Request) {
     cvr: a.unique_clicks > 0 ? (a.leads / a.unique_clicks) * 100 : 0,
     cost_per_result: a.leads > 0 ? a.spend / a.leads : 0,
     budget: a.budget,
+    ...(() => {
+      const f = funnel.get(a.ad_id) ?? EMPTY_AD_FUNNEL;
+      return { funnel: f, ...funnelRates(a.spend, f) };
+    })(),
   })).sort((a, b) => b.spend - a.spend);
 
   return NextResponse.json({ ads });

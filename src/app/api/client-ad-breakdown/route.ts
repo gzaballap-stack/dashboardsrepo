@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL } from '@/lib/ad-funnel';
 
 interface Acc {
   id_field: string; id_val: string; name_val: string | null;
@@ -35,6 +36,21 @@ export async function GET(req: Request) {
 
   const { data, error } = await q.order('report_date', { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Real CRM funnel, keyed on the same adset_id / ad_id the spend rows use. This
+  // is what ties spend to leads/appts/shows/closes; ad_campaigns.leads is Meta's
+  // own count and is not the same number.
+  let funnel: Awaited<ReturnType<typeof rollupFunnelByAd>>;
+  try {
+    funnel = await rollupFunnelByAd(ctx.service, {
+      table: 'events', level, client_id, campaign_id, start_date, end_date,
+    });
+  } catch {
+    // The funnel join is an enrichment on top of spend. If it fails (e.g. an
+    // environment that has not run the b2b_events migration yet), still return
+    // the spend rows with a zeroed funnel rather than failing the whole table.
+    funnel = new Map();
+  }
 
   const byId = new Map<string, Acc>();
 
@@ -86,6 +102,10 @@ export async function GET(req: Request) {
       // CVR is a custom metric: results over unique link clicks.
       cvr: a.unique_clicks > 0 ? (a.leads / a.unique_clicks) * 100 : 0,
       cost_per_result: a.leads > 0 ? a.spend / a.leads : 0,
+      ...(() => {
+        const f = funnel.get(a.id_val) ?? EMPTY_AD_FUNNEL;
+        return { funnel: f, ...funnelRates(a.spend, f) };
+      })(),
     }))
     .sort((a, b) => b.spend - a.spend);
 

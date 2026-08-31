@@ -180,11 +180,20 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
 
   // Shared metric shape for the Ad Sets / Ads tables. B2B sources supply only the
   // basic fields, so the extras are optional and render as "—" when absent.
+  type AdFunnel = {
+    leads: number; appts: number; shows: number; no_shows: number;
+    closes: number; revenue: number;
+  };
   type AdMetrics = {
     spend: number; impressions: number; reach: number; link_clicks: number;
     ctr: number; cpc: number; cpm: number;
     budget?: number | null; frequency?: number; unique_clicks?: number;
     unique_ctr?: number; leads?: number; cvr?: number; cost_per_result?: number;
+    // Real CRM funnel attributed to this entity — distinct from `leads`, which
+    // is Meta's own reported result count.
+    funnel?: AdFunnel;
+    cost_per_lead?: number; cost_per_appt?: number; cost_per_close?: number;
+    roas?: number;
   };
   type AdSetRow = AdMetrics & {
     adset_id: string; adset_name: string | null; campaign_id: string; campaign_name: string | null;
@@ -972,9 +981,15 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   // Column set requested for Meta reporting: budget, spend, impressions, reach,
   // frequency, CPM, unique link clicks, unique CTR, CPC, results (leads), CVR
   // (leads / unique link clicks) and cost per result.
+  // Two groups: the attributed CRM funnel first (what the ad actually produced),
+  // then Meta's own delivery metrics. "Meta Results" is Meta's reported result
+  // count and is intentionally kept separate from the CRM "Leads" column — they
+  // measure different things and rarely agree.
   const METRIC_COLS = [
-    "Budget", "Spend", "Impressions", "Reach", "Frequency", "CPM",
-    "Uniq. Clicks", "Uniq. CTR", "CPC", "Results", "CVR", "Cost / Result",
+    "Budget", "Spend",
+    "Leads", "Appts", "Shows", "Closes", "Cost / Lead", "Cost / Appt", "ROAS",
+    "Impressions", "Reach", "Frequency", "CPM",
+    "Uniq. Clicks", "Uniq. CTR", "CPC", "Meta Results", "CVR", "Cost / Result",
   ];
 
   const renderMetricCells = (m: AdMetrics) => {
@@ -984,11 +999,26 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     const leads = m.leads;
     const cvr = m.cvr ?? (uClicks && leads !== undefined && uClicks > 0 ? (leads / uClicks) * 100 : undefined);
     const cpr = m.cost_per_result ?? (leads ? m.spend / leads : undefined);
+    // Routes that predate the funnel join simply omit it; treat that as zeroes
+    // rather than blowing up the row.
+    const f = m.funnel ?? { leads: 0, appts: 0, shows: 0, no_shows: 0, closes: 0, revenue: 0 };
+    const cpl  = m.cost_per_lead ?? (f.leads > 0 ? m.spend / f.leads : 0);
+    const cpa  = m.cost_per_appt ?? (f.appts > 0 ? m.spend / f.appts : 0);
+    const roas = m.roas ?? (m.spend > 0 ? f.revenue / m.spend : 0);
     const dash = <span style={{ color: "#334155" }}>—</span>;
     return (
       <>
         <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.budget ? fmt$(m.budget) : dash}</td>
         <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{fmt$(m.spend)}</td>
+
+        <td className={COL_CELL} style={{ color: f.leads  ? "#e2e8f0" : "#334155" }}>{f.leads  ? fmtN(f.leads)  : dash}</td>
+        <td className={COL_CELL} style={{ color: f.appts  ? "#e2e8f0" : "#334155" }}>{f.appts  ? fmtN(f.appts)  : dash}</td>
+        <td className={COL_CELL} style={{ color: f.shows  ? "#e2e8f0" : "#334155" }}>{f.shows  ? fmtN(f.shows)  : dash}</td>
+        <td className={COL_CELL} style={{ color: f.closes ? "#4ade80" : "#334155" }}>{f.closes ? fmtN(f.closes) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{cpl  ? fmtDec(cpl)  : dash}</td>
+        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{cpa  ? fmtDec(cpa)  : dash}</td>
+        <td className={COL_CELL} style={{ color: roas ? "#4ade80" : "#334155" }}>{roas ? `${roas.toFixed(2)}x` : dash}</td>
+
         <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.impressions > 0 ? fmtN(m.impressions) : dash}</td>
         <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.reach > 0 ? fmtN(m.reach) : dash}</td>
         <td className={COL_CELL} style={{ color: "#94a3b8" }}>{freq > 0 ? freq.toFixed(2) : dash}</td>
@@ -1011,7 +1041,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     keyOf: (r: AdSetRow | AdRow, i: number) => string,
   ) => (
     <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
-      <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 1180 }}>
+      <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 1760 }}>
         <thead style={{ background: "#080e1c", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
           <tr>
             <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>{label}</th>

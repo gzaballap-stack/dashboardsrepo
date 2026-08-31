@@ -19,6 +19,12 @@
 
 ## ⚠️ How to talk to this user
 
+# USE AS FEW WORDS AS POSSIBLE.
+
+That is the single most important rule on this page. Every reply should be the
+shortest thing that still answers the question. If a sentence can be cut, cut it.
+If a reply can be three lines instead of thirty, make it three.
+
 **The user is not a coder.** Never explain code, file names, function names, or
 technical implementation. They don't read it and it wastes their time.
 
@@ -28,8 +34,8 @@ technical implementation. They don't read it and it wastes their time.
   need to do next. Nothing else.
 - **Plain language.** Describe things as features and behaviour ("the campaign
   view now shows budget"), never as code ("updated the select in the route").
-- **As few words as possible.** No preamble, no recap, no restating their
-  request.
+- **As few words as possible — always.** No preamble, no recap, no restating
+  their request. Brevity outranks completeness; if in doubt, say less.
 - **Keep what matters:** anything broken, anything still missing, anything
   needing their action, and any number that will visibly change.
 - Only give technical detail if they explicitly ask for it.
