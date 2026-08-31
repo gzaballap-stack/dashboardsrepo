@@ -16,6 +16,7 @@ import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
 import UserManager from "./UserManager";
 import ZipTool from "./ZipTool";
+import TaskBoard from "./TaskBoard";
 import CampaignOverview from "./CampaignOverview";
 import CSMDashboard from "./CSMDashboard";
 import B2BTracking from "./B2BTracking";
@@ -74,6 +75,7 @@ type View =
   | "admin_users"
   | "schedule"
   | "zip_tool"
+  | "task_board"
   | "b2b_tracking";
 
 // B2B view type alias — rendered under Tomsi Media section
@@ -107,6 +109,7 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "admin_clients",    label: "Client Roster",     group: "Admin"       },
   { view: "schedule",         label: "Power Dialer Schedule", group: "Admin"    },
   { view: "zip_tool",         label: "Zip Code Tool",     group: "Tools"       },
+  { view: "task_board",       label: "Task Board",        group: "Tools"       },
 ];
 
 const SETTINGS_ICON = "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z";
@@ -132,6 +135,7 @@ const NAV_ICONS: Record<View, string> = {
   agent_scorecards: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
   recordings:       "M15.536 8.464a5 5 0 010 7.072M12 18.364a9 9 0 010-12.728M8.464 15.536a5 5 0 010-7.072",
   goals:            "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+  task_board:       "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-6 0h.01M12 16h3m-6 0h.01",
   zip_tool:         "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z",
 };
 
@@ -270,6 +274,8 @@ const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: strin
   },
 ];
 
+const TOOLS_VIEWS: string[] = ["zip_tool", "task_board"];
+
 const NAV_STATE_KEY = "dashboard-nav-state";
 const DISMISSED_ALERTS_KEY = "dismissed-alerts";
 const CLOSED_BANNERS_KEY = "closed-banner-alerts";
@@ -313,9 +319,9 @@ export default function DashboardView() {
         ? saved.topSection as TopSection
         : null;
       if (savedTop) setTopSection(savedTop);
-      // zip_tool only belongs to the Tools section; restoring it anywhere else
+      // Tools views only belong to the Tools section; restoring one anywhere else
       // would render the tool inside the Clients Dashboard.
-      if (saved.view && !(saved.view === "zip_tool" && savedTop !== "tools"))
+      if (saved.view && !(TOOLS_VIEWS.includes(saved.view) && savedTop !== "tools"))
         setView(saved.view as View);
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
       if (saved.clientsView) setClientsView(saved.clientsView as ClientsView);
@@ -563,20 +569,26 @@ export default function DashboardView() {
                 {/* Sub-nav for Tools */}
                 {isActive && sec.id === "tools" && expandedSections.has("tools") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", marginLeft: 20, paddingLeft: 8 }}>
-                    <button
-                      onClick={() => { setView("zip_tool"); setSidebarOpen(false); }}
-                      className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150"
-                      style={view === "zip_tool"
-                        ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b" }
-                        : { color: "#475569" }}
-                      onMouseEnter={e => { if (view !== "zip_tool") (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
-                      onMouseLeave={e => { if (view !== "zip_tool") (e.currentTarget as HTMLElement).style.color = "#475569"; }}
-                    >
-                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      Zip Code Tool
-                    </button>
+                    {NAV.filter(n => n.group === "Tools").map(item => {
+                      const active = view === item.view;
+                      return (
+                        <button
+                          key={item.view}
+                          onClick={() => { setView(item.view); setSidebarOpen(false); }}
+                          className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
+                          style={active
+                            ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b" }
+                            : { color: "#475569" }}
+                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
+                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+                        >
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d={NAV_ICONS[item.view]} />
+                          </svg>
+                          {item.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -980,6 +992,7 @@ export default function DashboardView() {
           {view === "admin_clients" && <ClientRoster />}
           {view === "schedule"      && <SetterSchedule clients={clients} />}
           {view === "zip_tool" && topSection === "tools" && <ZipTool />}
+          {view === "task_board" && topSection === "tools" && <TaskBoard />}
 
           </>)}
 
