@@ -100,16 +100,16 @@ function SectionCard({ title, children, badge }: { title: string; children: Reac
 function FunnelStage({ label, count, pct, color }: { label: string; count: number; pct: number; color: string }) {
   return (
     <div className="flex items-center gap-3 mb-3">
-      <div className="w-28 text-right">
+      <div className="w-28 text-right flex-shrink-0">
         <span className="text-xs font-medium" style={{ color: "#4a4a4a" }}>{label}</span>
       </div>
-      <div className="flex-1 relative h-9 rounded-lg overflow-hidden" style={{ background: "rgba(0,0,0,0.068)" }}>
-        <div className="h-full rounded-lg transition-all" style={{ width: `${Math.max(pct, 2)}%`, background: color, opacity: 0.85 }} />
-        <div className="absolute inset-0 flex items-center px-3">
-          <span className="text-sm font-bold" style={{ color: "#000000" }}>{fmtN(count)}</span>
-        </div>
+      <div className="flex-1 relative h-9 rounded-lg overflow-hidden" style={{ background: "rgba(0,0,0,0.05)" }}>
+        <div className="h-full rounded-lg" style={{ width: `${Math.max(pct, 2)}%`, background: color, transition: "width 300ms ease" }} />
       </div>
-      <div className="w-14 text-right">
+      <div className="w-16 text-right flex-shrink-0">
+        <span className="text-sm font-bold" style={{ color: "#111111" }}>{fmtN(count)}</span>
+      </div>
+      <div className="w-14 text-right flex-shrink-0">
         <span className="text-xs" style={{ color: "#6b6b6b" }}>{pct.toFixed(1)}%</span>
       </div>
     </div>
@@ -866,8 +866,16 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
 
   const renderFunnel = () => {
     const topCount = funnelStages[0]?.count ?? 1;
-    const stages = funnelStages.map(s => ({
+    // A single ramp, darkest at the top of the funnel — the old per-stage
+    // colours were an unordered mix of greys with a stray lime.
+    const shade = (i: number, n: number) => {
+      const from = 17, to = 176;                     // #111111 -> #b0b0b0
+      const v = Math.round(from + ((to - from) * i) / Math.max(n - 1, 1));
+      return `rgb(${v}, ${v}, ${v})`;
+    };
+    const stages = funnelStages.map((s, i) => ({
       ...s,
+      color: shade(i, funnelStages.length),
       widthPct: topCount > 0 ? Math.max((s.count / topCount) * 100, s.count > 0 ? 4 : 0) : 0,
     }));
     return (

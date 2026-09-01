@@ -472,14 +472,14 @@ export default function DashboardView() {
         transition-transform duration-300
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         md:translate-x-0 md:z-40
-      `} style={{ width: navCollapsed ? 64 : 240, transition: "width 200ms ease", boxShadow: navCollapsed ? "none" : "0 0 40px -8px rgba(0,0,0,0.18)", background: "rgba(255,255,255,0.82)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderRight: "1px solid rgba(0,0,0,0.07)" }}>
+      `} style={{ width: navCollapsed ? 64 : 240, overflowX: "hidden", transition: "width 320ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 320ms ease", boxShadow: navCollapsed ? "0 0 0 rgba(0,0,0,0)" : "0 0 40px -8px rgba(0,0,0,0.18)", background: "rgba(255,255,255,0.82)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderRight: "1px solid rgba(0,0,0,0.07)" }}>
 
         {/* Logo */}
         <div className="flex justify-center items-center overflow-hidden px-2" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)", paddingTop: 4, paddingBottom: 4 }}>
           <img
             src="/tomsi-logo-black.png"
             alt="Tomsi Media"
-            style={{ width: navCollapsed ? 40 : 132, height: "auto", objectFit: "contain", transition: "width 200ms ease" }}
+            style={{ width: navCollapsed ? 40 : 132, height: "auto", objectFit: "contain", transition: "width 320ms cubic-bezier(0.22, 1, 0.36, 1)" }}
           />
         </div>
 
@@ -511,29 +511,35 @@ export default function DashboardView() {
                     });
                   }}
                   title={navCollapsed ? sec.label : undefined}
-                  className={`w-full text-left py-2.5 rounded-lg flex items-center transition-all duration-150 ${navCollapsed ? "px-0 justify-center gap-0" : "px-3 gap-3"}`}
-                  style={isActive
-                    ? { background: "rgba(0,0,0,0.06)", color: "#000000", borderLeft: "2px solid #000000" }
-                    : { color: "#6b6b6b", borderLeft: "2px solid transparent" }}
+                  className="w-full text-left py-2.5 rounded-lg flex items-center gap-3 overflow-hidden whitespace-nowrap"
+                  style={{
+                    paddingLeft: navCollapsed ? 22 : 12,
+                    paddingRight: navCollapsed ? 22 : 12,
+                    transition: `padding 320ms cubic-bezier(0.22, 1, 0.36, 1), background 150ms ease, color 150ms ease`,
+                    ...(isActive
+                      ? { background: "rgba(0,0,0,0.06)", color: "#000000", borderLeft: "2px solid #000000" }
+                      : { color: "#6b6b6b", borderLeft: "2px solid transparent" }),
+                  }}
                   onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
                   onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#6b6b6b"; }}
                 >
                   <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d={sec.icon} />
                   </svg>
-                  {!navCollapsed && <span className="text-sm font-semibold flex-1">{sec.label}</span>}
-                  {!navCollapsed && sec.badge && (
+                  <span className="text-sm font-semibold flex-1"
+                    style={{ opacity: navCollapsed ? 0 : 1, transition: `opacity 200ms ease 80ms` }}>{sec.label}</span>
+                  {sec.badge && (
                     <span style={{ fontSize: 9, padding: "2px 5px", borderRadius: 4, background: "rgba(0,0,0,0.081)", color: "#949494", fontWeight: 600, letterSpacing: "0.04em" }}>
                       SOON
                     </span>
                   )}
-                  {!navCollapsed && <svg
-                    className="w-3 h-3 flex-shrink-0 transition-transform duration-200"
-                    style={{ transform: expandedSections.has(sec.id) ? "rotate(90deg)" : "rotate(0deg)", opacity: 0.5 }}
+                  <svg
+                    className="w-3 h-3 flex-shrink-0"
+                    style={{ transform: expandedSections.has(sec.id) ? "rotate(90deg)" : "rotate(0deg)", opacity: navCollapsed ? 0 : 0.5, transition: `transform 200ms ease, opacity 200ms ease 80ms` }}
                     fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>}
+                  </svg>
                 </button>
 
                 {/* Sub-nav for Clients Dashboard */}
@@ -666,17 +672,22 @@ export default function DashboardView() {
               setSidebarOpen(false);
             }}
             title={navCollapsed ? "Settings" : undefined}
-            className={`w-full text-left py-2.5 rounded-lg text-sm font-medium flex items-center transition-colors ${navCollapsed ? "px-0 justify-center gap-0" : "px-3 gap-3"}`}
-            style={topSection === "settings"
-              ? { background: "rgba(0,0,0,0.048)", color: "#000000" }
-              : { color: "#949494" }}
+            className="w-full text-left py-2.5 rounded-lg text-sm font-medium flex items-center gap-3 overflow-hidden whitespace-nowrap"
+            style={{
+              paddingLeft: navCollapsed ? 22 : 12,
+              paddingRight: navCollapsed ? 22 : 12,
+              transition: `padding 320ms cubic-bezier(0.22, 1, 0.36, 1), color 150ms ease`,
+              ...(topSection === "settings"
+                ? { background: "rgba(0,0,0,0.048)", color: "#000000" }
+                : { color: "#949494" }),
+            }}
             onMouseEnter={e => { if (topSection !== "settings") (e.currentTarget as HTMLElement).style.color = "#6b6b6b"; }}
             onMouseLeave={e => { if (topSection !== "settings") (e.currentTarget as HTMLElement).style.color = "#949494"; }}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d={SETTINGS_ICON} />
             </svg>
-            {!navCollapsed && "Settings"}
+            <span style={{ opacity: navCollapsed ? 0 : 1, transition: "opacity 200ms ease 80ms" }}>Settings</span>
           </button>
 
           {!navCollapsed && expandedSections.has("settings") && (
