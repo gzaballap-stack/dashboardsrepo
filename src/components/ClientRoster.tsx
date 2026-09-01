@@ -77,7 +77,7 @@ export default function ClientRoster() {
   if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#949494" }}>Loading…</p>;
 
   return (
-    <div className="space-y-6 max-w-xl">
+    <div className="space-y-6 max-w-2xl mx-auto w-full">
       <div>
         <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Client Roster</h2>
         <p className="text-sm mt-0.5" style={{ color: "#767676" }}>Add clients and manage their live status.</p>
