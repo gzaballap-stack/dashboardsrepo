@@ -44,7 +44,7 @@ type Props = {
 };
 
 const GRADE_COLORS: Record<string, string> = {
-  A: "#111111", B: "#000000", C: "#000000", D: "#c0392b",
+  A: "#10b981", B: "#3b82f6", C: "#f59e0b", D: "#ef4444",
 };
 
 // Choropleth: maps a 0–100 relative perf score (min-max across the client's territory)
@@ -53,13 +53,13 @@ function perfScoreToFill(score: number): { color: string; opacity: number } {
   const t = Math.max(0, Math.min(100, score)) / 100;
   let r: number, g: number, b: number;
   if (t < 0.5) {
-    // #000000 (blue) → #000000 (green)
+    // #1d4ed8 (blue) → #22c55e (green)
     const u = t * 2;
     r = Math.round(29  + u * (34  - 29));
     g = Math.round(78  + u * (197 - 78));
     b = Math.round(216 + u * (94  - 216));
   } else {
-    // #000000 (green) → #000000 (amber)
+    // #22c55e (green) → #d97706 (amber)
     const u = (t - 0.5) * 2;
     r = Math.round(34  + u * (217 - 34));
     g = Math.round(197 + u * (119 - 197));
@@ -165,7 +165,7 @@ export default function ZipMap({
                 const isExcluded = manualExcludes?.has(zip);
 
                 if (isExcluded) {
-                  return { fillColor: '#c0392b', fillOpacity: 0.22, color: '#c0392b', weight: 1.5, opacity: 0.9, dashArray: '5,4' };
+                  return { fillColor: '#ef4444', fillOpacity: 0.22, color: '#ef4444', weight: 1.5, opacity: 0.9, dashArray: '5,4' };
                 }
 
                 // Perf outline when a client is connected — fill is transparent, stroke is colored
@@ -176,7 +176,7 @@ export default function ZipMap({
                     return { fillOpacity: 0, color, weight: isSelected ? 3 : 2, opacity: 0.9 };
                   }
                   // In territory but no perf row → faint outline only
-                  return { fillOpacity: 0, color: 'rgba(0,0,0,0.21)', weight: 0.8, opacity: 0.8 };
+                  return { fillOpacity: 0, color: 'rgba(148,163,184,0.35)', weight: 0.8, opacity: 0.8 };
                 }
 
                 // No connected client → grade-based fill
@@ -219,15 +219,15 @@ export default function ZipMap({
                   const html = `<div style="font-family:system-ui;min-width:160px;">
                     <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
                       <div style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0;"></div>
-                      <span style="font-size:12px;font-weight:700;color:#000000;">${zip}</span>
-                      <span style="font-size:10px;color:#4a4a4a;margin-left:auto;">score ${perf.score}</span>
+                      <span style="font-size:12px;font-weight:700;color:#f1f5f9;">${zip}</span>
+                      <span style="font-size:10px;color:#94a3b8;margin-left:auto;">score ${perf.score}</span>
                     </div>
-                    <div style="font-size:11px;color:#333333;line-height:2.0;">
+                    <div style="font-size:11px;color:#cbd5e1;line-height:2.0;">
                       <span style="color:#a3e635;">${perf.leads}</span>&thinsp;leads &ensp;
-                      <span style="color:#4a4a4a;">${perf.appointments}</span>&thinsp;appts &ensp;
-                      <span style="color:#6b6b6b;">${perf.shows}</span>&thinsp;shows<br/>
-                      <span style="color:#4a4a4a;">${perf.closes}</span>&thinsp;closed &ensp;
-                      <span style="color:#000000;">${fmt$(perf.revenue)}</span>
+                      <span style="color:#60a5fa;">${perf.appointments}</span>&thinsp;appts &ensp;
+                      <span style="color:#c084fc;">${perf.shows}</span>&thinsp;shows<br/>
+                      <span style="color:#fb923c;">${perf.closes}</span>&thinsp;closed &ensp;
+                      <span style="color:#4ade80;">${fmt$(perf.revenue)}</span>
                     </div>
                   </div>`;
                   layer.bindPopup(html, { className: 'zip-perf-popup', closeButton: false, autoPan: false });
@@ -285,7 +285,7 @@ export default function ZipMap({
               background:${pin.color};width:30px;height:30px;
               border-radius:50% 50% 50% 0;transform:rotate(-45deg);
               display:flex;align-items:center;justify-content:center;
-              border:2.5px solid rgba(0,0,0,1);
+              border:2.5px solid rgba(255,255,255,0.9);
               box-shadow:0 2px 8px rgba(0,0,0,0.5);cursor:pointer;">
               <span style="transform:rotate(45deg);color:#fff;font-weight:800;font-size:12px;line-height:1;">${idx + 1}</span>
             </div>`,
@@ -302,10 +302,10 @@ export default function ZipMap({
 
         marker.bindPopup(`
           <div style="font-family:system-ui;text-align:center;min-width:120px;">
-            <div style="font-size:13px;font-weight:700;color:#000000;margin-bottom:8px">${pin.label}</div>
-            <div style="font-size:11px;color:#4a4a4a;margin-bottom:10px">${pin.zips.length} zip codes · ${pin.radius} mi</div>
+            <div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:8px">${pin.label}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-bottom:10px">${pin.zips.length} zip codes · ${pin.radius} mi</div>
             <button onclick="window.__deletePin && window.__deletePin('${pin.id}')"
-              style="background:#c0392b;border:none;color:#fff;padding:5px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">
+              style="background:#ef4444;border:none;color:#fff;padding:5px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">
               Delete Pin
             </button>
           </div>
@@ -380,8 +380,8 @@ export default function ZipMap({
     <>
       <style>{`
         .zip-pin-popup .leaflet-popup-content-wrapper {
-          background:#0c1828; border:1px solid rgba(0,0,0,0.162);
-          color:#111111; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.6);
+          background:#0c1828; border:1px solid rgba(255,255,255,0.12);
+          color:#e2e8f0; border-radius:10px; box-shadow:0 8px 32px rgba(0,0,0,0.6);
         }
         .zip-pin-popup .leaflet-popup-tip { background:#0c1828; }
         .zip-pin-popup .leaflet-popup-content { margin:12px 14px; }
@@ -405,7 +405,7 @@ export default function ZipMap({
           font-size: 8.5px;
           font-weight: 800;
           font-family: monospace;
-          color: rgba(0,0,0,1);
+          color: rgba(255,255,255,0.92);
           text-shadow: 0 0 4px rgba(0,0,0,0.95), 0 1px 3px rgba(0,0,0,0.85);
           white-space: nowrap;
           letter-spacing: 0.02em;
@@ -414,8 +414,8 @@ export default function ZipMap({
 
         /* Choropleth hover popup */
         .zip-perf-popup .leaflet-popup-content-wrapper {
-          background: #0f172a; border: 1px solid rgba(0,0,0,0.162);
-          color: #111111; border-radius: 8px;
+          background: #0f172a; border: 1px solid rgba(255,255,255,0.12);
+          color: #e2e8f0; border-radius: 8px;
           box-shadow: 0 8px 24px rgba(0,0,0,0.6); padding: 0;
         }
         .zip-perf-popup .leaflet-popup-content { margin: 10px 13px; }

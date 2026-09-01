@@ -242,6 +242,9 @@ function ShareReports({ clients }: { clients: Client[] }) {
   );
 }
 
+// Sections with no children — tapping these navigates directly.
+const SECTION_IS_LEAF = new Set<string>(["payments"]);
+
 const CLIENTS_NAV: { id: ClientsView; label: string; icon: string }[] = [
   { id: "client_roster", label: "Client Roster", icon: NAV_ICONS.admin_clients },
   { id: "csm_dashboard", label: "CSM Dashboard", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
@@ -471,18 +474,21 @@ export default function DashboardView() {
                 {/* Section header button */}
                 <button
                   onClick={() => {
-                    setTopSection(sec.id);
-                    if (sec.id === "clients_dashboard") setView("dashboard");
-                    if (sec.id === "tomsi_media") setTomsiView("b2b_tracking");
-                    if (sec.id === "tools") setView("zip_tool");
-                    if (sec.id === "clients") setClientsView("client_roster");
+                    // Sections with children only expand or collapse — jumping
+                    // somewhere on a single tap is disorienting. Navigation
+                    // happens when a child is picked. Leaf sections still go
+                    // straight there, since there is nothing to expand.
+                    if (SECTION_IS_LEAF.has(sec.id)) {
+                      setTopSection(sec.id);
+                      setSidebarOpen(false);
+                      return;
+                    }
                     setExpandedSections(prev => {
                       const next = new Set(prev);
                       if (next.has(sec.id)) next.delete(sec.id);
                       else next.add(sec.id);
                       return next;
                     });
-                    setSidebarOpen(false);
                   }}
                   className="w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 transition-all duration-150"
                   style={isActive
@@ -510,7 +516,7 @@ export default function DashboardView() {
                 </button>
 
                 {/* Sub-nav for Clients Dashboard */}
-                {isActive && sec.id === "clients_dashboard" && expandedSections.has("clients_dashboard") && (
+                {sec.id === "clients_dashboard" && expandedSections.has("clients_dashboard") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {groups.map(group => (
                       <div key={group} className="mb-3">
@@ -522,7 +528,7 @@ export default function DashboardView() {
                           return (
                             <button
                               key={item.view}
-                              onClick={() => { setView(item.view); setSidebarOpen(false); }}
+                              onClick={() => { setTopSection("clients_dashboard"); setView(item.view); setSidebarOpen(false); }}
                               className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
                               style={active
                                 ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
@@ -543,14 +549,14 @@ export default function DashboardView() {
                 )}
 
                 {/* Sub-nav for Clients */}
-                {isActive && sec.id === "clients" && expandedSections.has("clients") && (
+                {sec.id === "clients" && expandedSections.has("clients") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {CLIENTS_NAV.map(item => {
                       const active = clientsView === item.id;
                       return (
                         <button
                           key={item.id}
-                          onClick={() => { setClientsView(item.id); setSidebarOpen(false); }}
+                          onClick={() => { setTopSection("clients"); setClientsView(item.id); setSidebarOpen(false); }}
                           className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
                           style={active
                             ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
@@ -569,14 +575,14 @@ export default function DashboardView() {
                 )}
 
                 {/* Sub-nav for Tools */}
-                {isActive && sec.id === "tools" && expandedSections.has("tools") && (
+                {sec.id === "tools" && expandedSections.has("tools") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {NAV.filter(n => n.group === "Tools").map(item => {
                       const active = view === item.view;
                       return (
                         <button
                           key={item.view}
-                          onClick={() => { setView(item.view); setSidebarOpen(false); }}
+                          onClick={() => { setTopSection("tools"); setView(item.view); setSidebarOpen(false); }}
                           className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
                           style={active
                             ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
@@ -595,7 +601,7 @@ export default function DashboardView() {
                 )}
 
                 {/* Sub-nav for Tomsi Media Dashboard */}
-                {isActive && sec.id === "tomsi_media" && expandedSections.has("tomsi_media") && (
+                {sec.id === "tomsi_media" && expandedSections.has("tomsi_media") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {([
                       { id: "b2b_tracking" as TomsiView, label: "B2B Tracking", icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
@@ -604,7 +610,7 @@ export default function DashboardView() {
                       return (
                         <button
                           key={item.id}
-                          onClick={() => { setTomsiView(item.id); setSidebarOpen(false); }}
+                          onClick={() => { setTopSection("tomsi_media"); setTomsiView(item.id); setSidebarOpen(false); }}
                           className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
                           style={active
                             ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
@@ -630,8 +636,6 @@ export default function DashboardView() {
         <div className="px-3 py-4" style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }}>
           <button
             onClick={() => {
-              setTopSection("settings");
-              setView("admin_users");
               setExpandedSections(prev => {
                 const next = new Set(prev);
                 if (next.has("settings")) next.delete("settings");
@@ -653,10 +657,10 @@ export default function DashboardView() {
             Settings
           </button>
 
-          {topSection === "settings" && expandedSections.has("settings") && (
+          {expandedSections.has("settings") && (
             <div className="mt-1" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
               <button
-                onClick={() => { setView("admin_users"); setSidebarOpen(false); }}
+                onClick={() => { setTopSection("settings"); setView("admin_users"); setSidebarOpen(false); }}
                 className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
                 style={view === "admin_users"
                   ? { background: "rgba(0,0,0,0.06)", color: "#000000" }

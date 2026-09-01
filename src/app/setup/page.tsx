@@ -53,13 +53,15 @@ export default function SetupPage() {
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ position: "relative" }}>
-        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+        <BrandBackground />
+        <div className="w-5 h-5 border-2 border-black/20 border-t-black rounded-full animate-spin" style={{ position: "relative", zIndex: 1 }} />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ position: "relative" }}>
+      <BrandBackground />
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-block border-2 border-black px-10 py-3 mb-4">
