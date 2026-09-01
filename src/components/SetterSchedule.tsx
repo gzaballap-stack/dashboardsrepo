@@ -211,7 +211,7 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
             </thead>
             <tbody>
               {HOURS.map((hour, hi) => (
-                <tr key={hour} style={{ background: hi % 2 === 0 ? "#ffffff" : "#060d1a" }}>
+                <tr key={hour} style={{ background: hi % 2 === 0 ? "#ffffff" : "#fafafa" }}>
                   <td className="px-3 py-2 font-mono whitespace-nowrap"
                     style={{ color: "#767676", borderRight: "1px solid rgba(0,0,0,0.054)", verticalAlign: "top", paddingTop: "10px" }}>
                     {fmtHour(hour)}
@@ -405,7 +405,7 @@ function PDScheduleTab({ agents, weekStart, setWeekStart }: {
                 </thead>
                 <tbody>
                   {byDate[date].map((row, i) => (
-                    <tr key={row.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#060d1a", borderTop: "1px solid rgba(0,0,0,0.041)" }}>
+                    <tr key={row.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#fafafa", borderTop: "1px solid rgba(0,0,0,0.041)" }}>
                       <td className="px-4 py-3 font-mono text-xs" style={{ color: "#6b6b6b" }}>{fmtTime(row.slot_time)}</td>
                       <td className="px-4 py-3 font-medium" style={{ color: "#111111" }}>{row.clients?.name ?? "—"}</td>
                       <td className="px-4 py-3">
@@ -536,7 +536,7 @@ function AvailabilityTab({ agents }: { agents: Agent[] }) {
             {rows.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: "#949494" }}>No availability configured yet.</td></tr>
             ) : rows.map((row, i) => (
-              <tr key={row.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#060d1a", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
+              <tr key={row.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#fafafa", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
                 <td className="px-4 py-3 font-medium" style={{ color: "#111111" }}>{row.agents?.name ?? "—"}</td>
                 <td className="px-4 py-3" style={{ color: "#4a4a4a" }}>{row.weekday}</td>
                 <td className="px-4 py-3" style={{ color: "#4a4a4a" }}>{fmtTime(row.time_start)}</td>
@@ -662,7 +662,7 @@ function ClientWindowsTab({ clients }: { clients: Client[] }) {
             {rows.length === 0 ? (
               <tr><td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: "#949494" }}>No calling windows configured yet.</td></tr>
             ) : rows.map((row, i) => (
-              <tr key={row.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#060d1a", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
+              <tr key={row.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#fafafa", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
                 <td className="px-4 py-3 font-medium" style={{ color: "#111111" }}>{row.clients?.name ?? "—"}</td>
                 <td className="px-4 py-3" style={{ color: "#4a4a4a" }}>{row.weekday}</td>
                 <td className="px-4 py-3" style={{ color: "#4a4a4a" }}>{fmtTime(row.time_slot_1)}</td>

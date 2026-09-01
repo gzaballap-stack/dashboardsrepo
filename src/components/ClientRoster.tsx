@@ -128,7 +128,7 @@ export default function ClientRoster() {
             {clients.length === 0 ? (
               <tr><td colSpan={3} className="px-4 py-8 text-center text-sm" style={{ color: "#949494" }}>No clients yet. Add one above.</td></tr>
             ) : clients.map((c, i) => (
-              <tr key={c.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#060d1a", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
+              <tr key={c.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#fafafa", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: c.is_live ? "#000000" : "#767676" }} />

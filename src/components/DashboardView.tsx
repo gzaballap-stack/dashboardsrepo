@@ -107,7 +107,6 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "recordings",       label: "Call Recordings",   group: "Agent Stats" },
   { view: "goals",            label: "Goal Tracker",      group: "Overview"    },
   { view: "admin_agents",     label: "Agent Roster",      group: "Admin"       },
-  { view: "admin_clients",    label: "Client Roster",     group: "Admin"       },
   { view: "schedule",         label: "Power Dialer Schedule", group: "Admin"    },
   { view: "zip_tool",         label: "Zip Code Tool",     group: "Tools"       },
   { view: "task_board",       label: "Task Board",        group: "Tools"       },

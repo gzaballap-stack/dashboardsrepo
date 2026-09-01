@@ -23,22 +23,22 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => {
 
 type CellColor = { bg: string; text: string; bold?: boolean };
 
-const NO_DATA: CellColor = { bg: "#0d1929", text: "#c2c2c2" };
+const NO_DATA: CellColor = { bg: "#fafafa", text: "#949494" };
 
 const PCT_SCALE: { min: number; bg: string; text: string; label: string }[] = [
-  { min: 80, bg: "#064e3b", text: "#6ee7b7", label: "80%+"       },
-  { min: 60, bg: "#065f46", text: "#a7f3d0", label: "60 – 79%"   },
-  { min: 40, bg: "#78350f", text: "#fde68a", label: "40 – 59%"   },
-  { min: 20, bg: "#7c2d12", text: "#fed7aa", label: "20 – 39%"   },
-  { min:  0, bg: "#450a0a", text: "#d98b82", label: "0 – 19%"    },
+  { min: 80, bg: "#d1fae5", text: "#065f46", label: "80%+"       },
+  { min: 60, bg: "#e6f7ee", text: "#047857", label: "60 – 79%"   },
+  { min: 40, bg: "#fef3c7", text: "#92400e", label: "40 – 59%"   },
+  { min: 20, bg: "#ffedd5", text: "#9a3412", label: "20 – 39%"   },
+  { min:  0, bg: "#fee2e2", text: "#991b1b", label: "0 – 19%"    },
 ];
 
 const LEAD_SCALE: { min: number; bg: string; text: string; label: string }[] = [
-  { min: 11, bg: "#4f46e5", text: "#ffffff", label: "11+"       },
-  { min:  6, bg: "#3730a3", text: "#c7d2fe", label: "6 – 10"    },
-  { min:  3, bg: "#1e1b4b", text: "#a5b4fc", label: "3 – 5"     },
-  { min:  1, bg: "#13104a", text: "#818cf8", label: "1 – 2"     },
-  { min:  0, bg: "#0d1929", text: "#c2c2c2", label: "0"         },
+  { min: 11, bg: "#c7d2fe", text: "#1e1b4b", label: "11+"       },
+  { min:  6, bg: "#ddd9fe", text: "#312e81", label: "6 – 10"    },
+  { min:  3, bg: "#e6e7ff", text: "#3730a3", label: "3 – 5"     },
+  { min:  1, bg: "#f0f1ff", text: "#4338ca", label: "1 – 2"     },
+  { min:  0, bg: "#fafafa", text: "#949494", label: "0"         },
 ];
 
 function getCellColor(value: number, type: string): CellColor {
