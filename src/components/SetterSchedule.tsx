@@ -189,7 +189,7 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
       {loading ? (
         <div className="py-12 text-center text-sm" style={{ color: "#949494" }}>Loading…</div>
       ) : (
-        <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
+        <div className="overflow-x-auto rounded-2xl" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
           <table className="text-xs border-collapse" style={{ minWidth: "860px", width: "100%" }}>
             <thead>
               <tr style={{ background: "#fafafa" }}>
@@ -269,7 +269,7 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
       )}
 
       {/* Setter bench */}
-      <div className="rounded-xl p-4 space-y-3" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+      <div className="rounded-2xl p-4 space-y-3" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#767676" }}>
           Setters — drag onto a slot to assign · hover to highlight availability
         </p>
@@ -378,7 +378,7 @@ function PDScheduleTab({ agents, weekStart, setWeekStart }: {
       {loading ? (
         <div className="py-12 text-center text-sm" style={{ color: "#949494" }}>Loading…</div>
       ) : dates.length === 0 ? (
-        <div className="rounded-xl px-5 py-12 text-center" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+        <div className="rounded-2xl px-5 py-12 text-center" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
           <p className="text-sm" style={{ color: "#949494" }}>
             No PD schedule for this week. Build the Watch Schedule first, then click &ldquo;Generate PD Schedule&rdquo;.
           </p>
@@ -386,7 +386,7 @@ function PDScheduleTab({ agents, weekStart, setWeekStart }: {
       ) : (
         <div className="space-y-5">
           {dates.map(date => (
-            <div key={date} className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
+            <div key={date} className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
               <div className="px-4 py-3 flex items-center justify-between"
                 style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
                 <p className="text-sm font-semibold" style={{ color: "#111111" }}>{formatDate(date)}</p>
@@ -490,7 +490,7 @@ function AvailabilityTab({ agents }: { agents: Agent[] }) {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl p-5 space-y-4" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+      <div className="rounded-2xl p-5 space-y-4" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <p className="text-sm font-semibold" style={{ color: "#111111" }}>Add Availability</p>
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
@@ -522,7 +522,7 @@ function AvailabilityTab({ agents }: { agents: Agent[] }) {
         </div>
       </div>
 
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#fafafa" }}>
@@ -616,7 +616,7 @@ function ClientWindowsTab({ clients }: { clients: Client[] }) {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl p-5 space-y-4" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+      <div className="rounded-2xl p-5 space-y-4" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <p className="text-sm font-semibold" style={{ color: "#111111" }}>Add Calling Window</p>
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
@@ -648,7 +648,7 @@ function ClientWindowsTab({ clients }: { clients: Client[] }) {
         </div>
       </div>
 
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#fafafa" }}>
@@ -726,7 +726,7 @@ export default function SetterSchedule({ clients }: { clients: Client[] }) {
         </p>
       </div>
 
-      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: "#fafafa" }}>
+      <div className="flex gap-1 p-1 rounded-2xl w-fit" style={{ background: "#fafafa" }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"

@@ -16,7 +16,7 @@ import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
 import UserManager from "./UserManager";
 import ZipTool from "./ZipTool";
-import DaoBackground from "./DaoBackground";
+import BrandBackground from "./BrandBackground";
 import TaskBoard from "./TaskBoard";
 import CampaignOverview from "./CampaignOverview";
 import CSMDashboard from "./CSMDashboard";
@@ -157,8 +157,8 @@ function getDateRange(p: Preset): { start: string; end: string } {
 
 function KpiCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="relative overflow-hidden rounded-xl p-5 flex flex-col gap-2 group transition-all duration-200 hover:translate-y-[-1px]"
-      style={{ background: "linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%)", border: "1px solid rgba(0,0,0,0.095)" }}>
+    <div className="relative overflow-hidden rounded-2xl p-5 flex flex-col gap-2 group transition-all duration-200 hover:translate-y-[-1px]"
+      style={{ background: "linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
       <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: accent ? "#000000" : "#000000" }} />
       <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#6b6b6b" }}>{label}</span>
       <span className="text-3xl font-bold pl-3" style={{ color: "#000000" }}>{value}</span>
@@ -216,8 +216,8 @@ function ShareReports({ clients }: { clients: Client[] }) {
       </div>
       <div className="space-y-3">
         {(enriched.length ? enriched : clients).map((c: ClientWithToken) => (
-          <div key={c.id} className="rounded-xl px-5 py-4 flex items-center justify-between gap-4"
-            style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+          <div key={c.id} className="rounded-2xl px-5 py-4 flex items-center justify-between gap-4"
+            style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
             <div>
               <p className="text-sm font-medium" style={{ color: "#111111" }}>{c.name}</p>
               {c.share_token && (
@@ -436,8 +436,8 @@ export default function DashboardView() {
   const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Stats", "Admin"];
 
   return (
-    <div className="h-screen overflow-hidden flex" style={{ background: "#ffffff", position: "relative" }}>
-      <DaoBackground />
+    <div className="h-screen overflow-hidden flex" style={{ background: "transparent", position: "relative" }}>
+      <BrandBackground />
 
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
@@ -449,7 +449,7 @@ export default function DashboardView() {
         transition-transform duration-300
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         md:translate-x-0 md:static md:z-auto
-      `} style={{ background: "#ffffff", borderRight: "1px solid rgba(0,0,0,0.081)" }}>
+      `} style={{ background: "rgba(255,255,255,0.82)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderRight: "1px solid rgba(0,0,0,0.07)" }}>
 
         {/* Logo */}
         <div className="flex justify-center items-center overflow-hidden px-2" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)", paddingTop: 4, paddingBottom: 4 }}>
@@ -687,11 +687,11 @@ export default function DashboardView() {
       </aside>
 
       {/* Main */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col" style={{ position: "relative", zIndex: 1 }}>
 
         {/* Header */}
         <header className="flex items-center gap-3 px-6 py-4 flex-wrap"
-          style={{ background: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
+          style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
 
           <button className="md:hidden mr-1" onClick={() => setSidebarOpen(true)}
             style={{ color: "#767676" }}>
@@ -732,7 +732,7 @@ export default function DashboardView() {
                 </svg>
               </button>
               {showPresetMenu && (
-                <div className="absolute top-full right-0 mt-1.5 rounded-xl overflow-hidden z-20 w-48"
+                <div className="absolute top-full right-0 mt-1.5 rounded-2xl overflow-hidden z-20 w-48"
                   style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
                   {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
                     <button key={p} onClick={() => { setTomsiPreset(p); setShowPresetMenu(false); }}
@@ -785,7 +785,7 @@ export default function DashboardView() {
                   </svg>
                 </button>
                 {showPresetMenu && (
-                  <div className="absolute top-full right-0 mt-1.5 rounded-xl overflow-hidden z-20 w-48"
+                  <div className="absolute top-full right-0 mt-1.5 rounded-2xl overflow-hidden z-20 w-48"
                     style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
                     {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
                       <button key={p} onClick={() => { setPreset(p); setShowPresetMenu(false); }}
@@ -840,7 +840,7 @@ export default function DashboardView() {
         </header>
 
         {/* Content */}
-        <main className={`flex-1 overflow-auto ${view === "zip_tool" && topSection === "tools" ? "p-0 flex flex-col" : "p-6 md:p-8"}`} style={{ background: "#ffffff" }}>
+        <main className={`flex-1 overflow-auto ${view === "zip_tool" && topSection === "tools" ? "p-0 flex flex-col" : "p-6 md:p-8"}`} style={{ background: "transparent" }}>
 
           {/* ── Tomsi Media Dashboard ── */}
           {topSection === "tomsi_media" && (

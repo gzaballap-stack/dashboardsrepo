@@ -86,7 +86,7 @@ function MetricRow({ label, value, status }: { label: string; value: string; sta
 
 function SectionCard({ title, children, badge }: { title: string; children: React.ReactNode; badge?: React.ReactNode }) {
   return (
-    <div className="rounded-xl p-4 flex flex-col" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.095)" }}>
+    <div className="rounded-2xl p-4 flex flex-col" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
       <div className="flex items-center justify-between mb-3">
         <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#767676" }}>{title}</span>
         {badge}
@@ -152,7 +152,7 @@ function ChatBubble({ msg }: { msg: { role: string; content: string } }) {
   const isUser = msg.role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
-      <div className="max-w-[80%] rounded-xl px-4 py-2.5 text-sm" style={{
+      <div className="max-w-[80%] rounded-2xl px-4 py-2.5 text-sm" style={{
         background: isUser ? "rgba(0,0,0,0.15)" : "#ffffff",
         border: `1px solid ${isUser ? "rgba(0,0,0,0.24)" : "rgba(0,0,0,0.095)"}`,
         color: "#111111",
@@ -735,8 +735,8 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       <div className="space-y-4">
         <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
           {tiles.map(t => (
-            <div key={t.label} className="rounded-xl px-3 py-2.5"
-              style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.095)" }}>
+            <div key={t.label} className="rounded-2xl px-3 py-2.5"
+              style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
               <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#767676" }}>{t.label}</div>
               <div className="text-lg font-bold mt-0.5" style={{ color: "#111111" }}>{t.value}</div>
               {t.sub && <div className="text-[10px] mt-0.5" style={{ color: "#767676" }}>{t.sub}</div>}
@@ -745,7 +745,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         </div>
 
         {agentCalls && agentCalls.length > 0 && (
-          <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
+          <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
             <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
               <thead style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
                 <tr>
@@ -794,7 +794,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
             for more than one company.
           </p>
         )}
-      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
+      <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <table className="w-full text-sm" style={{ minWidth: 1320 }}>
           <thead>
             <tr style={{ background: "#fafafa", color: "#6b6b6b" }}>
@@ -858,7 +858,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   };
 
   const renderPlaceholder = (title: string, msg: string) => (
-    <div className="rounded-xl p-8 text-center" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.095)" }}>
+    <div className="rounded-2xl p-8 text-center" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
       <p className="text-sm font-medium mb-1" style={{ color: "#767676" }}>{title}</p>
       <p className="text-xs" style={{ color: "#949494" }}>{msg}</p>
     </div>
@@ -871,7 +871,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       widthPct: topCount > 0 ? Math.max((s.count / topCount) * 100, s.count > 0 ? 4 : 0) : 0,
     }));
     return (
-      <div className="rounded-xl p-6" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.095)" }}>
+      <div className="rounded-2xl p-6" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <h3 className="text-xs font-bold uppercase tracking-widest mb-6" style={{ color: "#767676" }}>Conversion Funnel</h3>
         <div className="space-y-1">
           {stages.map((s, i) => (
@@ -899,7 +899,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     const baseline = compData[1];
     const rowKeys = compData[0]?.data ? Object.keys(compData[0].data) : [];
     return (
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
           {compData.map((period, pi) => (
             <div key={pi} style={{ borderRight: pi < 2 ? "1px solid rgba(0,0,0,0.095)" : "none" }}>
@@ -944,7 +944,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
         {aiLoading && (
           <div className="flex justify-start">
-            <div className="px-4 py-2.5 rounded-xl" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.095)" }}>
+            <div className="px-4 py-2.5 rounded-2xl" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
               <div className="flex gap-1">
                 {[0, 1, 2].map(i => (
                   <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: "#767676", animationDelay: `${i * 0.15}s` }} />
@@ -1040,7 +1040,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     subOf: (r: AdSetRow | AdRow) => string | null,
     keyOf: (r: AdSetRow | AdRow, i: number) => string,
   ) => (
-    <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
+    <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
       <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 1760 }}>
         <thead style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
           <tr>
@@ -1120,7 +1120,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       :                   { label: "No Answer",    color: "#767676" };
 
     return (
-      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
+      <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
           <thead style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
             <tr>
@@ -1212,7 +1212,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
             </svg>
             Refresh Data
           </button>
-          <button className="p-1 rounded" style={{ color: "#949494", border: "1px solid rgba(0,0,0,0.081)" }}>
+          <button className="p-1 rounded" style={{ color: "#949494", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
             </svg>

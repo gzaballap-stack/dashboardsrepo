@@ -118,7 +118,7 @@ export default function HeatMap({ type, startDate, endDate, clientId, liveOnly }
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
+          <div className="overflow-x-auto rounded-2xl" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
             <table className="text-xs border-collapse w-full">
               <thead>
                 <tr style={{ background: "#ffffff" }}>

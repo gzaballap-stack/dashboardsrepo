@@ -111,7 +111,7 @@ export default function GoalTracker({ clients, startDate, endDate }: Props) {
       </div>
 
       {!clientId && (
-        <div className="rounded-xl py-16 text-center text-sm" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.068)", color: "#c2c2c2" }}>
+        <div className="rounded-2xl py-16 text-center text-sm" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.068)", color: "#c2c2c2" }}>
           Select a client to view and set goals
         </div>
       )}
@@ -121,7 +121,7 @@ export default function GoalTracker({ clients, startDate, endDate }: Props) {
       )}
 
       {clientId && adding && (
-        <div className="rounded-xl p-4 space-y-3" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.15)" }}>
+        <div className="rounded-2xl p-4 space-y-3" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.15)" }}>
           <p className="text-sm font-semibold" style={{ color: "#000000" }}>New Goal</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -148,7 +148,7 @@ export default function GoalTracker({ clients, startDate, endDate }: Props) {
       )}
 
       {clientId && goals.length === 0 && !adding && (
-        <div className="rounded-xl py-12 text-center text-sm" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.068)", color: "#c2c2c2" }}>
+        <div className="rounded-2xl py-12 text-center text-sm" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.068)", color: "#c2c2c2" }}>
           No goals set — add your first goal above
         </div>
       )}
@@ -160,8 +160,8 @@ export default function GoalTracker({ clients, startDate, endDate }: Props) {
             const isCurrency = g.metric === "ad_spend";
             const current = Number(metrics[g.metric] ?? 0);
             return (
-              <div key={g.id} className="rounded-xl p-5 relative group"
-                style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+              <div key={g.id} className="rounded-2xl p-5 relative group"
+                style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
                 <button onClick={() => handleDelete(g.id)}
                   className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2 py-1 rounded"
                   style={{ color: "#c0392b", background: "rgba(192,57,43,0.08)" }}>✕</button>

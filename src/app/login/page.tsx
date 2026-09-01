@@ -1,6 +1,6 @@
 "use client";
 
-import DaoBackground from "@/components/DaoBackground";
+import BrandBackground from "@/components/BrandBackground";
 
 import { useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
@@ -31,8 +31,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#ffffff", position: "relative" }}>
-      <DaoBackground />
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ position: "relative" }}>
+      <BrandBackground />
       <div className="w-full max-w-md" style={{ position: "relative", zIndex: 1 }}>
         <div className="text-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -47,7 +47,7 @@ export default function LoginPage() {
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 bg-white border border-black/10 rounded-xl px-8 py-8"
+          className="space-y-4 bg-white/90 backdrop-blur-xl border border-black/[0.06] rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.03),0_18px_40px_-16px_rgba(0,0,0,0.16)] px-8 py-8"
         >
           <div>
             <label className="block text-black/60 text-sm mb-1.5 font-medium">Email</label>

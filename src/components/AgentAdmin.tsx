@@ -108,7 +108,7 @@ export default function AgentAdmin() {
 
       {/* Add form */}
       {adding && (
-        <div className="rounded-xl p-4 space-y-3" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.15)" }}>
+        <div className="rounded-2xl p-4 space-y-3" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.15)" }}>
           <p className="text-sm font-semibold" style={{ color: "#000000" }}>New Agent</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -147,7 +147,7 @@ export default function AgentAdmin() {
       )}
 
       {/* Table */}
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#ffffff" }}>

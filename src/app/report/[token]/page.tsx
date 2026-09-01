@@ -27,8 +27,8 @@ type Metrics = {
 
 function KpiCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="relative overflow-hidden rounded-xl p-5 flex flex-col gap-2"
-      style={{ background: "linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%)", border: "1px solid rgba(0,0,0,0.095)" }}>
+    <div className="relative overflow-hidden rounded-2xl p-5 flex flex-col gap-2"
+      style={{ background: "linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
       <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: accent ? "#000000" : "#000000" }} />
       <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#6b6b6b" }}>{label}</span>
       <span className="text-3xl font-bold pl-3" style={{ color: "#000000" }}>{value}</span>

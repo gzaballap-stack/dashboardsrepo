@@ -275,7 +275,7 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSav
                       <div style={{ height: "100%", width: `${p.share_pct * 2.5}%`, background: p.color, opacity: 0.7, borderRadius: 2 }} />
                     </div>
                     {expandedPlatform === p.name && (
-                      <div style={{ margin: "6px 8px 4px", padding: "8px 10px", borderRadius: 6, background: "rgba(0,0,0,0.041)", border: "1px solid rgba(0,0,0,0.081)" }}>
+                      <div style={{ margin: "6px 8px 4px", padding: "8px 10px", borderRadius: 6, background: "rgba(0,0,0,0.041)", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
                         <p style={{ fontSize: 10, color: "#767676", lineHeight: 1.6, margin: "0 0 4px" }}>{p.description}</p>
                         <p style={{ fontSize: 9, color: "#c2c2c2", margin: 0, fontStyle: "italic" }}>Source: {p.source}</p>
                       </div>

@@ -224,7 +224,7 @@ export default function CSMDashboard() {
       </div>
 
       {error && (
-        <div className="rounded-xl p-4 text-sm" style={{ background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)", color: "#d98b82" }}>
+        <div className="rounded-2xl p-4 text-sm" style={{ background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)", color: "#d98b82" }}>
           {error}
         </div>
       )}
@@ -232,7 +232,7 @@ export default function CSMDashboard() {
       {loading ? (
         <div className="flex items-center justify-center py-10 text-sm" style={{ color: "#6b6b6b" }}>Loading CSM data…</div>
       ) : filtered.length === 0 && !error ? (
-        <div className="rounded-xl p-8 text-center text-sm" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.095)", color: "#6b6b6b" }}>
+        <div className="rounded-2xl p-8 text-center text-sm" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)", color: "#6b6b6b" }}>
           No clients match this filter.
         </div>
       ) : (
@@ -247,7 +247,7 @@ export default function CSMDashboard() {
             const upsellStyle = UPSELL_STYLE[row.upsell_status];
 
             return (
-              <div key={row.client_id} className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
+              <div key={row.client_id} className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
                 <div
                   onClick={() => toggleExpand(row.client_id)}
                   className="flex items-center gap-4 px-4 py-3 cursor-pointer flex-wrap"
@@ -286,7 +286,7 @@ export default function CSMDashboard() {
                 {isOpen && (
                   <div className="p-4 space-y-5" style={{ background: "#f7f7f7" }} onClick={e => e.stopPropagation()}>
                     {/* Log a touchpoint */}
-                    <div className="rounded-lg p-3" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.081)" }}>
+                    <div className="rounded-lg p-3" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
                       <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#6b6b6b" }}>Log a Touchpoint</p>
                       <div className="flex gap-2 flex-wrap items-start">
                         <select value={logType} onChange={e => setLogType(e.target.value as typeof logType)}
@@ -312,7 +312,7 @@ export default function CSMDashboard() {
 
                     {/* Review + Upsell status */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="rounded-lg p-3" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.081)" }}>
+                      <div className="rounded-lg p-3" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
                         <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#6b6b6b" }}>Review Status</p>
                         <label className="flex items-center gap-2 text-xs mb-2" style={{ color: "#333333" }}>
                           <input type="checkbox" checked={row.left_review}
@@ -329,7 +329,7 @@ export default function CSMDashboard() {
                         </div>
                       </div>
 
-                      <div className="rounded-lg p-3" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.081)" }}>
+                      <div className="rounded-lg p-3" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
                         <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "#6b6b6b" }}>Upsell Status</p>
                         <select value={row.upsell_status} onChange={e => updateStatus(row, { upsell_status: e.target.value as ClientCSMRow["upsell_status"], upsell_date: new Date().toISOString().slice(0, 10) })}
                           className="px-2 py-1.5 rounded-lg text-xs outline-none mb-2" style={inputStyle()}>

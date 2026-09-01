@@ -96,8 +96,8 @@ function computeBottleneck(d: B2BMetrics): { label: string; action: string } {
 function KpiCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
     <div
-      className="relative overflow-hidden rounded-xl p-5 flex flex-col gap-2 transition-all duration-200 hover:translate-y-[-1px]"
-      style={{ background: "linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%)", border: "1px solid rgba(0,0,0,0.095)" }}
+      className="relative overflow-hidden rounded-2xl p-5 flex flex-col gap-2 transition-all duration-200 hover:translate-y-[-1px]"
+      style={{ background: "linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}
     >
       <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl"
         style={{ background: accent ? "#000000" : "#000000" }} />
@@ -146,7 +146,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
 
   if (error) {
     return (
-      <div className="rounded-xl p-4 text-sm" style={{ background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)", color: "#d98b82" }}>
+      <div className="rounded-2xl p-4 text-sm" style={{ background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)", color: "#d98b82" }}>
         {error}
       </div>
     );
@@ -196,7 +196,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
       {/* ── Campaign Overview-style table row ── */}
       <section>
         <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>B2B Campaign — Overview</h2>
-        <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
+        <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
           <table className="w-full text-sm" style={{ minWidth: 1100 }}>
             <thead>
               <tr style={{ background: "#f7f7f7", color: "#6b6b6b" }}>

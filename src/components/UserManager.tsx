@@ -11,8 +11,8 @@ type User = {
 
 function Row({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl px-5 py-4 flex items-center gap-4"
-      style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+    <div className="rounded-2xl px-5 py-4 flex items-center gap-4"
+      style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
       {children}
     </div>
   );
@@ -119,8 +119,8 @@ export default function UserManager() {
       </div>
 
       {/* Add User */}
-      <div className="rounded-xl px-6 py-6 space-y-4"
-        style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+      <div className="rounded-2xl px-6 py-6 space-y-4"
+        style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <h3 className="text-sm font-semibold" style={{ color: "#4a4a4a" }}>Add New User</h3>
         <form onSubmit={handleAdd} className="space-y-3">
           <Input label="Email" type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} required placeholder="user@company.com" />
@@ -189,7 +189,7 @@ export default function UserManager() {
               </div>
             </Row>
             {changingPw === u.id && (
-              <div className="rounded-xl px-5 py-4 flex items-end gap-3"
+              <div className="rounded-2xl px-5 py-4 flex items-end gap-3"
                 style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.12)" }}>
                 <div className="flex-1">
                   <Input label="New Password" type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min 8 characters" />

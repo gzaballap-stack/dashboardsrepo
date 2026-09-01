@@ -195,8 +195,8 @@ export default function CampaignOverview({ startDate, endDate }: {
   return (
     <>
     <div className="space-y-6 max-w-[1400px]">
-      <div className="flex items-center justify-between flex-wrap gap-3 rounded-xl px-4 py-3"
-        style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.095)" }}>
+      <div className="flex items-center justify-between flex-wrap gap-3 rounded-2xl px-4 py-3"
+        style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <div className="flex items-center gap-5 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full" style={{ background: connected ? "#000000" : "#c0392b", boxShadow: connected ? "0 0 6px #000000" : "none" }} />
@@ -274,7 +274,7 @@ export default function CampaignOverview({ startDate, endDate }: {
         </div>
 
         {error && (
-          <div className="rounded-xl p-4 text-sm" style={{ background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)", color: "#d98b82" }}>
+          <div className="rounded-2xl p-4 text-sm" style={{ background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)", color: "#d98b82" }}>
             {error}
           </div>
         )}
@@ -284,12 +284,12 @@ export default function CampaignOverview({ startDate, endDate }: {
             <span className="text-sm font-medium">Loading campaign data…</span>
           </div>
         ) : filtered.length === 0 && !error ? (
-          <div className="rounded-xl p-8 text-center text-sm" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.095)", color: "#6b6b6b" }}>
+          <div className="rounded-2xl p-8 text-center text-sm" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)", color: "#6b6b6b" }}>
             No campaign data yet for this range. This page reads from the <code>ad_campaigns</code> table, populated by a
             Make.com sync pulling from each platform's ads reporting — see <code>ccm-ad-campaigns.blueprint.json</code>.
           </div>
         ) : (
-          <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
+          <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
             <table className="w-full text-sm" style={{ minWidth: 1500 }}>
               <thead>
                 <tr style={{ background: "#f7f7f7", color: "#6b6b6b" }}>

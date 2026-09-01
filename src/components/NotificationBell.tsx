@@ -42,7 +42,7 @@ export default function NotificationBell({ alerts, onDismiss }: {
       </button>
 
       {open && (
-        <div className="absolute top-full right-0 mt-2 rounded-xl overflow-hidden z-[1100]"
+        <div className="absolute top-full right-0 mt-2 rounded-2xl overflow-hidden z-[1100]"
           style={{ width: 320, background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
           <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
             <span className="text-sm font-semibold" style={{ color: "#111111" }}>Notifications</span>

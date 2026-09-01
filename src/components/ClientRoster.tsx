@@ -84,7 +84,7 @@ export default function ClientRoster() {
       </div>
 
       {/* Add form */}
-      <div className="rounded-xl p-5" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+      <div className="rounded-2xl p-5" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <p className="text-sm font-semibold mb-3" style={{ color: "#111111" }}>Add Client</p>
         <div className="flex gap-3">
           <Input value={newName} onChange={setNewName} placeholder="Client name…" className="flex-1" />
@@ -115,7 +115,7 @@ export default function ClientRoster() {
       </div>
 
       {/* Table */}
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#fafafa" }}>

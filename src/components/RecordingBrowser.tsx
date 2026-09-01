@@ -96,7 +96,7 @@ export default function RecordingBrowser({ clients, startDate, endDate }: Props)
         ) : rows.length === 0 ? (
           <div className="py-12 text-center text-sm" style={{ color: "#c2c2c2" }}>No recordings found</div>
         ) : rows.map(row => (
-          <div key={row.id} className="rounded-xl px-5 py-4 flex items-center gap-5"
+          <div key={row.id} className="rounded-2xl px-5 py-4 flex items-center gap-5"
             style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.068)" }}>
             {/* Play button */}
             <a href={row.recording_url} target="_blank" rel="noopener noreferrer"

@@ -1,5 +1,7 @@
 "use client";
 
+import BrandBackground from "@/components/BrandBackground";
+
 import { useState, useEffect } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
@@ -50,14 +52,14 @@ export default function SetupPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#ffffff" }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ position: "relative" }}>
         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#ffffff" }}>
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ position: "relative" }}>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-block border-2 border-black px-10 py-3 mb-4">
@@ -68,7 +70,7 @@ export default function SetupPage() {
           <p className="text-black/45 text-sm">Create your admin account to get started</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 bg-white border border-black/10 rounded-xl px-8 py-8">
+        <form onSubmit={handleSubmit} className="space-y-4 bg-white/90 backdrop-blur-xl border border-black/[0.06] rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.03),0_18px_40px_-16px_rgba(0,0,0,0.16)] px-8 py-8">
           <div>
             <label className="block text-black/60 text-sm mb-1.5 font-medium">Email</label>
             <input

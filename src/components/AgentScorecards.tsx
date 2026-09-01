@@ -94,8 +94,8 @@ export default function AgentScorecards({ clients, startDate, endDate }: Props) 
             const apptPct = apptTarget ? Math.min(100, Math.round((a.today.appointments / apptTarget) * 100)) : null;
 
             return (
-              <div key={a.agent_name} className="rounded-xl p-5 space-y-4"
-                style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+              <div key={a.agent_name} className="rounded-2xl p-5 space-y-4"
+                style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
                 {/* Header */}
                 <div className="flex items-center justify-between">
                   <span className="font-semibold" style={{ color: "#111111" }}>{a.agent_name}</span>

@@ -78,7 +78,7 @@ export default function AgentStats({ clients, preset, startDate, endDate }: Prop
       </div>
 
       {/* Agent stats table */}
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
