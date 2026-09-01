@@ -743,7 +743,7 @@ export default function DashboardView() {
 
         {/* Header */}
         <header className="flex items-center gap-3 px-6 py-4 flex-wrap"
-          style={{ background: "rgba(255,255,255,0.72)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+          style={{ position: "relative", zIndex: 30, background: "rgba(255,255,255,0.72)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
 
           <button className="md:hidden mr-1" onClick={() => setSidebarOpen(true)}
             style={{ color: "#767676" }}>
@@ -773,7 +773,7 @@ export default function DashboardView() {
               </button>
               {showPresetMenu && (
                 <div className="absolute top-full right-0 mt-1.5 rounded-2xl overflow-hidden z-20 w-48"
-                  style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
+                  style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18)" }}>
                   {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
                     <button key={p} onClick={() => { setTomsiPreset(p); setShowPresetMenu(false); }}
                       className="block w-full text-left px-4 py-2.5 text-sm transition-colors"
@@ -826,7 +826,7 @@ export default function DashboardView() {
                 </button>
                 {showPresetMenu && (
                   <div className="absolute top-full right-0 mt-1.5 rounded-2xl overflow-hidden z-20 w-48"
-                    style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
+                    style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18)" }}>
                     {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
                       <button key={p} onClick={() => { setPreset(p); setShowPresetMenu(false); }}
                         className="block w-full text-left px-4 py-2.5 text-sm transition-colors"
