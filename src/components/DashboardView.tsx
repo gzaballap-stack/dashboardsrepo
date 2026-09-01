@@ -694,6 +694,25 @@ export default function DashboardView() {
             </div>
           )}
         </div>
+
+        {/* Collapse toggle — lives in the menu, desktop only */}
+        <div className={`hidden md:block ${navCollapsed ? "px-2" : "px-3"} pb-3`}>
+          <button
+            onClick={() => setNavCollapsed(c => !c)}
+            title={navCollapsed ? "Expand menu" : "Collapse menu"}
+            aria-label={navCollapsed ? "Expand menu" : "Collapse menu"}
+            className={`w-full py-2 rounded-lg flex items-center text-xs font-medium transition-colors ${navCollapsed ? "px-0 justify-center gap-0" : "px-3 gap-3"}`}
+            style={{ color: "#949494" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#111111"; (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.04)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#949494"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.9} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d={navCollapsed ? "M13 5l7 7-7 7M5 5l7 7-7 7" : "M11 19l-7-7 7-7M19 19l-7-7 7-7"} />
+            </svg>
+            {!navCollapsed && <span>Collapse</span>}
+          </button>
+        </div>
       </aside>
 
       {/* Main */}
@@ -710,20 +729,6 @@ export default function DashboardView() {
             </svg>
           </button>
 
-          <button
-            className="hidden md:flex items-center justify-center mr-1 rounded-md"
-            onClick={() => setNavCollapsed(c => !c)}
-            title={navCollapsed ? "Expand menu" : "Collapse menu"}
-            aria-label={navCollapsed ? "Expand menu" : "Collapse menu"}
-            style={{ width: 28, height: 28, color: "#767676" }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.9} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d={navCollapsed ? "M13 5l7 7-7 7M5 5l7 7-7 7" : "M11 19l-7-7 7-7M19 19l-7-7 7-7"} />
-            </svg>
-          </button>
 
           <h1 className="text-base font-semibold mr-auto" style={{ color: "#111111" }}>
             {topSection === "tomsi_media"
