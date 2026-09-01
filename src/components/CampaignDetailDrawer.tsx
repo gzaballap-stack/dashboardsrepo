@@ -795,7 +795,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
           </p>
         )}
       <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
-        <table className="w-full text-sm" style={{ minWidth: 1320 }}>
+        <table className="w-full text-sm" style={{ minWidth: 1260 }}>
           <thead>
             <tr style={{ background: "#fafafa", color: "#6b6b6b" }}>
               {!isBb && <th className="text-center font-medium px-3 py-3">Tracked</th>}
@@ -974,8 +974,8 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     </div>
   );
 
-  const COL_HEADER = "text-[10px] font-bold uppercase tracking-wider text-right px-3 py-2";
-  const COL_CELL   = "text-right px-3 py-2.5 text-xs";
+  const COL_HEADER = "text-[9px] font-bold uppercase text-right px-1.5 py-2 whitespace-nowrap";
+  const COL_CELL   = "text-right px-1.5 py-2.5 text-[11px] whitespace-nowrap tabular-nums";
 
   // ── Shared metric table for Ad Sets / Ads ───────────────────────────
   // Column set requested for Meta reporting: budget, spend, impressions, reach,
@@ -987,9 +987,9 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   // measure different things and rarely agree.
   const METRIC_COLS = [
     "Budget", "Spend",
-    "Leads", "Appts", "Shows", "Closes", "Cost / Lead", "Cost / Appt", "ROAS",
-    "Impressions", "Reach", "Frequency", "CPM",
-    "Uniq. Clicks", "Uniq. CTR", "CPC", "Meta Results", "CVR", "Cost / Result",
+    "Leads", "Appts", "Shows", "Closes", "CPL", "CPA", "ROAS",
+    "Impr.", "Reach", "Freq.", "CPM",
+    "U.Clicks", "U.CTR", "CPC", "Results", "CVR", "C/Res.",
   ];
 
   const renderMetricCells = (m: AdMetrics) => {
@@ -1041,7 +1041,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     keyOf: (r: AdSetRow | AdRow, i: number) => string,
   ) => (
     <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
-      <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 1760 }}>
+      <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 1180 }}>
         <thead style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
           <tr>
             <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#767676" }}>{label}</th>

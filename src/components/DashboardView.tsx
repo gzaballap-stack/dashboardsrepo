@@ -296,6 +296,9 @@ export default function DashboardView() {
   const [tomsiView, setTomsiView] = useState<TomsiView>("b2b_tracking");
   const [tomsiPreset, setTomsiPreset] = useState<Preset>("last_7");
   const [clientsView, setClientsView] = useState<ClientsView>("client_roster");
+  // Collapsed sidebar buys ~176px, which is what wide drawer tables need to
+  // fit without a horizontal scroll.
+  const [navCollapsed, setNavCollapsed] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<TopSection>>(new Set(["clients_dashboard"]));
   const [view, setView] = useState<View>("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
@@ -329,6 +332,7 @@ export default function DashboardView() {
         setView(saved.view as View);
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
       if (saved.clientsView) setClientsView(saved.clientsView as ClientsView);
+      if (typeof saved.navCollapsed === "boolean") setNavCollapsed(saved.navCollapsed);
       if (saved.expandedSections) setExpandedSections(new Set(saved.expandedSections as TopSection[]));
     } catch {}
   }, []);
@@ -337,10 +341,10 @@ export default function DashboardView() {
   useEffect(() => {
     try {
       localStorage.setItem(NAV_STATE_KEY, JSON.stringify({
-        topSection, view, tomsiView, clientsView, expandedSections: Array.from(expandedSections),
+        topSection, view, tomsiView, clientsView, navCollapsed, expandedSections: Array.from(expandedSections),
       }));
     } catch {}
-  }, [topSection, view, tomsiView, clientsView, expandedSections]);
+  }, [topSection, view, tomsiView, clientsView, navCollapsed, expandedSections]);
 
   // Restore dismissed alerts + closed banners, then fetch current alerts on mount
   useEffect(() => {
@@ -448,23 +452,23 @@ export default function DashboardView() {
 
       {/* Sidebar */}
       <aside className={`
-        fixed top-0 left-0 h-full w-60 z-30 flex flex-col
+        fixed top-0 left-0 h-full z-30 flex flex-col
         transition-transform duration-300
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         md:translate-x-0 md:static md:z-auto
-      `} style={{ background: "rgba(255,255,255,0.82)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderRight: "1px solid rgba(0,0,0,0.07)" }}>
+      `} style={{ width: navCollapsed ? 64 : 240, transition: "width 200ms ease", background: "rgba(255,255,255,0.82)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderRight: "1px solid rgba(0,0,0,0.07)" }}>
 
         {/* Logo */}
         <div className="flex justify-center items-center overflow-hidden px-2" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)", paddingTop: 4, paddingBottom: 4 }}>
           <img
             src="/tomsi-logo-black.png"
             alt="Tomsi Media"
-            style={{ width: 132, height: "auto", objectFit: "contain" }}
+            style={{ width: navCollapsed ? 40 : 132, height: "auto", objectFit: "contain", transition: "width 200ms ease" }}
           />
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3">
+        <nav className={`flex-1 overflow-y-auto py-4 ${navCollapsed ? "px-2" : "px-3"}`}>
 
           {/* Top-level sections */}
           {TOP_SECTIONS.map(sec => {
@@ -490,7 +494,8 @@ export default function DashboardView() {
                       return next;
                     });
                   }}
-                  className="w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 transition-all duration-150"
+                  title={navCollapsed ? sec.label : undefined}
+                  className={`w-full text-left py-2.5 rounded-lg flex items-center transition-all duration-150 ${navCollapsed ? "px-0 justify-center gap-0" : "px-3 gap-3"}`}
                   style={isActive
                     ? { background: "rgba(0,0,0,0.06)", color: "#000000", borderLeft: "2px solid #000000" }
                     : { color: "#6b6b6b", borderLeft: "2px solid transparent" }}
@@ -500,23 +505,23 @@ export default function DashboardView() {
                   <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d={sec.icon} />
                   </svg>
-                  <span className="text-sm font-semibold flex-1">{sec.label}</span>
-                  {sec.badge && (
+                  {!navCollapsed && <span className="text-sm font-semibold flex-1">{sec.label}</span>}
+                  {!navCollapsed && sec.badge && (
                     <span style={{ fontSize: 9, padding: "2px 5px", borderRadius: 4, background: "rgba(0,0,0,0.081)", color: "#949494", fontWeight: 600, letterSpacing: "0.04em" }}>
                       SOON
                     </span>
                   )}
-                  <svg
+                  {!navCollapsed && <svg
                     className="w-3 h-3 flex-shrink-0 transition-transform duration-200"
                     style={{ transform: expandedSections.has(sec.id) ? "rotate(90deg)" : "rotate(0deg)", opacity: 0.5 }}
                     fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
+                  </svg>}
                 </button>
 
                 {/* Sub-nav for Clients Dashboard */}
-                {sec.id === "clients_dashboard" && expandedSections.has("clients_dashboard") && (
+                {!navCollapsed && sec.id === "clients_dashboard" && expandedSections.has("clients_dashboard") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {groups.map(group => (
                       <div key={group} className="mb-3">
@@ -549,7 +554,7 @@ export default function DashboardView() {
                 )}
 
                 {/* Sub-nav for Clients */}
-                {sec.id === "clients" && expandedSections.has("clients") && (
+                {!navCollapsed && sec.id === "clients" && expandedSections.has("clients") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {CLIENTS_NAV.map(item => {
                       const active = topSection === "clients" && clientsView === item.id;
@@ -575,7 +580,7 @@ export default function DashboardView() {
                 )}
 
                 {/* Sub-nav for Tools */}
-                {sec.id === "tools" && expandedSections.has("tools") && (
+                {!navCollapsed && sec.id === "tools" && expandedSections.has("tools") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {NAV.filter(n => n.group === "Tools").map(item => {
                       const active = topSection === "tools" && view === item.view;
@@ -601,7 +606,7 @@ export default function DashboardView() {
                 )}
 
                 {/* Sub-nav for Tomsi Media Dashboard */}
-                {sec.id === "tomsi_media" && expandedSections.has("tomsi_media") && (
+                {!navCollapsed && sec.id === "tomsi_media" && expandedSections.has("tomsi_media") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {([
                       { id: "b2b_tracking" as TomsiView, label: "B2B Tracking", icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
@@ -633,7 +638,7 @@ export default function DashboardView() {
         </nav>
 
         {/* Settings */}
-        <div className="px-3 py-4" style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }}>
+        <div className={navCollapsed ? "px-2 py-4" : "px-3 py-4"} style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }}>
           <button
             onClick={() => {
               setExpandedSections(prev => {
@@ -644,7 +649,8 @@ export default function DashboardView() {
               });
               setSidebarOpen(false);
             }}
-            className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors"
+            title={navCollapsed ? "Settings" : undefined}
+            className={`w-full text-left py-2.5 rounded-lg text-sm font-medium flex items-center transition-colors ${navCollapsed ? "px-0 justify-center gap-0" : "px-3 gap-3"}`}
             style={topSection === "settings"
               ? { background: "rgba(0,0,0,0.048)", color: "#000000" }
               : { color: "#949494" }}
@@ -654,10 +660,10 @@ export default function DashboardView() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d={SETTINGS_ICON} />
             </svg>
-            Settings
+            {!navCollapsed && "Settings"}
           </button>
 
-          {expandedSections.has("settings") && (
+          {!navCollapsed && expandedSections.has("settings") && (
             <div className="mt-1" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
               <button
                 onClick={() => { setTopSection("settings"); setView("admin_users"); setSidebarOpen(false); }}
@@ -701,6 +707,21 @@ export default function DashboardView() {
             style={{ color: "#767676" }}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+
+          <button
+            className="hidden md:flex items-center justify-center mr-1 rounded-md"
+            onClick={() => setNavCollapsed(c => !c)}
+            title={navCollapsed ? "Expand menu" : "Collapse menu"}
+            aria-label={navCollapsed ? "Expand menu" : "Collapse menu"}
+            style={{ width: 28, height: 28, color: "#767676" }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.9} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d={navCollapsed ? "M13 5l7 7-7 7M5 5l7 7-7 7" : "M11 19l-7-7 7-7M19 19l-7-7 7-7"} />
             </svg>
           </button>
 
