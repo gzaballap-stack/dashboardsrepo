@@ -42,20 +42,20 @@ interface Props {
 }
 
 const BOTTLENECK_STYLE: Record<string, { color: string; bg: string }> = {
-  Healthy:       { color: "#4ade80", bg: "rgba(74,222,128,0.1)"  },
-  Creative:      { color: "#f472b6", bg: "rgba(244,114,182,0.1)" },
-  Targeting:     { color: "#f59e0b", bg: "rgba(245,158,11,0.1)"  },
-  Funnel:        { color: "#fb923c", bg: "rgba(251,146,60,0.1)"  },
+  Healthy:       { color: "#000000", bg: "rgba(0,0,0,0.06)"  },
+  Creative:      { color: "#6b6b6b", bg: "rgba(244,114,182,0.1)" },
+  Targeting:     { color: "#000000", bg: "rgba(0,0,0,0.06)"  },
+  Funnel:        { color: "#4a4a4a", bg: "rgba(251,146,60,0.1)"  },
   "Post-Funnel": { color: "#a78bfa", bg: "rgba(167,139,250,0.1)" },
-  "No Data":     { color: "#64748b", bg: "rgba(100,116,139,0.1)" },
+  "No Data":     { color: "#6b6b6b", bg: "rgba(100,116,139,0.1)" },
 };
 
 const STATUS_STYLE: Record<string, { label: string; color: string; bg: string }> = {
-  excellent:    { label: "Excellent",    color: "#4ade80", bg: "rgba(74,222,128,0.12)"  },
+  excellent:    { label: "Excellent",    color: "#000000", bg: "rgba(0,0,0,0.072)"  },
   on_target:    { label: "On Target",    color: "#38bdf8", bg: "rgba(56,189,248,0.12)"  },
-  above_target: { label: "Above Target", color: "#f59e0b", bg: "rgba(245,158,11,0.12)"  },
-  critical:     { label: "Critical",     color: "#f87171", bg: "rgba(248,113,113,0.12)" },
-  no_data:      { label: "No Data",      color: "#64748b", bg: "rgba(100,116,139,0.12)" },
+  above_target: { label: "Above Target", color: "#000000", bg: "rgba(0,0,0,0.072)"  },
+  critical:     { label: "Critical",     color: "#c0392b", bg: "rgba(192,57,43,0.12)" },
+  no_data:      { label: "No Data",      color: "#6b6b6b", bg: "rgba(100,116,139,0.12)" },
 };
 
 function fmt$(n: number) {
@@ -97,12 +97,12 @@ function KpiCard({ label, value, accent = false }: { label: string; value: strin
   return (
     <div
       className="relative overflow-hidden rounded-xl p-5 flex flex-col gap-2 transition-all duration-200 hover:translate-y-[-1px]"
-      style={{ background: "linear-gradient(135deg, #0f2040 0%, #0c1a30 100%)", border: "1px solid rgba(255,255,255,0.07)" }}
+      style={{ background: "linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%)", border: "1px solid rgba(0,0,0,0.095)" }}
     >
       <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl"
-        style={{ background: accent ? "#f59e0b" : "#1d4ed8" }} />
-      <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#64748b" }}>{label}</span>
-      <span className="text-3xl font-bold pl-3" style={{ color: "#f1f5f9" }}>{value}</span>
+        style={{ background: accent ? "#000000" : "#000000" }} />
+      <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#6b6b6b" }}>{label}</span>
+      <span className="text-3xl font-bold pl-3" style={{ color: "#000000" }}>{value}</span>
     </div>
   );
 }
@@ -133,7 +133,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <div className="flex items-center gap-3" style={{ color: "#334155" }}>
+        <div className="flex items-center gap-3" style={{ color: "#949494" }}>
           <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -146,7 +146,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
 
   if (error) {
     return (
-      <div className="rounded-xl p-4 text-sm" style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", color: "#fca5a5" }}>
+      <div className="rounded-xl p-4 text-sm" style={{ background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)", color: "#d98b82" }}>
         {error}
       </div>
     );
@@ -161,7 +161,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
   const bnStyle  = BOTTLENECK_STYLE[bottleneck] ?? BOTTLENECK_STYLE["No Data"];
   const statusKey = computeStatus(data);
   const stStyle   = STATUS_STYLE[statusKey] ?? STATUS_STYLE["no_data"];
-  const dash = <span style={{ color: "#334155" }}>—</span>;
+  const dash = <span style={{ color: "#949494" }}>—</span>;
 
   return (
     <>
@@ -169,7 +169,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
 
       {/* ── Row 1: Pipeline ── */}
       <section>
-        <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Pipeline</h2>
+        <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Pipeline</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard label="Ad Spend"           value={data.ad_spend > 0 ? fmt$(data.ad_spend) : "—"} />
           <KpiCard label="Booked Intros"      value={fmtN(data.intros_booked)} />
@@ -182,7 +182,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
 
       {/* ── Row 2: Results ── */}
       <section>
-        <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Results</h2>
+        <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Results</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard label="Closes"               value={fmtN(data.closes)} accent />
           <KpiCard label="Closing Rate"         value={data.sales_calls_shown > 0 ? fmtPct((data.closes / data.sales_calls_shown) * 100) : "—"} accent />
@@ -195,11 +195,11 @@ export default function B2BTracking({ startDate, endDate }: Props) {
 
       {/* ── Campaign Overview-style table row ── */}
       <section>
-        <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>B2B Campaign — Overview</h2>
-        <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+        <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>B2B Campaign — Overview</h2>
+        <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
           <table className="w-full text-sm" style={{ minWidth: 1100 }}>
             <thead>
-              <tr style={{ background: "#0c1a30", color: "#64748b" }}>
+              <tr style={{ background: "#f7f7f7", color: "#6b6b6b" }}>
                 <th className="text-left font-medium px-4 py-3">Campaign</th>
                 <th className="text-right font-medium px-3 py-3">Spend</th>
                 <th className="text-right font-medium px-3 py-3">Schedules</th>
@@ -234,54 +234,54 @@ export default function B2BTracking({ startDate, endDate }: Props) {
                     }}
                     className="cursor-pointer transition-colors"
                     style={{
-                      borderTop: i === 0 ? "1px solid rgba(255,255,255,0.05)" : "1px solid rgba(255,255,255,0.03)",
-                      background: isSelected ? "rgba(29,78,216,0.08)" : "",
+                      borderTop: i === 0 ? "1px solid rgba(0,0,0,0.068)" : "1px solid rgba(0,0,0,0.041)",
+                      background: isSelected ? "rgba(0,0,0,0.048)" : "",
                     }}
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
+                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "rgba(0,0,0,0.027)"; }}
                     onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = ""; }}>
                     {/* Campaign */}
                     <td className="px-4 py-3 font-semibold whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <svg className="w-3 h-3 flex-none transition-transform" style={{ color: "#475569", transform: isSelected ? "rotate(90deg)" : "none" }} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                        <svg className="w-3 h-3 flex-none transition-transform" style={{ color: "#767676", transform: isSelected ? "rotate(90deg)" : "none" }} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                         </svg>
                         <span style={{ color: "#93c5fd" }}>{campName}</span>
                       </div>
                     </td>
                     {/* Spend */}
-                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                    <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
                       {campSpend > 0 ? fmt$(campSpend) : dash}
                     </td>
                     {/* Schedules — account total (per-campaign pending attribution) */}
-                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                    <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
                       {singleCamp && data.intros_booked > 0 ? fmtN(data.intros_booked) : singleCamp ? dash : dash}
                     </td>
                     {/* CPL */}
-                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                    <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
                       {singleCamp && data.cost_per_lead > 0 ? fmt$(data.cost_per_lead) : singleCamp ? dash : campSpend > 0 && data.leads > 0 ? fmt$(campSpend / data.leads * data.campaigns.length) : dash}
                     </td>
                     {/* CTR */}
-                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                    <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
                       {campCtr != null ? fmtPct(campCtr) : dash}
                     </td>
                     {/* CPC */}
-                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                    <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
                       {campCpc != null ? `$${fmtDec(campCpc)}` : dash}
                     </td>
                     {/* CVR */}
-                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                    <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
                       {singleCamp && data.leads > 0 ? fmtPct(cbr * 100) : dash}
                     </td>
                     {/* Demos */}
-                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                    <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
                       {singleCamp && data.intros_shown > 0 ? fmtN(data.intros_shown) : dash}
                     </td>
                     {/* CP Demo */}
-                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                    <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
                       {singleCamp && data.intros_shown > 0 ? fmt$(data.ad_spend / data.intros_shown) : dash}
                     </td>
                     {/* L2D % */}
-                    <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>
+                    <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
                       {singleCamp && data.leads > 0 ? fmtPct((data.intros_shown / data.leads) * 100) : dash}
                     </td>
                     {/* Bottleneck */}
@@ -294,7 +294,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
                       ) : dash}
                     </td>
                     {/* Action */}
-                    <td className="px-3 py-3 text-xs max-w-[200px]" style={{ color: "#475569" }}>
+                    <td className="px-3 py-3 text-xs max-w-[200px]" style={{ color: "#767676" }}>
                       {singleCamp ? action : ""}
                     </td>
                     {/* Overall */}

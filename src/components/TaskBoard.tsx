@@ -21,27 +21,27 @@ type Task = {
 const BUCKETS: {
   id: Bucket; letter: string; name: string; blurb: string; color: string; icon: string;
 }[] = [
-  { id: "A", letter: "A", name: "Must Do",   blurb: "Serious consequences if left undone. This is the frog.", color: "#ef4444",
+  { id: "A", letter: "A", name: "Must Do",   blurb: "Serious consequences if left undone. This is the frog.", color: "#c0392b",
     icon: "M13 10V3L4 14h7v7l9-11h-7z" },
-  { id: "B", letter: "B", name: "Should Do", blurb: "Mild consequences if delayed. Important, not critical.",  color: "#3b82f6",
+  { id: "B", letter: "B", name: "Should Do", blurb: "Mild consequences if delayed. Important, not critical.",  color: "#000000",
     icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
-  { id: "C", letter: "C", name: "Nice to Do", blurb: "No consequences either way. Casual or social.",          color: "#22c55e",
+  { id: "C", letter: "C", name: "Nice to Do", blurb: "No consequences either way. Casual or social.",          color: "#000000",
     icon: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" },
-  { id: "D", letter: "D", name: "Delegate",  blurb: "Important, but someone (or something) else can do it.",   color: "#a855f7",
+  { id: "D", letter: "D", name: "Delegate",  blurb: "Important, but someone (or something) else can do it.",   color: "#4a4a4a",
     icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" },
-  { id: "E", letter: "E", name: "Eliminate", blurb: "Unnecessary and wasteful. Cut it.",                       color: "#64748b",
+  { id: "E", letter: "E", name: "Eliminate", blurb: "Unnecessary and wasteful. Cut it.",                       color: "#6b6b6b",
     icon: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" },
 ];
 
 const A_LEVELS: { priority: number; label: string; color: string; hint: string }[] = [
-  { priority: 1, label: "A1", color: "#ef4444", hint: "The frog — do it first" },
+  { priority: 1, label: "A1", color: "#c0392b", hint: "The frog — do it first" },
   { priority: 2, label: "A2", color: "#f97316", hint: "Next most serious" },
-  { priority: 3, label: "A3", color: "#f59e0b", hint: "Still a must, but last" },
+  { priority: 3, label: "A3", color: "#000000", hint: "Still a must, but last" },
 ];
 
 const CARD_BG = "#0b1628";
-const PANEL_BG = "#050c18";
-const BORDER = "1px solid rgba(255,255,255,0.06)";
+const PANEL_BG = "#ffffff";
+const BORDER = "1px solid rgba(0,0,0,0.081)";
 
 function hexA(hex: string, alpha: number) {
   const n = parseInt(hex.slice(1), 16);
@@ -167,8 +167,8 @@ export default function TaskBoard() {
         onDrop={e => { e.preventDefault(); e.stopPropagation(); dropBefore(task); }}
         style={{
           background: CARD_BG,
-          border: `1px solid ${isFrog && !task.done ? hexA(accent, 0.4) : "rgba(255,255,255,0.07)"}`,
-          borderLeft: `2px solid ${task.done ? "rgba(255,255,255,0.08)" : hexA(accent, 0.75)}`,
+          border: `1px solid ${isFrog && !task.done ? hexA(accent, 0.4) : "rgba(0,0,0,0.095)"}`,
+          borderLeft: `2px solid ${task.done ? "rgba(0,0,0,0.108)" : hexA(accent, 0.75)}`,
           borderRadius: 8,
           padding: "8px 10px",
           marginBottom: 6,
@@ -184,7 +184,7 @@ export default function TaskBoard() {
             title={task.done ? "Mark as not done" : "Mark as done"}
             style={{
               flexShrink: 0, width: 15, height: 15, marginTop: 2, borderRadius: 4,
-              border: `1.5px solid ${task.done ? accent : "rgba(255,255,255,0.2)"}`,
+              border: `1.5px solid ${task.done ? accent : "rgba(0,0,0,0.27)"}`,
               background: task.done ? accent : "transparent",
               display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
             }}
@@ -198,7 +198,7 @@ export default function TaskBoard() {
 
           <div style={{ flex: 1, minWidth: 0 }} onClick={() => setExpandedId(open ? null : task.id)}>
             <p style={{
-              fontSize: 12.5, lineHeight: 1.45, color: task.done ? "#475569" : "#e2e8f0",
+              fontSize: 12.5, lineHeight: 1.45, color: task.done ? "#767676" : "#111111",
               textDecoration: task.done ? "line-through" : "none", wordBreak: "break-word", cursor: "pointer",
             }}>
               {isFrog && !task.done && <span style={{ marginRight: 5 }}>🐸</span>}
@@ -210,17 +210,17 @@ export default function TaskBoard() {
                 {due && (
                   <span style={{
                     fontSize: 9.5, fontWeight: 700, padding: "2px 6px", borderRadius: 4, letterSpacing: "0.02em",
-                    background: due.overdue ? "rgba(239,68,68,0.14)" : due.soon ? "rgba(245,158,11,0.12)" : "rgba(255,255,255,0.05)",
-                    color: due.overdue ? "#f87171" : due.soon ? "#f59e0b" : "#64748b",
+                    background: due.overdue ? "rgba(192,57,43,0.14)" : due.soon ? "rgba(0,0,0,0.072)" : "rgba(0,0,0,0.068)",
+                    color: due.overdue ? "#c0392b" : due.soon ? "#000000" : "#6b6b6b",
                   }}>{due.text}</span>
                 )}
                 {task.delegate_to && (
-                  <span style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(168,85,247,0.12)", color: "#c084fc" }}>
+                  <span style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(0,0,0,0.06)", color: "#6b6b6b" }}>
                     → {task.delegate_to}
                   </span>
                 )}
                 {task.notes && (
-                  <span style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(255,255,255,0.05)", color: "#475569" }}>
+                  <span style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(0,0,0,0.068)", color: "#767676" }}>
                     note
                   </span>
                 )}
@@ -231,9 +231,9 @@ export default function TaskBoard() {
           <button
             onClick={() => remove(task.id)}
             title="Delete task"
-            style={{ flexShrink: 0, color: "#334155", cursor: "pointer", lineHeight: 0, padding: 2 }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#f87171"}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#334155"}
+            style={{ flexShrink: 0, color: "#949494", cursor: "pointer", lineHeight: 0, padding: 2 }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#949494"}
           >
             <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -278,8 +278,8 @@ export default function TaskBoard() {
                   onClick={() => patch(task.id, { bucket: b.id })}
                   style={{
                     fontSize: 9.5, fontWeight: 800, padding: "3px 8px", borderRadius: 4, cursor: "pointer",
-                    background: task.bucket === b.id ? hexA(b.color, 0.18) : "rgba(255,255,255,0.04)",
-                    color: task.bucket === b.id ? b.color : "#475569",
+                    background: task.bucket === b.id ? hexA(b.color, 0.18) : "rgba(0,0,0,0.054)",
+                    color: task.bucket === b.id ? b.color : "#767676",
                   }}
                 >{b.letter}</button>
               ))}
@@ -289,8 +289,8 @@ export default function TaskBoard() {
                   onClick={() => patch(task.id, { priority: l.priority })}
                   style={{
                     fontSize: 9.5, fontWeight: 800, padding: "3px 8px", borderRadius: 4, cursor: "pointer",
-                    background: task.priority === l.priority ? hexA(l.color, 0.18) : "rgba(255,255,255,0.04)",
-                    color: task.priority === l.priority ? l.color : "#475569",
+                    background: task.priority === l.priority ? hexA(l.color, 0.18) : "rgba(0,0,0,0.054)",
+                    color: task.priority === l.priority ? l.color : "#767676",
                   }}
                 >{l.label}</button>
               ))}
@@ -318,7 +318,7 @@ export default function TaskBoard() {
       >
         {items.map(t => <Card key={t.id} task={t} accent={accent} />)}
         {items.length === 0 && (
-          <p style={{ fontSize: 10.5, color: "#1e3a5f", textAlign: "center", padding: "14px 6px", lineHeight: 1.5 }}>
+          <p style={{ fontSize: 10.5, color: "#c2c2c2", textAlign: "center", padding: "14px 6px", lineHeight: 1.5 }}>
             {empty}
           </p>
         )}
@@ -328,7 +328,7 @@ export default function TaskBoard() {
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 80, gap: 12, color: "#334155" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 80, gap: 12, color: "#949494" }}>
         <svg style={{ width: 20, height: 20 }} className="animate-spin" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -341,8 +341,8 @@ export default function TaskBoard() {
   if (error) {
     return (
       <div style={{ padding: 40, textAlign: "center" }}>
-        <p style={{ fontSize: 14, color: "#f87171", fontWeight: 600, marginBottom: 6 }}>{error}</p>
-        <p style={{ fontSize: 12, color: "#475569" }}>Refresh the page to try again.</p>
+        <p style={{ fontSize: 14, color: "#c0392b", fontWeight: 600, marginBottom: 6 }}>{error}</p>
+        <p style={{ fontSize: 12, color: "#767676" }}>Refresh the page to try again.</p>
       </div>
     );
   }
@@ -352,23 +352,23 @@ export default function TaskBoard() {
 
       {/* Frog banner */}
       <div style={{
-        background: frog ? "linear-gradient(90deg, rgba(239,68,68,0.10), rgba(239,68,68,0.02))" : PANEL_BG,
-        border: `1px solid ${frog ? "rgba(239,68,68,0.20)" : "rgba(255,255,255,0.06)"}`,
+        background: frog ? "linear-gradient(90deg, rgba(192,57,43,0.10), rgba(192,57,43,0.02))" : PANEL_BG,
+        border: `1px solid ${frog ? "rgba(192,57,43,0.20)" : "rgba(0,0,0,0.081)"}`,
         borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
       }}>
         <span style={{ fontSize: 26, lineHeight: 1 }}>🐸</span>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <p style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.12em", color: "#64748b", marginBottom: 3 }}>
+          <p style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.12em", color: "#6b6b6b", marginBottom: 3 }}>
             EAT THIS FROG FIRST
           </p>
-          <p style={{ fontSize: 15, fontWeight: 700, color: frog ? "#e2e8f0" : "#334155" }}>
+          <p style={{ fontSize: 15, fontWeight: 700, color: frog ? "#111111" : "#949494" }}>
             {frog ? frog.title : "Nothing in A — add your must-do task to get started."}
           </p>
         </div>
         {frog && (
           <button
             onClick={() => patch(frog.id, { done: true })}
-            style={{ background: "#ef4444", color: "#fff", fontSize: 12, fontWeight: 700, padding: "8px 16px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap" }}
+            style={{ background: "#c0392b", color: "#fff", fontSize: 12, fontWeight: 700, padding: "8px 16px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap" }}
           >
             Mark Done
           </button>
@@ -393,9 +393,9 @@ export default function TaskBoard() {
               title={`${b.name} — ${b.blurb}`}
               style={{
                 width: 30, height: 34, borderRadius: 7, fontSize: 12.5, fontWeight: 800, cursor: "pointer",
-                background: newBucket === b.id ? hexA(b.color, 0.16) : "rgba(255,255,255,0.03)",
-                border: `1px solid ${newBucket === b.id ? hexA(b.color, 0.4) : "rgba(255,255,255,0.06)"}`,
-                color: newBucket === b.id ? b.color : "#475569",
+                background: newBucket === b.id ? hexA(b.color, 0.16) : "rgba(0,0,0,0.041)",
+                border: `1px solid ${newBucket === b.id ? hexA(b.color, 0.4) : "rgba(0,0,0,0.081)"}`,
+                color: newBucket === b.id ? b.color : "#767676",
               }}
             >{b.letter}</button>
           ))}
@@ -409,9 +409,9 @@ export default function TaskBoard() {
                 title={l.hint}
                 style={{
                   height: 34, padding: "0 10px", borderRadius: 7, fontSize: 11.5, fontWeight: 800, cursor: "pointer",
-                  background: newPriority === l.priority ? hexA(l.color, 0.16) : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${newPriority === l.priority ? hexA(l.color, 0.4) : "rgba(255,255,255,0.06)"}`,
-                  color: newPriority === l.priority ? l.color : "#475569",
+                  background: newPriority === l.priority ? hexA(l.color, 0.16) : "rgba(0,0,0,0.041)",
+                  border: `1px solid ${newPriority === l.priority ? hexA(l.color, 0.4) : "rgba(0,0,0,0.081)"}`,
+                  color: newPriority === l.priority ? l.color : "#767676",
                 }}
               >{l.label}</button>
             ))}
@@ -419,7 +419,7 @@ export default function TaskBoard() {
         )}
         <button
           onClick={addTask}
-          style={{ background: "#f59e0b", color: "#fff", fontSize: 13, fontWeight: 700, padding: "9px 18px", borderRadius: 8, cursor: "pointer" }}
+          style={{ background: "#000000", color: "#fff", fontSize: 13, fontWeight: 700, padding: "9px 18px", borderRadius: 8, cursor: "pointer" }}
         >
           Add Task
         </button>
@@ -427,21 +427,21 @@ export default function TaskBoard() {
 
       {/* Board controls */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <p style={{ fontSize: 11, color: "#334155", marginRight: "auto" }}>
+        <p style={{ fontSize: 11, color: "#949494", marginRight: "auto" }}>
           Drag any task between columns to re-prioritise.
         </p>
         <button
           onClick={() => setHideDone(v => !v)}
-          style={{ fontSize: 11, fontWeight: 600, color: hideDone ? "#f59e0b" : "#475569", cursor: "pointer" }}
+          style={{ fontSize: 11, fontWeight: 600, color: hideDone ? "#000000" : "#767676", cursor: "pointer" }}
         >
           {hideDone ? "Show completed" : "Hide completed"}
         </button>
         {doneCount > 0 && (
           <button
             onClick={clearCompleted}
-            style={{ fontSize: 11, fontWeight: 600, color: "#475569", cursor: "pointer" }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#f87171"}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#475569"}
+            style={{ fontSize: 11, fontWeight: 600, color: "#767676", cursor: "pointer" }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
           >
             Clear {doneCount} completed
           </button>
@@ -462,12 +462,12 @@ export default function TaskBoard() {
                     width: 22, height: 22, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
                     background: hexA(b.color, 0.14), color: b.color, fontSize: 12, fontWeight: 900,
                   }}>{b.letter}</span>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#e2e8f0", flex: 1 }}>{b.name}</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: "#334155" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "#111111", flex: 1 }}>{b.name}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: "#949494" }}>
                     {open}{total !== open ? `/${total}` : ""}
                   </span>
                 </div>
-                <p style={{ fontSize: 10, color: "#334155", lineHeight: 1.5 }}>{b.blurb}</p>
+                <p style={{ fontSize: 10, color: "#949494", lineHeight: 1.5 }}>{b.blurb}</p>
               </div>
 
               {/* Column body */}
@@ -478,7 +478,7 @@ export default function TaskBoard() {
                       <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 4px 5px" }}>
                         <span style={{ width: 6, height: 6, borderRadius: "50%", background: l.color }} />
                         <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", color: l.color }}>{l.label}</span>
-                        <span style={{ fontSize: 9, color: "#1e3a5f" }}>{l.hint}</span>
+                        <span style={{ fontSize: 9, color: "#c2c2c2" }}>{l.hint}</span>
                       </div>
                       <Lane bucket="A" priority={l.priority} accent={l.color} empty="Drop here" />
                     </div>
@@ -496,12 +496,12 @@ export default function TaskBoard() {
 }
 
 const fieldStyle: React.CSSProperties = {
-  background: "#0f2040",
-  border: "1px solid rgba(255,255,255,0.10)",
+  background: "#ffffff",
+  border: "1px solid rgba(0,0,0,0.135)",
   borderRadius: 6,
   padding: "6px 9px",
   fontSize: 11.5,
-  color: "#e2e8f0",
+  color: "#111111",
   outline: "none",
   width: "100%",
 };

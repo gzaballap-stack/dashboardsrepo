@@ -54,29 +54,29 @@ type ClientRollup = {
 };
 
 const STATUS_STYLE: Record<ClientRollup["status"], { label: string; color: string; bg: string }> = {
-  excellent:     { label: "Excellent",     color: "#4ade80", bg: "rgba(74,222,128,0.12)" },
+  excellent:     { label: "Excellent",     color: "#000000", bg: "rgba(0,0,0,0.072)" },
   on_target:     { label: "On Target",     color: "#38bdf8", bg: "rgba(56,189,248,0.12)" },
-  above_target:  { label: "Above Target",  color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
-  critical:      { label: "Critical",      color: "#f87171", bg: "rgba(248,113,113,0.12)" },
+  above_target:  { label: "Above Target",  color: "#000000", bg: "rgba(0,0,0,0.072)" },
+  critical:      { label: "Critical",      color: "#c0392b", bg: "rgba(192,57,43,0.12)" },
   hold:          { label: "Hold",          color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
-  no_data:       { label: "No Data",       color: "#64748b", bg: "rgba(100,116,139,0.12)" },
+  no_data:       { label: "No Data",       color: "#6b6b6b", bg: "rgba(100,116,139,0.12)" },
 };
 
 const RANK_STYLE: Record<ClientRollup["rank"], { color: string; bg: string }> = {
-  Whale:   { color: "#fbbf24", bg: "rgba(251,191,36,0.12)" },
-  Shark:   { color: "#60a5fa", bg: "rgba(96,165,250,0.12)" },
-  Dolphin: { color: "#22d3ee", bg: "rgba(34,211,238,0.12)" },
-  Shrimp:  { color: "#94a3b8", bg: "rgba(148,163,184,0.12)" },
+  Whale:   { color: "#333333", bg: "rgba(251,191,36,0.12)" },
+  Shark:   { color: "#4a4a4a", bg: "rgba(0,0,0,0.072)" },
+  Dolphin: { color: "#6b6b6b", bg: "rgba(34,211,238,0.12)" },
+  Shrimp:  { color: "#4a4a4a", bg: "rgba(0,0,0,0.072)" },
 };
 
 const BOTTLENECK_STYLE: Record<string, { color: string; bg: string }> = {
-  Healthy:      { color: "#4ade80", bg: "rgba(74,222,128,0.1)" },
-  Creative:     { color: "#f472b6", bg: "rgba(244,114,182,0.1)" },
-  Funnel:       { color: "#fb923c", bg: "rgba(251,146,60,0.1)" },
-  Targeting:    { color: "#f59e0b", bg: "rgba(245,158,11,0.1)" },
+  Healthy:      { color: "#000000", bg: "rgba(0,0,0,0.06)" },
+  Creative:     { color: "#6b6b6b", bg: "rgba(244,114,182,0.1)" },
+  Funnel:       { color: "#4a4a4a", bg: "rgba(251,146,60,0.1)" },
+  Targeting:    { color: "#000000", bg: "rgba(0,0,0,0.06)" },
   "Post-Funnel":{ color: "#a78bfa", bg: "rgba(167,139,250,0.1)" },
-  Hold:         { color: "#94a3b8", bg: "rgba(148,163,184,0.1)" },
-  "No Data":    { color: "#64748b", bg: "rgba(100,116,139,0.1)" },
+  Hold:         { color: "#4a4a4a", bg: "rgba(0,0,0,0.06)" },
+  "No Data":    { color: "#6b6b6b", bg: "rgba(100,116,139,0.1)" },
 };
 
 
@@ -196,16 +196,16 @@ export default function CampaignOverview({ startDate, endDate }: {
     <>
     <div className="space-y-6 max-w-[1400px]">
       <div className="flex items-center justify-between flex-wrap gap-3 rounded-xl px-4 py-3"
-        style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.07)" }}>
+        style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.095)" }}>
         <div className="flex items-center gap-5 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ background: connected ? "#4ade80" : "#f87171", boxShadow: connected ? "0 0 6px #4ade80" : "none" }} />
-            <span className="text-xs font-semibold" style={{ color: connected ? "#4ade80" : "#f87171" }}>
+            <span className="w-2 h-2 rounded-full" style={{ background: connected ? "#000000" : "#c0392b", boxShadow: connected ? "0 0 6px #000000" : "none" }} />
+            <span className="text-xs font-semibold" style={{ color: connected ? "#000000" : "#c0392b" }}>
               {connected ? "Live Connection" : "Connection Error"}
             </span>
           </div>
-          <div className="text-xs" style={{ color: "#64748b" }}>
-            Last updated <span style={{ color: "#94a3b8" }}>{relativeTime(lastUpdated)}</span>
+          <div className="text-xs" style={{ color: "#6b6b6b" }}>
+            Last updated <span style={{ color: "#4a4a4a" }}>{relativeTime(lastUpdated)}</span>
           </div>
         </div>
 
@@ -214,7 +214,7 @@ export default function CampaignOverview({ startDate, endDate }: {
             value={datePreset}
             onChange={e => setDatePreset(e.target.value as DatePreset)}
             className="px-3 py-1.5 rounded-lg text-xs font-medium outline-none cursor-pointer"
-            style={{ background: "#0c1a30", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+            style={{ background: "#f7f7f7", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}
           >
             {(Object.keys(DATE_PRESET_LABELS) as DatePreset[]).map(p => (
               <option key={p} value={p}>{DATE_PRESET_LABELS[p]}</option>
@@ -224,18 +224,18 @@ export default function CampaignOverview({ startDate, endDate }: {
             <>
               <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
                 className="px-2 py-1.5 rounded-lg text-xs outline-none"
-                style={{ background: "#0c1a30", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
-              <span className="text-xs" style={{ color: "#475569" }}>–</span>
+                style={{ background: "#f7f7f7", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
+              <span className="text-xs" style={{ color: "#767676" }}>–</span>
               <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
                 className="px-2 py-1.5 rounded-lg text-xs outline-none"
-                style={{ background: "#0c1a30", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
+                style={{ background: "#f7f7f7", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
             </>
           )}
           <button
             onClick={loadData}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-opacity"
-            style={{ background: "rgba(29,78,216,0.15)", color: "#60a5fa", border: "1px solid rgba(29,78,216,0.3)", opacity: loading ? 0.6 : 1 }}
+            style={{ background: "rgba(0,0,0,0.09)", color: "#4a4a4a", border: "1px solid rgba(0,0,0,0.18)", opacity: loading ? 0.6 : 1 }}
           >
             <svg className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -249,7 +249,7 @@ export default function CampaignOverview({ startDate, endDate }: {
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           {(["all", "critical", "above_target", "on_target", "excellent", "hold", "no_data"] as const).map(s => {
             const active = statusFilter === s;
-            const style = s === "all" ? { color: "#94a3b8", bg: "rgba(148,163,184,0.1)" } : STATUS_STYLE[s];
+            const style = s === "all" ? { color: "#4a4a4a", bg: "rgba(0,0,0,0.06)" } : STATUS_STYLE[s];
             const count = s === "all" ? rows.length : (statusCounts[s] ?? 0);
             return (
               <button key={s} onClick={() => setStatusFilter(s)}
@@ -262,37 +262,37 @@ export default function CampaignOverview({ startDate, endDate }: {
         </div>
 
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: "#334155" }}>Campaign Overview — All Clients</h2>
+          <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Campaign Overview — All Clients</h2>
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Filter clients..."
             className="px-3 py-1.5 rounded-lg text-sm outline-none w-56"
-            style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+            style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}
           />
         </div>
 
         {error && (
-          <div className="rounded-xl p-4 text-sm" style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", color: "#fca5a5" }}>
+          <div className="rounded-xl p-4 text-sm" style={{ background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)", color: "#d98b82" }}>
             {error}
           </div>
         )}
 
         {loading ? (
-          <div className="flex items-center gap-2 py-10 justify-center" style={{ color: "#64748b" }}>
+          <div className="flex items-center gap-2 py-10 justify-center" style={{ color: "#6b6b6b" }}>
             <span className="text-sm font-medium">Loading campaign data…</span>
           </div>
         ) : filtered.length === 0 && !error ? (
-          <div className="rounded-xl p-8 text-center text-sm" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.07)", color: "#64748b" }}>
+          <div className="rounded-xl p-8 text-center text-sm" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.095)", color: "#6b6b6b" }}>
             No campaign data yet for this range. This page reads from the <code>ad_campaigns</code> table, populated by a
             Make.com sync pulling from each platform's ads reporting — see <code>ccm-ad-campaigns.blueprint.json</code>.
           </div>
         ) : (
-          <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+          <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
             <table className="w-full text-sm" style={{ minWidth: 1500 }}>
               <thead>
-                <tr style={{ background: "#0c1a30", color: "#64748b" }}>
+                <tr style={{ background: "#f7f7f7", color: "#6b6b6b" }}>
                   <th className="text-left font-medium px-4 py-3 w-8"></th>
                   <th className="text-left font-medium px-2 py-3">Client</th>
                   <th className="text-center font-medium px-2 py-3">Rank</th>
@@ -314,7 +314,7 @@ export default function CampaignOverview({ startDate, endDate }: {
                 {filtered.map(r => {
                   const st = STATUS_STYLE[r.status];
                   const rk = RANK_STYLE[r.rank];
-                  const bn = BOTTLENECK_STYLE[r.bottleneck] ?? { color: "#94a3b8", bg: "rgba(148,163,184,0.1)" };
+                  const bn = BOTTLENECK_STYLE[r.bottleneck] ?? { color: "#4a4a4a", bg: "rgba(0,0,0,0.06)" };
                   const isOpen = drawerEntity?.kind === "client" && drawerEntity.client.client_id === r.client_id;
                   return (
                     <>
@@ -324,9 +324,9 @@ export default function CampaignOverview({ startDate, endDate }: {
                           setDrawerEntity({ kind: "client", client: r, startDate: rangeStart, endDate: rangeEnd });
                         }}
                         className="cursor-pointer transition-colors"
-                        style={{ borderTop: "1px solid rgba(255,255,255,0.05)", background: isOpen ? "rgba(29,78,216,0.08)" : "" }}>
+                        style={{ borderTop: "1px solid rgba(0,0,0,0.068)", background: isOpen ? "rgba(0,0,0,0.048)" : "" }}>
                         <td className="px-4 py-3">
-                          <svg className="w-3 h-3 transition-transform" style={{ color: "#475569", transform: isOpen ? "rotate(90deg)" : "none" }}
+                          <svg className="w-3 h-3 transition-transform" style={{ color: "#767676", transform: isOpen ? "rotate(90deg)" : "none" }}
                             fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                           </svg>
@@ -339,21 +339,21 @@ export default function CampaignOverview({ startDate, endDate }: {
                             {r.rank}
                           </span>
                         </td>
-                        <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>{fmt$(r.spend)}</td>
-                        <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>{fmtInt(r.leads)}</td>
-                        <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{r.cpl > 0 ? fmt$(r.cpl) : "—"}</td>
-                        <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{fmtPct(r.ctr)}</td>
-                        <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{r.cpc > 0 ? fmt$(r.cpc) : "—"}</td>
-                        <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{r.cvr > 0 ? fmtPct(r.cvr) : "—"}</td>
-                        <td className="text-right px-3 py-3" style={{ color: "#e2e8f0" }}>{fmtInt(r.appts)}</td>
-                        <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{r.cp_appt > 0 ? fmt$(r.cp_appt) : "—"}</td>
-                        <td className="text-right px-3 py-3" style={{ color: "#94a3b8" }}>{r.l2a_pct > 0 ? fmtPct(r.l2a_pct) : "—"}</td>
+                        <td className="text-right px-3 py-3" style={{ color: "#111111" }}>{fmt$(r.spend)}</td>
+                        <td className="text-right px-3 py-3" style={{ color: "#111111" }}>{fmtInt(r.leads)}</td>
+                        <td className="text-right px-3 py-3" style={{ color: "#4a4a4a" }}>{r.cpl > 0 ? fmt$(r.cpl) : "—"}</td>
+                        <td className="text-right px-3 py-3" style={{ color: "#4a4a4a" }}>{fmtPct(r.ctr)}</td>
+                        <td className="text-right px-3 py-3" style={{ color: "#4a4a4a" }}>{r.cpc > 0 ? fmt$(r.cpc) : "—"}</td>
+                        <td className="text-right px-3 py-3" style={{ color: "#4a4a4a" }}>{r.cvr > 0 ? fmtPct(r.cvr) : "—"}</td>
+                        <td className="text-right px-3 py-3" style={{ color: "#111111" }}>{fmtInt(r.appts)}</td>
+                        <td className="text-right px-3 py-3" style={{ color: "#4a4a4a" }}>{r.cp_appt > 0 ? fmt$(r.cp_appt) : "—"}</td>
+                        <td className="text-right px-3 py-3" style={{ color: "#4a4a4a" }}>{r.l2a_pct > 0 ? fmtPct(r.l2a_pct) : "—"}</td>
                         <td className="px-3 py-3">
                           <span className="px-2 py-1 rounded-md text-xs font-semibold whitespace-nowrap" style={{ color: bn.color, background: bn.bg }}>
                             {r.bottleneck}
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-xs max-w-[220px]" style={{ color: "#64748b" }}>{r.action}</td>
+                        <td className="px-3 py-3 text-xs max-w-[220px]" style={{ color: "#6b6b6b" }}>{r.action}</td>
                         <td className="text-right px-4 py-3">
                           <span className="px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap" style={{ color: st.color, background: st.bg }}>
                             {st.label}

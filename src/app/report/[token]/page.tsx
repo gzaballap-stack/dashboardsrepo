@@ -28,10 +28,10 @@ type Metrics = {
 function KpiCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="relative overflow-hidden rounded-xl p-5 flex flex-col gap-2"
-      style={{ background: "linear-gradient(135deg, #0f2040 0%, #0c1a30 100%)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: accent ? "#f59e0b" : "#1d4ed8" }} />
-      <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#64748b" }}>{label}</span>
-      <span className="text-3xl font-bold pl-3" style={{ color: "#f1f5f9" }}>{value}</span>
+      style={{ background: "linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%)", border: "1px solid rgba(0,0,0,0.095)" }}>
+      <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: accent ? "#000000" : "#000000" }} />
+      <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#6b6b6b" }}>{label}</span>
+      <span className="text-3xl font-bold pl-3" style={{ color: "#000000" }}>{value}</span>
     </div>
   );
 }
@@ -77,35 +77,35 @@ export default function PublicReportPage() {
   const fmtDec = (v: number | null | undefined) => v != null ? v.toFixed(2) : "—";
 
   if (notFound) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: "#080f1e" }}>
-      <p className="text-sm" style={{ color: "#334155" }}>Report not found or link has expired.</p>
+    <div className="min-h-screen flex items-center justify-center" style={{ background: "#ffffff" }}>
+      <p className="text-sm" style={{ color: "#949494" }}>Report not found or link has expired.</p>
     </div>
   );
 
   return (
-    <div className="min-h-screen" style={{ background: "#080f1e" }}>
+    <div className="min-h-screen" style={{ background: "#ffffff" }}>
       {/* Header */}
       <header className="px-6 py-5 flex items-center justify-between flex-wrap gap-3"
-        style={{ background: "#050c18", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        style={{ background: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)" }}>
+            style={{ background: "linear-gradient(135deg, #000000, #000000)" }}>
             <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white">
               <path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
             </svg>
           </div>
           <div>
-            <p className="text-sm font-bold" style={{ color: "#f1f5f9" }}>{metrics?.client_name ?? "Performance Report"}</p>
-            <p className="text-xs" style={{ color: "#475569" }}>Call Center Analytics</p>
+            <p className="text-sm font-bold" style={{ color: "#000000" }}>{metrics?.client_name ?? "Performance Report"}</p>
+            <p className="text-xs" style={{ color: "#767676" }}>Call Center Analytics</p>
           </div>
         </div>
-        <div className="flex gap-1 rounded-lg p-1" style={{ background: "#0f2040" }}>
+        <div className="flex gap-1 rounded-lg p-1" style={{ background: "#ffffff" }}>
           {PRESETS.map(p => (
             <button key={p.value} onClick={() => setPreset(p.value)}
               className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
               style={preset === p.value
-                ? { background: "#f59e0b", color: "#fff" }
-                : { color: "#475569" }}>
+                ? { background: "#000000", color: "#fff" }
+                : { color: "#767676" }}>
               {p.label}
             </button>
           ))}
@@ -115,7 +115,7 @@ export default function PublicReportPage() {
       <main className="p-6 md:p-10 max-w-6xl mx-auto">
         {loading ? (
           <div className="flex items-center justify-center py-24">
-            <div className="flex items-center gap-3" style={{ color: "#334155" }}>
+            <div className="flex items-center gap-3" style={{ color: "#949494" }}>
               <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -126,7 +126,7 @@ export default function PublicReportPage() {
         ) : metrics ? (
           <div className="space-y-8">
             <section>
-              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>KPIs</h2>
+              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>KPIs</h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 <KpiCard label="New Leads" value={String(metrics.new_leads)} />
                 <KpiCard label="Appointments Booked" value={String(metrics.booked_appointments)} />
@@ -143,10 +143,10 @@ export default function PublicReportPage() {
               </div>
             </section>
 
-            <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
+            <div style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }} />
 
             <section>
-              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Calling Stats</h2>
+              <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Calling Stats</h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <KpiCard label="Outbound Dials" value={String(metrics.outbound_dials)} />
                 <KpiCard label="Pickups" value={String(metrics.pickups)} />
@@ -158,7 +158,7 @@ export default function PublicReportPage() {
         ) : null}
       </main>
 
-      <footer className="text-center py-6 text-xs" style={{ color: "#1e3a5f" }}>
+      <footer className="text-center py-6 text-xs" style={{ color: "#c2c2c2" }}>
         Powered by Call Center Analytics
       </footer>
     </div>

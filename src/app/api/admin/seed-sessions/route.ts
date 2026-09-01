@@ -4,7 +4,7 @@ import { validateWebhookSecret } from '@/lib/api-auth';
 import { MOCK_CLIENT_CONFIGS } from '@/lib/mock-generator';
 
 const TIGER_BASE = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/2';
-const PIN_COLORS = ['#3b82f6','#10b981','#f59e0b','#ec4899','#8b5cf6','#06b6d4','#f97316','#84cc16'];
+const PIN_COLORS = ['#000000','#111111','#000000','#ec4899','#4a4a4a','#6b6b6b','#f97316','#84cc16'];
 
 // One distinct US metro per mock client (same order as MOCK_CLIENT_CONFIGS)
 const CLIENT_LOCATIONS = [

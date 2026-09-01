@@ -157,10 +157,10 @@ function getDateRange(p: Preset): { start: string; end: string } {
 function KpiCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="relative overflow-hidden rounded-xl p-5 flex flex-col gap-2 group transition-all duration-200 hover:translate-y-[-1px]"
-      style={{ background: "linear-gradient(135deg, #0f2040 0%, #0c1a30 100%)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: accent ? "#f59e0b" : "#1d4ed8" }} />
-      <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#64748b" }}>{label}</span>
-      <span className="text-3xl font-bold pl-3" style={{ color: "#f1f5f9" }}>{value}</span>
+      style={{ background: "linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%)", border: "1px solid rgba(0,0,0,0.095)" }}>
+      <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: accent ? "#000000" : "#000000" }} />
+      <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#6b6b6b" }}>{label}</span>
+      <span className="text-3xl font-bold pl-3" style={{ color: "#000000" }}>{value}</span>
     </div>
   );
 }
@@ -176,7 +176,7 @@ function Select({ value, onChange, children, className = "" }: {
       value={value}
       onChange={e => onChange(e.target.value)}
       className={`px-4 py-2 rounded-lg text-sm font-medium outline-none cursor-pointer transition-colors ${className}`}
-      style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+      style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}
     >
       {children}
     </select>
@@ -208,19 +208,19 @@ function ShareReports({ clients }: { clients: Client[] }) {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Share Reports</h2>
-        <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
+        <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Share Reports</h2>
+        <p className="text-sm mt-0.5" style={{ color: "#767676" }}>
           Each client has a unique read-only report link — no login required
         </p>
       </div>
       <div className="space-y-3">
         {(enriched.length ? enriched : clients).map((c: ClientWithToken) => (
           <div key={c.id} className="rounded-xl px-5 py-4 flex items-center justify-between gap-4"
-            style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
+            style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
             <div>
-              <p className="text-sm font-medium" style={{ color: "#e2e8f0" }}>{c.name}</p>
+              <p className="text-sm font-medium" style={{ color: "#111111" }}>{c.name}</p>
               {c.share_token && (
-                <p className="text-xs mt-0.5 font-mono truncate max-w-xs" style={{ color: "#334155" }}>
+                <p className="text-xs mt-0.5 font-mono truncate max-w-xs" style={{ color: "#949494" }}>
                   {getUrl(c.share_token)}
                 </p>
               )}
@@ -229,8 +229,8 @@ function ShareReports({ clients }: { clients: Client[] }) {
               <button onClick={() => handleCopy(c.share_token!)}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold flex-shrink-0 transition-colors"
                 style={copied === c.share_token
-                  ? { background: "rgba(52,211,153,0.15)", color: "#34d399" }
-                  : { background: "rgba(245,158,11,0.12)", color: "#f59e0b" }}>
+                  ? { background: "rgba(52,211,153,0.15)", color: "#333333" }
+                  : { background: "rgba(0,0,0,0.072)", color: "#000000" }}>
                 {copied === c.share_token ? "✓ Copied!" : "Copy Link"}
               </button>
             )}
@@ -435,7 +435,7 @@ export default function DashboardView() {
   const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Stats", "Admin"];
 
   return (
-    <div className="h-screen overflow-hidden flex" style={{ background: "#080f1e" }}>
+    <div className="h-screen overflow-hidden flex" style={{ background: "#ffffff" }}>
 
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
@@ -447,10 +447,10 @@ export default function DashboardView() {
         transition-transform duration-300
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         md:translate-x-0 md:static md:z-auto
-      `} style={{ background: "#050c18", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
+      `} style={{ background: "#ffffff", borderRight: "1px solid rgba(0,0,0,0.081)" }}>
 
         {/* Logo */}
-        <div className="flex justify-center items-center overflow-hidden px-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingTop: 4, paddingBottom: 4 }}>
+        <div className="flex justify-center items-center overflow-hidden px-2" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)", paddingTop: 4, paddingBottom: 4 }}>
           <img
             src="/Tomsi Media logo (White) copy.png"
             alt="Tomsi Media"
@@ -484,17 +484,17 @@ export default function DashboardView() {
                   }}
                   className="w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 transition-all duration-150"
                   style={isActive
-                    ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b", borderLeft: "2px solid #f59e0b" }
-                    : { color: "#64748b", borderLeft: "2px solid transparent" }}
-                  onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
-                  onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#64748b"; }}
+                    ? { background: "rgba(0,0,0,0.06)", color: "#000000", borderLeft: "2px solid #000000" }
+                    : { color: "#6b6b6b", borderLeft: "2px solid transparent" }}
+                  onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
+                  onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#6b6b6b"; }}
                 >
                   <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d={sec.icon} />
                   </svg>
                   <span className="text-sm font-semibold flex-1">{sec.label}</span>
                   {sec.badge && (
-                    <span style={{ fontSize: 9, padding: "2px 5px", borderRadius: 4, background: "rgba(255,255,255,0.06)", color: "#334155", fontWeight: 600, letterSpacing: "0.04em" }}>
+                    <span style={{ fontSize: 9, padding: "2px 5px", borderRadius: 4, background: "rgba(0,0,0,0.081)", color: "#949494", fontWeight: 600, letterSpacing: "0.04em" }}>
                       SOON
                     </span>
                   )}
@@ -509,10 +509,10 @@ export default function DashboardView() {
 
                 {/* Sub-nav for Clients Dashboard */}
                 {isActive && sec.id === "clients_dashboard" && expandedSections.has("clients_dashboard") && (
-                  <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", marginLeft: 20, paddingLeft: 8 }}>
+                  <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {groups.map(group => (
                       <div key={group} className="mb-3">
-                        <p className="text-[9px] font-bold uppercase tracking-widest px-2 mb-1" style={{ color: "#1e3a5f" }}>
+                        <p className="text-[9px] font-bold uppercase tracking-widest px-2 mb-1" style={{ color: "#c2c2c2" }}>
                           {group}
                         </p>
                         {NAV.filter(n => n.group === group).map(item => {
@@ -523,10 +523,10 @@ export default function DashboardView() {
                               onClick={() => { setView(item.view); setSidebarOpen(false); }}
                               className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
                               style={active
-                                ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b" }
-                                : { color: "#475569" }}
-                              onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
-                              onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+                                ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
+                                : { color: "#767676" }}
+                              onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
+                              onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#767676"; }}
                             >
                               <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" d={NAV_ICONS[item.view]} />
@@ -542,7 +542,7 @@ export default function DashboardView() {
 
                 {/* Sub-nav for Clients */}
                 {isActive && sec.id === "clients" && expandedSections.has("clients") && (
-                  <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", marginLeft: 20, paddingLeft: 8 }}>
+                  <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {CLIENTS_NAV.map(item => {
                       const active = clientsView === item.id;
                       return (
@@ -551,10 +551,10 @@ export default function DashboardView() {
                           onClick={() => { setClientsView(item.id); setSidebarOpen(false); }}
                           className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
                           style={active
-                            ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b" }
-                            : { color: "#475569" }}
-                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
-                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+                            ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
+                            : { color: "#767676" }}
+                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
+                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#767676"; }}
                         >
                           <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
@@ -568,7 +568,7 @@ export default function DashboardView() {
 
                 {/* Sub-nav for Tools */}
                 {isActive && sec.id === "tools" && expandedSections.has("tools") && (
-                  <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", marginLeft: 20, paddingLeft: 8 }}>
+                  <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {NAV.filter(n => n.group === "Tools").map(item => {
                       const active = view === item.view;
                       return (
@@ -577,10 +577,10 @@ export default function DashboardView() {
                           onClick={() => { setView(item.view); setSidebarOpen(false); }}
                           className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
                           style={active
-                            ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b" }
-                            : { color: "#475569" }}
-                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
-                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+                            ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
+                            : { color: "#767676" }}
+                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
+                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#767676"; }}
                         >
                           <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" d={NAV_ICONS[item.view]} />
@@ -594,7 +594,7 @@ export default function DashboardView() {
 
                 {/* Sub-nav for Tomsi Media Dashboard */}
                 {isActive && sec.id === "tomsi_media" && expandedSections.has("tomsi_media") && (
-                  <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", marginLeft: 20, paddingLeft: 8 }}>
+                  <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {([
                       { id: "b2b_tracking" as TomsiView, label: "B2B Tracking", icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
                     ] as const).map(item => {
@@ -605,10 +605,10 @@ export default function DashboardView() {
                           onClick={() => { setTomsiView(item.id); setSidebarOpen(false); }}
                           className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
                           style={active
-                            ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b" }
-                            : { color: "#475569" }}
-                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
-                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+                            ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
+                            : { color: "#767676" }}
+                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
+                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#767676"; }}
                         >
                           <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
@@ -625,7 +625,7 @@ export default function DashboardView() {
         </nav>
 
         {/* Settings */}
-        <div className="px-3 py-4" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="px-3 py-4" style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }}>
           <button
             onClick={() => {
               setTopSection("settings");
@@ -640,10 +640,10 @@ export default function DashboardView() {
             }}
             className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium flex items-center gap-3 transition-colors"
             style={topSection === "settings"
-              ? { background: "rgba(245,158,11,0.08)", color: "#f59e0b" }
-              : { color: "#334155" }}
-            onMouseEnter={e => { if (topSection !== "settings") (e.currentTarget as HTMLElement).style.color = "#64748b"; }}
-            onMouseLeave={e => { if (topSection !== "settings") (e.currentTarget as HTMLElement).style.color = "#334155"; }}
+              ? { background: "rgba(0,0,0,0.048)", color: "#000000" }
+              : { color: "#949494" }}
+            onMouseEnter={e => { if (topSection !== "settings") (e.currentTarget as HTMLElement).style.color = "#6b6b6b"; }}
+            onMouseLeave={e => { if (topSection !== "settings") (e.currentTarget as HTMLElement).style.color = "#949494"; }}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d={SETTINGS_ICON} />
@@ -652,15 +652,15 @@ export default function DashboardView() {
           </button>
 
           {topSection === "settings" && expandedSections.has("settings") && (
-            <div className="mt-1" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", marginLeft: 20, paddingLeft: 8 }}>
+            <div className="mt-1" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
               <button
                 onClick={() => { setView("admin_users"); setSidebarOpen(false); }}
                 className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
                 style={view === "admin_users"
-                  ? { background: "rgba(245,158,11,0.1)", color: "#f59e0b" }
-                  : { color: "#475569" }}
-                onMouseEnter={e => { if (view !== "admin_users") (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
-                onMouseLeave={e => { if (view !== "admin_users") (e.currentTarget as HTMLElement).style.color = "#475569"; }}
+                  ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
+                  : { color: "#767676" }}
+                onMouseEnter={e => { if (view !== "admin_users") (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
+                onMouseLeave={e => { if (view !== "admin_users") (e.currentTarget as HTMLElement).style.color = "#767676"; }}
               >
                 <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d={NAV_ICONS.admin_users} />
@@ -670,9 +670,9 @@ export default function DashboardView() {
               <button
                 onClick={handleSignOut}
                 className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150"
-                style={{ color: "#475569" }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#94a3b8"}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#475569"}
+                style={{ color: "#767676" }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#4a4a4a"}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
               >
                 <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -689,27 +689,27 @@ export default function DashboardView() {
 
         {/* Header */}
         <header className="flex items-center gap-3 px-6 py-4 flex-wrap"
-          style={{ background: "#050c18", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          style={{ background: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
 
           <button className="md:hidden mr-1" onClick={() => setSidebarOpen(true)}
-            style={{ color: "#475569" }}>
+            style={{ color: "#767676" }}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
 
-          <h1 className="text-base font-semibold mr-auto" style={{ color: "#e2e8f0" }}>
+          <h1 className="text-base font-semibold mr-auto" style={{ color: "#111111" }}>
             {topSection === "tomsi_media"
-              ? <><span style={{ color: "#334155" }}>Tomsi Media / </span>B2B Tracking</>
+              ? <><span style={{ color: "#949494" }}>Tomsi Media / </span>B2B Tracking</>
               : topSection === "payments"
               ? "Payments"
               : topSection === "clients"
-              ? <><span style={{ color: "#334155" }}>Clients / </span>{CLIENTS_NAV.find(c => c.id === clientsView)?.label ?? "Clients"}</>
+              ? <><span style={{ color: "#949494" }}>Clients / </span>{CLIENTS_NAV.find(c => c.id === clientsView)?.label ?? "Clients"}</>
               : topSection === "settings"
-              ? <><span style={{ color: "#334155" }}>Settings / </span>Users</>
+              ? <><span style={{ color: "#949494" }}>Settings / </span>Users</>
               : <>
                   {NAV.find(n => n.view === view)?.group
-                    ? <span style={{ color: "#334155" }}>{NAV.find(n => n.view === view)?.group} / </span>
+                    ? <span style={{ color: "#949494" }}>{NAV.find(n => n.view === view)?.group} / </span>
                     : null}
                   {NAV.find(n => n.view === view)?.label ?? "Dashboard"}
                 </>
@@ -722,7 +722,7 @@ export default function DashboardView() {
               <button
                 onClick={() => setShowPresetMenu(v => !v)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                style={{ background: "#f59e0b", color: "#fff", minWidth: "9rem" }}
+                style={{ background: "#000000", color: "#fff", minWidth: "9rem" }}
               >
                 <span className="flex-1 text-left">{PRESET_LABELS[tomsiPreset]}</span>
                 <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -731,14 +731,14 @@ export default function DashboardView() {
               </button>
               {showPresetMenu && (
                 <div className="absolute top-full right-0 mt-1.5 rounded-xl overflow-hidden z-20 w-48"
-                  style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
+                  style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
                   {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
                     <button key={p} onClick={() => { setTomsiPreset(p); setShowPresetMenu(false); }}
                       className="block w-full text-left px-4 py-2.5 text-sm transition-colors"
                       style={tomsiPreset === p
-                        ? { background: "rgba(245,158,11,0.15)", color: "#f59e0b", fontWeight: 600 }
-                        : { color: "#94a3b8" }}
-                      onMouseEnter={e => { if (tomsiPreset !== p) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)"; }}
+                        ? { background: "rgba(0,0,0,0.09)", color: "#000000", fontWeight: 600 }
+                        : { color: "#4a4a4a" }}
+                      onMouseEnter={e => { if (tomsiPreset !== p) (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.068)"; }}
                       onMouseLeave={e => { if (tomsiPreset !== p) (e.currentTarget as HTMLElement).style.background = ""; }}
                     >
                       {PRESET_LABELS[p]}
@@ -752,11 +752,11 @@ export default function DashboardView() {
             <>
               <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
                 className="px-3 py-2 rounded-lg text-sm outline-none"
-                style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
-              <span className="text-sm" style={{ color: "#334155" }}>to</span>
+                style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
+              <span className="text-sm" style={{ color: "#949494" }}>to</span>
               <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
                 className="px-3 py-2 rounded-lg text-sm outline-none"
-                style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
+                style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
             </>
           )}
 
@@ -775,7 +775,7 @@ export default function DashboardView() {
                 <button
                   onClick={() => setShowPresetMenu(v => !v)}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  style={{ background: "#f59e0b", color: "#fff", minWidth: "9rem" }}
+                  style={{ background: "#000000", color: "#fff", minWidth: "9rem" }}
                 >
                   <span className="flex-1 text-left">{PRESET_LABELS[preset]}</span>
                   <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -784,14 +784,14 @@ export default function DashboardView() {
                 </button>
                 {showPresetMenu && (
                   <div className="absolute top-full right-0 mt-1.5 rounded-xl overflow-hidden z-20 w-48"
-                    style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
+                    style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
                     {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
                       <button key={p} onClick={() => { setPreset(p); setShowPresetMenu(false); }}
                         className="block w-full text-left px-4 py-2.5 text-sm transition-colors"
                         style={preset === p
-                          ? { background: "rgba(245,158,11,0.15)", color: "#f59e0b", fontWeight: 600 }
-                          : { color: "#94a3b8" }}
-                        onMouseEnter={e => { if (preset !== p) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)"; }}
+                          ? { background: "rgba(0,0,0,0.09)", color: "#000000", fontWeight: 600 }
+                          : { color: "#4a4a4a" }}
+                        onMouseEnter={e => { if (preset !== p) (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.068)"; }}
                         onMouseLeave={e => { if (preset !== p) (e.currentTarget as HTMLElement).style.background = ""; }}
                       >
                         {PRESET_LABELS[p]}
@@ -805,11 +805,11 @@ export default function DashboardView() {
                 <>
                   <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
                     className="px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
-                  <span className="text-sm" style={{ color: "#334155" }}>to</span>
+                    style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
+                  <span className="text-sm" style={{ color: "#949494" }}>to</span>
                   <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
                     className="px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
+                    style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
                 </>
               )}
             </>
@@ -838,7 +838,7 @@ export default function DashboardView() {
         </header>
 
         {/* Content */}
-        <main className={`flex-1 overflow-auto ${view === "zip_tool" && topSection === "tools" ? "p-0 flex flex-col" : "p-6 md:p-8"}`} style={{ background: "#080f1e" }}>
+        <main className={`flex-1 overflow-auto ${view === "zip_tool" && topSection === "tools" ? "p-0 flex flex-col" : "p-6 md:p-8"}`} style={{ background: "#ffffff" }}>
 
           {/* ── Tomsi Media Dashboard ── */}
           {topSection === "tomsi_media" && (
@@ -857,18 +857,18 @@ export default function DashboardView() {
 
           {topSection === "payments" && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 20, padding: 40 }}>
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg style={{ width: 28, height: 28, color: "#334155" }} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(0,0,0,0.048)", border: "1px solid rgba(0,0,0,0.09)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg style={{ width: 28, height: 28, color: "#949494" }} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                 </svg>
               </div>
               <div style={{ textAlign: "center" }}>
-                <p style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0", marginBottom: 6 }}>Payment Tracking</p>
-                <p style={{ fontSize: 13, color: "#334155", maxWidth: 320, lineHeight: 1.6 }}>
+                <p style={{ fontSize: 18, fontWeight: 700, color: "#111111", marginBottom: 6 }}>Payment Tracking</p>
+                <p style={{ fontSize: 13, color: "#949494", maxWidth: 320, lineHeight: 1.6 }}>
                   A payment tracking platform is being built here. You'll be able to track invoices, payments, and revenue across all clients.
                 </p>
               </div>
-              <div style={{ padding: "6px 14px", borderRadius: 20, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.06em" }}>
+              <div style={{ padding: "6px 14px", borderRadius: 20, background: "rgba(0,0,0,0.048)", border: "1px solid rgba(0,0,0,0.09)", fontSize: 11, fontWeight: 700, color: "#6b6b6b", letterSpacing: "0.06em" }}>
                 COMING SOON
               </div>
             </div>
@@ -882,7 +882,7 @@ export default function DashboardView() {
           {view === "dashboard" && (
             metricsLoading ? (
               <div className="flex items-center justify-center py-24">
-                <div className="flex items-center gap-3" style={{ color: "#334155" }}>
+                <div className="flex items-center gap-3" style={{ color: "#949494" }}>
                   <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
@@ -893,7 +893,7 @@ export default function DashboardView() {
             ) : metrics ? (
               <div className="space-y-8 max-w-7xl">
                 <section>
-                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>KPIs</h2>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>KPIs</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                     <KpiCard label="New Leads" value={fmtInt(metrics.new_leads)} />
                     <KpiCard label="Booked Appointments" value={fmtInt(metrics.booked_appointments)} />
@@ -920,10 +920,10 @@ export default function DashboardView() {
                   )}
                 </section>
 
-                <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
+                <div style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }} />
 
                 <section>
-                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#334155" }}>Calling Stats</h2>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Calling Stats</h2>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                     <KpiCard label="Speed To Lead (Min)" value={fmtDec(metrics.speed_to_lead_min)} />
                     <KpiCard label="Outbound Dials" value={fmtInt(metrics.outbound_dials)} />

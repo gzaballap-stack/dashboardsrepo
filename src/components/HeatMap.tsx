@@ -23,14 +23,14 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => {
 
 type CellColor = { bg: string; text: string; bold?: boolean };
 
-const NO_DATA: CellColor = { bg: "#0d1929", text: "#1e3a5f" };
+const NO_DATA: CellColor = { bg: "#0d1929", text: "#c2c2c2" };
 
 const PCT_SCALE: { min: number; bg: string; text: string; label: string }[] = [
   { min: 80, bg: "#064e3b", text: "#6ee7b7", label: "80%+"       },
   { min: 60, bg: "#065f46", text: "#a7f3d0", label: "60 – 79%"   },
   { min: 40, bg: "#78350f", text: "#fde68a", label: "40 – 59%"   },
   { min: 20, bg: "#7c2d12", text: "#fed7aa", label: "20 – 39%"   },
-  { min:  0, bg: "#450a0a", text: "#fca5a5", label: "0 – 19%"    },
+  { min:  0, bg: "#450a0a", text: "#d98b82", label: "0 – 19%"    },
 ];
 
 const LEAD_SCALE: { min: number; bg: string; text: string; label: string }[] = [
@@ -38,7 +38,7 @@ const LEAD_SCALE: { min: number; bg: string; text: string; label: string }[] = [
   { min:  6, bg: "#3730a3", text: "#c7d2fe", label: "6 – 10"    },
   { min:  3, bg: "#1e1b4b", text: "#a5b4fc", label: "3 – 5"     },
   { min:  1, bg: "#13104a", text: "#818cf8", label: "1 – 2"     },
-  { min:  0, bg: "#0d1929", text: "#1e3a5f", label: "0"         },
+  { min:  0, bg: "#0d1929", text: "#c2c2c2", label: "0"         },
 ];
 
 function getCellColor(value: number, type: string): CellColor {
@@ -62,14 +62,14 @@ function Legend({ type }: { type: string }) {
   const scale = type === "new_leads" ? [...LEAD_SCALE].reverse() : [...PCT_SCALE].reverse();
   return (
     <div className="flex flex-wrap items-center gap-2 mt-4">
-      <span className="text-xs font-medium mr-1" style={{ color: "#334155" }}>Scale:</span>
+      <span className="text-xs font-medium mr-1" style={{ color: "#949494" }}>Scale:</span>
       {[{ bg: NO_DATA.bg, text: NO_DATA.text, label: "No data" }, ...scale].map(tier => (
         <div key={tier.label} className="flex items-center gap-1.5 px-2.5 py-1 rounded-md"
-          style={{ background: tier.bg, border: "1px solid rgba(255,255,255,0.08)" }}>
+          style={{ background: tier.bg, border: "1px solid rgba(0,0,0,0.108)" }}>
           <span className="text-xs font-semibold" style={{ color: tier.text }}>{tier.label}</span>
         </div>
       ))}
-      <span className="ml-auto text-xs" style={{ color: "#1e3a5f" }}>Times in UTC</span>
+      <span className="ml-auto text-xs" style={{ color: "#c2c2c2" }}>Times in UTC</span>
     </div>
   );
 }
@@ -102,11 +102,11 @@ export default function HeatMap({ type, startDate, endDate, clientId, liveOnly }
 
   return (
     <div className="space-y-1">
-      <p className="text-xs mb-4" style={{ color: "#334155" }}>{TYPE_LABELS[type]}</p>
+      <p className="text-xs mb-4" style={{ color: "#949494" }}>{TYPE_LABELS[type]}</p>
 
       {loading || !grid ? (
         <div className="flex items-center justify-center py-24">
-          <div className="flex items-center gap-3" style={{ color: "#334155" }}>
+          <div className="flex items-center gap-3" style={{ color: "#949494" }}>
             {loading && (
               <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -118,17 +118,17 @@ export default function HeatMap({ type, startDate, endDate, clientId, liveOnly }
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
             <table className="text-xs border-collapse w-full">
               <thead>
-                <tr style={{ background: "#050c18" }}>
+                <tr style={{ background: "#ffffff" }}>
                   <th className="px-4 py-3 text-left font-medium sticky left-0 z-10 w-16"
-                    style={{ color: "#334155", background: "#050c18", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    style={{ color: "#949494", background: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
                     Hour
                   </th>
                   {DAYS.map(d => (
                     <th key={d} className="px-2 py-3 font-semibold text-center"
-                      style={{ color: "#64748b", minWidth: "4.5rem", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                      style={{ color: "#6b6b6b", minWidth: "4.5rem", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
                       {d}
                     </th>
                   ))}
@@ -138,9 +138,9 @@ export default function HeatMap({ type, startDate, endDate, clientId, liveOnly }
                 {grid.map((row, hour) => {
                   const hasData = row.some(v => v !== -1);
                   return (
-                    <tr key={hour} style={{ borderTop: "1px solid rgba(255,255,255,0.03)" }}>
+                    <tr key={hour} style={{ borderTop: "1px solid rgba(0,0,0,0.041)" }}>
                       <td className="px-4 py-1.5 font-medium sticky left-0 z-10 whitespace-nowrap"
-                        style={{ color: hasData ? "#475569" : "#1e3a5f", background: "#050c18", width: "4rem" }}>
+                        style={{ color: hasData ? "#767676" : "#c2c2c2", background: "#ffffff", width: "4rem" }}>
                         {HOUR_LABELS[hour]}
                       </td>
                       {row.map((val, day) => {

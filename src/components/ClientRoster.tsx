@@ -14,7 +14,7 @@ function Input({ value, onChange, placeholder = "", className = "" }: {
       placeholder={placeholder}
       onChange={e => onChange(e.target.value)}
       className={`px-3 py-2 rounded-lg text-sm outline-none ${className}`}
-      style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+      style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}
     />
   );
 }
@@ -74,25 +74,25 @@ export default function ClientRoster() {
   const live = clients.filter(c => c.is_live);
   const offline = clients.filter(c => !c.is_live);
 
-  if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#334155" }}>Loading…</p>;
+  if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#949494" }}>Loading…</p>;
 
   return (
     <div className="space-y-6 max-w-xl">
       <div>
-        <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Client Roster</h2>
-        <p className="text-sm mt-0.5" style={{ color: "#475569" }}>Add clients and manage their live status.</p>
+        <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Client Roster</h2>
+        <p className="text-sm mt-0.5" style={{ color: "#767676" }}>Add clients and manage their live status.</p>
       </div>
 
       {/* Add form */}
-      <div className="rounded-xl p-5" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
-        <p className="text-sm font-semibold mb-3" style={{ color: "#e2e8f0" }}>Add Client</p>
+      <div className="rounded-xl p-5" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+        <p className="text-sm font-semibold mb-3" style={{ color: "#111111" }}>Add Client</p>
         <div className="flex gap-3">
           <Input value={newName} onChange={setNewName} placeholder="Client name…" className="flex-1" />
           <button
             onClick={handleAdd}
             disabled={!newName.trim() || saving}
             className="px-4 py-2 rounded-lg text-sm font-semibold transition-opacity flex-shrink-0"
-            style={{ background: "#f59e0b", color: "#fff", opacity: (!newName.trim() || saving) ? 0.5 : 1 }}>
+            style={{ background: "#000000", color: "#fff", opacity: (!newName.trim() || saving) ? 0.5 : 1 }}>
             {saving ? "Adding…" : "Add Client"}
           </button>
         </div>
@@ -101,38 +101,38 @@ export default function ClientRoster() {
       {/* Stats */}
       <div className="flex items-center gap-6">
         <div className="text-center">
-          <p className="text-2xl font-bold" style={{ color: "#22c55e" }}>{live.length}</p>
-          <p className="text-xs mt-0.5" style={{ color: "#475569" }}>Live</p>
+          <p className="text-2xl font-bold" style={{ color: "#000000" }}>{live.length}</p>
+          <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Live</p>
         </div>
         <div className="text-center">
-          <p className="text-2xl font-bold" style={{ color: "#ef4444" }}>{offline.length}</p>
-          <p className="text-xs mt-0.5" style={{ color: "#475569" }}>Offline</p>
+          <p className="text-2xl font-bold" style={{ color: "#c0392b" }}>{offline.length}</p>
+          <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Offline</p>
         </div>
         <div className="text-center">
-          <p className="text-2xl font-bold" style={{ color: "#e2e8f0" }}>{clients.length}</p>
-          <p className="text-xs mt-0.5" style={{ color: "#475569" }}>Total</p>
+          <p className="text-2xl font-bold" style={{ color: "#111111" }}>{clients.length}</p>
+          <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Total</p>
         </div>
       </div>
 
       {/* Table */}
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: "#0a1628" }}>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>Client</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#334155" }}>Status</th>
+            <tr style={{ background: "#fafafa" }}>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Client</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Status</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>
             {clients.length === 0 ? (
-              <tr><td colSpan={3} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No clients yet. Add one above.</td></tr>
+              <tr><td colSpan={3} className="px-4 py-8 text-center text-sm" style={{ color: "#949494" }}>No clients yet. Add one above.</td></tr>
             ) : clients.map((c, i) => (
-              <tr key={c.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+              <tr key={c.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#060d1a", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: c.is_live ? "#22c55e" : "#475569" }} />
-                    <span className="font-medium" style={{ color: "#e2e8f0" }}>{c.name}</span>
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: c.is_live ? "#000000" : "#767676" }} />
+                    <span className="font-medium" style={{ color: "#111111" }}>{c.name}</span>
                   </div>
                 </td>
                 <td className="px-4 py-3">
@@ -141,8 +141,8 @@ export default function ClientRoster() {
                     disabled={toggling === c.id}
                     className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
                     style={c.is_live
-                      ? { color: "#22c55e", background: "rgba(34,197,94,0.1)", opacity: toggling === c.id ? 0.5 : 1 }
-                      : { color: "#ef4444", background: "rgba(239,68,68,0.1)", opacity: toggling === c.id ? 0.5 : 1 }}>
+                      ? { color: "#000000", background: "rgba(0,0,0,0.06)", opacity: toggling === c.id ? 0.5 : 1 }
+                      : { color: "#c0392b", background: "rgba(192,57,43,0.1)", opacity: toggling === c.id ? 0.5 : 1 }}>
                     {c.is_live ? "Live" : "Offline"}
                   </button>
                 </td>
@@ -151,19 +151,19 @@ export default function ClientRoster() {
                     <span className="flex items-center justify-end gap-2">
                       <button onClick={() => handleDelete(c.id)}
                         className="text-xs font-semibold px-2 py-1 rounded"
-                        style={{ color: "#ef4444", background: "rgba(239,68,68,0.12)" }}>
+                        style={{ color: "#c0392b", background: "rgba(192,57,43,0.12)" }}>
                         Confirm
                       </button>
-                      <button onClick={() => setConfirmDelete(null)} className="text-xs" style={{ color: "#475569" }}>
+                      <button onClick={() => setConfirmDelete(null)} className="text-xs" style={{ color: "#767676" }}>
                         Cancel
                       </button>
                     </span>
                   ) : (
                     <button onClick={() => setConfirmDelete(c.id)}
                       className="text-xs transition-colors"
-                      style={{ color: "#334155" }}
-                      onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")}
-                      onMouseLeave={e => (e.currentTarget.style.color = "#334155")}>
+                      style={{ color: "#949494" }}
+                      onMouseEnter={e => (e.currentTarget.style.color = "#c0392b")}
+                      onMouseLeave={e => (e.currentTarget.style.color = "#949494")}>
                       Remove
                     </button>
                   )}
@@ -174,7 +174,7 @@ export default function ClientRoster() {
         </table>
       </div>
 
-      <p className="text-xs" style={{ color: "#334155" }}>
+      <p className="text-xs" style={{ color: "#949494" }}>
         Offline clients are excluded when using the &ldquo;Live Clients&rdquo; filter on the dashboard.
       </p>
     </div>

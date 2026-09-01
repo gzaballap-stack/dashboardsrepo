@@ -67,9 +67,9 @@ export default function AgentAdmin() {
   }
 
   const inputStyle = {
-    background: "#0a1628",
-    border: "1px solid rgba(255,255,255,0.12)",
-    color: "#e2e8f0",
+    background: "#fafafa",
+    border: "1px solid rgba(0,0,0,0.162)",
+    color: "#111111",
     borderRadius: "0.5rem",
     padding: "0.5rem 0.75rem",
     fontSize: "0.875rem",
@@ -81,8 +81,8 @@ export default function AgentAdmin() {
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Agent Roster</h2>
-          <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
+          <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Agent Roster</h2>
+          <p className="text-sm mt-0.5" style={{ color: "#767676" }}>
             Map agent phone numbers to names — used to auto-assign agents when they claim appointments
           </p>
         </div>
@@ -90,7 +90,7 @@ export default function AgentAdmin() {
           <button
             onClick={() => { setAdding(true); setError(""); }}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-            style={{ background: "#f59e0b", color: "#fff" }}
+            style={{ background: "#000000", color: "#fff" }}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -101,18 +101,18 @@ export default function AgentAdmin() {
       </div>
 
       {error && (
-        <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}>
+        <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(192,57,43,0.12)", border: "1px solid rgba(192,57,43,0.25)", color: "#c0392b" }}>
           {error}
         </div>
       )}
 
       {/* Add form */}
       {adding && (
-        <div className="rounded-xl p-4 space-y-3" style={{ background: "#0a1628", border: "1px solid rgba(245,158,11,0.25)" }}>
-          <p className="text-sm font-semibold" style={{ color: "#f59e0b" }}>New Agent</p>
+        <div className="rounded-xl p-4 space-y-3" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.15)" }}>
+          <p className="text-sm font-semibold" style={{ color: "#000000" }}>New Agent</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Agent Number</label>
+              <label className="block text-xs font-medium mb-1" style={{ color: "#767676" }}>Agent Number</label>
               <input
                 style={inputStyle}
                 placeholder={`ex: ${agents.length + 1}`}
@@ -121,7 +121,7 @@ export default function AgentAdmin() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: "#475569" }}>Agent Name</label>
+              <label className="block text-xs font-medium mb-1" style={{ color: "#767676" }}>Agent Name</label>
               <input
                 style={inputStyle}
                 placeholder="Jane Smith"
@@ -134,12 +134,12 @@ export default function AgentAdmin() {
           <div className="flex gap-2 justify-end">
             <button onClick={() => { setAdding(false); setError(""); setNewAgent({ phone: "", name: "" }); }}
               className="px-4 py-2 rounded-lg text-sm font-medium"
-              style={{ background: "rgba(255,255,255,0.05)", color: "#64748b" }}>
+              style={{ background: "rgba(0,0,0,0.068)", color: "#6b6b6b" }}>
               Cancel
             </button>
             <button onClick={handleAdd} disabled={saving || !newAgent.phone || !newAgent.name}
               className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-40"
-              style={{ background: "#f59e0b", color: "#fff" }}>
+              style={{ background: "#000000", color: "#fff" }}>
               {saving ? "Saving…" : "Save Agent"}
             </button>
           </div>
@@ -147,13 +147,13 @@ export default function AgentAdmin() {
       )}
 
       {/* Table */}
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: "#050c18" }}>
+            <tr style={{ background: "#ffffff" }}>
               {["Agent Name", "Agent Number", "Added", ""].map(h => (
                 <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  style={{ color: "#767676", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
                   {h}
                 </th>
               ))}
@@ -161,13 +161,13 @@ export default function AgentAdmin() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>Loading…</td></tr>
+              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm" style={{ color: "#c2c2c2" }}>Loading…</td></tr>
             ) : agents.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>
+              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm" style={{ color: "#c2c2c2" }}>
                 No agents yet — add your first agent above
               </td></tr>
             ) : agents.map((a, i) => (
-              <tr key={a.id} style={{ borderTop: "1px solid rgba(255,255,255,0.03)", background: i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent" }}>
+              <tr key={a.id} style={{ borderTop: "1px solid rgba(0,0,0,0.041)", background: i % 2 === 0 ? "rgba(0,0,0,0.02)" : "transparent" }}>
                 {editingId === a.id ? (
                   <>
                     <td className="px-4 py-2">
@@ -176,38 +176,38 @@ export default function AgentAdmin() {
                     <td className="px-4 py-2">
                       <input style={inputStyle} value={editState.phone} onChange={e => setEditState(s => ({ ...s, phone: e.target.value }))} />
                     </td>
-                    <td className="px-4 py-2" style={{ color: "#475569" }}>—</td>
+                    <td className="px-4 py-2" style={{ color: "#767676" }}>—</td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2 justify-end">
                         <button onClick={() => setEditingId(null)} className="text-xs px-3 py-1.5 rounded-lg"
-                          style={{ background: "rgba(255,255,255,0.05)", color: "#64748b" }}>Cancel</button>
+                          style={{ background: "rgba(0,0,0,0.068)", color: "#6b6b6b" }}>Cancel</button>
                         <button onClick={() => handleUpdate(a.id)} disabled={saving}
                           className="text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-40"
-                          style={{ background: "#f59e0b", color: "#fff" }}>Save</button>
+                          style={{ background: "#000000", color: "#fff" }}>Save</button>
                       </div>
                     </td>
                   </>
                 ) : (
                   <>
-                    <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{a.name}</td>
-                    <td className="px-4 py-3 font-mono text-xs" style={{ color: "#64748b" }}>{a.phone}</td>
-                    <td className="px-4 py-3" style={{ color: "#334155" }}>
+                    <td className="px-4 py-3 font-medium" style={{ color: "#111111" }}>{a.name}</td>
+                    <td className="px-4 py-3 font-mono text-xs" style={{ color: "#6b6b6b" }}>{a.phone}</td>
+                    <td className="px-4 py-3" style={{ color: "#949494" }}>
                       {new Date(a.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 justify-end">
                         <button onClick={() => { setEditingId(a.id); setEditState({ phone: a.phone, name: a.name }); setError(""); }}
                           className="text-xs px-3 py-1.5 rounded-lg transition-colors"
-                          style={{ background: "rgba(255,255,255,0.05)", color: "#64748b" }}
-                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#94a3b8"}
-                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#64748b"}>
+                          style={{ background: "rgba(0,0,0,0.068)", color: "#6b6b6b" }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#4a4a4a"}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#6b6b6b"}>
                           Edit
                         </button>
                         <button onClick={() => handleDelete(a.id, a.name)}
                           className="text-xs px-3 py-1.5 rounded-lg transition-colors"
-                          style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}
-                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.18)"}
-                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.08)"}>
+                          style={{ background: "rgba(192,57,43,0.08)", color: "#c0392b" }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "rgba(192,57,43,0.18)"}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "rgba(192,57,43,0.08)"}>
                           Remove
                         </button>
                       </div>

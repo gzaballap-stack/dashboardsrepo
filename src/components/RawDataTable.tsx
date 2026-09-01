@@ -123,23 +123,23 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
           value={clientFilter}
           onChange={e => setClientFilter(e.target.value)}
           className="px-4 py-2 rounded-lg text-sm font-medium outline-none"
-          style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", minWidth: "11rem" }}
+          style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111", minWidth: "11rem" }}
         >
           <option value="">All Clients</option>
           <option value="__live__">Live Clients</option>
           {allClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <span className="text-sm" style={{ color: "#334155" }}>{total.toLocaleString()} rows</span>
+        <span className="text-sm" style={{ color: "#949494" }}>{total.toLocaleString()} rows</span>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: "#050c18" }}>
+            <tr style={{ background: "#ffffff" }}>
               {cols.map(c => (
                 <th key={c.key} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
-                  style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  style={{ color: "#767676", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
                   {c.label}
                 </th>
               ))}
@@ -147,17 +147,17 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={cols.length} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>Loading…</td></tr>
+              <tr><td colSpan={cols.length} className="px-4 py-12 text-center text-sm" style={{ color: "#c2c2c2" }}>Loading…</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={cols.length} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>No data</td></tr>
+              <tr><td colSpan={cols.length} className="px-4 py-12 text-center text-sm" style={{ color: "#c2c2c2" }}>No data</td></tr>
             ) : rows.map((row, i) => (
-              <tr key={i} style={{ borderTop: "1px solid rgba(255,255,255,0.03)", background: i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent" }}>
+              <tr key={i} style={{ borderTop: "1px solid rgba(0,0,0,0.041)", background: i % 2 === 0 ? "rgba(0,0,0,0.02)" : "transparent" }}>
                 {cols.map(c => {
                   const val = formatCell(c.key, c.key === "client" ? row["clients"] : row[c.key]);
                   return (
-                    <td key={c.key} className="px-4 py-2.5 whitespace-nowrap text-sm" style={{ color: "#94a3b8" }}>
+                    <td key={c.key} className="px-4 py-2.5 whitespace-nowrap text-sm" style={{ color: "#4a4a4a" }}>
                       {c.key === "recording_url" && val !== "—"
-                        ? <a href={val} target="_blank" rel="noopener noreferrer" style={{ color: "#f59e0b" }}>▶ Listen</a>
+                        ? <a href={val} target="_blank" rel="noopener noreferrer" style={{ color: "#000000" }}>▶ Listen</a>
                         : val}
                     </td>
                   );
@@ -173,13 +173,13 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
         <div className="flex items-center gap-3 justify-end">
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
             className="px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-30 transition-colors"
-            style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", color: "#94a3b8" }}>
+            style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)", color: "#4a4a4a" }}>
             ← Prev
           </button>
-          <span className="text-sm" style={{ color: "#334155" }}>Page {page} of {totalPages}</span>
+          <span className="text-sm" style={{ color: "#949494" }}>Page {page} of {totalPages}</span>
           <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
             className="px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-30 transition-colors"
-            style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", color: "#94a3b8" }}>
+            style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)", color: "#4a4a4a" }}>
             Next →
           </button>
         </div>

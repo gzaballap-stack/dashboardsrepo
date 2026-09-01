@@ -26,7 +26,7 @@ function Ring({ pct, color, size = 56 }: { pct: number; color: string; size?: nu
   const offset = circ - (Math.min(pct, 100) / 100) * circ;
   return (
     <svg width={size} height={size} className="flex-shrink-0">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={4} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(0,0,0,0.081)" strokeWidth={4} />
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={4}
         strokeDasharray={circ} strokeDashoffset={offset}
         strokeLinecap="round" transform={`rotate(-90 ${size / 2} ${size / 2})`} />
@@ -63,8 +63,8 @@ export default function AgentScorecards({ clients, startDate, endDate }: Props) 
   }
 
   const selectStyle = {
-    background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)",
-    color: "#e2e8f0", borderRadius: "0.5rem", padding: "0.5rem 1rem",
+    background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)",
+    color: "#111111", borderRadius: "0.5rem", padding: "0.5rem 1rem",
     fontSize: "0.875rem", outline: "none",
   } as React.CSSProperties;
 
@@ -72,8 +72,8 @@ export default function AgentScorecards({ clients, startDate, endDate }: Props) 
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Agent Scorecards</h2>
-          <p className="text-sm mt-0.5" style={{ color: "#475569" }}>Today's performance + period totals and response time</p>
+          <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Agent Scorecards</h2>
+          <p className="text-sm mt-0.5" style={{ color: "#767676" }}>Today's performance + period totals and response time</p>
         </div>
         <select style={selectStyle} value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
           <option value="">All Clients</option>
@@ -82,9 +82,9 @@ export default function AgentScorecards({ clients, startDate, endDate }: Props) 
       </div>
 
       {loading ? (
-        <div className="py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>Loading…</div>
+        <div className="py-12 text-center text-sm" style={{ color: "#c2c2c2" }}>Loading…</div>
       ) : agents.length === 0 ? (
-        <div className="py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>No agent data</div>
+        <div className="py-12 text-center text-sm" style={{ color: "#c2c2c2" }}>No agent data</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {agents.map(a => {
@@ -95,13 +95,13 @@ export default function AgentScorecards({ clients, startDate, endDate }: Props) 
 
             return (
               <div key={a.agent_name} className="rounded-xl p-5 space-y-4"
-                style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
+                style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
                 {/* Header */}
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold" style={{ color: "#e2e8f0" }}>{a.agent_name}</span>
+                  <span className="font-semibold" style={{ color: "#111111" }}>{a.agent_name}</span>
                   {a.avg_speed_to_lead_min != null && (
                     <span className="text-xs px-2 py-1 rounded-full"
-                      style={{ background: "rgba(245,158,11,0.1)", color: "#f59e0b" }}>
+                      style={{ background: "rgba(0,0,0,0.06)", color: "#000000" }}>
                       ⚡ {a.avg_speed_to_lead_min}m avg response
                     </span>
                   )}
@@ -109,30 +109,30 @@ export default function AgentScorecards({ clients, startDate, endDate }: Props) 
 
                 {/* Today */}
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "#334155" }}>Today</p>
+                  <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "#949494" }}>Today</p>
                   <div className="flex items-center gap-6">
                     <div className="text-center">
                       {dialPct !== null
-                        ? <Ring pct={dialPct} color={dialPct >= 100 ? "#34d399" : dialPct >= 70 ? "#fbbf24" : "#f87171"} />
-                        : <p className="text-2xl font-bold" style={{ color: "#e2e8f0" }}>{a.today.dials}</p>}
-                      <p className="text-xs mt-1" style={{ color: "#475569" }}>Dials{dialTarget ? ` / ${dialTarget}` : ""}</p>
+                        ? <Ring pct={dialPct} color={dialPct >= 100 ? "#333333" : dialPct >= 70 ? "#333333" : "#c0392b"} />
+                        : <p className="text-2xl font-bold" style={{ color: "#111111" }}>{a.today.dials}</p>}
+                      <p className="text-xs mt-1" style={{ color: "#767676" }}>Dials{dialTarget ? ` / ${dialTarget}` : ""}</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-2xl font-bold" style={{ color: "#e2e8f0" }}>{a.today.pickups}</p>
-                      <p className="text-xs mt-1" style={{ color: "#475569" }}>Pickups</p>
+                      <p className="text-2xl font-bold" style={{ color: "#111111" }}>{a.today.pickups}</p>
+                      <p className="text-xs mt-1" style={{ color: "#767676" }}>Pickups</p>
                     </div>
                     <div className="text-center">
                       {apptPct !== null
-                        ? <Ring pct={apptPct} color={apptPct >= 100 ? "#34d399" : apptPct >= 70 ? "#fbbf24" : "#f87171"} />
-                        : <p className="text-2xl font-bold" style={{ color: "#f59e0b" }}>{a.today.appointments}</p>}
-                      <p className="text-xs mt-1" style={{ color: "#475569" }}>Appts{apptTarget ? ` / ${apptTarget}` : ""}</p>
+                        ? <Ring pct={apptPct} color={apptPct >= 100 ? "#333333" : apptPct >= 70 ? "#333333" : "#c0392b"} />
+                        : <p className="text-2xl font-bold" style={{ color: "#000000" }}>{a.today.appointments}</p>}
+                      <p className="text-xs mt-1" style={{ color: "#767676" }}>Appts{apptTarget ? ` / ${apptTarget}` : ""}</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Period totals */}
-                <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "0.75rem" }}>
-                  <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "#334155" }}>Period Totals</p>
+                <div style={{ borderTop: "1px solid rgba(0,0,0,0.068)", paddingTop: "0.75rem" }}>
+                  <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: "#949494" }}>Period Totals</p>
                   <div className="grid grid-cols-4 gap-2 text-center">
                     {[
                       { label: "Dials", value: a.dials },
@@ -141,8 +141,8 @@ export default function AgentScorecards({ clients, startDate, endDate }: Props) 
                       { label: "Show %", value: `${a.show_rate}%` },
                     ].map(s => (
                       <div key={s.label}>
-                        <p className="text-base font-bold" style={{ color: "#94a3b8" }}>{s.value}</p>
-                        <p className="text-xs" style={{ color: "#334155" }}>{s.label}</p>
+                        <p className="text-base font-bold" style={{ color: "#4a4a4a" }}>{s.value}</p>
+                        <p className="text-xs" style={{ color: "#949494" }}>{s.label}</p>
                       </div>
                     ))}
                   </div>

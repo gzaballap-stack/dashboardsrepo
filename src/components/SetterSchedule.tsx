@@ -31,11 +31,11 @@ const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 8); // 8–20
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  pending:    { label: "Pending",    color: "#94a3b8", bg: "rgba(148,163,184,0.1)" },
-  completed:  { label: "Completed",  color: "#22c55e", bg: "rgba(34,197,94,0.1)"  },
-  leads_left: { label: "Leads Left", color: "#3b82f6", bg: "rgba(59,130,246,0.1)" },
-  no_leads:   { label: "No Leads",   color: "#f59e0b", bg: "rgba(245,158,11,0.1)" },
-  no_setters: { label: "No Setters", color: "#ef4444", bg: "rgba(239,68,68,0.1)"  },
+  pending:    { label: "Pending",    color: "#4a4a4a", bg: "rgba(0,0,0,0.06)" },
+  completed:  { label: "Completed",  color: "#000000", bg: "rgba(0,0,0,0.06)"  },
+  leads_left: { label: "Leads Left", color: "#000000", bg: "rgba(0,0,0,0.06)" },
+  no_leads:   { label: "No Leads",   color: "#000000", bg: "rgba(0,0,0,0.06)" },
+  no_setters: { label: "No Setters", color: "#c0392b", bg: "rgba(192,57,43,0.1)"  },
 };
 
 function nextWeekday(current: string) {
@@ -79,7 +79,7 @@ function Input({ value, onChange, type = "text", placeholder = "", className = "
   return (
     <input type={type} value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)}
       className={`px-3 py-2 rounded-lg text-sm outline-none ${className}`}
-      style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }} />
+      style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
   );
 }
 
@@ -87,7 +87,7 @@ function Sel({ value, onChange, children }: { value: string; onChange: (v: strin
   return (
     <select value={value} onChange={e => onChange(e.target.value)}
       className="px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
-      style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}>
+      style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
       {children}
     </select>
   );
@@ -97,18 +97,18 @@ function WeekNav({ weekStart, setWeekStart }: { weekStart: string; setWeekStart:
   return (
     <div className="flex flex-wrap items-center gap-3">
       <div className="flex flex-col gap-1">
-        <label className="text-xs" style={{ color: "#475569" }}>Week Starting</label>
+        <label className="text-xs" style={{ color: "#767676" }}>Week Starting</label>
         <Input type="date" value={weekStart} onChange={setWeekStart} />
       </div>
       <div className="flex gap-2 mt-4">
         <button onClick={() => setWeekStart(getMondayOfWeek(0))}
           className="px-3 py-2 rounded-lg text-xs font-medium"
-          style={{ background: "#0f2040", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.08)" }}>
+          style={{ background: "#ffffff", color: "#4a4a4a", border: "1px solid rgba(0,0,0,0.108)" }}>
           This Week
         </button>
         <button onClick={() => setWeekStart(getMondayOfWeek(1))}
           className="px-3 py-2 rounded-lg text-xs font-medium"
-          style={{ background: "#0f2040", color: "#94a3b8", border: "1px solid rgba(255,255,255,0.08)" }}>
+          style={{ background: "#ffffff", color: "#4a4a4a", border: "1px solid rgba(0,0,0,0.108)" }}>
           Next Week
         </button>
       </div>
@@ -187,23 +187,23 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
       <WeekNav weekStart={weekStart} setWeekStart={setWeekStart} />
 
       {loading ? (
-        <div className="py-12 text-center text-sm" style={{ color: "#334155" }}>Loading…</div>
+        <div className="py-12 text-center text-sm" style={{ color: "#949494" }}>Loading…</div>
       ) : (
-        <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="overflow-x-auto rounded-xl" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
           <table className="text-xs border-collapse" style={{ minWidth: "860px", width: "100%" }}>
             <thead>
-              <tr style={{ background: "#0a1628" }}>
+              <tr style={{ background: "#fafafa" }}>
                 <th className="text-left px-3 py-3 text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: "#334155", borderBottom: "1px solid rgba(255,255,255,0.06)", borderRight: "1px solid rgba(255,255,255,0.04)", width: "80px" }}>
+                  style={{ color: "#949494", borderBottom: "1px solid rgba(0,0,0,0.081)", borderRight: "1px solid rgba(0,0,0,0.054)", width: "80px" }}>
                   Time
                 </th>
                 {weekDates.map(({ date, weekday }) => {
                   const d = new Date(date + "T12:00:00Z");
                   return (
                     <th key={date} className="px-2 py-3 text-center"
-                      style={{ color: "#94a3b8", borderBottom: "1px solid rgba(255,255,255,0.06)", borderLeft: "1px solid rgba(255,255,255,0.04)" }}>
+                      style={{ color: "#4a4a4a", borderBottom: "1px solid rgba(0,0,0,0.081)", borderLeft: "1px solid rgba(0,0,0,0.054)" }}>
                       <div className="font-semibold">{weekday.slice(0, 3)}</div>
-                      <div className="font-normal" style={{ color: "#475569" }}>{d.getUTCMonth() + 1}/{d.getUTCDate()}</div>
+                      <div className="font-normal" style={{ color: "#767676" }}>{d.getUTCMonth() + 1}/{d.getUTCDate()}</div>
                     </th>
                   );
                 })}
@@ -211,9 +211,9 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
             </thead>
             <tbody>
               {HOURS.map((hour, hi) => (
-                <tr key={hour} style={{ background: hi % 2 === 0 ? "#080f1e" : "#060d1a" }}>
+                <tr key={hour} style={{ background: hi % 2 === 0 ? "#ffffff" : "#060d1a" }}>
                   <td className="px-3 py-2 font-mono whitespace-nowrap"
-                    style={{ color: "#475569", borderRight: "1px solid rgba(255,255,255,0.04)", verticalAlign: "top", paddingTop: "10px" }}>
+                    style={{ color: "#767676", borderRight: "1px solid rgba(0,0,0,0.054)", verticalAlign: "top", paddingTop: "10px" }}>
                     {fmtHour(hour)}
                   </td>
                   {weekDates.map(({ date, weekday }) => {
@@ -223,11 +223,11 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
                     return (
                       <td key={date}
                         style={{
-                          borderLeft: "1px solid rgba(255,255,255,0.04)",
+                          borderLeft: "1px solid rgba(0,0,0,0.054)",
                           background: dragOver === key
-                            ? "rgba(96,165,250,0.15)"
+                            ? "rgba(0,0,0,0.09)"
                             : highlighted
-                            ? "rgba(245,158,11,0.10)"
+                            ? "rgba(0,0,0,0.06)"
                             : "transparent",
                           transition: "background 0.1s",
                           verticalAlign: "top",
@@ -248,13 +248,13 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
                           {cellEntries.map(entry => (
                             <div key={entry.id}
                               className="flex items-center gap-1 rounded px-1.5 py-0.5"
-                              style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.2)" }}
+                              style={{ background: "rgba(0,0,0,0.09)", border: "1px solid rgba(0,0,0,0.12)" }}
                               onMouseEnter={() => setHoveredAgent(entry.agent_id)}
                               onMouseLeave={() => setHoveredAgent(null)}>
-                              <span className="truncate text-xs" style={{ color: "#f59e0b", maxWidth: "72px" }}>{entry.agents?.name}</span>
+                              <span className="truncate text-xs" style={{ color: "#000000", maxWidth: "72px" }}>{entry.agents?.name}</span>
                               <button onClick={() => handleRemove(entry.id)}
                                 className="flex-shrink-0 leading-none opacity-40 hover:opacity-100 transition-opacity"
-                                style={{ color: "#f59e0b", fontSize: "12px" }}>×</button>
+                                style={{ color: "#000000", fontSize: "12px" }}>×</button>
                             </div>
                           ))}
                         </div>
@@ -269,13 +269,13 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
       )}
 
       {/* Setter bench */}
-      <div className="rounded-xl p-4 space-y-3" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
-        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>
+      <div className="rounded-xl p-4 space-y-3" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#767676" }}>
           Setters — drag onto a slot to assign · hover to highlight availability
         </p>
         <div className="flex flex-wrap gap-2">
           {agents.length === 0 ? (
-            <p className="text-xs" style={{ color: "#334155" }}>No setters yet. Add them in the Agent Roster first.</p>
+            <p className="text-xs" style={{ color: "#949494" }}>No setters yet. Add them in the Agent Roster first.</p>
           ) : agents.map(agent => (
             <div key={agent.id}
               draggable
@@ -285,9 +285,9 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
               onMouseLeave={() => setHoveredAgent(null)}
               className="px-3 py-1.5 rounded-full text-xs font-medium cursor-grab active:cursor-grabbing select-none"
               style={{
-                background: hoveredAgent === agent.id ? "rgba(245,158,11,0.25)" : "rgba(245,158,11,0.10)",
-                border: `1px solid ${hoveredAgent === agent.id ? "rgba(245,158,11,0.5)" : "rgba(245,158,11,0.2)"}`,
-                color: "#f59e0b",
+                background: hoveredAgent === agent.id ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.06)",
+                border: `1px solid ${hoveredAgent === agent.id ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.12)"}`,
+                color: "#000000",
                 transition: "background 0.1s, border-color 0.1s",
               }}>
               {agent.name}
@@ -299,7 +299,7 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
       <div className="flex justify-end pt-1">
         <button onClick={handleGenerate} disabled={generating}
           className="px-6 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2"
-          style={{ background: generating ? "#1d4ed8" : "#f59e0b", color: "#fff", opacity: generating ? 0.7 : 1 }}>
+          style={{ background: generating ? "#000000" : "#000000", color: "#fff", opacity: generating ? 0.7 : 1 }}>
           {generating ? (
             <>
               <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -369,49 +369,49 @@ function PDScheduleTab({ agents, weekStart, setWeekStart }: {
         <WeekNav weekStart={weekStart} setWeekStart={setWeekStart} />
         {rows.length > 0 && (
           <div className="ml-auto mt-4 text-right">
-            <p className="text-xs" style={{ color: "#475569" }}>Completion</p>
-            <p className="text-sm font-semibold" style={{ color: "#f1f5f9" }}>{completedCount} / {rows.length}</p>
+            <p className="text-xs" style={{ color: "#767676" }}>Completion</p>
+            <p className="text-sm font-semibold" style={{ color: "#000000" }}>{completedCount} / {rows.length}</p>
           </div>
         )}
       </div>
 
       {loading ? (
-        <div className="py-12 text-center text-sm" style={{ color: "#334155" }}>Loading…</div>
+        <div className="py-12 text-center text-sm" style={{ color: "#949494" }}>Loading…</div>
       ) : dates.length === 0 ? (
-        <div className="rounded-xl px-5 py-12 text-center" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <p className="text-sm" style={{ color: "#334155" }}>
+        <div className="rounded-xl px-5 py-12 text-center" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+          <p className="text-sm" style={{ color: "#949494" }}>
             No PD schedule for this week. Build the Watch Schedule first, then click &ldquo;Generate PD Schedule&rdquo;.
           </p>
         </div>
       ) : (
         <div className="space-y-5">
           {dates.map(date => (
-            <div key={date} className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+            <div key={date} className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
               <div className="px-4 py-3 flex items-center justify-between"
-                style={{ background: "#0a1628", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                <p className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>{formatDate(date)}</p>
-                <p className="text-xs" style={{ color: "#475569" }}>
+                style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
+                <p className="text-sm font-semibold" style={{ color: "#111111" }}>{formatDate(date)}</p>
+                <p className="text-xs" style={{ color: "#767676" }}>
                   {byDate[date].filter(r => r.status === "completed").length} / {byDate[date].length} completed
                 </p>
               </div>
               <table className="w-full text-sm">
                 <thead>
-                  <tr style={{ background: "#070e1c" }}>
+                  <tr style={{ background: "#fafafa" }}>
                     {["Time", "Client", "Setter", "Status"].map(h => (
                       <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wider"
-                        style={{ color: "#334155" }}>{h}</th>
+                        style={{ color: "#949494" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {byDate[date].map((row, i) => (
-                    <tr key={row.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.03)" }}>
-                      <td className="px-4 py-3 font-mono text-xs" style={{ color: "#64748b" }}>{fmtTime(row.slot_time)}</td>
-                      <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{row.clients?.name ?? "—"}</td>
+                    <tr key={row.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#060d1a", borderTop: "1px solid rgba(0,0,0,0.041)" }}>
+                      <td className="px-4 py-3 font-mono text-xs" style={{ color: "#6b6b6b" }}>{fmtTime(row.slot_time)}</td>
+                      <td className="px-4 py-3 font-medium" style={{ color: "#111111" }}>{row.clients?.name ?? "—"}</td>
                       <td className="px-4 py-3">
                         <select value={row.agent_id ?? ""} onChange={e => updateAgent(row.id, e.target.value)}
                           className="text-xs rounded-lg px-2 py-1 outline-none cursor-pointer"
-                          style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", color: row.agent_id ? "#e2e8f0" : "#475569" }}>
+                          style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)", color: row.agent_id ? "#111111" : "#767676" }}>
                           <option value="">Unassigned</option>
                           {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                         </select>
@@ -420,9 +420,9 @@ function PDScheduleTab({ agents, weekStart, setWeekStart }: {
                         <select value={row.status} onChange={e => updateStatus(row.id, e.target.value)}
                           className="text-xs rounded-lg px-2 py-1 outline-none cursor-pointer font-medium"
                           style={{
-                            background: STATUS_META[row.status]?.bg ?? "rgba(148,163,184,0.1)",
-                            border: "1px solid rgba(255,255,255,0.08)",
-                            color: STATUS_META[row.status]?.color ?? "#94a3b8",
+                            background: STATUS_META[row.status]?.bg ?? "rgba(0,0,0,0.06)",
+                            border: "1px solid rgba(0,0,0,0.108)",
+                            color: STATUS_META[row.status]?.color ?? "#4a4a4a",
                           }}>
                           {Object.entries(STATUS_META).map(([k, v]) => (
                             <option key={k} value={k}>{v.label}</option>
@@ -486,75 +486,75 @@ function AvailabilityTab({ agents }: { agents: Agent[] }) {
     setRows(prev => prev.filter(r => r.id !== id));
   }
 
-  if (loading) return <div className="py-8 text-center text-sm" style={{ color: "#334155" }}>Loading…</div>;
+  if (loading) return <div className="py-8 text-center text-sm" style={{ color: "#949494" }}>Loading…</div>;
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl p-5 space-y-4" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
-        <p className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Add Availability</p>
+      <div className="rounded-xl p-5 space-y-4" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+        <p className="text-sm font-semibold" style={{ color: "#111111" }}>Add Availability</p>
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Setter</label>
+            <label className="text-xs" style={{ color: "#767676" }}>Setter</label>
             <Sel value={agentId} onChange={setAgentId}>
               <option value="">Select setter…</option>
               {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </Sel>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Day</label>
+            <label className="text-xs" style={{ color: "#767676" }}>Day</label>
             <Sel value={weekday} onChange={setWeekday}>
               {WEEKDAYS.map(d => <option key={d} value={d}>{d}</option>)}
             </Sel>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Available From</label>
+            <label className="text-xs" style={{ color: "#767676" }}>Available From</label>
             <Input type="time" value={timeStart} onChange={setTimeStart} />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Available Until</label>
+            <label className="text-xs" style={{ color: "#767676" }}>Available Until</label>
             <Input type="time" value={timeEnd} onChange={setTimeEnd} />
           </div>
           <button onClick={handleAdd} disabled={!agentId || saving}
             className="px-4 py-2 rounded-lg text-sm font-semibold transition-opacity"
-            style={{ background: "#f59e0b", color: "#fff", opacity: (!agentId || saving) ? 0.5 : 1 }}>
+            style={{ background: "#000000", color: "#fff", opacity: (!agentId || saving) ? 0.5 : 1 }}>
             {saving ? "Adding…" : "Add"}
           </button>
         </div>
       </div>
 
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: "#0a1628" }}>
+            <tr style={{ background: "#fafafa" }}>
               {["Setter", "Day", "Available From", "Available Until", "Status", ""].map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: "#334155" }}>{h}</th>
+                  style={{ color: "#949494" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No availability configured yet.</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: "#949494" }}>No availability configured yet.</td></tr>
             ) : rows.map((row, i) => (
-              <tr key={row.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{row.agents?.name ?? "—"}</td>
-                <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{row.weekday}</td>
-                <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{fmtTime(row.time_start)}</td>
-                <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{fmtTime(row.time_end)}</td>
+              <tr key={row.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#060d1a", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
+                <td className="px-4 py-3 font-medium" style={{ color: "#111111" }}>{row.agents?.name ?? "—"}</td>
+                <td className="px-4 py-3" style={{ color: "#4a4a4a" }}>{row.weekday}</td>
+                <td className="px-4 py-3" style={{ color: "#4a4a4a" }}>{fmtTime(row.time_start)}</td>
+                <td className="px-4 py-3" style={{ color: "#4a4a4a" }}>{fmtTime(row.time_end)}</td>
                 <td className="px-4 py-3">
                   <button onClick={() => toggleLive(row)}
                     className="px-2 py-0.5 rounded-full text-xs font-medium"
                     style={row.is_live
-                      ? { color: "#22c55e", background: "rgba(34,197,94,0.1)" }
-                      : { color: "#ef4444", background: "rgba(239,68,68,0.1)" }}>
+                      ? { color: "#000000", background: "rgba(0,0,0,0.06)" }
+                      : { color: "#c0392b", background: "rgba(192,57,43,0.1)" }}>
                     {row.is_live ? "Live" : "Off"}
                   </button>
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => handleDelete(row.id)} className="text-xs transition-colors"
-                    style={{ color: "#334155" }}
-                    onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")}
-                    onMouseLeave={e => (e.currentTarget.style.color = "#334155")}>
+                    style={{ color: "#949494" }}
+                    onMouseEnter={e => (e.currentTarget.style.color = "#c0392b")}
+                    onMouseLeave={e => (e.currentTarget.style.color = "#949494")}>
                     Remove
                   </button>
                 </td>
@@ -612,75 +612,75 @@ function ClientWindowsTab({ clients }: { clients: Client[] }) {
     setRows(prev => prev.filter(r => r.id !== id));
   }
 
-  if (loading) return <div className="py-8 text-center text-sm" style={{ color: "#334155" }}>Loading…</div>;
+  if (loading) return <div className="py-8 text-center text-sm" style={{ color: "#949494" }}>Loading…</div>;
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl p-5 space-y-4" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.06)" }}>
-        <p className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Add Calling Window</p>
+      <div className="rounded-xl p-5 space-y-4" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.081)" }}>
+        <p className="text-sm font-semibold" style={{ color: "#111111" }}>Add Calling Window</p>
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Client</label>
+            <label className="text-xs" style={{ color: "#767676" }}>Client</label>
             <Sel value={clientId} onChange={setClientId}>
               <option value="">Select client…</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Sel>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Day</label>
+            <label className="text-xs" style={{ color: "#767676" }}>Day</label>
             <Sel value={weekday} onChange={setWeekday}>
               {WEEKDAYS.map(d => <option key={d} value={d}>{d}</option>)}
             </Sel>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Session 1 Start</label>
+            <label className="text-xs" style={{ color: "#767676" }}>Session 1 Start</label>
             <Input type="time" value={slot1} onChange={setSlot1} />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs" style={{ color: "#475569" }}>Session 2 Start (optional)</label>
+            <label className="text-xs" style={{ color: "#767676" }}>Session 2 Start (optional)</label>
             <Input type="time" value={slot2} onChange={setSlot2} />
           </div>
           <button onClick={handleAdd} disabled={!clientId || saving}
             className="px-4 py-2 rounded-lg text-sm font-semibold transition-opacity"
-            style={{ background: "#f59e0b", color: "#fff", opacity: (!clientId || saving) ? 0.5 : 1 }}>
+            style={{ background: "#000000", color: "#fff", opacity: (!clientId || saving) ? 0.5 : 1 }}>
             {saving ? "Adding…" : "Add"}
           </button>
         </div>
       </div>
 
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: "#0a1628" }}>
+            <tr style={{ background: "#fafafa" }}>
               {["Client", "Day", "Session 1", "Session 2", "Status", ""].map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider"
-                  style={{ color: "#334155" }}>{h}</th>
+                  style={{ color: "#949494" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: "#334155" }}>No calling windows configured yet.</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: "#949494" }}>No calling windows configured yet.</td></tr>
             ) : rows.map((row, i) => (
-              <tr key={row.id} style={{ background: i % 2 === 0 ? "#080f1e" : "#060d1a", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0" }}>{row.clients?.name ?? "—"}</td>
-                <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{row.weekday}</td>
-                <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{fmtTime(row.time_slot_1)}</td>
-                <td className="px-4 py-3" style={{ color: "#94a3b8" }}>{fmtTime(row.time_slot_2)}</td>
+              <tr key={row.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#060d1a", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
+                <td className="px-4 py-3 font-medium" style={{ color: "#111111" }}>{row.clients?.name ?? "—"}</td>
+                <td className="px-4 py-3" style={{ color: "#4a4a4a" }}>{row.weekday}</td>
+                <td className="px-4 py-3" style={{ color: "#4a4a4a" }}>{fmtTime(row.time_slot_1)}</td>
+                <td className="px-4 py-3" style={{ color: "#4a4a4a" }}>{fmtTime(row.time_slot_2)}</td>
                 <td className="px-4 py-3">
                   <button onClick={() => toggleLive(row)}
                     className="px-2 py-0.5 rounded-full text-xs font-medium"
                     style={row.is_live
-                      ? { color: "#22c55e", background: "rgba(34,197,94,0.1)" }
-                      : { color: "#ef4444", background: "rgba(239,68,68,0.1)" }}>
+                      ? { color: "#000000", background: "rgba(0,0,0,0.06)" }
+                      : { color: "#c0392b", background: "rgba(192,57,43,0.1)" }}>
                     {row.is_live ? "Live" : "Off"}
                   </button>
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => handleDelete(row.id)} className="text-xs transition-colors"
-                    style={{ color: "#334155" }}
-                    onMouseEnter={e => (e.currentTarget.style.color = "#ef4444")}
-                    onMouseLeave={e => (e.currentTarget.style.color = "#334155")}>
+                    style={{ color: "#949494" }}
+                    onMouseEnter={e => (e.currentTarget.style.color = "#c0392b")}
+                    onMouseLeave={e => (e.currentTarget.style.color = "#949494")}>
                     Remove
                   </button>
                 </td>
@@ -720,19 +720,19 @@ export default function SetterSchedule({ clients }: { clients: Client[] }) {
   return (
     <div className="space-y-6 max-w-6xl">
       <div>
-        <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Power Dialer Schedule</h2>
-        <p className="text-sm mt-0.5" style={{ color: "#475569" }}>
+        <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Power Dialer Schedule</h2>
+        <p className="text-sm mt-0.5" style={{ color: "#767676" }}>
           Build the watch schedule, then generate PD assignments from it.
         </p>
       </div>
 
-      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: "#0a1628" }}>
+      <div className="flex gap-1 p-1 rounded-xl w-fit" style={{ background: "#fafafa" }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
             style={tab === t.key
-              ? { background: "#f59e0b", color: "#fff" }
-              : { color: "#475569" }}>
+              ? { background: "#000000", color: "#fff" }
+              : { color: "#767676" }}>
             {t.label}
           </button>
         ))}

@@ -3,7 +3,7 @@ import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { geocodeZip, getZctasNearPoint, fetchZipScores } from '@/lib/census';
 
-const PIN_COLOR = '#3b82f6';
+const PIN_COLOR = '#000000';
 
 type GHLCustomField = { key: string; value: string };
 

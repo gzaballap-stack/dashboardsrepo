@@ -8,7 +8,7 @@ export default function DashboardError({
   reset: () => void;
 }) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#0c1828] text-white">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#0c1828] text-black">
       <div className="text-4xl">⚠️</div>
       <h1 className="text-xl font-semibold">Something went wrong</h1>
       <p className="text-sm text-gray-400 max-w-sm text-center">

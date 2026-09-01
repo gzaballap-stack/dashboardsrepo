@@ -24,9 +24,9 @@ export default function NotificationBell({ alerts, onDismiss }: {
         onClick={() => setOpen(v => !v)}
         className="relative flex items-center justify-center w-8 h-8 rounded-full transition-colors"
         style={{
-          background: open ? "rgba(245,158,11,0.16)" : "rgba(255,255,255,0.05)",
-          border: `1px solid ${open ? "rgba(245,158,11,0.35)" : "rgba(255,255,255,0.08)"}`,
-          color: open ? "#f59e0b" : "#94a3b8",
+          background: open ? "rgba(0,0,0,0.096)" : "rgba(0,0,0,0.068)",
+          border: `1px solid ${open ? "rgba(0,0,0,0.21)" : "rgba(0,0,0,0.108)"}`,
+          color: open ? "#000000" : "#4a4a4a",
         }}
         aria-label="Notifications"
       >
@@ -36,30 +36,30 @@ export default function NotificationBell({ alerts, onDismiss }: {
         {alerts.length > 0 && (
           <span
             className="absolute rounded-full"
-            style={{ top: -1, right: -1, width: 9, height: 9, background: "#ef4444", border: "1.5px solid #050c18" }}
+            style={{ top: -1, right: -1, width: 9, height: 9, background: "#c0392b", border: "1.5px solid #ffffff" }}
           />
         )}
       </button>
 
       {open && (
         <div className="absolute top-full right-0 mt-2 rounded-xl overflow-hidden z-[1100]"
-          style={{ width: 320, background: "#0f2040", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
-          <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-            <span className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>Notifications</span>
+          style={{ width: 320, background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)", boxShadow: "0 20px 40px rgba(0,0,0,0.5)" }}>
+          <div className="px-4 py-3" style={{ borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
+            <span className="text-sm font-semibold" style={{ color: "#111111" }}>Notifications</span>
           </div>
           {alerts.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm" style={{ color: "#334155" }}>
+            <div className="px-4 py-6 text-center text-sm" style={{ color: "#949494" }}>
               You&apos;re all caught up.
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto">
               {alerts.map(a => (
                 <div key={a.client_id} className="flex items-start gap-2 px-4 py-3"
-                  style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-                  <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="#f87171" strokeWidth={2} viewBox="0 0 24 24">
+                  style={{ borderBottom: "1px solid rgba(0,0,0,0.068)" }}>
+                  <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="#c0392b" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                   </svg>
-                  <p className="text-sm flex-1" style={{ color: "#cbd5e1" }}>
+                  <p className="text-sm flex-1" style={{ color: "#333333" }}>
                     <span className="font-semibold">{a.client_name}</span>
                     {" "}hasn&apos;t had a booked appointment in{" "}
                     <span className="font-semibold">
@@ -68,7 +68,7 @@ export default function NotificationBell({ alerts, onDismiss }: {
                   </p>
                   <button onClick={() => onDismiss(a)}
                     className="text-xs px-2 py-1 rounded flex-shrink-0"
-                    style={{ color: "#f87171", background: "rgba(239,68,68,0.12)" }}>
+                    style={{ color: "#c0392b", background: "rgba(192,57,43,0.12)" }}>
                     Dismiss
                   </button>
                 </div>

@@ -16,11 +16,11 @@ export type KpiKey = keyof typeof KPI_TARGETS;
 export type KpiVerdict = 'excellent' | 'on_target' | 'off_target' | 'critical' | 'no_data';
 
 export const VERDICT_STYLE: Record<KpiVerdict, { label: string; color: string }> = {
-  excellent:  { label: 'Excellent',  color: '#4ade80' },
-  on_target:  { label: 'On Target',  color: '#22d3ee' },
-  off_target: { label: 'Off Target', color: '#f59e0b' },
-  critical:   { label: 'Critical',   color: '#f87171' },
-  no_data:    { label: 'No Data',    color: '#475569' },
+  excellent:  { label: 'Excellent',  color: '#000000' },
+  on_target:  { label: 'On Target',  color: '#6b6b6b' },
+  off_target: { label: 'Off Target', color: '#000000' },
+  critical:   { label: 'Critical',   color: '#c0392b' },
+  no_data:    { label: 'No Data',    color: '#767676' },
 };
 
 // Ratio of actual to target, normalised so >1 is always better.

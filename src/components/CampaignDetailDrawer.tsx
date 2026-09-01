@@ -39,20 +39,20 @@ const fmt$ = (n: number) => n > 0 ? `$${n.toLocaleString(undefined, { maximumFra
 const fmtDec = (n: number | null, pre = "$") => n != null && n > 0 ? `${pre}${n.toFixed(2)}` : "—";
 const fmtPct = (n: number, digits = 1) => `${n.toFixed(digits)}%`;
 const fmtN = (n: number) => n.toLocaleString();
-const dash = () => <span style={{ color: "#334155" }}>—</span>;
+const dash = () => <span style={{ color: "#949494" }}>—</span>;
 
 const STATUS_STYLE: Record<string, { label: string; color: string; bg: string }> = {
-  excellent:    { label: "Excellent",    color: "#4ade80", bg: "rgba(74,222,128,0.12)"  },
+  excellent:    { label: "Excellent",    color: "#000000", bg: "rgba(0,0,0,0.072)"  },
   on_target:    { label: "On Target",    color: "#38bdf8", bg: "rgba(56,189,248,0.12)"  },
-  above_target: { label: "Above Target", color: "#f59e0b", bg: "rgba(245,158,11,0.12)"  },
-  critical:     { label: "Critical",     color: "#f87171", bg: "rgba(248,113,113,0.12)" },
+  above_target: { label: "Above Target", color: "#000000", bg: "rgba(0,0,0,0.072)"  },
+  critical:     { label: "Critical",     color: "#c0392b", bg: "rgba(192,57,43,0.12)" },
   hold:         { label: "Hold",         color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
-  no_data:      { label: "No Data",      color: "#64748b", bg: "rgba(100,116,139,0.12)" },
+  no_data:      { label: "No Data",      color: "#6b6b6b", bg: "rgba(100,116,139,0.12)" },
 };
 
 const BOTTLENECK_COLOR: Record<string, string> = {
-  Healthy: "#4ade80", Creative: "#f472b6", Targeting: "#f59e0b",
-  Funnel: "#fb923c", "Post-Funnel": "#a78bfa", Hold: "#94a3b8", "No Data": "#64748b",
+  Healthy: "#000000", Creative: "#6b6b6b", Targeting: "#000000",
+  Funnel: "#4a4a4a", "Post-Funnel": "#a78bfa", Hold: "#4a4a4a", "No Data": "#6b6b6b",
 };
 
 const PLATFORM_LABEL: Record<string, string> = { meta: "Meta", google: "Google", local_services: "LSA" };
@@ -70,10 +70,10 @@ function relativeTime(d: Date): string {
 function MetricRow({ label, value, status }: { label: string; value: string; status?: string }) {
   const st = status ? STATUS_STYLE[status] : null;
   return (
-    <div className="flex items-center justify-between py-1.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-      <span className="text-xs" style={{ color: "#64748b" }}>{label}</span>
+    <div className="flex items-center justify-between py-1.5" style={{ borderBottom: "1px solid rgba(0,0,0,0.054)" }}>
+      <span className="text-xs" style={{ color: "#6b6b6b" }}>{label}</span>
       <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>{value}</span>
+        <span className="text-sm font-semibold" style={{ color: "#111111" }}>{value}</span>
         {st && (
           <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ color: st.color, background: st.bg }}>
             {st.label}
@@ -86,9 +86,9 @@ function MetricRow({ label, value, status }: { label: string; value: string; sta
 
 function SectionCard({ title, children, badge }: { title: string; children: React.ReactNode; badge?: React.ReactNode }) {
   return (
-    <div className="rounded-xl p-4 flex flex-col" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.07)" }}>
+    <div className="rounded-xl p-4 flex flex-col" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.095)" }}>
       <div className="flex items-center justify-between mb-3">
-        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#475569" }}>{title}</span>
+        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#767676" }}>{title}</span>
         {badge}
       </div>
       <div className="flex-1 flex flex-col gap-0">{children}</div>
@@ -101,16 +101,16 @@ function FunnelStage({ label, count, pct, color }: { label: string; count: numbe
   return (
     <div className="flex items-center gap-3 mb-3">
       <div className="w-28 text-right">
-        <span className="text-xs font-medium" style={{ color: "#94a3b8" }}>{label}</span>
+        <span className="text-xs font-medium" style={{ color: "#4a4a4a" }}>{label}</span>
       </div>
-      <div className="flex-1 relative h-9 rounded-lg overflow-hidden" style={{ background: "rgba(255,255,255,0.05)" }}>
+      <div className="flex-1 relative h-9 rounded-lg overflow-hidden" style={{ background: "rgba(0,0,0,0.068)" }}>
         <div className="h-full rounded-lg transition-all" style={{ width: `${Math.max(pct, 2)}%`, background: color, opacity: 0.85 }} />
         <div className="absolute inset-0 flex items-center px-3">
-          <span className="text-sm font-bold" style={{ color: "#f1f5f9" }}>{fmtN(count)}</span>
+          <span className="text-sm font-bold" style={{ color: "#000000" }}>{fmtN(count)}</span>
         </div>
       </div>
       <div className="w-14 text-right">
-        <span className="text-xs" style={{ color: "#64748b" }}>{pct.toFixed(1)}%</span>
+        <span className="text-xs" style={{ color: "#6b6b6b" }}>{pct.toFixed(1)}%</span>
       </div>
     </div>
   );
@@ -121,27 +121,27 @@ function CompCell({ label, value, baseline, isBaseline, loading }: {
   label: string; value: number | null; baseline: number | null;
   isBaseline: boolean; loading: boolean;
 }) {
-  if (loading) return <div className="py-2 text-xs text-center" style={{ color: "#334155" }}>…</div>;
+  if (loading) return <div className="py-2 text-xs text-center" style={{ color: "#949494" }}>…</div>;
   const numVal = value ?? 0;
   const numBase = baseline ?? 0;
   const delta = numBase > 0 ? ((numVal - numBase) / numBase) * 100 : 0;
   const up = delta > 2;
   const dn = delta < -2;
   return (
-    <div className="py-2 px-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-      <div className="text-xs mb-0.5" style={{ color: "#475569" }}>{label}</div>
+    <div className="py-2 px-3" style={{ borderBottom: "1px solid rgba(0,0,0,0.054)" }}>
+      <div className="text-xs mb-0.5" style={{ color: "#767676" }}>{label}</div>
       <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold" style={{ color: "#e2e8f0" }}>
+        <span className="text-sm font-semibold" style={{ color: "#111111" }}>
           {label.toLowerCase().includes("$") || label.toLowerCase().includes("cpl") || label.toLowerCase().includes("spend")
             ? fmt$(numVal) : label.toLowerCase().includes("%") || label.toLowerCase().includes("rate")
             ? fmtPct(numVal) : fmtN(numVal)}
         </span>
         {!isBaseline && numBase > 0 && (
-          <span className="text-[10px] font-semibold" style={{ color: up ? "#4ade80" : dn ? "#f87171" : "#64748b" }}>
+          <span className="text-[10px] font-semibold" style={{ color: up ? "#000000" : dn ? "#c0392b" : "#6b6b6b" }}>
             {up ? "▲" : dn ? "▼" : "≈"} {Math.abs(delta).toFixed(1)}%
           </span>
         )}
-        {isBaseline && <span className="text-[10px] uppercase font-bold px-1 rounded" style={{ color: "#60a5fa", background: "rgba(96,165,250,0.1)" }}>Baseline</span>}
+        {isBaseline && <span className="text-[10px] uppercase font-bold px-1 rounded" style={{ color: "#4a4a4a", background: "rgba(0,0,0,0.06)" }}>Baseline</span>}
       </div>
     </div>
   );
@@ -153,9 +153,9 @@ function ChatBubble({ msg }: { msg: { role: string; content: string } }) {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
       <div className="max-w-[80%] rounded-xl px-4 py-2.5 text-sm" style={{
-        background: isUser ? "rgba(29,78,216,0.25)" : "#0f2040",
-        border: `1px solid ${isUser ? "rgba(29,78,216,0.4)" : "rgba(255,255,255,0.07)"}`,
-        color: "#e2e8f0",
+        background: isUser ? "rgba(0,0,0,0.15)" : "#ffffff",
+        border: `1px solid ${isUser ? "rgba(0,0,0,0.24)" : "rgba(0,0,0,0.095)"}`,
+        color: "#111111",
         whiteSpace: "pre-wrap",
       }}>
         {msg.content}
@@ -506,24 +506,24 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         const d = entity.data;
         const top = Math.max(d.leads, d.impressions > 0 ? 1 : 0, d.intros_booked, 1);
         return [
-          { label: "Impressions",    count: d.impressions,        color: "#3b82f6", pct: 100 },
-          { label: "Link Clicks",    count: d.link_clicks,        color: "#60a5fa", pct: d.impressions > 0 ? (d.link_clicks / d.impressions) * 100 : 0 },
-          { label: "Leads",          count: d.leads,              color: "#22d3ee", pct: d.link_clicks > 0 ? (d.leads / d.link_clicks) * 100 : 0 },
-          { label: "Intros Booked",  count: d.intros_booked,      color: "#4ade80", pct: d.leads > 0 ? (d.intros_booked / d.leads) * 100 : 0 },
+          { label: "Impressions",    count: d.impressions,        color: "#000000", pct: 100 },
+          { label: "Link Clicks",    count: d.link_clicks,        color: "#4a4a4a", pct: d.impressions > 0 ? (d.link_clicks / d.impressions) * 100 : 0 },
+          { label: "Leads",          count: d.leads,              color: "#6b6b6b", pct: d.link_clicks > 0 ? (d.leads / d.link_clicks) * 100 : 0 },
+          { label: "Intros Booked",  count: d.intros_booked,      color: "#000000", pct: d.leads > 0 ? (d.intros_booked / d.leads) * 100 : 0 },
           { label: "Intros Shown",   count: d.intros_shown,       color: "#a3e635", pct: d.intros_booked > 0 ? (d.intros_shown / d.intros_booked) * 100 : 0 },
-          { label: "Demos Booked",   count: d.sales_calls_booked, color: "#fbbf24", pct: d.intros_shown > 0 ? (d.sales_calls_booked / d.intros_shown) * 100 : 0 },
-          { label: "Demos Shown",    count: d.sales_calls_shown,  color: "#fb923c", pct: d.sales_calls_booked > 0 ? (d.sales_calls_shown / d.sales_calls_booked) * 100 : 0 },
-          { label: "Closes",         count: d.closes,             color: "#f472b6", pct: d.sales_calls_shown > 0 ? (d.closes / d.sales_calls_shown) * 100 : 0 },
+          { label: "Demos Booked",   count: d.sales_calls_booked, color: "#333333", pct: d.intros_shown > 0 ? (d.sales_calls_booked / d.intros_shown) * 100 : 0 },
+          { label: "Demos Shown",    count: d.sales_calls_shown,  color: "#4a4a4a", pct: d.sales_calls_booked > 0 ? (d.sales_calls_shown / d.sales_calls_booked) * 100 : 0 },
+          { label: "Closes",         count: d.closes,             color: "#6b6b6b", pct: d.sales_calls_shown > 0 ? (d.closes / d.sales_calls_shown) * 100 : 0 },
         ];
         void top;
       })()
     : (() => {
         const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
         return [
-          { label: "Leads",      count: c.leads,  color: "#3b82f6", pct: 100 },
-          { label: "Appts",      count: c.appts,  color: "#22d3ee", pct: c.leads > 0 ? (c.appts / c.leads) * 100 : 0 },
-          { label: "Shows",      count: c.shows,  color: "#4ade80", pct: c.appts > 0 ? (c.shows / c.appts) * 100 : 0 },
-          { label: "Closes",     count: c.closes, color: "#f472b6", pct: c.shows > 0 ? (c.closes / c.shows) * 100 : 0 },
+          { label: "Leads",      count: c.leads,  color: "#000000", pct: 100 },
+          { label: "Appts",      count: c.appts,  color: "#6b6b6b", pct: c.leads > 0 ? (c.appts / c.leads) * 100 : 0 },
+          { label: "Shows",      count: c.shows,  color: "#000000", pct: c.appts > 0 ? (c.shows / c.appts) * 100 : 0 },
+          { label: "Closes",     count: c.closes, color: "#6b6b6b", pct: c.shows > 0 ? (c.closes / c.shows) * 100 : 0 },
         ];
       })();
 
@@ -568,7 +568,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   const renderCallPerf = () => {
     if (isBb) return (
       <SectionCard title="Call Performance">
-        <div className="flex-1 flex items-center justify-center py-8 text-xs text-center" style={{ color: "#334155" }}>
+        <div className="flex-1 flex items-center justify-center py-8 text-xs text-center" style={{ color: "#949494" }}>
           Tracked per client, not on B2B campaigns
         </div>
       </SectionCard>
@@ -651,7 +651,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         })()
       : (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client.action;
 
-    const bnColor = BOTTLENECK_COLOR[bottleneck] ?? "#64748b";
+    const bnColor = BOTTLENECK_COLOR[bottleneck] ?? "#6b6b6b";
 
     const resultRows = isBb
       ? (() => {
@@ -694,21 +694,21 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
           const t = KPI_TARGETS[r.key];
           return (
             <div key={r.key} className="flex items-center justify-between py-[3px] text-xs">
-              <span style={{ color: "#64748b" }}>{t.label}</span>
+              <span style={{ color: "#6b6b6b" }}>{t.label}</span>
               <span className="flex items-center gap-1.5">
-                <span style={{ color: "#e2e8f0" }}>{r.display}</span>
+                <span style={{ color: "#111111" }}>{r.display}</span>
                 <span title={`Target ${t.lowerIsBetter ? "≤" : "≥"} ${t.target}`}
                   style={{ width: 6, height: 6, borderRadius: "50%", background: VERDICT_STYLE[v].color, display: "inline-block" }} />
               </span>
             </div>
           );
         })}
-        <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }}>
           <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-[10px] uppercase font-bold" style={{ color: "#475569" }}>Bottleneck</span>
+            <span className="text-[10px] uppercase font-bold" style={{ color: "#767676" }}>Bottleneck</span>
             <span className="px-2 py-0.5 rounded text-[10px] font-semibold" style={{ color: bnColor, background: `${bnColor}22` }}>{bottleneck}</span>
           </div>
-          <p className="text-xs" style={{ color: "#475569" }}>{action}</p>
+          <p className="text-xs" style={{ color: "#767676" }}>{action}</p>
         </div>
       </SectionCard>
     );
@@ -717,7 +717,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   // ── Tab content renderers ──────────────────────────────────────────
   const renderCalls = () => {
     if (isBb) return renderPlaceholder("Not Tracked Here", "Call performance is tracked per client, not on B2B campaigns.");
-    if (callLoading) return <div className="py-10 text-center text-sm" style={{ color: "#334155" }}>Loading call performance…</div>;
+    if (callLoading) return <div className="py-10 text-center text-sm" style={{ color: "#949494" }}>Loading call performance…</div>;
     if (!callKpis || !callKpis.outbound_dials) return renderPlaceholder(
       "No Call Data",
       "No dials recorded for this client in this date range."
@@ -736,36 +736,36 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))" }}>
           {tiles.map(t => (
             <div key={t.label} className="rounded-xl px-3 py-2.5"
-              style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>{t.label}</div>
-              <div className="text-lg font-bold mt-0.5" style={{ color: "#e2e8f0" }}>{t.value}</div>
-              {t.sub && <div className="text-[10px] mt-0.5" style={{ color: "#475569" }}>{t.sub}</div>}
+              style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.095)" }}>
+              <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "#767676" }}>{t.label}</div>
+              <div className="text-lg font-bold mt-0.5" style={{ color: "#111111" }}>{t.value}</div>
+              {t.sub && <div className="text-[10px] mt-0.5" style={{ color: "#767676" }}>{t.sub}</div>}
             </div>
           ))}
         </div>
 
         {agentCalls && agentCalls.length > 0 && (
-          <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+          <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
             <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
-              <thead style={{ background: "#080e1c", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+              <thead style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
                 <tr>
-                  <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Agent</th>
+                  <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#767676" }}>Agent</th>
                   {["Dials", "Pickups", "Pickup %", "Convos", "Convo %", "Appts", "Shows"].map(h => (
-                    <th key={h} className={COL_HEADER} style={{ color: "#475569" }}>{h}</th>
+                    <th key={h} className={COL_HEADER} style={{ color: "#767676" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {agentCalls.map((a, i) => (
-                  <tr key={a.agent_name || i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
-                    <td className="px-3 py-2.5 text-xs font-medium" style={{ color: "#e2e8f0" }}>{a.agent_name || "Unattributed"}</td>
-                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.dials)}</td>
-                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.pickups)}</td>
-                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.pickup_rate}%</td>
-                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.conversations)}</td>
-                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{a.conversation_rate}%</td>
-                    <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{fmtN(a.appointments)}</td>
-                    <td className={COL_CELL} style={{ color: "#94a3b8" }}>{fmtN(a.shows)}</td>
+                  <tr key={a.agent_name || i} style={{ borderTop: "1px solid rgba(0,0,0,0.054)" }}>
+                    <td className="px-3 py-2.5 text-xs font-medium" style={{ color: "#111111" }}>{a.agent_name || "Unattributed"}</td>
+                    <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{fmtN(a.dials)}</td>
+                    <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{fmtN(a.pickups)}</td>
+                    <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{a.pickup_rate}%</td>
+                    <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{fmtN(a.conversations)}</td>
+                    <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{a.conversation_rate}%</td>
+                    <td className={COL_CELL} style={{ color: "#111111" }}>{fmtN(a.appointments)}</td>
+                    <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{fmtN(a.shows)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -782,28 +782,28 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       : (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client.campaigns;
 
     if (!camps.length) return (
-      <div className="text-center py-16 text-sm" style={{ color: "#334155" }}>No campaign data for this period</div>
+      <div className="text-center py-16 text-sm" style={{ color: "#949494" }}>No campaign data for this period</div>
     );
 
     return (
       <div>
         {!isBb && (
-          <p className="text-xs mb-2" style={{ color: "#475569" }}>
+          <p className="text-xs mb-2" style={{ color: "#767676" }}>
             Untick a campaign to stop tracking it. Its spend is removed from this client&apos;s
             dashboard KPIs and shared report — useful when an ad account carries campaigns
             for more than one company.
           </p>
         )}
-      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
         <table className="w-full text-sm" style={{ minWidth: 1320 }}>
           <thead>
-            <tr style={{ background: "#0a1628", color: "#64748b" }}>
+            <tr style={{ background: "#fafafa", color: "#6b6b6b" }}>
               {!isBb && <th className="text-center font-medium px-3 py-3">Tracked</th>}
               <th className="text-left font-medium px-4 py-3">Campaign</th>
               {!isBb && <th className="text-left font-medium px-3 py-3">Platform</th>}
               {!isBb && <th className="text-left font-medium px-3 py-3">Status</th>}
               {METRIC_COLS.map(c => (
-                <th key={c} className={COL_HEADER} style={{ color: "#64748b" }}>{c}</th>
+                <th key={c} className={COL_HEADER} style={{ color: "#6b6b6b" }}>{c}</th>
               ))}
             </tr>
           </thead>
@@ -819,7 +819,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
                 ? true
                 : trackOverrides[c.campaign_id] ?? !(c as { excluded?: boolean }).excluded;
               return (
-                <tr key={i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)", opacity: tracked ? 1 : 0.45 }}>
+                <tr key={i} style={{ borderTop: "1px solid rgba(0,0,0,0.054)", opacity: tracked ? 1 : 0.45 }}>
                   {!isBb && (
                     <td className="px-3 py-3 text-center">
                       <input
@@ -827,22 +827,22 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
                         checked={tracked}
                         disabled={savingCampaign === c.campaign_id}
                         onChange={e => toggleTracked(c.campaign_id, e.target.checked)}
-                        style={{ accentColor: "#3b82f6", width: 15, height: 15, cursor: "pointer" }}
+                        style={{ accentColor: "#000000", width: 15, height: 15, cursor: "pointer" }}
                         title={tracked ? "Tracked — counted in all metrics" : "Not tracked — excluded from all metrics"}
                       />
                     </td>
                   )}
-                  <td className="px-4 py-3 font-medium" style={{ color: "#e2e8f0", maxWidth: 240 }}>
+                  <td className="px-4 py-3 font-medium" style={{ color: "#111111", maxWidth: 240 }}>
                     <span className="truncate block">{campName}</span>
                   </td>
                   {!isBb && platform && (
                     <td className="px-3 py-3">
-                      <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>
+                      <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "rgba(0,0,0,0.09)", color: "#4a4a4a" }}>
                         {PLATFORM_LABEL[platform] ?? platform}
                       </span>
                     </td>
                   )}
-                  {!isBb && <td className="px-3 py-3 text-xs" style={{ color: "#64748b" }}>{campStatus ?? "—"}</td>}
+                  {!isBb && <td className="px-3 py-3 text-xs" style={{ color: "#6b6b6b" }}>{campStatus ?? "—"}</td>}
                   {renderMetricCells({
                     ...(c as unknown as AdMetrics),
                     ctr: ctr ?? 0, cpc: cpc ?? 0, cpm: cpm ?? 0,
@@ -858,9 +858,9 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   };
 
   const renderPlaceholder = (title: string, msg: string) => (
-    <div className="rounded-xl p-8 text-center" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <p className="text-sm font-medium mb-1" style={{ color: "#475569" }}>{title}</p>
-      <p className="text-xs" style={{ color: "#334155" }}>{msg}</p>
+    <div className="rounded-xl p-8 text-center" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.095)" }}>
+      <p className="text-sm font-medium mb-1" style={{ color: "#767676" }}>{title}</p>
+      <p className="text-xs" style={{ color: "#949494" }}>{msg}</p>
     </div>
   );
 
@@ -871,16 +871,16 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       widthPct: topCount > 0 ? Math.max((s.count / topCount) * 100, s.count > 0 ? 4 : 0) : 0,
     }));
     return (
-      <div className="rounded-xl p-6" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.07)" }}>
-        <h3 className="text-xs font-bold uppercase tracking-widest mb-6" style={{ color: "#475569" }}>Conversion Funnel</h3>
+      <div className="rounded-xl p-6" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.095)" }}>
+        <h3 className="text-xs font-bold uppercase tracking-widest mb-6" style={{ color: "#767676" }}>Conversion Funnel</h3>
         <div className="space-y-1">
           {stages.map((s, i) => (
             <div key={i}>
               <FunnelStage label={s.label} count={s.count} pct={s.widthPct} color={s.color} />
               {i < stages.length - 1 && stages[i + 1].count > 0 && (
                 <div className="flex items-center gap-3 mb-2 ml-28 pl-3">
-                  <div className="h-4 border-l" style={{ borderColor: "rgba(255,255,255,0.06)" }} />
-                  <span className="text-[10px]" style={{ color: "#334155" }}>
+                  <div className="h-4 border-l" style={{ borderColor: "rgba(0,0,0,0.081)" }} />
+                  <span className="text-[10px]" style={{ color: "#949494" }}>
                     {s.count > 0 ? `${((stages[i + 1].count / s.count) * 100).toFixed(1)}% conversion` : "—"}
                   </span>
                 </div>
@@ -894,18 +894,18 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
 
   const renderComparison = () => {
     if (!compData.length) return (
-      <div className="flex items-center justify-center py-10 text-sm" style={{ color: "#334155" }}>Loading comparison data…</div>
+      <div className="flex items-center justify-center py-10 text-sm" style={{ color: "#949494" }}>Loading comparison data…</div>
     );
     const baseline = compData[1];
     const rowKeys = compData[0]?.data ? Object.keys(compData[0].data) : [];
     return (
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
         <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
           {compData.map((period, pi) => (
-            <div key={pi} style={{ borderRight: pi < 2 ? "1px solid rgba(255,255,255,0.07)" : "none" }}>
-              <div className="px-4 py-3" style={{ background: pi === 1 ? "rgba(96,165,250,0.08)" : "#0a1628", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-                <div className="text-xs font-bold" style={{ color: pi === 1 ? "#60a5fa" : "#94a3b8" }}>{period.label}</div>
-                <div className="text-[10px]" style={{ color: "#334155" }}>{period.start} → {period.end}</div>
+            <div key={pi} style={{ borderRight: pi < 2 ? "1px solid rgba(0,0,0,0.095)" : "none" }}>
+              <div className="px-4 py-3" style={{ background: pi === 1 ? "rgba(0,0,0,0.048)" : "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
+                <div className="text-xs font-bold" style={{ color: pi === 1 ? "#4a4a4a" : "#4a4a4a" }}>{period.label}</div>
+                <div className="text-[10px]" style={{ color: "#949494" }}>{period.start} → {period.end}</div>
               </div>
               {rowKeys.map(key => (
                 <CompCell key={key} label={key} value={period.data[key] ?? null}
@@ -923,18 +923,18 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       <div className="flex-1 overflow-y-auto p-4 space-y-1" style={{ minHeight: 300 }}>
         {messages.length === 0 && (
           <div className="text-center py-10">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(29,78,216,0.15)", border: "1px solid rgba(29,78,216,0.3)" }}>
-              <svg className="w-6 h-6" fill="none" stroke="#60a5fa" strokeWidth={1.5} viewBox="0 0 24 24">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(0,0,0,0.09)", border: "1px solid rgba(0,0,0,0.18)" }}>
+              <svg className="w-6 h-6" fill="none" stroke="#4a4a4a" strokeWidth={1.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
               </svg>
             </div>
-            <p className="text-sm font-medium mb-1" style={{ color: "#64748b" }}>Ask about {name}</p>
-            <p className="text-xs" style={{ color: "#334155" }}>The AI has full context about this {isBb ? "campaign" : "client"}'s metrics.</p>
+            <p className="text-sm font-medium mb-1" style={{ color: "#6b6b6b" }}>Ask about {name}</p>
+            <p className="text-xs" style={{ color: "#949494" }}>The AI has full context about this {isBb ? "campaign" : "client"}'s metrics.</p>
             <div className="mt-4 flex flex-wrap gap-2 justify-center">
               {["What's the main bottleneck?", "How can we improve CVR?", "What should we optimize first?"].map(s => (
                 <button key={s} onClick={() => setInput(s)}
                   className="px-3 py-1.5 rounded-lg text-xs"
-                  style={{ background: "rgba(29,78,216,0.12)", border: "1px solid rgba(29,78,216,0.25)", color: "#93c5fd" }}>
+                  style={{ background: "rgba(0,0,0,0.072)", border: "1px solid rgba(0,0,0,0.15)", color: "#93c5fd" }}>
                   {s}
                 </button>
               ))}
@@ -944,30 +944,30 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         {messages.map((m, i) => <ChatBubble key={i} msg={m} />)}
         {aiLoading && (
           <div className="flex justify-start">
-            <div className="px-4 py-2.5 rounded-xl" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <div className="px-4 py-2.5 rounded-xl" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.095)" }}>
               <div className="flex gap-1">
                 {[0, 1, 2].map(i => (
-                  <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: "#475569", animationDelay: `${i * 0.15}s` }} />
+                  <div key={i} className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: "#767676", animationDelay: `${i * 0.15}s` }} />
                 ))}
               </div>
             </div>
           </div>
         )}
-        {aiError && <div className="text-xs rounded-lg px-3 py-2 mt-2" style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", color: "#fca5a5" }}>{aiError}</div>}
+        {aiError && <div className="text-xs rounded-lg px-3 py-2 mt-2" style={{ background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)", color: "#d98b82" }}>{aiError}</div>}
         <div ref={chatEndRef} />
       </div>
-      <div className="p-4 flex gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="p-4 flex gap-2" style={{ borderTop: "1px solid rgba(0,0,0,0.095)" }}>
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendMessage())}
           placeholder={`Ask about ${name}…`}
           className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-          style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0" }}
+          style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}
         />
         <button onClick={sendMessage} disabled={aiLoading || !input.trim()}
           className="px-4 py-2 rounded-lg text-sm font-semibold transition-opacity"
-          style={{ background: "rgba(29,78,216,0.2)", border: "1px solid rgba(29,78,216,0.35)", color: "#93c5fd", opacity: aiLoading || !input.trim() ? 0.5 : 1 }}>
+          style={{ background: "rgba(0,0,0,0.12)", border: "1px solid rgba(0,0,0,0.21)", color: "#93c5fd", opacity: aiLoading || !input.trim() ? 0.5 : 1 }}>
           Send
         </button>
       </div>
@@ -1005,30 +1005,30 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     const cpl  = m.cost_per_lead ?? (f.leads > 0 ? m.spend / f.leads : 0);
     const cpa  = m.cost_per_appt ?? (f.appts > 0 ? m.spend / f.appts : 0);
     const roas = m.roas ?? (m.spend > 0 ? f.revenue / m.spend : 0);
-    const dash = <span style={{ color: "#334155" }}>—</span>;
+    const dash = <span style={{ color: "#949494" }}>—</span>;
     return (
       <>
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.budget ? fmt$(m.budget) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{fmt$(m.spend)}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{m.budget ? fmt$(m.budget) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#111111" }}>{fmt$(m.spend)}</td>
 
-        <td className={COL_CELL} style={{ color: f.leads  ? "#e2e8f0" : "#334155" }}>{f.leads  ? fmtN(f.leads)  : dash}</td>
-        <td className={COL_CELL} style={{ color: f.appts  ? "#e2e8f0" : "#334155" }}>{f.appts  ? fmtN(f.appts)  : dash}</td>
-        <td className={COL_CELL} style={{ color: f.shows  ? "#e2e8f0" : "#334155" }}>{f.shows  ? fmtN(f.shows)  : dash}</td>
-        <td className={COL_CELL} style={{ color: f.closes ? "#4ade80" : "#334155" }}>{f.closes ? fmtN(f.closes) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{cpl  ? fmtDec(cpl)  : dash}</td>
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{cpa  ? fmtDec(cpa)  : dash}</td>
-        <td className={COL_CELL} style={{ color: roas ? "#4ade80" : "#334155" }}>{roas ? `${roas.toFixed(2)}x` : dash}</td>
+        <td className={COL_CELL} style={{ color: f.leads  ? "#111111" : "#949494" }}>{f.leads  ? fmtN(f.leads)  : dash}</td>
+        <td className={COL_CELL} style={{ color: f.appts  ? "#111111" : "#949494" }}>{f.appts  ? fmtN(f.appts)  : dash}</td>
+        <td className={COL_CELL} style={{ color: f.shows  ? "#111111" : "#949494" }}>{f.shows  ? fmtN(f.shows)  : dash}</td>
+        <td className={COL_CELL} style={{ color: f.closes ? "#000000" : "#949494" }}>{f.closes ? fmtN(f.closes) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{cpl  ? fmtDec(cpl)  : dash}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{cpa  ? fmtDec(cpa)  : dash}</td>
+        <td className={COL_CELL} style={{ color: roas ? "#000000" : "#949494" }}>{roas ? `${roas.toFixed(2)}x` : dash}</td>
 
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.impressions > 0 ? fmtN(m.impressions) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.reach > 0 ? fmtN(m.reach) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{freq > 0 ? freq.toFixed(2) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.cpm > 0 ? fmtDec(m.cpm) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{uClicks ? fmtN(uClicks) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{uCtr ? fmtPct(uCtr) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{m.cpc > 0 ? fmtDec(m.cpc) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#e2e8f0" }}>{leads ? fmtN(leads) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{cvr ? fmtPct(cvr) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#94a3b8" }}>{cpr ? fmtDec(cpr) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{m.impressions > 0 ? fmtN(m.impressions) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{m.reach > 0 ? fmtN(m.reach) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{freq > 0 ? freq.toFixed(2) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{m.cpm > 0 ? fmtDec(m.cpm) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{uClicks ? fmtN(uClicks) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{uCtr ? fmtPct(uCtr) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{m.cpc > 0 ? fmtDec(m.cpc) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#111111" }}>{leads ? fmtN(leads) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{cvr ? fmtPct(cvr) : dash}</td>
+        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{cpr ? fmtDec(cpr) : dash}</td>
       </>
     );
   };
@@ -1040,22 +1040,22 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     subOf: (r: AdSetRow | AdRow) => string | null,
     keyOf: (r: AdSetRow | AdRow, i: number) => string,
   ) => (
-    <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+    <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
       <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 1760 }}>
-        <thead style={{ background: "#080e1c", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+        <thead style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
           <tr>
-            <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>{label}</th>
+            <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#767676" }}>{label}</th>
             {METRIC_COLS.map(c => (
-              <th key={c} className={COL_HEADER} style={{ color: "#475569" }}>{c}</th>
+              <th key={c} className={COL_HEADER} style={{ color: "#767676" }}>{c}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={keyOf(r, i)} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+            <tr key={keyOf(r, i)} style={{ borderTop: "1px solid rgba(0,0,0,0.054)" }}>
               <td className="px-3 py-2.5" style={{ maxWidth: 240 }}>
-                <div className="text-xs font-medium truncate" style={{ color: "#e2e8f0" }}>{nameOf(r)}</div>
-                {subOf(r) && <div className="text-[10px] mt-0.5 truncate" style={{ color: "#475569" }}>{subOf(r)}</div>}
+                <div className="text-xs font-medium truncate" style={{ color: "#111111" }}>{nameOf(r)}</div>
+                {subOf(r) && <div className="text-[10px] mt-0.5 truncate" style={{ color: "#767676" }}>{subOf(r)}</div>}
               </td>
               {renderMetricCells(r)}
             </tr>
@@ -1066,7 +1066,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   );
 
   const renderAdSets = () => {
-    if (adSetLoading) return <div className="py-10 text-center text-sm" style={{ color: "#334155" }}>Loading ad sets…</div>;
+    if (adSetLoading) return <div className="py-10 text-center text-sm" style={{ color: "#949494" }}>Loading ad sets…</div>;
     if (!adSetData || adSetData.length === 0) return renderPlaceholder(
       "No Ad Set Data",
       isBb
@@ -1083,7 +1083,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   };
 
   const renderAds = () => {
-    if (adLoading) return <div className="py-10 text-center text-sm" style={{ color: "#334155" }}>Loading ads…</div>;
+    if (adLoading) return <div className="py-10 text-center text-sm" style={{ color: "#949494" }}>Loading ads…</div>;
     if (!adData || adData.length === 0) return renderPlaceholder(
       "No Ad Data",
       isBb
@@ -1104,7 +1104,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       "Not Tracked Here",
       "B2B call recordings are attributed to a CSM and live on the CSM dashboard, not the campaign drawer."
     );
-    if (recLoading) return <div className="py-10 text-center text-sm" style={{ color: "#334155" }}>Loading recordings…</div>;
+    if (recLoading) return <div className="py-10 text-center text-sm" style={{ color: "#949494" }}>Loading recordings…</div>;
     if (!recData || recData.length === 0) return renderPlaceholder(
       "No Recordings",
       "No call recordings for this client in this date range. Recordings appear once the GHL dial workflow passes a recording URL through to the webhook."
@@ -1115,35 +1115,35 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
     };
     const outcomeOf = (r: RecordingRow) =>
-      r.is_conversation ? { label: "Conversation", color: "#22c55e" }
+      r.is_conversation ? { label: "Conversation", color: "#000000" }
       : r.is_pickup     ? { label: "Pickup",       color: "#eab308" }
-      :                   { label: "No Answer",    color: "#475569" };
+      :                   { label: "No Answer",    color: "#767676" };
 
     return (
-      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.095)" }}>
         <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
-          <thead style={{ background: "#080e1c", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+          <thead style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
             <tr>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Lead</th>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Agent</th>
-              <th className={COL_HEADER} style={{ color: "#475569" }}>Duration</th>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Outcome</th>
-              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#475569" }}>Recording</th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#767676" }}>Lead</th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#767676" }}>Agent</th>
+              <th className={COL_HEADER} style={{ color: "#767676" }}>Duration</th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#767676" }}>Outcome</th>
+              <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#767676" }}>Recording</th>
             </tr>
           </thead>
           <tbody>
             {recData.map((r, i) => {
               const o = outcomeOf(r);
               return (
-                <tr key={r.id || i} style={{ borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+                <tr key={r.id || i} style={{ borderTop: "1px solid rgba(0,0,0,0.054)" }}>
                   <td className="px-3 py-2.5">
-                    <div className="text-xs font-medium" style={{ color: "#e2e8f0" }}>{r.lead_name ?? r.lead_phone ?? "Unknown"}</div>
-                    <div className="text-[10px] mt-0.5" style={{ color: "#475569" }}>
+                    <div className="text-xs font-medium" style={{ color: "#111111" }}>{r.lead_name ?? r.lead_phone ?? "Unknown"}</div>
+                    <div className="text-[10px] mt-0.5" style={{ color: "#767676" }}>
                       {new Date(r.occurred_at).toLocaleString()}
                     </div>
                   </td>
-                  <td className="px-3 py-2.5 text-xs" style={{ color: "#94a3b8" }}>{r.agent_name ?? "—"}</td>
-                  <td className={COL_CELL} style={{ color: "#94a3b8" }}>{mmss(r.duration_seconds)}</td>
+                  <td className="px-3 py-2.5 text-xs" style={{ color: "#4a4a4a" }}>{r.agent_name ?? "—"}</td>
+                  <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{mmss(r.duration_seconds)}</td>
                   <td className="px-3 py-2.5">
                     <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                       style={{ color: o.color, background: `${o.color}1a`, border: `1px solid ${o.color}33` }}>
@@ -1175,44 +1175,44 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
 
   // Inline expansion panel — no overlay, renders directly in page flow inside a table <td>
   return (
-    <div style={{ background: "#070d1a", borderTop: "2px solid #1d4ed8" }}>
+    <div style={{ background: "#ffffff", borderTop: "2px solid #000000" }}>
       {/* ── Identity + Status bar ── */}
-      <div className="px-5 py-2.5 flex items-center justify-between flex-wrap gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "#080e1c" }}>
+      <div className="px-5 py-2.5 flex items-center justify-between flex-wrap gap-2" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)", background: "#fafafa" }}>
         <div className="flex items-center gap-3">
-          <button onClick={onClose} className="p-1 rounded" style={{ color: "#475569" }}
-            onMouseEnter={e => (e.currentTarget.style.color = "#94a3b8")}
-            onMouseLeave={e => (e.currentTarget.style.color = "#475569")}>
+          <button onClick={onClose} className="p-1 rounded" style={{ color: "#767676" }}
+            onMouseEnter={e => (e.currentTarget.style.color = "#4a4a4a")}
+            onMouseLeave={e => (e.currentTarget.style.color = "#767676")}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-          <span className="font-bold text-sm" style={{ color: "#f1f5f9" }}>{name}</span>
+          <span className="font-bold text-sm" style={{ color: "#000000" }}>{name}</span>
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
             style={{ color: st.color, background: st.bg, border: `1px solid ${st.color}44` }}>
             {st.label}
           </span>
           <div className="flex items-center gap-1.5 ml-2">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#4ade80", boxShadow: "0 0 5px #4ade80" }} />
-            <span className="text-[11px] font-semibold" style={{ color: "#4ade80" }}>Live</span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#000000", boxShadow: "0 0 5px #000000" }} />
+            <span className="text-[11px] font-semibold" style={{ color: "#000000" }}>Live</span>
           </div>
-          <span className="text-[11px]" style={{ color: "#334155" }}>
-            Updated <span style={{ color: "#64748b" }}>{relativeTime(lastUpdated)}</span>
+          <span className="text-[11px]" style={{ color: "#949494" }}>
+            Updated <span style={{ color: "#6b6b6b" }}>{relativeTime(lastUpdated)}</span>
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] px-2 py-1 rounded font-medium" style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.08)", color: "#64748b" }}>
+          <span className="text-[11px] px-2 py-1 rounded font-medium" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.108)", color: "#6b6b6b" }}>
             {entity.startDate} → {entity.endDate}
           </span>
           <button
             onClick={() => { if (tab === "comparison") fetchComparison(); }}
             className="flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold"
-            style={{ background: "rgba(29,78,216,0.12)", border: "1px solid rgba(29,78,216,0.25)", color: "#60a5fa" }}>
+            style={{ background: "rgba(0,0,0,0.072)", border: "1px solid rgba(0,0,0,0.15)", color: "#4a4a4a" }}>
             <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             Refresh Data
           </button>
-          <button className="p-1 rounded" style={{ color: "#334155", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <button className="p-1 rounded" style={{ color: "#949494", border: "1px solid rgba(0,0,0,0.081)" }}>
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
             </svg>
@@ -1221,7 +1221,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       </div>
 
       {/* ── 4-quadrant overview ── */}
-      <div className="px-5 py-4 grid grid-cols-2 lg:grid-cols-4 gap-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="px-5 py-4 grid grid-cols-2 lg:grid-cols-4 gap-3" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
         {renderLeadGen()}
         {renderCallPerf()}
         {renderAppts()}
@@ -1229,13 +1229,13 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       </div>
 
       {/* ── Tab bar ── */}
-      <div className="flex items-center gap-0 px-5 overflow-x-auto" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", background: "#070d1a" }}>
+      <div className="flex items-center gap-0 px-5 overflow-x-auto" style={{ borderBottom: "1px solid rgba(0,0,0,0.095)", background: "#ffffff" }}>
         {TABS.filter(t => !(isBb && t.id === "recordings")).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className="px-4 py-2.5 text-xs font-semibold whitespace-nowrap transition-colors"
             style={{
-              color: tab === t.id ? "#f1f5f9" : "#475569",
-              borderBottom: tab === t.id ? "2px solid #3b82f6" : "2px solid transparent",
+              color: tab === t.id ? "#000000" : "#767676",
+              borderBottom: tab === t.id ? "2px solid #000000" : "2px solid transparent",
               background: "transparent",
             }}>
             {t.label}

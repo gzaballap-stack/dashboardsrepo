@@ -63,14 +63,14 @@ export default function AgentStats({ clients, preset, startDate, endDate }: Prop
       {/* Header + filter */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold" style={{ color: "#e2e8f0" }}>Agent Stats</h2>
-          <p className="text-sm mt-0.5" style={{ color: "#475569" }}>Performance breakdown by agent</p>
+          <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Agent Stats</h2>
+          <p className="text-sm mt-0.5" style={{ color: "#767676" }}>Performance breakdown by agent</p>
         </div>
         <select
           value={clientFilter}
           onChange={e => setClientFilter(e.target.value)}
           className="px-4 py-2 rounded-lg text-sm font-medium outline-none"
-          style={{ background: "#0f2040", border: "1px solid rgba(255,255,255,0.12)", color: "#e2e8f0", minWidth: "11rem" }}
+          style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111", minWidth: "11rem" }}
         >
           <option value="">All Clients</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -78,18 +78,18 @@ export default function AgentStats({ clients, preset, startDate, endDate }: Prop
       </div>
 
       {/* Agent stats table */}
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.081)" }}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: "#050c18" }}>
+              <tr style={{ background: "#ffffff" }}>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
-                  style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  style={{ color: "#767676", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
                   Agent
                 </th>
                 {statCols.map(c => (
                   <th key={c.key} className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
-                    style={{ color: "#475569", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    style={{ color: "#767676", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
                     {c.label}
                   </th>
                 ))}
@@ -97,18 +97,18 @@ export default function AgentStats({ clients, preset, startDate, endDate }: Prop
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={statCols.length + 1} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>Loading…</td></tr>
+                <tr><td colSpan={statCols.length + 1} className="px-4 py-12 text-center text-sm" style={{ color: "#c2c2c2" }}>Loading…</td></tr>
               ) : agents.length === 0 ? (
-                <tr><td colSpan={statCols.length + 1} className="px-4 py-12 text-center text-sm" style={{ color: "#1e3a5f" }}>No agent data</td></tr>
+                <tr><td colSpan={statCols.length + 1} className="px-4 py-12 text-center text-sm" style={{ color: "#c2c2c2" }}>No agent data</td></tr>
               ) : agents.map((a, i) => (
-                <tr key={a.agent_name} style={{ borderTop: "1px solid rgba(255,255,255,0.03)", background: i % 2 === 0 ? "rgba(255,255,255,0.015)" : "transparent" }}>
-                  <td className="px-4 py-3 font-medium whitespace-nowrap" style={{ color: "#e2e8f0" }}>{a.agent_name}</td>
+                <tr key={a.agent_name} style={{ borderTop: "1px solid rgba(0,0,0,0.041)", background: i % 2 === 0 ? "rgba(0,0,0,0.02)" : "transparent" }}>
+                  <td className="px-4 py-3 font-medium whitespace-nowrap" style={{ color: "#111111" }}>{a.agent_name}</td>
                   {statCols.map(c => {
                     const v = a[c.key as keyof AgentRow] as number;
                     const isRate = c.key.endsWith("_rate");
                     return (
                       <td key={c.key} className="px-4 py-3 text-right whitespace-nowrap tabular-nums"
-                        style={{ color: isRate ? (v >= 50 ? "#34d399" : v >= 25 ? "#fbbf24" : "#f87171") : "#94a3b8" }}>
+                        style={{ color: isRate ? (v >= 50 ? "#333333" : v >= 25 ? "#333333" : "#c0392b") : "#4a4a4a" }}>
                         {isRate ? `${v}%` : v.toLocaleString()}
                       </td>
                     );
@@ -122,12 +122,12 @@ export default function AgentStats({ clients, preset, startDate, endDate }: Prop
 
       {/* Setter Leaderboard */}
       <div>
-        <h3 className="text-base font-semibold mb-4" style={{ color: "#e2e8f0" }}>Setter Leaderboard</h3>
+        <h3 className="text-base font-semibold mb-4" style={{ color: "#111111" }}>Setter Leaderboard</h3>
         <div className="space-y-2">
           {loading ? (
-            <p className="text-sm py-4 text-center" style={{ color: "#1e3a5f" }}>Loading…</p>
+            <p className="text-sm py-4 text-center" style={{ color: "#c2c2c2" }}>Loading…</p>
           ) : agents.filter(a => a.appointments > 0).length === 0 ? (
-            <p className="text-sm py-4 text-center" style={{ color: "#1e3a5f" }}>No appointment data</p>
+            <p className="text-sm py-4 text-center" style={{ color: "#c2c2c2" }}>No appointment data</p>
           ) : agents
               .filter(a => a.appointments > 0)
               .sort((a, b) => b.appointments - a.appointments)
@@ -136,21 +136,21 @@ export default function AgentStats({ clients, preset, startDate, endDate }: Prop
                 const pct = Math.round((a.appointments / max) * 100);
                 const medals = ["🥇", "🥈", "🥉"];
                 return (
-                  <div key={a.agent_name} className="rounded-lg p-3" style={{ background: "#0a1628", border: "1px solid rgba(255,255,255,0.05)" }}>
+                  <div key={a.agent_name} className="rounded-lg p-3" style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.068)" }}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className="text-base">{medals[i] ?? `#${i + 1}`}</span>
-                        <span className="text-sm font-medium" style={{ color: "#e2e8f0" }}>{a.agent_name}</span>
+                        <span className="text-sm font-medium" style={{ color: "#111111" }}>{a.agent_name}</span>
                       </div>
-                      <div className="flex items-center gap-4 text-xs tabular-nums" style={{ color: "#64748b" }}>
-                        <span><span style={{ color: "#f59e0b", fontWeight: 600 }}>{a.appointments}</span> appts</span>
-                        <span><span style={{ color: "#34d399", fontWeight: 600 }}>{a.show_rate}%</span> show rate</span>
+                      <div className="flex items-center gap-4 text-xs tabular-nums" style={{ color: "#6b6b6b" }}>
+                        <span><span style={{ color: "#000000", fontWeight: 600 }}>{a.appointments}</span> appts</span>
+                        <span><span style={{ color: "#333333", fontWeight: 600 }}>{a.show_rate}%</span> show rate</span>
                       </div>
                     </div>
-                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.081)" }}>
                       <div
                         className="h-full rounded-full transition-all"
-                        style={{ width: `${pct}%`, background: i === 0 ? "#f59e0b" : i === 1 ? "#94a3b8" : i === 2 ? "#c97c3c" : "#334155" }}
+                        style={{ width: `${pct}%`, background: i === 0 ? "#000000" : i === 1 ? "#4a4a4a" : i === 2 ? "#c97c3c" : "#949494" }}
                       />
                     </div>
                   </div>
