@@ -101,11 +101,11 @@ export default function ClientRoster() {
       {/* Stats */}
       <div className="flex items-center gap-6">
         <div className="text-center">
-          <p className="text-2xl font-bold" style={{ color: "#000000" }}>{live.length}</p>
+          <p className="text-2xl font-bold" style={{ color: "#15803d" }}>{live.length}</p>
           <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Live</p>
         </div>
         <div className="text-center">
-          <p className="text-2xl font-bold" style={{ color: "#c0392b" }}>{offline.length}</p>
+          <p className="text-2xl font-bold" style={{ color: "#b91c1c" }}>{offline.length}</p>
           <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Offline</p>
         </div>
         <div className="text-center">
@@ -131,7 +131,7 @@ export default function ClientRoster() {
               <tr key={c.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#fafafa", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: c.is_live ? "#000000" : "#767676" }} />
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: c.is_live ? "#15803d" : "#94a3b8" }} />
                     <span className="font-medium" style={{ color: "#111111" }}>{c.name}</span>
                   </div>
                 </td>
@@ -141,8 +141,8 @@ export default function ClientRoster() {
                     disabled={toggling === c.id}
                     className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
                     style={c.is_live
-                      ? { color: "#000000", background: "rgba(0,0,0,0.06)", opacity: toggling === c.id ? 0.5 : 1 }
-                      : { color: "#c0392b", background: "rgba(192,57,43,0.1)", opacity: toggling === c.id ? 0.5 : 1 }}>
+                      ? { color: "#15803d", background: "rgba(21,128,61,0.10)", opacity: toggling === c.id ? 0.5 : 1 }
+                      : { color: "#b91c1c", background: "rgba(185,28,28,0.10)", opacity: toggling === c.id ? 0.5 : 1 }}>
                     {c.is_live ? "Live" : "Offline"}
                   </button>
                 </td>
@@ -151,7 +151,7 @@ export default function ClientRoster() {
                     <span className="flex items-center justify-end gap-2">
                       <button onClick={() => handleDelete(c.id)}
                         className="text-xs font-semibold px-2 py-1 rounded"
-                        style={{ color: "#c0392b", background: "rgba(192,57,43,0.12)" }}>
+                        style={{ color: "#b91c1c", background: "rgba(185,28,28,0.12)" }}>
                         Confirm
                       </button>
                       <button onClick={() => setConfirmDelete(null)} className="text-xs" style={{ color: "#767676" }}>

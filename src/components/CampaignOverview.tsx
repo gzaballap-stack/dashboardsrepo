@@ -54,19 +54,19 @@ type ClientRollup = {
 };
 
 const STATUS_STYLE: Record<ClientRollup["status"], { label: string; color: string; bg: string }> = {
-  excellent:     { label: "Excellent",     color: "#000000", bg: "rgba(0,0,0,0.072)" },
-  on_target:     { label: "On Target",     color: "#38bdf8", bg: "rgba(56,189,248,0.12)" },
-  above_target:  { label: "Above Target",  color: "#000000", bg: "rgba(0,0,0,0.072)" },
-  critical:      { label: "Critical",      color: "#c0392b", bg: "rgba(192,57,43,0.12)" },
-  hold:          { label: "Hold",          color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
-  no_data:       { label: "No Data",       color: "#6b6b6b", bg: "rgba(100,116,139,0.12)" },
+  excellent:     { label: "Excellent",     color: "#15803d", bg: "rgba(21,128,61,0.10)"  },
+  on_target:     { label: "On Target",     color: "#0369a1", bg: "rgba(3,105,161,0.10)"  },
+  above_target:  { label: "Above Target",  color: "#b45309", bg: "rgba(180,83,9,0.10)"   },
+  critical:      { label: "Critical",      color: "#b91c1c", bg: "rgba(185,28,28,0.10)"  },
+  hold:          { label: "Hold",          color: "#6d28d9", bg: "rgba(109,40,217,0.10)" },
+  no_data:       { label: "No Data",       color: "#6b6b6b", bg: "rgba(0,0,0,0.06)"      },
 };
 
 const RANK_STYLE: Record<ClientRollup["rank"], { color: string; bg: string }> = {
-  Whale:   { color: "#333333", bg: "rgba(251,191,36,0.12)" },
-  Shark:   { color: "#4a4a4a", bg: "rgba(0,0,0,0.072)" },
-  Dolphin: { color: "#6b6b6b", bg: "rgba(34,211,238,0.12)" },
-  Shrimp:  { color: "#4a4a4a", bg: "rgba(0,0,0,0.072)" },
+  Whale:   { color: "#b45309", bg: "rgba(180,83,9,0.10)"   },
+  Shark:   { color: "#0369a1", bg: "rgba(3,105,161,0.10)"  },
+  Dolphin: { color: "#0e7490", bg: "rgba(14,116,144,0.10)" },
+  Shrimp:  { color: "#6b6b6b", bg: "rgba(0,0,0,0.06)"      },
 };
 
 const BOTTLENECK_STYLE: Record<string, { color: string; bg: string }> = {
