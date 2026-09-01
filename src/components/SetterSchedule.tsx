@@ -189,7 +189,7 @@ function WatchScheduleTab({ agents, availability, weekStart, setWeekStart, onGen
       {loading ? (
         <div className="py-12 text-center text-sm" style={{ color: "#949494" }}>Loading…</div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+        <div className="overflow-x-auto rounded-2xl" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
           <table className="text-xs border-collapse" style={{ minWidth: "860px", width: "100%" }}>
             <thead>
               <tr style={{ background: "#fafafa" }}>
@@ -386,7 +386,7 @@ function PDScheduleTab({ agents, weekStart, setWeekStart }: {
       ) : (
         <div className="space-y-5">
           {dates.map(date => (
-            <div key={date} className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+            <div key={date} className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
               <div className="px-4 py-3 flex items-center justify-between"
                 style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
                 <p className="text-sm font-semibold" style={{ color: "#111111" }}>{formatDate(date)}</p>
@@ -522,7 +522,7 @@ function AvailabilityTab({ agents }: { agents: Agent[] }) {
         </div>
       </div>
 
-      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#fafafa" }}>
@@ -648,7 +648,7 @@ function ClientWindowsTab({ clients }: { clients: Client[] }) {
         </div>
       </div>
 
-      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#fafafa" }}>

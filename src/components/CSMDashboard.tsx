@@ -247,7 +247,7 @@ export default function CSMDashboard() {
             const upsellStyle = UPSELL_STYLE[row.upsell_status];
 
             return (
-              <div key={row.client_id} className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+              <div key={row.client_id} className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
                 <div
                   onClick={() => toggleExpand(row.client_id)}
                   className="flex items-center gap-4 px-4 py-3 cursor-pointer flex-wrap"

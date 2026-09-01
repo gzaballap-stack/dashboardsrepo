@@ -196,7 +196,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
       {/* ── Campaign Overview-style table row ── */}
       <section>
         <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>B2B Campaign — Overview</h2>
-        <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+        <div className="rounded-2xl overflow-x-auto" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
           <table className="w-full text-sm" style={{ minWidth: 1100 }}>
             <thead>
               <tr style={{ background: "#f7f7f7", color: "#6b6b6b" }}>

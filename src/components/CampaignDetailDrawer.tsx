@@ -745,7 +745,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         </div>
 
         {agentCalls && agentCalls.length > 0 && (
-          <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+          <div className="rounded-2xl overflow-x-auto" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
             <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
               <thead style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
                 <tr>
@@ -794,7 +794,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
             for more than one company.
           </p>
         )}
-      <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+      <div className="rounded-2xl overflow-x-auto" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <table className="w-full text-sm" style={{ minWidth: 1260 }}>
           <thead>
             <tr style={{ background: "#fafafa", color: "#6b6b6b" }}>
@@ -899,7 +899,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     const baseline = compData[1];
     const rowKeys = compData[0]?.data ? Object.keys(compData[0].data) : [];
     return (
-      <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
           {compData.map((period, pi) => (
             <div key={pi} style={{ borderRight: pi < 2 ? "1px solid rgba(0,0,0,0.095)" : "none" }}>
@@ -1040,7 +1040,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     subOf: (r: AdSetRow | AdRow) => string | null,
     keyOf: (r: AdSetRow | AdRow, i: number) => string,
   ) => (
-    <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+    <div className="rounded-2xl overflow-x-auto" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
       <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 1180 }}>
         <thead style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
           <tr>
@@ -1120,7 +1120,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       :                   { label: "No Answer",    color: "#767676" };
 
     return (
-      <div className="rounded-2xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+      <div className="rounded-2xl overflow-x-auto" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
           <thead style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
             <tr>
@@ -1212,7 +1212,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
             </svg>
             Refresh Data
           </button>
-          <button className="p-1 rounded" style={{ color: "#949494", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+          <button className="p-1 rounded" style={{ background: "#ffffff", color: "#949494", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
             </svg>

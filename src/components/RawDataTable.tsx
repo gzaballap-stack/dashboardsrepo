@@ -133,7 +133,7 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-2xl" style={{ border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+      <div className="overflow-x-auto rounded-2xl" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#ffffff" }}>
