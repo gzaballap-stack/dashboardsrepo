@@ -1,5 +1,7 @@
 "use client";
 
+import DaoBackground from "@/components/DaoBackground";
+
 import { useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
@@ -29,14 +31,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#ffffff" }}>
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#ffffff", position: "relative" }}>
+      <DaoBackground />
+      <div className="w-full max-w-md" style={{ position: "relative", zIndex: 1 }}>
         <div className="text-center mb-8">
-          <div className="inline-block border-2 border-black px-10 py-3 mb-4">
-            <h1 className="text-2xl font-black tracking-widest text-black uppercase">
-              Call Center Data
-            </h1>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/tomsi-logo-black.png"
+            alt="Tomsi Media"
+            className="mx-auto mb-4"
+            style={{ width: 200, height: "auto", objectFit: "contain" }}
+          />
           <p className="text-black/45 text-sm">Sign in to your account</p>
         </div>
 

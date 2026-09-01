@@ -16,6 +16,7 @@ import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
 import UserManager from "./UserManager";
 import ZipTool from "./ZipTool";
+import DaoBackground from "./DaoBackground";
 import TaskBoard from "./TaskBoard";
 import CampaignOverview from "./CampaignOverview";
 import CSMDashboard from "./CSMDashboard";
@@ -435,7 +436,8 @@ export default function DashboardView() {
   const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Stats", "Admin"];
 
   return (
-    <div className="h-screen overflow-hidden flex" style={{ background: "#ffffff" }}>
+    <div className="h-screen overflow-hidden flex" style={{ background: "#ffffff", position: "relative" }}>
+      <DaoBackground />
 
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
@@ -452,9 +454,9 @@ export default function DashboardView() {
         {/* Logo */}
         <div className="flex justify-center items-center overflow-hidden px-2" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)", paddingTop: 4, paddingBottom: 4 }}>
           <img
-            src="/Tomsi Media logo (White) copy.png"
+            src="/tomsi-logo-black.png"
             alt="Tomsi Media"
-            style={{ width: 140, height: "auto", objectFit: "contain", opacity: 0.92 }}
+            style={{ width: 132, height: "auto", objectFit: "contain" }}
           />
         </div>
 

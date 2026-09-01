@@ -76,5 +76,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.png|.*\\.svg).*)'],
+  // Static assets must bypass auth — .png was not excluded, so image
+  // requests were being redirected to /login and never rendered.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico)).*)'],
 };
