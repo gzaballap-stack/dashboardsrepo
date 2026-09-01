@@ -34,6 +34,9 @@ const BUCKETS: { id: Bucket; letter: string; name: string; blurb: string; color:
 const LEVEL_SHADES = ["#111111", "#5a5a5a", "#8c8c8c"];
 const LEVEL_HINTS  = ["do first", "next", "last"];
 
+// Only A and B are ranked — C, D and E don't warrant ordering within themselves.
+const HAS_LEVELS = new Set<Bucket>(["A", "B"]);
+
 function levelsFor(bucket: Bucket) {
   return LEVEL_SHADES.map((color, i) => ({
     priority: i + 1,
@@ -370,7 +373,7 @@ export default function TaskBoard() {
                   }}
                 >{b.letter}</button>
               ))}
-              {levelsFor(task.bucket).map(l => (
+              {HAS_LEVELS.has(task.bucket) && levelsFor(task.bucket).map(l => (
                 <button
                   key={l.priority}
                   onClick={() => patch(task.id, { priority: l.priority })}
@@ -388,8 +391,8 @@ export default function TaskBoard() {
     );
   }
 
-  function Lane({ bucket, priority, accent, empty }: { bucket: Bucket; priority: number; accent: string; empty: string }) {
-    const items = listFor(bucket, bucket === "A" ? priority : undefined);
+  function Lane({ bucket, priority, accent, empty, fill }: { bucket: Bucket; priority: number; accent: string; empty: string; fill?: boolean }) {
+    const items = listFor(bucket, HAS_LEVELS.has(bucket) ? priority : undefined);
     const zone = `lane:${bucket}:${priority}`;
     return (
       <div
@@ -398,6 +401,7 @@ export default function TaskBoard() {
         onDrop={e => { e.preventDefault(); dropInto(bucket, priority); }}
         style={{
           minHeight: 46, borderRadius: 7, padding: 3,
+          ...(fill ? { flex: 1 } : null),
           background: dropZone === zone ? hexA(accent, 0.07) : "transparent",
           border: `1px dashed ${dropZone === zone ? hexA(accent, 0.35) : "transparent"}`,
           transition: "background 120ms",
@@ -596,7 +600,7 @@ export default function TaskBoard() {
             >{b.letter}</button>
           ))}
         </div>
-        {(
+        {HAS_LEVELS.has(newBucket) && (
           <div style={{ display: "flex", gap: 3 }}>
             {levelsFor(newBucket).map(l => (
               <button
@@ -635,7 +639,7 @@ export default function TaskBoard() {
 
       {/* ── Five columns, always side by side ── */}
       <div style={{ overflowX: "auto", paddingBottom: 4 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 9, minWidth: 900, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 9, minWidth: 900, alignItems: "stretch" }}>
           {BUCKETS.map(b => {
             const total = visible.filter(t => t.bucket === b.id).length;
             const open = visible.filter(t => t.bucket === b.id && !t.done).length;
@@ -655,8 +659,8 @@ export default function TaskBoard() {
                   <p style={{ fontSize: 9.5, color: "#949494", lineHeight: 1.45 }}>{b.blurb}</p>
                 </div>
 
-                <div style={{ padding: 7 }}>
-                  {(
+                <div style={{ padding: 7, flex: 1, display: "flex", flexDirection: "column" }}>
+                  {HAS_LEVELS.has(b.id) ? (
                     levelsFor(b.id).map(l => (
                       <div key={l.priority} style={{ marginBottom: 5 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 3px 4px" }}>
@@ -667,6 +671,10 @@ export default function TaskBoard() {
                         <Lane bucket={b.id} priority={l.priority} accent={l.color} empty="Drop here" />
                       </div>
                     ))
+                  ) : (
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                      <Lane bucket={b.id} priority={1} accent={b.color} empty="Empty" fill />
+                    </div>
                   )}
                 </div>
               </div>
