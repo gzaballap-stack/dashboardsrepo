@@ -451,6 +451,20 @@ export default function DashboardView() {
   // top-level section, not inside the Clients Dashboard sub-nav.
   const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Stats", "Admin"];
 
+  // Section + page, e.g. ["Clients", "Client Roster"]. Drives the header crumb
+  // and the browser tab so they can't drift apart.
+  const crumb: [string | null, string] =
+    topSection === "tomsi_media" ? ["Tomsi Media", "B2B Tracking"]
+    : topSection === "payments"  ? [null, "Payments"]
+    : topSection === "clients"   ? ["Clients", CLIENTS_NAV.find(c => c.id === clientsView)?.label ?? "Clients"]
+    : topSection === "settings"  ? ["Settings", "Users"]
+    : [NAV.find(n => n.view === view)?.group ?? null, NAV.find(n => n.view === view)?.label ?? "Dashboard"];
+
+  const pageTitle = crumb[1];
+  useEffect(() => {
+    document.title = `${pageTitle} — Tomsi Media`;
+  }, [pageTitle]);
+
   return (
     <div className="h-screen overflow-hidden flex" style={{ background: "transparent", position: "relative" }}>
       <BrandBackground />
@@ -740,21 +754,8 @@ export default function DashboardView() {
 
 
           <h1 className="text-base font-semibold mr-auto" style={{ color: "#111111" }}>
-            {topSection === "tomsi_media"
-              ? <><span style={{ color: "#949494" }}>Tomsi Media / </span>B2B Tracking</>
-              : topSection === "payments"
-              ? "Payments"
-              : topSection === "clients"
-              ? <><span style={{ color: "#949494" }}>Clients / </span>{CLIENTS_NAV.find(c => c.id === clientsView)?.label ?? "Clients"}</>
-              : topSection === "settings"
-              ? <><span style={{ color: "#949494" }}>Settings / </span>Users</>
-              : <>
-                  {NAV.find(n => n.view === view)?.group
-                    ? <span style={{ color: "#949494" }}>{NAV.find(n => n.view === view)?.group} / </span>
-                    : null}
-                  {NAV.find(n => n.view === view)?.label ?? "Dashboard"}
-                </>
-            }
+            {crumb[0] && <span style={{ color: "#949494" }}>{crumb[0]} / </span>}
+            {crumb[1]}
           </h1>
 
           {/* Tomsi Media date range selector */}
