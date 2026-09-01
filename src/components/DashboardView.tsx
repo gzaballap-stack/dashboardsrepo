@@ -524,7 +524,7 @@ export default function DashboardView() {
                           {group}
                         </p>
                         {NAV.filter(n => n.group === group).map(item => {
-                          const active = view === item.view;
+                          const active = topSection === "clients_dashboard" && view === item.view;
                           return (
                             <button
                               key={item.view}
@@ -552,7 +552,7 @@ export default function DashboardView() {
                 {sec.id === "clients" && expandedSections.has("clients") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {CLIENTS_NAV.map(item => {
-                      const active = clientsView === item.id;
+                      const active = topSection === "clients" && clientsView === item.id;
                       return (
                         <button
                           key={item.id}
@@ -578,7 +578,7 @@ export default function DashboardView() {
                 {sec.id === "tools" && expandedSections.has("tools") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
                     {NAV.filter(n => n.group === "Tools").map(item => {
-                      const active = view === item.view;
+                      const active = topSection === "tools" && view === item.view;
                       return (
                         <button
                           key={item.view}
@@ -606,7 +606,7 @@ export default function DashboardView() {
                     {([
                       { id: "b2b_tracking" as TomsiView, label: "B2B Tracking", icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
                     ] as const).map(item => {
-                      const active = tomsiView === item.id;
+                      const active = topSection === "tomsi_media" && tomsiView === item.id;
                       return (
                         <button
                           key={item.id}
@@ -662,11 +662,11 @@ export default function DashboardView() {
               <button
                 onClick={() => { setTopSection("settings"); setView("admin_users"); setSidebarOpen(false); }}
                 className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
-                style={view === "admin_users"
+                style={topSection === "settings" && view === "admin_users"
                   ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
                   : { color: "#767676" }}
-                onMouseEnter={e => { if (view !== "admin_users") (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
-                onMouseLeave={e => { if (view !== "admin_users") (e.currentTarget as HTMLElement).style.color = "#767676"; }}
+                onMouseEnter={e => { if (!(topSection === "settings" && view === "admin_users")) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
+                onMouseLeave={e => { if (!(topSection === "settings" && view === "admin_users")) (e.currentTarget as HTMLElement).style.color = "#767676"; }}
               >
                 <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d={NAV_ICONS.admin_users} />
