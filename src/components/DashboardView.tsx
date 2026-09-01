@@ -297,7 +297,18 @@ export default function DashboardView() {
   const [clientsView, setClientsView] = useState<ClientsView>("client_roster");
   // Collapsed sidebar buys ~176px, which is what wide drawer tables need to
   // fit without a horizontal scroll.
-  const [navCollapsed, setNavCollapsed] = useState(false);
+  // The menu is a rail that opens on hover and closes when the pointer leaves,
+  // so the extra width never eats into the tables. Mobile keeps the drawer.
+  const [navHovered, setNavHovered] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setIsDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  const navCollapsed = isDesktop && !navHovered;
   const [expandedSections, setExpandedSections] = useState<Set<TopSection>>(new Set(["clients_dashboard"]));
   const [view, setView] = useState<View>("dashboard");
   const [clients, setClients] = useState<Client[]>([]);
@@ -331,7 +342,6 @@ export default function DashboardView() {
         setView(saved.view as View);
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
       if (saved.clientsView) setClientsView(saved.clientsView as ClientsView);
-      if (typeof saved.navCollapsed === "boolean") setNavCollapsed(saved.navCollapsed);
       if (saved.expandedSections) setExpandedSections(new Set(saved.expandedSections as TopSection[]));
     } catch {}
   }, []);
@@ -340,10 +350,10 @@ export default function DashboardView() {
   useEffect(() => {
     try {
       localStorage.setItem(NAV_STATE_KEY, JSON.stringify({
-        topSection, view, tomsiView, clientsView, navCollapsed, expandedSections: Array.from(expandedSections),
+        topSection, view, tomsiView, clientsView, expandedSections: Array.from(expandedSections),
       }));
     } catch {}
-  }, [topSection, view, tomsiView, clientsView, navCollapsed, expandedSections]);
+  }, [topSection, view, tomsiView, clientsView, expandedSections]);
 
   // Restore dismissed alerts + closed banners, then fetch current alerts on mount
   useEffect(() => {
@@ -449,13 +459,20 @@ export default function DashboardView() {
         <div className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
       )}
 
+      {/* Rail placeholder — keeps content clear of the menu without resizing
+          when it opens on hover. */}
+      <div className="hidden md:block flex-shrink-0" style={{ width: 64 }} />
+
       {/* Sidebar */}
-      <aside className={`
+      <aside
+        onMouseEnter={() => setNavHovered(true)}
+        onMouseLeave={() => setNavHovered(false)}
+        className={`
         fixed top-0 left-0 h-full z-30 flex flex-col
         transition-transform duration-300
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-        md:translate-x-0 md:static md:z-auto
-      `} style={{ width: navCollapsed ? 64 : 240, transition: "width 200ms ease", background: "rgba(255,255,255,0.82)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderRight: "1px solid rgba(0,0,0,0.07)" }}>
+        md:translate-x-0 md:z-40
+      `} style={{ width: navCollapsed ? 64 : 240, transition: "width 200ms ease", boxShadow: navCollapsed ? "none" : "0 0 40px -8px rgba(0,0,0,0.18)", background: "rgba(255,255,255,0.82)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderRight: "1px solid rgba(0,0,0,0.07)" }}>
 
         {/* Logo */}
         <div className="flex justify-center items-center overflow-hidden px-2" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)", paddingTop: 4, paddingBottom: 4 }}>
@@ -694,24 +711,6 @@ export default function DashboardView() {
           )}
         </div>
 
-        {/* Collapse toggle — lives in the menu, desktop only */}
-        <div className={`hidden md:block ${navCollapsed ? "px-2" : "px-3"} pb-3`}>
-          <button
-            onClick={() => setNavCollapsed(c => !c)}
-            title={navCollapsed ? "Expand menu" : "Collapse menu"}
-            aria-label={navCollapsed ? "Expand menu" : "Collapse menu"}
-            className={`w-full py-2 rounded-lg flex items-center text-xs font-medium transition-colors ${navCollapsed ? "px-0 justify-center gap-0" : "px-3 gap-3"}`}
-            style={{ color: "#949494" }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#111111"; (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.04)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#949494"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-          >
-            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.9} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d={navCollapsed ? "M13 5l7 7-7 7M5 5l7 7-7 7" : "M11 19l-7-7 7-7M19 19l-7-7 7-7"} />
-            </svg>
-            {!navCollapsed && <span>Collapse</span>}
-          </button>
-        </div>
       </aside>
 
       {/* Main */}
