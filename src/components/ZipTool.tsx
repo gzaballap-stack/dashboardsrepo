@@ -89,12 +89,12 @@ function chipStyle(grade: "A" | "B" | "C" | "D" | undefined, selected: boolean, 
     background: "rgba(239,68,68,0.12)", color: "#f87171",
     border: "1px solid rgba(239,68,68,0.25)", textDecoration: "line-through" as const,
   };
-  const gc = grade ? gradeColor(grade) : "#475569";
+  const gc = grade ? gradeColor(grade) : "#767676";
   return {
     fontSize: 11, fontWeight: 600, padding: "3px 7px", borderRadius: 5, cursor: "pointer",
     fontFamily: "monospace" as const, transition: "all 0.1s",
-    background: selected ? `${gc}33` : grade ? `${gc}14` : "rgba(255,255,255,0.05)",
-    color: selected ? gc : grade ? gc : "#94a3b8",
+    background: selected ? `${gc}33` : grade ? `${gc}14` : "rgba(0,0,0,0.068)",
+    color: selected ? gc : grade ? gc : "#4a4a4a",
     border: `1px solid ${selected ? gc + "66" : grade ? gc + "30" : "transparent"}`,
   };
 }
@@ -103,11 +103,11 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   return (
     <div style={{ marginBottom: 5 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-        <span style={{ fontSize: 10, color: "#475569" }}>{label}</span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b" }}>{value}</span>
+        <span style={{ fontSize: 10, color: "#767676" }}>{label}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: "#6b6b6b" }}>{value}</span>
       </div>
-      <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.06)" }}>
-        <div style={{ height: "100%", borderRadius: 2, width: `${value}%`, background: "rgba(245,158,11,0.45)", transition: "width 0.4s ease" }} />
+      <div style={{ height: 3, borderRadius: 2, background: "rgba(0,0,0,0.081)" }}>
+        <div style={{ height: "100%", borderRadius: 2, width: `${value}%`, background: "rgba(0,0,0,0.27)", transition: "width 0.4s ease" }} />
       </div>
     </div>
   );
@@ -121,7 +121,7 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSav
   const [showPlatforms, setShowPlatforms] = useState(false);
   const [activeTab, setActiveTab] = useState<"census" | "performance">("census");
   const [perfForm, setPerfForm] = useState<Partial<ZipPerfRow>>({});
-  const gc = data ? gradeColor(data.grade) : "#64748b";
+  const gc = data ? gradeColor(data.grade) : "#6b6b6b";
 
   // Reset form when perfData changes
   useEffect(() => {
@@ -132,74 +132,74 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSav
     <div style={{
       position: "absolute", top: 12, right: 12, width: 268, maxHeight: "calc(100% - 24px)",
       zIndex: 1000, display: "flex", flexDirection: "column",
-      background: "#0a1628", border: "1px solid rgba(255,255,255,0.1)",
+      background: "#fafafa", border: "1px solid rgba(0,0,0,0.135)",
       borderRadius: 12, overflow: "hidden", boxShadow: "0 20px 60px rgba(0,0,0,0.7)",
     }}>
-      <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0", fontFamily: "monospace" }}>ZIP {zip}</span>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>
+      <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(0,0,0,0.095)", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: "#111111", fontFamily: "monospace" }}>ZIP {zip}</span>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "#767676", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>
       </div>
 
       {/* Tab bar — only shown when a client is connected */}
       {clientName && (
-        <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+        <div style={{ display: "flex", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
           {(["census", "performance"] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
               flex: 1, padding: "7px 0", border: "none", cursor: "pointer", fontSize: 10, fontWeight: 700,
               textTransform: "uppercase", letterSpacing: "0.06em",
-              background: activeTab === tab ? "rgba(245,158,11,0.1)" : "transparent",
-              color: activeTab === tab ? "#f59e0b" : "#475569",
-              borderBottom: activeTab === tab ? "2px solid #f59e0b" : "2px solid transparent",
+              background: activeTab === tab ? "rgba(0,0,0,0.06)" : "transparent",
+              color: activeTab === tab ? "#000000" : "#767676",
+              borderBottom: activeTab === tab ? "2px solid #000000" : "2px solid transparent",
             }}>{tab}</button>
           ))}
         </div>
       )}
 
       <div style={{ overflowY: "auto", flex: 1 }}>
-        {loading && <div style={{ padding: 24, textAlign: "center", color: "#334155", fontSize: 12 }}>Loading data…</div>}
-        {!loading && !data && activeTab !== "performance" && <div style={{ padding: 20, textAlign: "center", color: "#334155", fontSize: 12 }}>No Census data for this zip.</div>}
+        {loading && <div style={{ padding: 24, textAlign: "center", color: "#949494", fontSize: 12 }}>Loading data…</div>}
+        {!loading && !data && activeTab !== "performance" && <div style={{ padding: 20, textAlign: "center", color: "#949494", fontSize: 12 }}>No Census data for this zip.</div>}
 
         {/* Performance tab */}
         {!loading && activeTab === "performance" && clientName && (
           <div style={{ padding: "12px 14px" }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "#334155", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: "#949494", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
               {clientName} · ZIP {zip}
             </div>
             {perfData ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {([
-                  { label: "Leads",        value: perfData.leads,        color: "#3b82f6" },
-                  { label: "Appointments", value: perfData.appointments, color: "#8b5cf6" },
-                  { label: "Shows",        value: perfData.shows,        color: "#f59e0b" },
-                  { label: "Closes",       value: perfData.closes,       color: "#10b981" },
+                  { label: "Leads",        value: perfData.leads,        color: "#000000" },
+                  { label: "Appointments", value: perfData.appointments, color: "#4a4a4a" },
+                  { label: "Shows",        value: perfData.shows,        color: "#000000" },
+                  { label: "Closes",       value: perfData.closes,       color: "#111111" },
                 ] as const).map(({ label, value, color }) => (
-                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 6, background: "rgba(255,255,255,0.03)" }}>
-                    <span style={{ fontSize: 11, color: "#475569" }}>{label}</span>
+                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 6, background: "rgba(0,0,0,0.041)" }}>
+                    <span style={{ fontSize: 11, color: "#767676" }}>{label}</span>
                     <span style={{ fontSize: 13, fontWeight: 700, color, fontFamily: "monospace" }}>{value}</span>
                   </div>
                 ))}
                 {perfData.revenue > 0 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 6, background: "rgba(16,185,129,0.06)", marginTop: 2 }}>
-                    <span style={{ fontSize: 11, color: "#475569" }}>Revenue</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#10b981", fontFamily: "monospace" }}>{fmt$(perfData.revenue)}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 6, background: "rgba(0,0,0,0.036)", marginTop: 2 }}>
+                    <span style={{ fontSize: 11, color: "#767676" }}>Revenue</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#111111", fontFamily: "monospace" }}>{fmt$(perfData.revenue)}</span>
                   </div>
                 )}
               </div>
             ) : (
-              <p style={{ fontSize: 12, color: "#334155", margin: 0, textAlign: "center", padding: "12px 0" }}>No performance data for this zip.</p>
+              <p style={{ fontSize: 12, color: "#949494", margin: 0, textAlign: "center", padding: "12px 0" }}>No performance data for this zip.</p>
             )}
           </div>
         )}
 
         {/* Census tab (default) */}
         {!loading && data && (activeTab === "census" || !clientName) && (<>
-          <div style={{ padding: "14px 14px 10px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "#334155", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Lead Quality Score</div>
+          <div style={{ padding: "14px 14px 10px", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: "#949494", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Lead Quality Score</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <div style={{ flex: 1, height: 10, borderRadius: 5, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+              <div style={{ flex: 1, height: 10, borderRadius: 5, background: "rgba(0,0,0,0.081)", overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${data.score}%`, background: gc, borderRadius: 5, transition: "width 0.5s ease" }} />
               </div>
-              <span style={{ fontSize: 18, fontWeight: 800, color: "#f1f5f9" }}>{data.score}</span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: "#000000" }}>{data.score}</span>
               <span style={{ fontSize: 13, fontWeight: 800, color: gc, padding: "2px 7px", borderRadius: 5, background: `${gc}22`, border: `1px solid ${gc}44` }}>{data.grade}</span>
             </div>
             <ScoreBar label="Income"          value={data.score_breakdown.income} />
@@ -212,7 +212,7 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSav
             {data.score_breakdown.long_term  != null && <ScoreBar label="Long-term Residents"  value={data.score_breakdown.long_term} />}
             {data.score_breakdown.mortgage   != null && <ScoreBar label="Mortgage Penetration" value={data.score_breakdown.mortgage} />}
           </div>
-          <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
             {[
               { label: "Avg. Household Income", value: fmt$(data.median_income) },
               { label: "Median Home Value",      value: fmt$(data.home_value) },
@@ -225,33 +225,33 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSav
               ...(data.appreciation_5yr != null ? [{ label: "5-yr Appreciation",       value: `${data.appreciation_5yr >= 0 ? "+" : ""}${Math.round(data.appreciation_5yr * 100)}%` }] : []),
             ].map(row => (
               <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
-                <span style={{ fontSize: 10, color: "#475569" }}>{row.label}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#e2e8f0", textAlign: "right" }}>{row.value}</span>
+                <span style={{ fontSize: 10, color: "#767676" }}>{row.label}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#111111", textAlign: "right" }}>{row.value}</span>
               </div>
             ))}
           </div>
-          <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: "#334155", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>K&B Job Volume / Year</div>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: "#949494", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>K&B Job Volume / Year</div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: "#475569" }}>Total estimate</span>
-              <span style={{ fontSize: 12, fontWeight: 800, color: "#f59e0b" }}>{data.job_volume.total_est.toLocaleString()}</span>
+              <span style={{ fontSize: 10, color: "#767676" }}>Total estimate</span>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "#000000" }}>{data.job_volume.total_est.toLocaleString()}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: "#475569" }}>Via digital platforms ({data.job_volume.digital_rate_pct}%)</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#e2e8f0" }}>{data.job_volume.digital_est.toLocaleString()}</span>
+              <span style={{ fontSize: 10, color: "#767676" }}>Via digital platforms ({data.job_volume.digital_rate_pct}%)</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#111111" }}>{data.job_volume.digital_est.toLocaleString()}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: "#475569" }}>Market density</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#e2e8f0" }}>{data.job_volume.market_density} / 1k residents</span>
+              <span style={{ fontSize: 10, color: "#767676" }}>Market density</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#111111" }}>{data.job_volume.market_density} / 1k residents</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-              <span style={{ fontSize: 10, color: "#475569" }}>Total residents</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#e2e8f0" }}>{data.population.toLocaleString()}</span>
+              <span style={{ fontSize: 10, color: "#767676" }}>Total residents</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#111111" }}>{data.population.toLocaleString()}</span>
             </div>
             <button onClick={() => setShowPlatforms(p => !p)} style={{
-              width: "100%", padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)",
-              background: showPlatforms ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.03)",
-              color: "#64748b", cursor: "pointer", display: "flex", justifyContent: "space-between",
+              width: "100%", padding: "7px 10px", borderRadius: 7, border: "1px solid rgba(0,0,0,0.108)",
+              background: showPlatforms ? "rgba(0,0,0,0.081)" : "rgba(0,0,0,0.041)",
+              color: "#6b6b6b", cursor: "pointer", display: "flex", justifyContent: "space-between",
               alignItems: "center", fontSize: 11, fontWeight: 600,
             }}>
               <span>Platform Breakdown</span>
@@ -265,24 +265,24 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSav
                 {data.job_volume.platforms.map(p => (
                   <div key={p.name} style={{ marginBottom: 6 }}>
                     <div onClick={() => setExpandedPlatform(expandedPlatform === p.name ? null : p.name)}
-                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 7, cursor: "pointer", background: expandedPlatform === p.name ? "rgba(255,255,255,0.06)" : "transparent", border: "1px solid rgba(255,255,255,0.05)" }}>
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 7, cursor: "pointer", background: expandedPlatform === p.name ? "rgba(0,0,0,0.081)" : "transparent", border: "1px solid rgba(0,0,0,0.068)" }}>
                       <div style={{ width: 8, height: 8, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
-                      <span style={{ flex: 1, fontSize: 10, fontWeight: 600, color: "#94a3b8" }}>{p.name}</span>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#e2e8f0" }}>{p.jobs.toLocaleString()}</span>
-                      <span style={{ fontSize: 9, color: "#334155" }}>{p.share_pct}%</span>
+                      <span style={{ flex: 1, fontSize: 10, fontWeight: 600, color: "#4a4a4a" }}>{p.name}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#111111" }}>{p.jobs.toLocaleString()}</span>
+                      <span style={{ fontSize: 9, color: "#949494" }}>{p.share_pct}%</span>
                     </div>
-                    <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.04)", margin: "2px 8px 0", overflow: "hidden" }}>
+                    <div style={{ height: 3, borderRadius: 2, background: "rgba(0,0,0,0.054)", margin: "2px 8px 0", overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${p.share_pct * 2.5}%`, background: p.color, opacity: 0.7, borderRadius: 2 }} />
                     </div>
                     {expandedPlatform === p.name && (
-                      <div style={{ margin: "6px 8px 4px", padding: "8px 10px", borderRadius: 6, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                        <p style={{ fontSize: 10, color: "#475569", lineHeight: 1.6, margin: "0 0 4px" }}>{p.description}</p>
-                        <p style={{ fontSize: 9, color: "#1e3a5f", margin: 0, fontStyle: "italic" }}>Source: {p.source}</p>
+                      <div style={{ margin: "6px 8px 4px", padding: "8px 10px", borderRadius: 6, background: "rgba(0,0,0,0.041)", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+                        <p style={{ fontSize: 10, color: "#767676", lineHeight: 1.6, margin: "0 0 4px" }}>{p.description}</p>
+                        <p style={{ fontSize: 9, color: "#c2c2c2", margin: 0, fontStyle: "italic" }}>Source: {p.source}</p>
                       </div>
                     )}
                   </div>
                 ))}
-                <p style={{ fontSize: 9, color: "#1e3a5f", lineHeight: 1.5, margin: "8px 0 0", padding: "0 4px" }}>
+                <p style={{ fontSize: 9, color: "#c2c2c2", lineHeight: 1.5, margin: "8px 0 0", padding: "0 4px" }}>
                   Census base × Harvard JCHS 13% renovation rate, income + age adjusted. Platform shares estimated from public reports.
                 </p>
               </div>
@@ -292,18 +292,18 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSav
           {/* ROI Projector */}
           {data.roi && (
             <div style={{ padding: "10px 14px" }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: "#334155", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>ROI Projector</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: "#949494", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>ROI Projector</div>
               {[
                 { label: "Avg project ticket",        value: fmt$(data.roi.avg_ticket) },
                 { label: "Close rate",                value: `${Math.round(data.roi.close_rate * 100)}%` },
                 { label: "Total addressable revenue", value: fmt$(data.roi.total_addressable_revenue) },
               ].map(row => (
                 <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
-                  <span style={{ fontSize: 10, color: "#475569" }}>{row.label}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: row.label.includes("revenue") ? "#f59e0b" : "#e2e8f0", textAlign: "right" }}>{row.value}</span>
+                  <span style={{ fontSize: 10, color: "#767676" }}>{row.label}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: row.label.includes("revenue") ? "#000000" : "#111111", textAlign: "right" }}>{row.value}</span>
                 </div>
               ))}
-              <p style={{ fontSize: 9, color: "#1e3a5f", margin: "6px 0 0", lineHeight: 1.5 }}>
+              <p style={{ fontSize: 9, color: "#c2c2c2", margin: "6px 0 0", lineHeight: 1.5 }}>
                 Market opportunity estimate based on owner-occupied units × 18% contractor close rate.
               </p>
             </div>
@@ -982,20 +982,20 @@ export default function ZipTool() {
       {/* ── Sidebar ── */}
       <div style={{
         width: 288, flexShrink: 0, display: "flex", flexDirection: "column",
-        borderRight: "1px solid rgba(255,255,255,0.07)", background: "#0a1628", overflow: "hidden",
+        borderRight: "1px solid rgba(0,0,0,0.095)", background: "#fafafa", overflow: "hidden",
       }}>
 
         {/* ── Scrollable top block: everything above the zip panel ── */}
         <div style={{ overflowY: "auto", flexShrink: 1, minHeight: 0 }}>
 
         {/* ── Clients (server-backed sessions, shared across the team) ── */}
-        <div style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+        <div style={{ borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
           <button
             onClick={() => setShowClients(v => !v)}
             style={{
               width: "100%", padding: "9px 14px", background: "none", border: "none",
               cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
-              color: "#64748b",
+              color: "#6b6b6b",
             }}
           >
             <svg style={{ width: 13, height: 13, flexShrink: 0 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1005,7 +1005,7 @@ export default function ZipTool() {
               Clients
             </span>
             {activeClientSessionLabel && (
-              <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(245,158,11,0.15)", color: "#f59e0b", fontWeight: 700 }}>
+              <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(0,0,0,0.09)", color: "#000000", fontWeight: 700 }}>
                 {activeClientSessionLabel}
               </span>
             )}
@@ -1019,7 +1019,7 @@ export default function ZipTool() {
             <div style={{ padding: "0 10px 10px" }}>
 
               {clientSessionsByClientId.size === 0 && (
-                <p style={{ fontSize: 11, color: "#334155", padding: "6px 2px 4px", margin: 0 }}>
+                <p style={{ fontSize: 11, color: "#949494", padding: "6px 2px 4px", margin: 0 }}>
                   No client sessions yet. Save one below with a client selected.
                 </p>
               )}
@@ -1032,8 +1032,8 @@ export default function ZipTool() {
                   return (
                     <div key={clientId}
                       style={{
-                        borderRadius: 8, border: `1px solid ${hasActive ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.07)"}`,
-                        background: hasActive ? "rgba(245,158,11,0.06)" : "rgba(255,255,255,0.02)",
+                        borderRadius: 8, border: `1px solid ${hasActive ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.095)"}`,
+                        background: hasActive ? "rgba(0,0,0,0.036)" : "rgba(0,0,0,0.027)",
                         overflow: "hidden",
                       }}
                     >
@@ -1042,29 +1042,29 @@ export default function ZipTool() {
                         style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 8, cursor: "pointer" }}
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: hasActive ? "#f59e0b" : "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: hasActive ? "#000000" : "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {client?.name ?? "Unknown client"}
                           </div>
-                          <div style={{ fontSize: 10, color: "#334155", marginTop: 1 }}>
+                          <div style={{ fontSize: 10, color: "#949494", marginTop: 1 }}>
                             {csList.length} session{csList.length !== 1 ? "s" : ""}
                           </div>
                         </div>
-                        <svg style={{ width: 10, height: 10, flexShrink: 0, transform: isExpanded ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.2s", color: "#475569" }}
+                        <svg style={{ width: 10, height: 10, flexShrink: 0, transform: isExpanded ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.2s", color: "#767676" }}
                           fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                         </svg>
                       </div>
                       {isExpanded && (
-                        <div style={{ padding: "0 8px 8px", borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", flexDirection: "column", gap: 3 }}>
+                        <div style={{ padding: "0 8px 8px", borderTop: "1px solid rgba(0,0,0,0.068)", display: "flex", flexDirection: "column", gap: 3 }}>
                           {csList.map(cs => {
                             const isActive = activeSession === cs.id;
                             return (
                               <div key={cs.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 6px 0" }}>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 11, fontWeight: 600, color: isActive ? "#f59e0b" : "#cbd5e1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  <div style={{ fontSize: 11, fontWeight: 600, color: isActive ? "#000000" : "#333333", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                     {cs.name}
                                   </div>
-                                  <div style={{ fontSize: 9, color: "#334155" }}>
+                                  <div style={{ fontSize: 9, color: "#949494" }}>
                                     {cs.pins.length} pin{cs.pins.length !== 1 ? "s" : ""} · {fmtDate(cs.updated_at)}
                                   </div>
                                 </div>
@@ -1073,13 +1073,13 @@ export default function ZipTool() {
                                   style={{
                                     padding: "4px 8px", borderRadius: 5, border: "none", cursor: "pointer",
                                     fontSize: 10, fontWeight: 700, flexShrink: 0,
-                                    background: isActive ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.07)",
-                                    color: isActive ? "#f59e0b" : "#64748b",
+                                    background: isActive ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.095)",
+                                    color: isActive ? "#000000" : "#6b6b6b",
                                   }}
                                 >{isActive ? "Loaded" : "Load"}</button>
                                 <button
                                   onClick={() => deleteClientSession(cs)}
-                                  style={{ background: "none", border: "none", color: "#334155", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
+                                  style={{ background: "none", border: "none", color: "#949494", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
                                 >×</button>
                               </div>
                             );
@@ -1095,13 +1095,13 @@ export default function ZipTool() {
         </div>
 
         {/* ── Sessions (unattached, local — sales-call prep etc.) ── */}
-        <div style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+        <div style={{ borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
           <button
             onClick={() => setShowSessions(v => !v)}
             style={{
               width: "100%", padding: "9px 14px", background: "none", border: "none",
               cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
-              color: "#64748b",
+              color: "#6b6b6b",
             }}
           >
             <svg style={{ width: 13, height: 13, flexShrink: 0 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -1111,7 +1111,7 @@ export default function ZipTool() {
               Sessions
             </span>
             {activeLocalSessionLabel && (
-              <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(245,158,11,0.15)", color: "#f59e0b", fontWeight: 700 }}>
+              <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(0,0,0,0.09)", color: "#000000", fontWeight: 700 }}>
                 {activeLocalSessionLabel}
               </span>
             )}
@@ -1125,7 +1125,7 @@ export default function ZipTool() {
             <div style={{ padding: "0 10px 10px" }}>
 
               {sessions.length === 0 && (
-                <p style={{ fontSize: 11, color: "#334155", padding: "6px 2px 4px", margin: 0 }}>
+                <p style={{ fontSize: 11, color: "#949494", padding: "6px 2px 4px", margin: 0 }}>
                   No unattached sessions. Save one below to prep for a call, or attach it to a client.
                 </p>
               )}
@@ -1137,8 +1137,8 @@ export default function ZipTool() {
                   return (
                     <div key={session.id}
                       style={{
-                        borderRadius: 8, border: `1px solid ${isActive ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.07)"}`,
-                        background: isActive ? "rgba(245,158,11,0.06)" : "rgba(255,255,255,0.02)",
+                        borderRadius: 8, border: `1px solid ${isActive ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.095)"}`,
+                        background: isActive ? "rgba(0,0,0,0.036)" : "rgba(0,0,0,0.027)",
                         overflow: "hidden",
                       }}
                     >
@@ -1148,10 +1148,10 @@ export default function ZipTool() {
                         style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 8, cursor: "pointer" }}
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? "#f59e0b" : "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? "#000000" : "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {session.name}
                           </div>
-                          <div style={{ fontSize: 10, color: "#334155", marginTop: 1 }}>
+                          <div style={{ fontSize: 10, color: "#949494", marginTop: 1 }}>
                             {session.pins.length} pin{session.pins.length !== 1 ? "s" : ""} · {fmtDate(session.savedAt)}
                           </div>
                         </div>
@@ -1160,20 +1160,20 @@ export default function ZipTool() {
                           style={{
                             padding: "4px 8px", borderRadius: 5, border: "none", cursor: "pointer",
                             fontSize: 10, fontWeight: 700,
-                            background: isActive ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.07)",
-                            color: isActive ? "#f59e0b" : "#64748b",
+                            background: isActive ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.095)",
+                            color: isActive ? "#000000" : "#6b6b6b",
                           }}
                         >{isActive ? "Loaded" : "Load"}</button>
                         <button
                           onClick={e => { e.stopPropagation(); deleteSession(session.id); }}
-                          style={{ background: "none", border: "none", color: "#334155", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
+                          style={{ background: "none", border: "none", color: "#949494", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
                         >×</button>
                       </div>
                       {/* Attach-to-client picker — visible when card is expanded; picking a
                           client promotes this session into a real, shared client record */}
                       {isExpanded && (
-                        <div style={{ padding: "0 10px 8px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                          <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em", margin: "6px 0 4px" }}>Attach to client</div>
+                        <div style={{ padding: "0 10px 8px", borderTop: "1px solid rgba(0,0,0,0.068)" }}>
+                          <div style={{ fontSize: 9, color: "#767676", textTransform: "uppercase", letterSpacing: "0.07em", margin: "6px 0 4px" }}>Attach to client</div>
                           <select
                             value=""
                             onClick={e => e.stopPropagation()}
@@ -1183,8 +1183,8 @@ export default function ZipTool() {
                             }}
                             style={{
                               width: "100%", padding: "5px 8px", borderRadius: 6, fontSize: 11,
-                              background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-                              color: "#64748b", cursor: "pointer", outline: "none",
+                              background: "rgba(0,0,0,0.068)", border: "1px solid rgba(0,0,0,0.135)",
+                              color: "#6b6b6b", cursor: "pointer", outline: "none",
                             }}
                           >
                             <option value="">— Choose a client —</option>
@@ -1202,7 +1202,7 @@ export default function ZipTool() {
               {/* Unattributed DB sessions — created automatically from GHL sales calls */}
               {unattributedClientSessions.length > 0 && (
                 <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>
+                  <div style={{ fontSize: 9, color: "#767676", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>
                     From GHL ({unattributedClientSessions.length})
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1211,38 +1211,38 @@ export default function ZipTool() {
                       const isExpanded = expandedSessionId === cs.id;
                       return (
                         <div key={cs.id} style={{
-                          borderRadius: 8, border: `1px solid ${isActive ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.07)"}`,
-                          background: isActive ? "rgba(245,158,11,0.06)" : "rgba(255,255,255,0.02)",
+                          borderRadius: 8, border: `1px solid ${isActive ? "rgba(0,0,0,0.18)" : "rgba(0,0,0,0.095)"}`,
+                          background: isActive ? "rgba(0,0,0,0.036)" : "rgba(0,0,0,0.027)",
                           overflow: "hidden",
                         }}>
                           <div onClick={() => setExpandedSessionId(prev => prev === cs.id ? null : cs.id)}
                             style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 8, cursor: "pointer" }}>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? "#f59e0b" : "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? "#000000" : "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                 {cs.name}
                               </div>
-                              <div style={{ fontSize: 10, color: "#334155", marginTop: 1 }}>
+                              <div style={{ fontSize: 10, color: "#949494", marginTop: 1 }}>
                                 {cs.pins.length} pin{cs.pins.length !== 1 ? "s" : ""}
                               </div>
                             </div>
                             <button onClick={e => { e.stopPropagation(); isActive ? deselectSession() : loadClientSession(cs); }}
                               style={{
                                 padding: "4px 8px", borderRadius: 5, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 700,
-                                background: isActive ? "rgba(245,158,11,0.2)" : "rgba(255,255,255,0.07)",
-                                color: isActive ? "#f59e0b" : "#64748b",
+                                background: isActive ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.095)",
+                                color: isActive ? "#000000" : "#6b6b6b",
                               }}>{isActive ? "Loaded" : "Load"}</button>
                             <button onClick={e => { e.stopPropagation(); deleteClientSession(cs); }}
-                              style={{ background: "none", border: "none", color: "#334155", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>×</button>
+                              style={{ background: "none", border: "none", color: "#949494", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>×</button>
                           </div>
                           {isExpanded && (
-                            <div style={{ padding: "0 10px 8px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                              <div style={{ fontSize: 9, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em", margin: "6px 0 4px" }}>Assign to client</div>
+                            <div style={{ padding: "0 10px 8px", borderTop: "1px solid rgba(0,0,0,0.068)" }}>
+                              <div style={{ fontSize: 9, color: "#767676", textTransform: "uppercase", letterSpacing: "0.07em", margin: "6px 0 4px" }}>Assign to client</div>
                               <select value="" onClick={e => e.stopPropagation()}
                                 onChange={e => { if (e.target.value) assignSession(cs, e.target.value); setExpandedSessionId(null); }}
                                 style={{
                                   width: "100%", padding: "5px 8px", borderRadius: 6, fontSize: 11,
-                                  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-                                  color: "#64748b", cursor: "pointer", outline: "none",
+                                  background: "rgba(0,0,0,0.068)", border: "1px solid rgba(0,0,0,0.135)",
+                                  color: "#6b6b6b", cursor: "pointer", outline: "none",
                                 }}>
                                 <option value="">— Choose a client —</option>
                                 {clients.filter(c => c.is_live).map(c => (
@@ -1270,26 +1270,26 @@ export default function ZipTool() {
                       onKeyDown={e => { if (e.key === "Enter") saveSession(); if (e.key === "Escape") setSavingSession(false); }}
                       style={{
                         flex: 1, padding: "7px 10px", borderRadius: 7, fontSize: 11,
-                        background: "#0f2040", border: "1px solid rgba(245,158,11,0.3)",
-                        color: "#e2e8f0", outline: "none",
+                        background: "#ffffff", border: "1px solid rgba(0,0,0,0.18)",
+                        color: "#111111", outline: "none",
                       }}
                     />
                     <button onClick={saveSession} disabled={!newSessionName.trim() || !pins.length}
                       style={{
                         padding: "7px 10px", borderRadius: 7, border: "none", cursor: "pointer",
-                        background: "#f59e0b", color: "#000", fontSize: 11, fontWeight: 700,
+                        background: "#000000", color: "#000", fontSize: 11, fontWeight: 700,
                         opacity: (!newSessionName.trim() || !pins.length) ? 0.4 : 1,
                       }}>Save</button>
                     <button onClick={() => setSavingSession(false)}
-                      style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 15, padding: 0 }}>×</button>
+                      style={{ background: "none", border: "none", color: "#767676", cursor: "pointer", fontSize: 15, padding: 0 }}>×</button>
                   </div>
                   <select
                     value={saveTargetClientId}
                     onChange={e => setSaveTargetClientId(e.target.value)}
                     style={{
                       width: "100%", padding: "5px 8px", borderRadius: 6, fontSize: 11,
-                      background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-                      color: saveTargetClientId ? "#f59e0b" : "#64748b", cursor: "pointer", outline: "none",
+                      background: "rgba(0,0,0,0.068)", border: "1px solid rgba(0,0,0,0.135)",
+                      color: saveTargetClientId ? "#000000" : "#6b6b6b", cursor: "pointer", outline: "none",
                     }}
                   >
                     <option value="">— No client (local session) —</option>
@@ -1304,8 +1304,8 @@ export default function ZipTool() {
                   disabled={!pins.length}
                   style={{
                     width: "100%", padding: "7px 0", borderRadius: 7, fontSize: 11, fontWeight: 700,
-                    border: "1px dashed rgba(255,255,255,0.1)", cursor: pins.length ? "pointer" : "default",
-                    background: "transparent", color: pins.length ? "#475569" : "#1e3a5f",
+                    border: "1px dashed rgba(0,0,0,0.135)", cursor: pins.length ? "pointer" : "default",
+                    background: "transparent", color: pins.length ? "#767676" : "#c2c2c2",
                   }}
                 >
                   {pins.length ? "+ Save Current Session" : "Drop pins to save a session"}
@@ -1316,7 +1316,7 @@ export default function ZipTool() {
         </div>
 
         {/* Zip code search */}
-        <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+        <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
           <form onSubmit={e => { e.preventDefault(); handleZipSearch(searchInput); }}
             style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <input
@@ -1328,14 +1328,14 @@ export default function ZipTool() {
               onChange={e => { setSearchInput(e.target.value.replace(/\D/g, "")); setSearchError(null); }}
               style={{
                 flex: 1, padding: "8px 10px", borderRadius: 7, fontSize: 12,
-                background: "#0f2040", border: "1px solid rgba(255,255,255,0.1)",
-                color: "#e2e8f0", outline: "none", fontFamily: "monospace",
+                background: "#ffffff", border: "1px solid rgba(0,0,0,0.135)",
+                color: "#111111", outline: "none", fontFamily: "monospace",
               }}
             />
             <button type="submit" disabled={searchLoading || searchInput.length < 5}
               style={{
                 padding: "8px 12px", borderRadius: 7, border: "none", cursor: "pointer",
-                background: searchLoading ? "rgba(255,255,255,0.04)" : "#1d4ed8",
+                background: searchLoading ? "rgba(0,0,0,0.054)" : "#000000",
                 color: "#fff", fontSize: 11, fontWeight: 700,
                 opacity: (searchLoading || searchInput.length < 5) ? 0.5 : 1,
               }}>
@@ -1343,46 +1343,46 @@ export default function ZipTool() {
             </button>
           </form>
           {searchError && (
-            <p style={{ fontSize: 10, color: "#ef4444", margin: "5px 2px 0", lineHeight: 1.4 }}>{searchError}</p>
+            <p style={{ fontSize: 10, color: "#c0392b", margin: "5px 2px 0", lineHeight: 1.4 }}>{searchError}</p>
           )}
         </div>
 
         {/* Pin mode controls */}
         {(<>
-          <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+          <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em" }}>Radius</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#f59e0b" }}>{radius} mi</span>
+              <span style={{ fontSize: 11, color: "#767676", textTransform: "uppercase", letterSpacing: "0.07em" }}>Radius</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#000000" }}>{radius} mi</span>
             </div>
             <input type="range" min={5} max={200} step={5} value={radius}
               onChange={e => setRadius(parseInt(e.target.value))}
-              style={{ width: "100%", accentColor: "#f59e0b", cursor: "pointer" }} />
+              style={{ width: "100%", accentColor: "#000000", cursor: "pointer" }} />
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
-              <span style={{ fontSize: 10, color: "#334155" }}>5 mi</span>
-              <span style={{ fontSize: 10, color: "#334155" }}>200 mi</span>
+              <span style={{ fontSize: 10, color: "#949494" }}>5 mi</span>
+              <span style={{ fontSize: 10, color: "#949494" }}>200 mi</span>
             </div>
           </div>
-          <div style={{ padding: "6px 12px 8px", borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", gap: 6, flexShrink: 0 }}>
+          <div style={{ padding: "6px 12px 8px", borderBottom: "1px solid rgba(0,0,0,0.095)", display: "flex", gap: 6, flexShrink: 0 }}>
             <button onClick={() => setPinMode("include")}
               style={{
                 flex: 1, padding: "7px 0", borderRadius: 7, border: "none", cursor: "pointer",
                 fontSize: 11, fontWeight: 700, transition: "all 0.15s",
-                background: pinMode === "include" ? "rgba(59,130,246,0.18)" : "rgba(255,255,255,0.04)",
-                color: pinMode === "include" ? "#60a5fa" : "#475569",
-                boxShadow: pinMode === "include" ? "inset 0 0 0 1px rgba(59,130,246,0.3)" : "none",
+                background: pinMode === "include" ? "rgba(0,0,0,0.108)" : "rgba(0,0,0,0.054)",
+                color: pinMode === "include" ? "#4a4a4a" : "#767676",
+                boxShadow: pinMode === "include" ? "inset 0 0 0 1px rgba(0,0,0,0.18)" : "none",
               }}>+ Add Pin</button>
             <button onClick={() => setPinMode("exclude")}
               style={{
                 flex: 1, padding: "7px 0", borderRadius: 7, border: "none", cursor: "pointer",
                 fontSize: 11, fontWeight: 700, transition: "all 0.15s",
-                background: pinMode === "exclude" ? "rgba(239,68,68,0.18)" : "rgba(255,255,255,0.04)",
-                color: pinMode === "exclude" ? "#f87171" : "#475569",
-                boxShadow: pinMode === "exclude" ? "inset 0 0 0 1px rgba(239,68,68,0.3)" : "none",
+                background: pinMode === "exclude" ? "rgba(192,57,43,0.18)" : "rgba(0,0,0,0.054)",
+                color: pinMode === "exclude" ? "#c0392b" : "#767676",
+                boxShadow: pinMode === "exclude" ? "inset 0 0 0 1px rgba(192,57,43,0.3)" : "none",
               }}>× Exclude Zips</button>
           </div>
           {pinMode === "exclude" && (
-            <div style={{ padding: "6px 14px 8px", borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
-              <p style={{ fontSize: 10, color: "#475569", margin: 0, lineHeight: 1.55 }}>
+            <div style={{ padding: "6px 14px 8px", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
+              <p style={{ fontSize: 10, color: "#767676", margin: 0, lineHeight: 1.55 }}>
                 Click zip polygons on the map or chips below to exclude individual zips.{manualExcludes.size > 0 ? ` ${manualExcludes.size} excluded.` : ""}
               </p>
             </div>
@@ -1390,9 +1390,9 @@ export default function ZipTool() {
         </>)}
 
         {/* Pins */}
-        <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.07)", maxHeight: 180, overflowY: "auto", flexShrink: 0 }}>
+        <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(0,0,0,0.095)", maxHeight: 180, overflowY: "auto", flexShrink: 0 }}>
           {pins.length === 0 ? (
-            <div style={{ padding: "6px 4px", color: "#334155", fontSize: 11, lineHeight: 1.5 }}>
+            <div style={{ padding: "6px 4px", color: "#949494", fontSize: 11, lineHeight: 1.5 }}>
               Click the map to drop a pin, or search a zip above.
             </div>
           ) : (
@@ -1404,23 +1404,23 @@ export default function ZipTool() {
                     style={{
                       display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
                       borderRadius: 8, cursor: "pointer",
-                      background: isSel ? "rgba(255,255,255,0.06)" : "transparent",
-                      border: `1px solid ${isSel ? "rgba(255,255,255,0.1)" : "transparent"}`,
+                      background: isSel ? "rgba(0,0,0,0.081)" : "transparent",
+                      border: `1px solid ${isSel ? "rgba(0,0,0,0.135)" : "transparent"}`,
                     }}>
                     <div style={{ width: 10, height: 10, borderRadius: pin.type === "exclude" ? 2 : "50%", background: pin.color, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "#e2e8f0" }}>{pin.label}</div>
-                      <div style={{ fontSize: 10, color: "#475569" }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#111111" }}>{pin.label}</div>
+                      <div style={{ fontSize: 10, color: "#767676" }}>
                         {pin.loading ? "Loading…" : `${pin.zips.length} zips · ${pin.radius} mi`}
                       </div>
                     </div>
                     <span style={{
                       fontSize: 9, padding: "2px 5px", borderRadius: 4, fontWeight: 700, flexShrink: 0,
-                      background: pin.type === "exclude" ? "rgba(239,68,68,0.15)" : "rgba(59,130,246,0.15)",
-                      color: pin.type === "exclude" ? "#f87171" : "#60a5fa",
+                      background: pin.type === "exclude" ? "rgba(192,57,43,0.15)" : "rgba(0,0,0,0.09)",
+                      color: pin.type === "exclude" ? "#c0392b" : "#4a4a4a",
                     }}>{pin.type === "include" ? "IN" : "EX"}</span>
                     <button onClick={e => { e.stopPropagation(); handleDeletePin(pin.id); }}
-                      style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 2px" }}>×</button>
+                      style={{ background: "none", border: "none", color: "#767676", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 2px" }}>×</button>
                   </div>
                 );
               })}
@@ -1430,7 +1430,7 @@ export default function ZipTool() {
 
         {/* Grade legend */}
         {includeZips.size > 0 && (
-          <div style={{ padding: "5px 16px", display: "flex", gap: 12, borderBottom: "1px solid rgba(255,255,255,0.05)", flexShrink: 0, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ padding: "5px 16px", display: "flex", gap: 12, borderBottom: "1px solid rgba(0,0,0,0.068)", flexShrink: 0, flexWrap: "wrap", alignItems: "center" }}>
             {(["A", "B", "C", "D"] as const).map(g => (
               <span key={g} style={{ fontSize: 9, fontWeight: 700, color: gradeColor(g) }}>● {g}</span>
             ))}
@@ -1441,18 +1441,18 @@ export default function ZipTool() {
 
         {/* Zip chips */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ padding: "7px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)", flexShrink: 0 }}>
-            <span style={{ fontSize: 10, color: "#475569", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+          <div style={{ padding: "7px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(0,0,0,0.068)", flexShrink: 0 }}>
+            <span style={{ fontSize: 10, color: "#767676", textTransform: "uppercase", letterSpacing: "0.07em" }}>
               {selectedPin ? selectedPin.label : "Targeted Zips"}
             </span>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               {connectedClient && (
-                <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 5, padding: 2 }}>
+                <div style={{ display: "flex", gap: 2, background: "rgba(0,0,0,0.054)", borderRadius: 5, padding: 2 }}>
                   {(["census", "performance"] as const).map(mode => (
                     <button key={mode} onClick={() => setMapOverlay(mode)} style={{
                       padding: "2px 7px", borderRadius: 4, border: "none", cursor: "pointer", fontSize: 9, fontWeight: 700,
-                      background: mapOverlay === mode ? (mode === "census" ? "rgba(59,130,246,0.35)" : "rgba(245,158,11,0.35)") : "transparent",
-                      color: mapOverlay === mode ? (mode === "census" ? "#60a5fa" : "#f59e0b") : "#475569",
+                      background: mapOverlay === mode ? (mode === "census" ? "rgba(0,0,0,0.21)" : "rgba(0,0,0,0.21)") : "transparent",
+                      color: mapOverlay === mode ? (mode === "census" ? "#4a4a4a" : "#000000") : "#767676",
                       transition: "all 0.15s",
                     }}>
                       {mode === "census" ? "Census" : "Perf"}
@@ -1460,7 +1460,7 @@ export default function ZipTool() {
                   ))}
                 </div>
               )}
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>{totalLoading ? "…" : displayZips.length}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#6b6b6b" }}>{totalLoading ? "…" : displayZips.length}</span>
             </div>
           </div>
           {selectedPin && mapOverlay === "census" && (
@@ -1472,8 +1472,8 @@ export default function ZipTool() {
                   placeholder="Zip codes (comma or space separated)…"
                   style={{
                     flex: 1, padding: "5px 8px", borderRadius: 6, fontSize: 11, fontFamily: "monospace",
-                    background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-                    color: "#e2e8f0", outline: "none",
+                    background: "rgba(0,0,0,0.068)", border: "1px solid rgba(0,0,0,0.135)",
+                    color: "#111111", outline: "none",
                   }}
                 />
                 <button
@@ -1481,7 +1481,7 @@ export default function ZipTool() {
                   disabled={addZipLoading || !addZipInput.trim()}
                   style={{
                     padding: "5px 8px", borderRadius: 6, border: "none", cursor: "pointer",
-                    background: "rgba(59,130,246,0.25)", color: "#60a5fa", fontSize: 11, fontWeight: 700,
+                    background: "rgba(0,0,0,0.15)", color: "#4a4a4a", fontSize: 11, fontWeight: 700,
                   }}>
                   {addZipLoading ? "…" : "+ Add"}
                 </button>
@@ -1490,12 +1490,12 @@ export default function ZipTool() {
                   disabled={addZipLoading || !addZipInput.trim()}
                   style={{
                     padding: "5px 8px", borderRadius: 6, border: "none", cursor: "pointer",
-                    background: "rgba(239,68,68,0.18)", color: "#f87171", fontSize: 11, fontWeight: 700,
+                    background: "rgba(192,57,43,0.18)", color: "#c0392b", fontSize: 11, fontWeight: 700,
                   }}>
                   {addZipLoading ? "…" : "× Ex"}
                 </button>
               </div>
-              {addZipError && <p style={{ fontSize: 10, color: "#ef4444", margin: "4px 0 0", lineHeight: 1.4 }}>{addZipError}</p>}
+              {addZipError && <p style={{ fontSize: 10, color: "#c0392b", margin: "4px 0 0", lineHeight: 1.4 }}>{addZipError}</p>}
             </div>
           )}
           {mapOverlay === "performance" && connectedClient ? (() => {
@@ -1509,7 +1509,7 @@ export default function ZipTool() {
               });
             if (!ranked.length) return (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ fontSize: 12, color: "#334155", textAlign: "center", padding: "0 16px" }}>No performance data yet</span>
+                <span style={{ fontSize: 12, color: "#949494", textAlign: "center", padding: "0 16px" }}>No performance data yet</span>
               </div>
             );
             return (
@@ -1518,12 +1518,12 @@ export default function ZipTool() {
                   {ranked.map(zip => {
                     const p = clientPerf[zip];
                     return (
-                      <div key={zip} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderRadius: 5, background: "rgba(255,255,255,0.03)", flexShrink: 0 }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: "#e2e8f0", fontFamily: "monospace", width: 40, flexShrink: 0 }}>{zip}</span>
-                        <span style={{ fontSize: 9, color: "#3b82f6" }}>{p.leads}L</span>
-                        <span style={{ fontSize: 9, color: "#475569" }}>{p.appointments}A</span>
-                        <span style={{ fontSize: 9, color: p.closes > 0 ? "#4ade80" : "#475569", fontWeight: p.closes > 0 ? 700 : 400 }}>{p.closes}C</span>
-                        {p.revenue > 0 && <span style={{ fontSize: 9, color: "#10b981", marginLeft: "auto" }}>{fmt$(p.revenue)}</span>}
+                      <div key={zip} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderRadius: 5, background: "rgba(0,0,0,0.041)", flexShrink: 0 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: "#111111", fontFamily: "monospace", width: 40, flexShrink: 0 }}>{zip}</span>
+                        <span style={{ fontSize: 9, color: "#000000" }}>{p.leads}L</span>
+                        <span style={{ fontSize: 9, color: "#767676" }}>{p.appointments}A</span>
+                        <span style={{ fontSize: 9, color: p.closes > 0 ? "#000000" : "#767676", fontWeight: p.closes > 0 ? 700 : 400 }}>{p.closes}C</span>
+                        {p.revenue > 0 && <span style={{ fontSize: 9, color: "#111111", marginLeft: "auto" }}>{fmt$(p.revenue)}</span>}
                       </div>
                     );
                   })}
@@ -1554,7 +1554,7 @@ export default function ZipTool() {
             </div>
           ) : (
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontSize: 12, color: "#334155", textAlign: "center", padding: "0 16px" }}>
+              <span style={{ fontSize: 12, color: "#949494", textAlign: "center", padding: "0 16px" }}>
                 {totalLoading ? "Loading…" : "No targeted zips yet"}
               </span>
             </div>
@@ -1562,13 +1562,13 @@ export default function ZipTool() {
         </div>
 
         {/* Actions */}
-        <div style={{ padding: "10px 12px", borderTop: "1px solid rgba(255,255,255,0.07)", display: "flex", gap: 6, flexShrink: 0 }}>
+        <div style={{ padding: "10px 12px", borderTop: "1px solid rgba(0,0,0,0.095)", display: "flex", gap: 6, flexShrink: 0 }}>
           <button onClick={copyZips} disabled={!displayZips.length}
             style={{
               flex: 1, padding: "9px 0", borderRadius: 8, border: "none",
               cursor: displayZips.length ? "pointer" : "default",
-              background: copied ? "rgba(52,211,153,0.15)" : displayZips.length ? "#1d4ed8" : "#0f2040",
-              color: copied ? "#34d399" : displayZips.length ? "#fff" : "#334155",
+              background: copied ? "rgba(52,211,153,0.15)" : displayZips.length ? "#000000" : "#ffffff",
+              color: copied ? "#333333" : displayZips.length ? "#fff" : "#949494",
               fontSize: 12, fontWeight: 600, transition: "all 0.15s",
             }}>
             {copied ? "✓ Copied!" : `Copy${selectedPin ? ` (${displayZips.length})` : netZips.length ? ` (${netZips.length})` : ""}`}
@@ -1576,8 +1576,8 @@ export default function ZipTool() {
           {pins.length > 0 && (
             <button onClick={clearAll}
               style={{
-                padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)",
-                background: "transparent", color: "#475569", fontSize: 12, cursor: "pointer",
+                padding: "9px 12px", borderRadius: 8, border: "1px solid rgba(0,0,0,0.108)",
+                background: "transparent", color: "#767676", fontSize: 12, cursor: "pointer",
               }}>Clear</button>
           )}
         </div>
@@ -1607,9 +1607,9 @@ export default function ZipTool() {
               <button key={action} onClick={action === "undo" ? handleUndo : handleRedo} disabled={!active}
                 title={action === "undo" ? "Undo" : "Redo"}
                 style={{
-                  width: 32, height: 32, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.12)",
+                  width: 32, height: 32, borderRadius: "50%", border: "1px solid rgba(0,0,0,0.162)",
                   background: active ? "rgba(10,22,40,0.88)" : "rgba(10,22,40,0.45)",
-                  color: active ? "#e2e8f0" : "#334155",
+                  color: active ? "#111111" : "#949494",
                   cursor: active ? "pointer" : "default",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   backdropFilter: "blur(6px)", fontSize: 14, transition: "all 0.15s",
@@ -1624,8 +1624,8 @@ export default function ZipTool() {
           <div style={{
             position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)",
             background: "rgba(10,22,40,0.88)", backdropFilter: "blur(6px)",
-            border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20,
-            padding: "5px 14px", fontSize: 11, fontWeight: 700, color: "#64748b",
+            border: "1px solid rgba(0,0,0,0.108)", borderRadius: 20,
+            padding: "5px 14px", fontSize: 11, fontWeight: 700, color: "#6b6b6b",
             pointerEvents: "none", letterSpacing: "0.04em",
           }}>
             Click a zip to view data · click empty map to drop a pin
