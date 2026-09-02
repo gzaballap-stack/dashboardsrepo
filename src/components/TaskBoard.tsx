@@ -210,21 +210,7 @@ export default function TaskBoard() {
       };
     });
 
-    // Group completions by the day they were actually ticked off.
-    const prefix = monthDate.slice(0, 7);
-    const completedOn = (t: Task) => (t.completed_at ? t.completed_at.slice(0, 10) : t.task_date) ?? "";
-    const completed = tasks
-      .filter(t => t.done && completedOn(t).startsWith(prefix))
-      .sort((a, b) => completedOn(b).localeCompare(completedOn(a)) || a.position - b.position);
-
-    const byDay: { date: string; items: Task[] }[] = [];
-    for (const t of completed) {
-      const key = completedOn(t);
-      const row = byDay.find(r => r.date === key);
-      if (row) row.items.push(t); else byDay.push({ date: key, items: [t] });
-    }
-
-    return { cells, weeks, byDay, count: completed.length };
+    return { cells, weeks };
   }, [tasks, monthDate]);
 
   async function addTask() {
@@ -904,40 +890,6 @@ export default function TaskBoard() {
             </div>
           </div>
 
-          <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 12, padding: 16 }}>
-            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#949494", marginBottom: 12 }}>
-              COMPLETED THIS MONTH — {month.count}
-            </p>
-            {month.byDay.length === 0 ? (
-              <p style={{ fontSize: 12, color: "#949494" }}>Nothing was completed in this month yet.</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {month.byDay.map(row => (
-                  <div key={row.date}>
-                    <button
-                      onClick={() => { setDayDate(row.date); setView("day"); }}
-                      style={{ fontSize: 10.5, fontWeight: 800, color: "#4a4a4a", marginBottom: 5, cursor: "pointer" }}
-                    >
-                      {parseISO(row.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-                    </button>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      {row.items.map(t => (
-                        <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{
-                            flexShrink: 0, width: 16, height: 16, borderRadius: 5, fontSize: 9, fontWeight: 900,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            background: hexA(BUCKETS.find(b => b.id === t.bucket)!.color, 0.13),
-                            color: BUCKETS.find(b => b.id === t.bucket)!.color,
-                          }}>{t.bucket}</span>
-                          <span style={{ fontSize: 12, color: "#4a4a4a", textDecoration: "line-through" }}>{t.title}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
