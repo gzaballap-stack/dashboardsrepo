@@ -71,6 +71,8 @@ export type GhlFetchResult =
       attribution: Attribution;
       /** Last touch — the most recent ad before converting, or null if GHL has none. */
       lastTouch: Attribution | null;
+      /** The contact's postal code, for the per-zip rollup. Same call, no extra cost. */
+      zip: string | null;
       raw: GhlAttribution | null;
     }
   | { ok: false; status: number; error: string };
@@ -131,6 +133,7 @@ export async function fetchGhlAttribution(
     ok: true,
     attribution: mapGhlAttribution(src),
     lastTouch: hasLast ? mapGhlAttribution(last) : null,
+    zip: pick(contact ?? {}, 'postalCode', 'postal_code', 'zip', 'zipCode'),
     raw: src,
   };
 }
