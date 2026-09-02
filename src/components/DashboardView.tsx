@@ -926,7 +926,8 @@ export default function DashboardView() {
 
           {(topSection === "clients_dashboard" || topSection === "tools") && (<>
 
-          <AlertBanner alerts={bannerAlerts} onDismiss={closeBanner} />
+          {/* Stale-booking alerts belong to the dashboard, not the Tools views */}
+          {topSection === "clients_dashboard" && <AlertBanner alerts={bannerAlerts} onDismiss={closeBanner} />}
 
           {/* ── Dashboard KPIs ── */}
           {view === "dashboard" && (
