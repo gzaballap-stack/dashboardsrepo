@@ -120,7 +120,6 @@ export default function TaskBoard() {
   const [showGuide, setShowGuide] = useState(false);
   const [showList, setShowList] = useState(false);
   const [listTitle, setListTitle] = useState("");
-  const [listBucket, setListBucket] = useState<Bucket>("A");
   const addRef = useRef<HTMLInputElement>(null);
 
   // The board only ever plans a day or a week; "month" is a review of what got done.
@@ -266,7 +265,7 @@ export default function TaskBoard() {
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, bucket: listBucket, priority: 1, position: Date.now(), scope: "backlog" }),
+      body: JSON.stringify({ title, bucket: "A", priority: 1, position: Date.now(), scope: "backlog" }),
     });
     const d = await res.json();
     if (d.task) setTasks(prev => [...prev, d.task]);
@@ -319,7 +318,10 @@ export default function TaskBoard() {
   // Dropping onto a date in the day strip or the month grid schedules it there.
   function dropOnDate(dateISO: string) {
     if (!dragId) return;
-    patch(dragId, { scope: "day", task_date: dateISO, position: Date.now() });
+    const max = tasks
+      .filter(t => t.scope === "day" && t.task_date === dateISO && t.id !== dragId)
+      .reduce((m, t) => Math.max(m, t.position), 0);
+    patch(dragId, { scope: "day", task_date: dateISO, position: max + 1000 });
     setDragId(null); setDropZone(null);
   }
 
@@ -975,29 +977,12 @@ export default function TaskBoard() {
                 placeholder="Something you want to get done…"
                 style={{ ...fieldStyle, fontSize: 12.5, padding: "8px 11px" }}
               />
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <div style={{ display: "flex", gap: 3, flex: 1 }}>
-                  {BUCKETS.map(b => (
-                    <button
-                      key={b.id}
-                      onClick={() => setListBucket(b.id)}
-                      title={b.name}
-                      style={{
-                        width: 26, height: 28, borderRadius: 6, fontSize: 11, fontWeight: 800, cursor: "pointer",
-                        background: listBucket === b.id ? hexA(b.color, 0.16) : "rgba(0,0,0,0.041)",
-                        border: `1px solid ${listBucket === b.id ? hexA(b.color, 0.4) : "rgba(0,0,0,0.081)"}`,
-                        color: listBucket === b.id ? b.color : "#767676",
-                      }}
-                    >{b.letter}</button>
-                  ))}
-                </div>
-                <button
-                  onClick={addToList}
-                  style={{ background: "#000000", color: "#fff", fontSize: 12, fontWeight: 700, padding: "7px 15px", borderRadius: 7, cursor: "pointer" }}
-                >
-                  Add
-                </button>
-              </div>
+              <button
+                onClick={addToList}
+                style={{ alignSelf: "flex-start", background: "#000000", color: "#fff", fontSize: 12, fontWeight: 700, padding: "7px 15px", borderRadius: 7, cursor: "pointer" }}
+              >
+                Add
+              </button>
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
@@ -1008,11 +993,9 @@ export default function TaskBoard() {
               ) : (
                 <>
                   <p style={{ fontSize: 10, color: "#949494", marginBottom: 8, lineHeight: 1.5 }}>
-                    Drag an item onto a column, onto a day in the strip above, or onto a date in Month view. Or press → to drop it into the {view === "week" ? "week" : "day"} you're viewing.
+                    Drag an item onto a column, onto a day in the strip above, or onto a date in Month view. Or press → to drop it into the {view === "week" ? "week" : "day"} you&rsquo;re viewing.
                   </p>
-                  {backlog.map(t => {
-                    const b = BUCKETS.find(x => x.id === t.bucket)!;
-                    return (
+                  {backlog.map(t => (
                       <div
                         key={t.id}
                         draggable
@@ -1020,7 +1003,7 @@ export default function TaskBoard() {
                         onDragEnd={() => { setDragId(null); setDropZone(null); }}
                         style={{
                           display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", marginBottom: 5,
-                          background: "#ffffff", border: "1px solid rgba(0,0,0,0.09)", borderLeft: `2px solid ${hexA(b.color, 0.75)}`,
+                          background: "#ffffff", border: "1px solid rgba(0,0,0,0.09)", borderLeft: "2px solid rgba(0,0,0,0.35)",
                           borderRadius: 7, cursor: "grab",
                         }}
                       >
@@ -1032,11 +1015,6 @@ export default function TaskBoard() {
                             border: "1.5px solid rgba(0,0,0,0.22)", background: "transparent",
                           }}
                         />
-                        <span style={{
-                          flexShrink: 0, width: 17, height: 17, borderRadius: 5, fontSize: 9.5, fontWeight: 900,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          background: hexA(b.color, 0.13), color: b.color,
-                        }}>{t.bucket}</span>
                         <input
                           defaultValue={t.title}
                           onBlur={e => { const v = e.target.value.trim(); if (v && v !== t.title) patch(t.id, { title: v }); }}
@@ -1065,8 +1043,7 @@ export default function TaskBoard() {
                           </svg>
                         </button>
                       </div>
-                    );
-                  })}
+                  ))}
                 </>
               )}
             </div>
