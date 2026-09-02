@@ -767,7 +767,7 @@ export default function DashboardView() {
             <div className="relative" ref={presetRef}>
               <button
                 onClick={() => setShowPresetMenu(v => !v)}
-                className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors flex-shrink-0 md:min-w-[9rem]"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex-shrink-0 min-w-[9rem]"
                 style={{ background: "#000000", color: "#fff" }}
               >
                 <span className="flex-1 text-left">{PRESET_LABELS[tomsiPreset]}</span>
@@ -820,7 +820,7 @@ export default function DashboardView() {
               <div className="relative" ref={presetRef}>
                 <button
                   onClick={() => setShowPresetMenu(v => !v)}
-                  className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors flex-shrink-0 md:min-w-[9rem]"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex-shrink-0 min-w-[9rem]"
                   style={{ background: "#000000", color: "#fff" }}
                 >
                   <span className="flex-1 text-left">{PRESET_LABELS[preset]}</span>
