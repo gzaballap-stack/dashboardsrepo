@@ -28,6 +28,43 @@ function distribute(total: number, fracs: number[]): number[] {
   return floored;
 }
 
+// Distribute an integer total across weighted buckets without exceeding a per-bucket
+// cap. Used to keep closes <= shows <= appointments <= leads per zip once each stage
+// gets its own weighting: overflow from a capped zip spills to zips with headroom.
+function distributeCapped(total: number, weights: number[], caps: number[]): number[] {
+  const n = weights.length;
+  const out = new Array(n).fill(0);
+  let remaining = Math.min(total, caps.reduce((a, b) => a + b, 0));
+
+  for (let pass = 0; pass < 12 && remaining > 0; pass++) {
+    let wsum = 0;
+    for (let i = 0; i < n; i++) if (out[i] < caps[i] && weights[i] > 0) wsum += weights[i];
+    if (wsum <= 0) break;
+
+    const fracs = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+      if (out[i] < caps[i] && weights[i] > 0) fracs[i] = weights[i] / wsum;
+    }
+
+    const alloc = distribute(remaining, fracs);
+    let assigned = 0;
+    for (let i = 0; i < n; i++) {
+      const give = Math.min(alloc[i], Math.max(0, caps[i] - out[i]));
+      out[i] += give;
+      assigned += give;
+    }
+    remaining -= assigned;
+    if (assigned === 0) break;
+  }
+
+  // Anything still unplaced (all weighted zips capped out) goes wherever there's room.
+  for (let i = 0; i < n && remaining > 0; i++) {
+    const room = caps[i] - out[i];
+    if (room > 0) { const give = Math.min(room, remaining); out[i] += give; remaining -= give; }
+  }
+  return out;
+}
+
 async function getZipsNearPin(lat: number, lng: number, radius: number): Promise<string[]> {
   try {
     const params = new URLSearchParams({
@@ -122,29 +159,39 @@ export async function POST(req: Request) {
     const rng  = mulberry32(clientIdx * 9973 + 12345);
 
     // ── Leads / appointments / shows ──────────────────────────────────────────
-    // Use exponential weights (high variance) assigned only to ~30% of zips.
-    // This mirrors reality: a handful of zip codes generate most leads while
-    // the majority of the territory is quiet.
+    // Every stage gets its own weighting rather than reusing the lead split.
+    // Sharing one fraction array made each zip convert at exactly the portfolio
+    // average, so the whole territory came out looking hand-made; jittering each
+    // stage independently gives zips their own booking, show and close rates.
 
-    const activeCount = Math.max(1, Math.round(zips.length * 0.30));
+    // Roughly a quarter to a half of the territory carries the volume, and where
+    // that line falls varies by client.
+    const activeShare = 0.22 + rng() * 0.24;
+    const activeCount = Math.max(1, Math.round(zips.length * activeShare));
 
-    // Generate exponential weights for every zip, then pick the top activeCount
+    // Exponential weights — a few zips dominate, which is how real territories look.
     const allWeights = zips.map(() => Math.exp(rng() * 3.5)); // range ~[1, 33]
     const zipsByWeight = zips
       .map((zip, i) => ({ zip, i, w: allWeights[i] }))
       .sort((a, b) => b.w - a.w);
 
-    const totalActiveWeight = zipsByWeight.slice(0, activeCount).reduce((s, z) => s + z.w, 0);
+    const activeIdx = new Set(zipsByWeight.slice(0, activeCount).map(z => z.i));
 
-    // Build fraction array: inactive zips stay at 0
-    const fracs = new Array(zips.length).fill(0);
-    zipsByWeight.slice(0, activeCount).forEach(z => {
-      fracs[z.i] = z.w / totalActiveWeight;
-    });
+    // Quiet zips keep a small random weight instead of a hard zero, so the tail is
+    // a scatter of one- and two-lead zips rather than a wall of blanks.
+    const leadWeights = zips.map((_, i) =>
+      activeIdx.has(i) ? allWeights[i] * (0.55 + rng() * 0.9) : allWeights[i] * 0.05 * rng()
+    );
+    const leadWeightSum = leadWeights.reduce((a, b) => a + b, 0) || 1;
+    const leadDist = distribute(totalLeads, leadWeights.map(w => w / leadWeightSum));
 
-    const leadDist = distribute(totalLeads, fracs);
-    const apptDist = distribute(totalAppts, fracs);
-    const showDist = distribute(totalShows, fracs);
+    // Booking rate varies by zip — some neighbourhoods answer the phone, some don't.
+    const apptWeights = leadDist.map(l => l * (0.45 + rng() * 1.35));
+    const apptDist = distributeCapped(totalAppts, apptWeights, leadDist);
+
+    // Show rate varies independently of booking rate.
+    const showWeights = apptDist.map(a => a * (0.5 + rng() * 1.3));
+    const showDist = distributeCapped(totalShows, showWeights, apptDist);
 
     // ── Closes / revenue ──────────────────────────────────────────────────────
     // Distribute closes weighted by shows: a close can only come from a show,
@@ -153,13 +200,8 @@ export async function POST(req: Request) {
 
     const avgJobValue = totalCloses > 0 ? totalRevenue / totalCloses : 25000;
 
-    const totalShowCount = showDist.reduce((a: number, b: number) => a + b, 0);
-    const showFracs = totalShowCount > 0
-      ? showDist.map(s => s / totalShowCount)
-      : fracs;
-
-    const rawCloseDist = distribute(Math.min(totalCloses, totalShowCount), showFracs);
-    const closeDist = rawCloseDist.map((c, i) => Math.min(c, showDist[i]));
+    const closeWeights = showDist.map(sh => sh * (0.35 + rng() * 1.6));
+    const closeDist = distributeCapped(totalCloses, closeWeights, showDist);
 
     const closesPerZip = new Map<string, number>();
     zips.forEach((zip, i) => { if (closeDist[i] > 0) closesPerZip.set(zip, closeDist[i]); });
@@ -176,9 +218,11 @@ export async function POST(req: Request) {
         else if (t < 0.45) multiplier = 0.75 + rng() * 0.50; // ~0.75–1.25× (standard)
         else if (t < 0.75) multiplier = 1.25 + rng() * 0.75; // ~1.25–2.0×  (large)
         else               multiplier = 2.00 + rng() * 2.00; // ~2.0–4.0×   (premium)
-        rev += Math.round(avgJobValue * multiplier);
+        rev += avgJobValue * multiplier;
       }
-      revenuePerZip.set(zip, rev);
+      // To the cent — round thousands across every zip was part of what made the
+      // numbers look generated. The column is numeric(12,2).
+      revenuePerZip.set(zip, Math.round(rev * 100) / 100);
     }
 
     const rows = zips.map((zip, i) => ({
