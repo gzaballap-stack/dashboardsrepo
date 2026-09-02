@@ -58,7 +58,7 @@ export interface ClientConfig {
   show_rate: number;
   cb_rate: number;
   close_rate?: number;  // fraction of shows that close (default 0.22)
-  avg_revenue?: number; // average deal value in dollars (default 21000)
+  avg_revenue?: number; // average project size in dollars (set per client; default 21000)
 }
 
 // KPI targets (portfolio averages):
@@ -80,6 +80,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.48,
     show_rate: 0.86,
     cb_rate: 0.12,
+    avg_revenue: 30500,
   },
   {
     name: 'Coastal Renovations LLC',
@@ -93,6 +94,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.46,
     show_rate: 0.83,
     cb_rate: 0.10,
+    avg_revenue: 35500,
   },
   {
     name: 'Heritage Home Remodeling',
@@ -106,6 +108,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.50,
     show_rate: 0.88,
     cb_rate: 0.13,
+    avg_revenue: 45000,
   },
   {
     // slight underperformer — CPL ~$73, lower booking & show rates
@@ -117,6 +120,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.42,
     show_rate: 0.78,
     cb_rate: 0.09,
+    avg_revenue: 33500,
   },
   {
     name: 'Elite Kitchen & Bath',
@@ -130,6 +134,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.48,
     show_rate: 0.85,
     cb_rate: 0.11,
+    avg_revenue: 40500,
   },
   {
     name: 'Prestige Kitchen Designs',
@@ -140,6 +145,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.52,
     show_rate: 0.90,
     cb_rate: 0.14,
+    avg_revenue: 47000,
   },
   {
     // Meta added as primary (was Google + LSA only)
@@ -154,6 +160,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.46,
     show_rate: 0.84,
     cb_rate: 0.10,
+    avg_revenue: 23000,
   },
   {
     // slight underperformer — CPL ~$74, lower booking & show rates
@@ -165,6 +172,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.40,
     show_rate: 0.77,
     cb_rate: 0.08,
+    avg_revenue: 32000,
   },
   {
     // big spender — only client at ~$750/day
@@ -179,6 +187,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.48,
     show_rate: 0.84,
     cb_rate: 0.12,
+    avg_revenue: 55000,
   },
   {
     name: 'Apex Home Improvements',
@@ -192,6 +201,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.44,
     show_rate: 0.82,
     cb_rate: 0.11,
+    avg_revenue: 27000,
   },
   {
     name: 'BlueSky Renovations',
@@ -202,6 +212,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.48,
     show_rate: 0.86,
     cb_rate: 0.11,
+    avg_revenue: 29500,
   },
   {
     // slight underperformer — CPL ~$73, lower booking & show rates
@@ -216,6 +227,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.41,
     show_rate: 0.79,
     cb_rate: 0.09,
+    avg_revenue: 37000,
   },
   {
     // Meta added as primary (was Google only)
@@ -227,6 +239,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.48,
     show_rate: 0.87,
     cb_rate: 0.12,
+    avg_revenue: 21000,
   },
   {
     name: 'American Dream Renovations',
@@ -240,6 +253,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.46,
     show_rate: 0.83,
     cb_rate: 0.11,
+    avg_revenue: 31000,
   },
   {
     // slight underperformer — CPL ~$73, lower booking & show rates
@@ -251,6 +265,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.43,
     show_rate: 0.80,
     cb_rate: 0.10,
+    avg_revenue: 25500,
   },
   {
     name: 'Craftsman Kitchen Group',
@@ -264,6 +279,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.52,
     show_rate: 0.89,
     cb_rate: 0.13,
+    avg_revenue: 42500,
   },
   {
     // slight underperformer — CPL ~$73, lower booking & show rates
@@ -275,6 +291,7 @@ export const MOCK_CLIENT_CONFIGS: ClientConfig[] = [
     appt_rate: 0.40,
     show_rate: 0.77,
     cb_rate: 0.07,
+    avg_revenue: 34500,
   },
 ];
 
@@ -543,7 +560,7 @@ export function generateDayData(
   const numShows = events.filter(e => e.event_type === 'show').length;
   for (let i = 0; i < numShows; i++) {
     if (rng() < closeRate) {
-      const revenue = Math.round(avgRevenue * (0.8 + rng() * 0.4));
+      const revenue = Math.round(avgRevenue * (0.65 + rng() * 0.70));
       events.push({
         client_id: clientId,
         event_type: 'closed',
