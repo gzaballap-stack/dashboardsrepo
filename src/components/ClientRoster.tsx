@@ -26,6 +26,7 @@ export default function ClientRoster() {
   const [newName, setNewName] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [linkedNote, setLinkedNote] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/clients")
@@ -45,6 +46,9 @@ export default function ClientRoster() {
     if (d.client) {
       setClients(prev => [...prev, { ...d.client, is_live: true }].sort((a, b) => a.name.localeCompare(b.name)));
       setNewName("");
+      setLinkedNote(d.linked_session
+        ? `Territory session “${d.linked_session.name}” moved into ${d.client.name} in the Zip Tool.`
+        : null);
     }
     setSaving(false);
   }
@@ -96,6 +100,9 @@ export default function ClientRoster() {
             {saving ? "Adding…" : "Add Client"}
           </button>
         </div>
+        {linkedNote && (
+          <p className="text-xs mt-3" style={{ color: "#15803d" }}>{linkedNote}</p>
+        )}
       </div>
 
       {/* Stats */}

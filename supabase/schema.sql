@@ -81,6 +81,8 @@ create table if not exists events (
   lead_name   text,
   lead_phone  text,
   lead_email  text,
+  zip_code    text,          -- lead's postal code — rolls events up per zip
+
 
   -- Agent
   agent_name      text,
@@ -208,6 +210,8 @@ create table if not exists zip_performance (
 );
 
 create index if not exists zip_perf_client on zip_performance(client_id);
+
+create index if not exists events_client_zip on events(client_id, zip_code) where zip_code is not null;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 12. Client Sessions (zip-tool territory sessions attached to a client — the

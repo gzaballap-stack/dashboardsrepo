@@ -43,7 +43,16 @@ type Client = { id: string; name: string; is_live: boolean };
 type ZipPerfRow = {
   zip_code: string; leads: number; appointments: number;
   shows: number; closes: number; revenue: number; notes?: string;
+  source?: "events" | "manual";
 };
+
+// One ad / creative behind a zip's leads, appointments, shows or closes.
+type CreativeRow = {
+  key: string; label: string; platform: string | null;
+  campaign: string | null; adset: string | null; count: number; revenue: number;
+};
+
+type PerfMetric = "leads" | "appointments" | "shows" | "closes";
 
 type ZipData = {
   zip: string;
@@ -113,21 +122,44 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, perfScore, onSavePerf }: {
+function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfData, perfScore, onSavePerf }: {
   data: ZipData | null; loading: boolean; zip: string; onClose: () => void;
-  clientName?: string; perfData?: ZipPerfRow | null; perfScore?: number | null;
+  clientId?: string; clientName?: string; perfData?: ZipPerfRow | null; perfScore?: number | null;
   onSavePerf?: (updates: Partial<ZipPerfRow>) => void;
 }) {
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
   const [showPlatforms, setShowPlatforms] = useState(false);
   const [activeTab, setActiveTab] = useState<"census" | "performance">("census");
   const [perfForm, setPerfForm] = useState<Partial<ZipPerfRow>>({});
+  const [openMetric, setOpenMetric] = useState<PerfMetric | null>(null);
+  const [breakdown, setBreakdown] = useState<CreativeRow[] | null>(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
   const gc = data ? gradeColor(data.grade) : "#6b6b6b";
 
   // Reset form when perfData changes
   useEffect(() => {
     setPerfForm(perfData ?? {});
   }, [perfData, zip]);
+
+  // Collapse any open drill-down when the panel moves to another zip
+  useEffect(() => {
+    setOpenMetric(null);
+    setBreakdown(null);
+  }, [zip]);
+
+  // Which ads / creatives produced this zip's leads, appointments, shows or closes
+  useEffect(() => {
+    if (!openMetric || !clientId) return;
+    let cancelled = false;
+    setBreakdownLoading(true);
+    setBreakdown(null);
+    fetch(`/api/zip-attribution?client_id=${clientId}&zip=${zip}&metric=${openMetric}`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setBreakdown(d.breakdown ?? []); })
+      .catch(() => { if (!cancelled) setBreakdown([]); })
+      .finally(() => { if (!cancelled) setBreakdownLoading(false); });
+    return () => { cancelled = true; };
+  }, [openMetric, clientId, zip]);
 
   return (
     <div className="zip-zippanel" style={{
@@ -188,16 +220,74 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, perfS
                   );
                 })()}
                 {([
-                  { label: "Leads",        value: perfData.leads,        color: "#000000" },
-                  { label: "Appointments", value: perfData.appointments, color: "#4a4a4a" },
-                  { label: "Shows",        value: perfData.shows,        color: "#000000" },
-                  { label: "Closes",       value: perfData.closes,       color: "#111111" },
-                ] as const).map(({ label, value, color }) => (
-                  <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 6, background: "rgba(0,0,0,0.041)" }}>
-                    <span style={{ fontSize: 11, color: "#767676" }}>{label}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color, fontFamily: "monospace" }}>{value}</span>
-                  </div>
-                ))}
+                  { metric: "leads",        label: "Leads",        value: perfData.leads,        color: "#000000" },
+                  { metric: "appointments", label: "Appointments", value: perfData.appointments, color: "#4a4a4a" },
+                  { metric: "shows",        label: "Shows",        value: perfData.shows,        color: "#000000" },
+                  { metric: "closes",       label: "Closes",       value: perfData.closes,       color: "#111111" },
+                ] as const).map(({ metric, label, value, color }) => {
+                  const isOpen     = openMetric === metric;
+                  const drillable  = Boolean(clientId) && value > 0;
+                  return (
+                    <div key={label}>
+                      <div
+                        onClick={() => drillable && setOpenMetric(isOpen ? null : metric)}
+                        style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          padding: "5px 8px", borderRadius: 6,
+                          background: isOpen ? "rgba(0,0,0,0.068)" : "rgba(0,0,0,0.041)",
+                          cursor: drillable ? "pointer" : "default",
+                        }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#767676" }}>
+                          {drillable && (
+                            <svg style={{ width: 9, height: 9, transform: isOpen ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.2s" }}
+                              fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                            </svg>
+                          )}
+                          {label}
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color, fontFamily: "monospace" }}>{value}</span>
+                      </div>
+
+                      {isOpen && (
+                        <div style={{ margin: "4px 0 2px", padding: "8px 9px", borderRadius: 7, background: "rgba(0,0,0,0.027)", border: "1px solid rgba(0,0,0,0.068)" }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: "#949494", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 6 }}>
+                            Ads &amp; creatives
+                          </div>
+                          {breakdownLoading && (
+                            <p style={{ fontSize: 10, color: "#949494", margin: 0, textAlign: "center", padding: "4px 0" }}>Loading…</p>
+                          )}
+                          {!breakdownLoading && breakdown?.length === 0 && (
+                            <p style={{ fontSize: 10, color: "#949494", margin: 0, lineHeight: 1.5 }}>
+                              No ad data on these {label.toLowerCase()} yet.
+                            </p>
+                          )}
+                          {!breakdownLoading && breakdown && breakdown.length > 0 && (() => {
+                            const top = breakdown[0].count || 1;
+                            return breakdown.map(row => (
+                              <div key={row.key} style={{ marginBottom: 6 }}>
+                                <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                                  <span style={{ flex: 1, minWidth: 0, fontSize: 10, fontWeight: 600, color: "#4a4a4a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                    {row.label}
+                                  </span>
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: "#111111", fontFamily: "monospace" }}>{row.count}</span>
+                                </div>
+                                {(row.campaign || row.platform) && (
+                                  <div style={{ fontSize: 9, color: "#949494", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                    {[row.platform, row.campaign, row.adset].filter(Boolean).join(" · ")}
+                                  </div>
+                                )}
+                                <div style={{ height: 3, borderRadius: 2, background: "rgba(0,0,0,0.054)", marginTop: 3, overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${(row.count / top) * 100}%`, background: "rgba(0,0,0,0.32)", borderRadius: 2 }} />
+                                </div>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
                 {perfData.revenue > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 6, background: "rgba(0,0,0,0.036)", marginTop: 2 }}>
                     <span style={{ fontSize: 11, color: "#767676" }}>Revenue</span>
@@ -1666,6 +1756,7 @@ export default function ZipTool() {
             data={zipData}
             loading={zipLoading}
             onClose={() => { setSelectedZip(null); setZipData(null); }}
+            clientId={connectedClient?.id}
             clientName={connectedClient?.name}
             perfData={clientPerf[selectedZip] ?? null}
             perfScore={perfCircles?.[selectedZip]?.score ?? null}

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
-import { pickAttribution, inheritAttribution } from '@/lib/attribution';
+import { pickAttribution, inheritAttribution, inheritZip } from '@/lib/attribution';
+import { normalizeZip } from '@/lib/zip-rollup';
 import { resolveClientId } from '@/lib/client-lookup';
 
 const VALID_EVENT_TYPES = ['dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked', 'closed'] as const;
@@ -84,6 +85,17 @@ export async function POST(req: Request) {
       }
     }
 
+    // Lead zip: whatever this event carries, else the contact's first known zip.
+    // Drives the per-zip performance rollup in the Zip Tool.
+    const zip_code = await inheritZip(service, {
+      client_id,
+      ghl_contact_id: payload.ghl_contact_id ?? null,
+      zip: normalizeZip(
+        payload.zip_code ?? payload.postal_code ?? payload.postalCode ??
+        payload.contact?.postalCode ?? payload.contact?.postal_code ?? null
+      ),
+    });
+
     // Ad attribution: use what this event carries, else inherit from the
     // contact's first attributed event (see lib/attribution).
     const attribution = await inheritAttribution(service, {
@@ -116,6 +128,7 @@ export async function POST(req: Request) {
       phone_number_used: payload.phone_number_used ?? null,
       stage_booked: payload.stage_booked ?? null,
       revenue: Number(payload.revenue) || 0,
+      zip_code,
 
       ...attribution,
 
@@ -123,9 +136,19 @@ export async function POST(req: Request) {
     };
 
     // Upsert on external_id when provided so rescheduled appointments don't duplicate
-    const { error } = payload.external_id
-      ? await service.from('events').upsert(eventData, { onConflict: 'external_id' })
-      : await service.from('events').insert(eventData);
+    const write = (row: typeof eventData | Omit<typeof eventData, 'zip_code'>) =>
+      payload.external_id
+        ? service.from('events').upsert(row, { onConflict: 'external_id' })
+        : service.from('events').insert(row);
+
+    let { error } = await write(eventData);
+
+    // A database that hasn't had the zip migration applied yet rejects the column
+    // outright. Retry without it rather than dropping the event on the floor.
+    if (error && /zip_code/.test(error.message)) {
+      const { zip_code: _zip, ...withoutZip } = eventData;
+      ({ error } = await write(withoutZip));
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ success: true });

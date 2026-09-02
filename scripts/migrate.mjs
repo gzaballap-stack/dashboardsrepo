@@ -264,4 +264,10 @@ await runSQL(`
   END $$;
 `, 'Add budget + result metrics to B2B ad tables');
 
+
+await runSQL(`
+  ALTER TABLE events ADD COLUMN IF NOT EXISTS zip_code text;
+  CREATE INDEX IF NOT EXISTS events_client_zip ON events (client_id, zip_code) WHERE zip_code IS NOT NULL;
+`, 'Add lead zip code to events');
+
 console.log('\nAll migrations complete.');

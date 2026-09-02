@@ -70,3 +70,29 @@ export async function inheritAttribution(
   for (const f of ATTRIBUTION_FIELDS) merged[f] = merged[f] ?? source[f] ?? null;
   return merged;
 }
+
+// Same first-touch idea for the lead's zip code. GHL puts the postal code on the
+// contact, so it rides in on the New Lead workflow; the appointment booked three
+// days later and the close after that carry nothing. Inheriting it is what lets a
+// close land in the same zip as the lead that produced it.
+export async function inheritZip(
+  service: Service,
+  opts: { client_id?: string | null; ghl_contact_id?: string | null; zip: string | null },
+): Promise<string | null> {
+  if (opts.zip) return opts.zip;
+  if (!opts.ghl_contact_id) return null;
+
+  let q = service
+    .from('events')
+    .select('zip_code')
+    .eq('ghl_contact_id', opts.ghl_contact_id)
+    .not('zip_code', 'is', null)
+    .order('occurred_at', { ascending: true })
+    .limit(1);
+
+  if (opts.client_id) q = q.eq('client_id', opts.client_id);
+
+  const { data, error } = await q;
+  if (error || !data?.length) return null;
+  return (data[0] as { zip_code: string | null }).zip_code ?? null;
+}
