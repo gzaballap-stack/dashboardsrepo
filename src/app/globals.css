@@ -76,4 +76,6 @@ select option { background: #ffffff; color: #111111; }
 
 /* Wide tables scroll sideways on their own; let them do it with momentum and
    without the page rubber-banding along. */
-.overflow-x-auto { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+@media (max-width: 767px) {
+  .overflow-x-auto { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+}
