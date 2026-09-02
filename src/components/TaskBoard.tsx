@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Bucket = "A" | "B" | "C" | "D" | "E";
-type Scope = "day" | "week";
+type Scope = "day" | "week" | "backlog";
+type ViewMode = "day" | "week" | "month";
 
 type Task = {
   id: string;
@@ -17,7 +18,7 @@ type Task = {
   delegate_to: string | null;
   created_at: string;
   completed_at: string | null;
-  task_date: string;
+  task_date: string | null;
   scope: Scope;
 };
 
@@ -62,6 +63,8 @@ const parseISO = (s: string) => new Date(`${s}T00:00:00`);
 const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 // Weeks run Monday → Sunday.
 const weekStart = (d: Date) => addDays(d, -((d.getDay() + 6) % 7));
+const monthStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+const addMonths = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth() + n, 1);
 
 function dayLabel(dateISO: string) {
   const d = parseISO(dateISO);
@@ -88,13 +91,25 @@ function weekLabel(startISO: string) {
   };
 }
 
+function monthLabel(startISO: string) {
+  const d = parseISO(startISO);
+  const now = monthStart(new Date());
+  const diff = (d.getFullYear() - now.getFullYear()) * 12 + (d.getMonth() - now.getMonth());
+  return {
+    main: d.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+    badge: diff === 0 ? "This Month" : diff === -1 ? "Last Month" : null,
+    past: diff < 0,
+  };
+}
+
 export default function TaskBoard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [scope, setScope] = useState<Scope>("day");
+  const [view, setView] = useState<ViewMode>("day");
   const [dayDate, setDayDate] = useState(() => iso(new Date()));
   const [weekDate, setWeekDate] = useState(() => iso(weekStart(new Date())));
+  const [monthDate, setMonthDate] = useState(() => iso(monthStart(new Date())));
   const [hideDone, setHideDone] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newBucket, setNewBucket] = useState<Bucket>("A");
@@ -103,9 +118,14 @@ export default function TaskBoard() {
   const [dropZone, setDropZone] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [showList, setShowList] = useState(false);
+  const [listTitle, setListTitle] = useState("");
+  const [listBucket, setListBucket] = useState<Bucket>("A");
   const addRef = useRef<HTMLInputElement>(null);
 
-  const anchor = scope === "day" ? dayDate : weekDate;
+  // The board only ever plans a day or a week; "month" is a review of what got done.
+  const scope: Scope = view === "week" ? "week" : "day";
+  const anchor = view === "week" ? weekDate : dayDate;
 
   useEffect(() => {
     fetch("/api/tasks")
@@ -136,12 +156,14 @@ export default function TaskBoard() {
     [visible],
   );
 
+  const draggingFromList = dragId != null && tasks.some(t => t.id === dragId && t.scope === "backlog");
+
   const doneCount = visible.filter(t => t.done).length;
   const pct = visible.length ? Math.round((doneCount / visible.length) * 100) : 0;
 
   // Unfinished work left behind on earlier days/weeks.
   const stranded = useMemo(
-    () => tasks.filter(t => t.scope === scope && !t.done && t.task_date < anchor),
+    () => tasks.filter(t => t.scope === scope && !t.done && !!t.task_date && t.task_date < anchor),
     [tasks, scope, anchor],
   );
 
@@ -162,6 +184,51 @@ export default function TaskBoard() {
       };
     });
   }, [tasks, dayDate]);
+
+  // The long-term to-do list: everything captured but not yet placed on a day.
+  const backlog = useMemo(
+    () => tasks.filter(t => t.scope === "backlog" && !t.done)
+                .sort((a, b) => a.position - b.position),
+    [tasks],
+  );
+
+  // Month review: a Mon-Sun grid of the month, plus everything completed in it.
+  const month = useMemo(() => {
+    const first = parseISO(monthDate);
+    const gridStart = weekStart(first);
+    const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+    const weeks = Math.ceil((Math.round((last.getTime() - gridStart.getTime()) / 86400000) + 1) / 7);
+
+    const cells = Array.from({ length: weeks * 7 }, (_, i) => {
+      const d = addDays(gridStart, i);
+      const key = iso(d);
+      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key);
+      return {
+        key,
+        num: d.getDate(),
+        inMonth: d.getMonth() === first.getMonth(),
+        isToday: key === iso(new Date()),
+        total: dayTasks.length,
+        done: dayTasks.filter(t => t.done).length,
+      };
+    });
+
+    // Group completions by the day they were actually ticked off.
+    const prefix = monthDate.slice(0, 7);
+    const completedOn = (t: Task) => (t.completed_at ? t.completed_at.slice(0, 10) : t.task_date) ?? "";
+    const completed = tasks
+      .filter(t => t.done && completedOn(t).startsWith(prefix))
+      .sort((a, b) => completedOn(b).localeCompare(completedOn(a)) || a.position - b.position);
+
+    const byDay: { date: string; items: Task[] }[] = [];
+    for (const t of completed) {
+      const key = completedOn(t);
+      const row = byDay.find(r => r.date === key);
+      if (row) row.items.push(t); else byDay.push({ date: key, items: [t] });
+    }
+
+    return { cells, weeks, byDay, count: completed.length };
+  }, [tasks, monthDate]);
 
   async function addTask() {
     const title = newTitle.trim();
@@ -193,6 +260,33 @@ export default function TaskBoard() {
     await fetch(`/api/tasks?id=${id}`, { method: "DELETE" });
   }
 
+  // Capture something into the long-term list (no date yet).
+  async function addToList() {
+    const title = listTitle.trim();
+    if (!title) return;
+    setListTitle("");
+    const res = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, bucket: listBucket, priority: 1, position: Date.now(), scope: "backlog" }),
+    });
+    const d = await res.json();
+    if (d.task) setTasks(prev => [...prev, d.task]);
+  }
+
+  // Slide a list item into the day (or week) currently in view.
+  function schedule(task: Task) {
+    const siblings = visible.filter(t => t.bucket === task.bucket && t.priority === task.priority);
+    const max = siblings.reduce((m, t) => Math.max(m, t.position), 0);
+    patch(task.id, { scope, task_date: anchor, position: max + 1000 });
+  }
+
+  // Put a planned task back on the long-term list.
+  function unschedule(task: Task) {
+    patch(task.id, { scope: "backlog", task_date: null });
+    setExpandedId(null);
+  }
+
   async function pullForward() {
     const ids = stranded.map(t => t.id);
     setTasks(prev => prev.map(t => (ids.includes(t.id) ? { ...t, task_date: anchor } : t)));
@@ -208,7 +302,7 @@ export default function TaskBoard() {
     if (!dragId) return;
     const siblings = visible.filter(t => t.bucket === bucket && t.priority === priority && t.id !== dragId);
     const max = siblings.reduce((m, t) => Math.max(m, t.position), 0);
-    patch(dragId, { bucket, priority, position: max + 1000 });
+    patch(dragId, { bucket, priority, position: max + 1000, scope, task_date: anchor });
     setDragId(null); setDropZone(null);
   }
 
@@ -220,19 +314,26 @@ export default function TaskBoard() {
       .sort((a, b) => a.position - b.position);
     const i = lane.findIndex(t => t.id === target.id);
     const before = i > 0 ? lane[i - 1].position : target.position - 2000;
-    patch(dragId, { bucket: target.bucket, priority: target.priority, position: (before + target.position) / 2 });
+    patch(dragId, { bucket: target.bucket, priority: target.priority, position: (before + target.position) / 2, scope, task_date: anchor });
     setDragId(null); setDropZone(null);
   }
 
   function step(n: number) {
-    if (scope === "day") setDayDate(iso(addDays(parseISO(dayDate), n)));
-    else setWeekDate(iso(addDays(parseISO(weekDate), n * 7)));
+    if (view === "day") setDayDate(iso(addDays(parseISO(dayDate), n)));
+    else if (view === "week") setWeekDate(iso(addDays(parseISO(weekDate), n * 7)));
+    else setMonthDate(iso(addMonths(parseISO(monthDate), n)));
   }
 
   function jumpToToday() {
-    if (scope === "day") setDayDate(iso(new Date()));
-    else setWeekDate(iso(weekStart(new Date())));
+    if (view === "day") setDayDate(iso(new Date()));
+    else if (view === "week") setWeekDate(iso(weekStart(new Date())));
+    else setMonthDate(iso(monthStart(new Date())));
   }
+
+  const atToday =
+    view === "day"   ? dayDate   === iso(new Date())
+  : view === "week"  ? weekDate  === iso(weekStart(new Date()))
+                     : monthDate === iso(monthStart(new Date()));
 
   function Card({ task, accent }: { task: Task; accent: string }) {
     const open = expandedId === task.id;
@@ -336,7 +437,7 @@ export default function TaskBoard() {
             <Field label={scope === "day" ? "Move to day" : "Move to week"}>
               <input
                 type="date"
-                value={task.task_date}
+                value={task.task_date ?? ""}
                 onChange={e => {
                   if (!e.target.value) return;
                   const d = parseISO(e.target.value);
@@ -386,6 +487,14 @@ export default function TaskBoard() {
                 >{l.label}</button>
               ))}
             </div>
+            <button
+              onClick={() => unschedule(task)}
+              style={{ alignSelf: "flex-start", fontSize: 10, fontWeight: 700, color: "#767676", cursor: "pointer" }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
+            >
+              ← Back to to-do list
+            </button>
           </div>
         )}
       </div>
@@ -437,12 +546,13 @@ export default function TaskBoard() {
     );
   }
 
-  const label = scope === "day" ? dayLabel(dayDate) : weekLabel(weekDate);
+  const label = view === "day" ? dayLabel(dayDate) : view === "week" ? weekLabel(weekDate) : monthLabel(monthDate);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
       {/* ── Frog banner ── */}
+      {view !== "month" && (
       <div style={{
         background: frog ? "linear-gradient(90deg, rgba(0,0,0,0.07), rgba(0,0,0,0.014))" : PANEL_BG,
         border: `1px solid ${frog ? "rgba(0,0,0,0.14)" : "rgba(0,0,0,0.081)"}`,
@@ -482,6 +592,7 @@ export default function TaskBoard() {
           </button>
         )}
       </div>
+      )}
 
       {showGuide && <FrogGuide onClose={() => setShowGuide(false)} />}
 
@@ -489,18 +600,18 @@ export default function TaskBoard() {
       <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
 
-          {/* Day / Week switch */}
+          {/* Day / Week / Month switch */}
           <div style={{ display: "flex", background: "rgba(0,0,0,0.054)", borderRadius: 8, padding: 2 }}>
-            {(["day", "week"] as Scope[]).map(s => (
+            {(["day", "week", "month"] as ViewMode[]).map(v => (
               <button
-                key={s}
-                onClick={() => setScope(s)}
+                key={v}
+                onClick={() => setView(v)}
                 style={{
-                  padding: "6px 14px", borderRadius: 6, fontSize: 11.5, fontWeight: 700, cursor: "pointer",
-                  background: scope === s ? "#000000" : "transparent",
-                  color: scope === s ? "#fff" : "#767676",
+                  padding: "6px 13px", borderRadius: 6, fontSize: 11.5, fontWeight: 700, cursor: "pointer", textTransform: "capitalize",
+                  background: view === v ? "#000000" : "transparent",
+                  color: view === v ? "#fff" : "#767676",
                 }}
-              >{s === "day" ? "Day" : "Week"}</button>
+              >{v}</button>
             ))}
           </div>
 
@@ -521,29 +632,57 @@ export default function TaskBoard() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
-            <input
-              type="date"
-              value={anchor}
-              onChange={e => {
-                if (!e.target.value) return;
-                const d = parseISO(e.target.value);
-                if (scope === "day") setDayDate(iso(d)); else setWeekDate(iso(weekStart(d)));
-              }}
-              style={{ ...fieldStyle, width: "auto", fontSize: 11 }}
-            />
-            {anchor !== (scope === "day" ? iso(new Date()) : iso(weekStart(new Date()))) && (
+            {view === "month" ? (
+              <input
+                type="month"
+                value={monthDate.slice(0, 7)}
+                onChange={e => { if (e.target.value) setMonthDate(`${e.target.value}-01`); }}
+                style={{ ...fieldStyle, width: "auto", fontSize: 11 }}
+              />
+            ) : (
+              <input
+                type="date"
+                value={anchor}
+                onChange={e => {
+                  if (!e.target.value) return;
+                  const d = parseISO(e.target.value);
+                  if (view === "day") setDayDate(iso(d)); else setWeekDate(iso(weekStart(d)));
+                }}
+                style={{ ...fieldStyle, width: "auto", fontSize: 11 }}
+              />
+            )}
+            {!atToday && (
               <button
                 onClick={jumpToToday}
                 style={{ fontSize: 11, fontWeight: 700, color: "#000000", cursor: "pointer", whiteSpace: "nowrap" }}
               >
-                {scope === "day" ? "Today" : "This week"}
+                {view === "day" ? "Today" : view === "week" ? "This week" : "This month"}
               </button>
             )}
+            <button
+              onClick={() => setShowList(true)}
+              title="Your long-term to-do list"
+              style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 8, cursor: "pointer",
+                background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
+                fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
+              }}
+            >
+              <svg style={{ width: 13, height: 13 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              To-Do List
+              {backlog.length > 0 && (
+                <span style={{ background: "#000000", color: "#fff", fontSize: 9.5, fontWeight: 800, padding: "1px 6px", borderRadius: 20 }}>
+                  {backlog.length}
+                </span>
+              )}
+            </button>
           </div>
         </div>
 
         {/* Day strip (Mon–Sun of the week in view) */}
-        {scope === "day" && (
+        {view === "day" && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5 }}>
             {strip.map(d => {
               const active = d.key === dayDate;
@@ -569,6 +708,7 @@ export default function TaskBoard() {
         )}
 
         {/* Progress */}
+        {view !== "month" && (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ flex: 1, height: 4, borderRadius: 4, background: "rgba(0,0,0,0.068)", overflow: "hidden" }}>
             <div style={{ width: `${pct}%`, height: "100%", background: pct === 100 ? "#5a5a5a" : "#000000", transition: "width 200ms" }} />
@@ -577,7 +717,10 @@ export default function TaskBoard() {
             {doneCount} of {visible.length} done
           </span>
         </div>
+        )}
       </div>
+
+      {view !== "month" && (<>
 
       {/* ── Carried-over work ── */}
       {stranded.length > 0 && (
@@ -701,6 +844,230 @@ export default function TaskBoard() {
           })}
         </div>
       </div>
+      </>)}
+
+      {/* ── Month review ── */}
+      {view === "month" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+          <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 12, padding: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5, marginBottom: 6 }}>
+              {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
+                <p key={i} style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: "0.08em", color: "#949494", textAlign: "center" }}>{d}</p>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5 }}>
+              {month.cells.map(c => {
+                const complete = c.total > 0 && c.done === c.total;
+                return (
+                  <button
+                    key={c.key}
+                    onClick={() => { setDayDate(c.key); setView("day"); }}
+                    title={c.total ? `${c.done} of ${c.total} done` : "Nothing planned"}
+                    style={{
+                      minHeight: 62, padding: "6px 4px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                      opacity: c.inMonth ? 1 : 0.32,
+                      background: complete ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.027)",
+                      border: `1px solid ${c.isToday ? "rgba(0,0,0,0.42)" : "transparent"}`,
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#111111", lineHeight: 1 }}>{c.num}</span>
+                    {c.total > 0 ? (
+                      <>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: complete ? "#111111" : "#767676" }}>{c.done}/{c.total}</span>
+                        <span style={{ width: "72%", height: 3, borderRadius: 3, background: "rgba(0,0,0,0.09)", overflow: "hidden", display: "block" }}>
+                          <span style={{ display: "block", height: "100%", width: `${Math.round((c.done / c.total) * 100)}%`, background: "#111111" }} />
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 9, color: "#c2c2c2" }}>—</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 12, padding: 16 }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#949494", marginBottom: 12 }}>
+              COMPLETED THIS MONTH — {month.count}
+            </p>
+            {month.byDay.length === 0 ? (
+              <p style={{ fontSize: 12, color: "#949494" }}>Nothing was completed in this month yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {month.byDay.map(row => (
+                  <div key={row.date}>
+                    <button
+                      onClick={() => { setDayDate(row.date); setView("day"); }}
+                      style={{ fontSize: 10.5, fontWeight: 800, color: "#4a4a4a", marginBottom: 5, cursor: "pointer" }}
+                    >
+                      {parseISO(row.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                    </button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      {row.items.map(t => (
+                        <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{
+                            flexShrink: 0, width: 16, height: 16, borderRadius: 5, fontSize: 9, fontWeight: 900,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            background: hexA(BUCKETS.find(b => b.id === t.bucket)!.color, 0.13),
+                            color: BUCKETS.find(b => b.id === t.bucket)!.color,
+                          }}>{t.bucket}</span>
+                          <span style={{ fontSize: 12, color: "#4a4a4a", textDecoration: "line-through" }}>{t.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Long-term to-do list ── */}
+      {showList && (
+        <div
+          onClick={() => setShowList(false)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 55, display: "flex", justifyContent: "flex-end",
+            background: draggingFromList ? "transparent" : "rgba(0,0,0,0.35)",
+            pointerEvents: draggingFromList ? "none" : "auto",
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: 380, maxWidth: "100%", height: "100%", background: "#ffffff", pointerEvents: "auto",
+              boxShadow: "-14px 0 40px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column",
+              opacity: draggingFromList ? 0.5 : 1, transition: "opacity 120ms",
+            }}
+          >
+            <div style={{ padding: "16px 18px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>To-Do List</p>
+                <p style={{ fontSize: 10.5, color: "#949494" }}>
+                  {backlog.length === 0 ? "Everything captured is scheduled" : `${backlog.length} waiting to be scheduled`}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowList(false)}
+                style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#949494", cursor: "pointer", background: "rgba(0,0,0,0.045)" }}
+              >
+                <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div style={{ padding: "12px 14px", borderBottom: BORDER, display: "flex", flexDirection: "column", gap: 8 }}>
+              <input
+                value={listTitle}
+                onChange={e => setListTitle(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") addToList(); }}
+                placeholder="Something you want to get done…"
+                style={{ ...fieldStyle, fontSize: 12.5, padding: "8px 11px" }}
+              />
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 3, flex: 1 }}>
+                  {BUCKETS.map(b => (
+                    <button
+                      key={b.id}
+                      onClick={() => setListBucket(b.id)}
+                      title={b.name}
+                      style={{
+                        width: 26, height: 28, borderRadius: 6, fontSize: 11, fontWeight: 800, cursor: "pointer",
+                        background: listBucket === b.id ? hexA(b.color, 0.16) : "rgba(0,0,0,0.041)",
+                        border: `1px solid ${listBucket === b.id ? hexA(b.color, 0.4) : "rgba(0,0,0,0.081)"}`,
+                        color: listBucket === b.id ? b.color : "#767676",
+                      }}
+                    >{b.letter}</button>
+                  ))}
+                </div>
+                <button
+                  onClick={addToList}
+                  style={{ background: "#000000", color: "#fff", fontSize: 12, fontWeight: 700, padding: "7px 15px", borderRadius: 7, cursor: "pointer" }}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+              {backlog.length === 0 ? (
+                <p style={{ fontSize: 12, color: "#949494", textAlign: "center", padding: "40px 20px", lineHeight: 1.6 }}>
+                  Nothing on the list. Add what you want to get done, then slide items into a day when you plan it.
+                </p>
+              ) : (
+                <>
+                  <p style={{ fontSize: 10, color: "#949494", marginBottom: 8, lineHeight: 1.5 }}>
+                    Drag an item onto the board, or use → to drop it into the {view === "week" ? "week" : "day"} you're viewing.
+                  </p>
+                  {backlog.map(t => {
+                    const b = BUCKETS.find(x => x.id === t.bucket)!;
+                    return (
+                      <div
+                        key={t.id}
+                        draggable
+                        onDragStart={e => { setDragId(t.id); e.dataTransfer.effectAllowed = "move"; }}
+                        onDragEnd={() => { setDragId(null); setDropZone(null); }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", marginBottom: 5,
+                          background: "#ffffff", border: "1px solid rgba(0,0,0,0.09)", borderLeft: `2px solid ${hexA(b.color, 0.75)}`,
+                          borderRadius: 7, cursor: "grab",
+                        }}
+                      >
+                        <button
+                          onClick={() => patch(t.id, { done: true, scope: "day", task_date: iso(new Date()) })}
+                          title="Mark done (files it under today)"
+                          style={{
+                            flexShrink: 0, width: 14, height: 14, borderRadius: 4, cursor: "pointer",
+                            border: "1.5px solid rgba(0,0,0,0.22)", background: "transparent",
+                          }}
+                        />
+                        <span style={{
+                          flexShrink: 0, width: 17, height: 17, borderRadius: 5, fontSize: 9.5, fontWeight: 900,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          background: hexA(b.color, 0.13), color: b.color,
+                        }}>{t.bucket}</span>
+                        <input
+                          defaultValue={t.title}
+                          onBlur={e => { const v = e.target.value.trim(); if (v && v !== t.title) patch(t.id, { title: v }); }}
+                          style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#111111", background: "transparent", outline: "none", border: "none" }}
+                        />
+                        <button
+                          onClick={() => schedule(t)}
+                          title={`Add to the ${view === "week" ? "week" : "day"} you're viewing`}
+                          style={{ flexShrink: 0, color: "#767676", cursor: "pointer", lineHeight: 0, padding: 2 }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
+                        >
+                          <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => remove(t.id)}
+                          title="Delete"
+                          style={{ flexShrink: 0, color: "#c2c2c2", cursor: "pointer", lineHeight: 0, padding: 2 }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#c2c2c2"}
+                        >
+                          <svg style={{ width: 11, height: 11 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
