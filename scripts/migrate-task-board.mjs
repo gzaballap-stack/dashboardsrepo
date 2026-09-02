@@ -1,4 +1,4 @@
-// Applies supabase/migrations/add_task_board_dates.sql to BOTH environments.
+// Applies supabase/migrations/add_task_from_list.sql to BOTH environments.
 // Additive only — creates the `tasks` table. Nothing existing is modified.
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -17,7 +17,7 @@ const env = (file) =>
     }, {});
 
 const TOKEN = env('.env.local')['SUPABASE_ACCESS_TOKEN'];
-const sql = readFileSync(resolve(root, 'supabase/migrations/add_task_board_dates.sql'), 'utf-8');
+const sql = readFileSync(resolve(root, 'supabase/migrations/add_task_from_list.sql'), 'utf-8');
 
 for (const file of ['.env.v1', '.env.v2']) {
   const ref = new URL(env(file)['NEXT_PUBLIC_SUPABASE_URL']).hostname.split('.')[0];

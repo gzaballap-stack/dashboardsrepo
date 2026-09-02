@@ -20,6 +20,7 @@ type Task = {
   completed_at: string | null;
   task_date: string | null;
   scope: Scope;
+  from_list: boolean;
 };
 
 const BUCKETS: { id: Bucket; letter: string; name: string; blurb: string; color: string }[] = [
@@ -184,10 +185,16 @@ export default function TaskBoard() {
 
   // The long-term to-do list: everything captured but not yet placed on a day.
   const backlog = useMemo(
-    () => tasks.filter(t => t.scope === "backlog" && !t.done)
+    () => tasks.filter(t => !t.done && (t.scope === "backlog" || t.from_list))
                 .sort((a, b) => a.position - b.position),
     [tasks],
   );
+
+  // Scheduling a list item keeps it on the list — only ticking it off removes it.
+  const staysOnList = (id: string | null) => {
+    const t = tasks.find(x => x.id === id);
+    return !!t && (t.scope === "backlog" || t.from_list);
+  };
 
   // Month review: a Mon-Sun grid of the month, plus everything completed in it.
   const month = useMemo(() => {
@@ -261,12 +268,12 @@ export default function TaskBoard() {
   function schedule(task: Task) {
     const siblings = visible.filter(t => t.bucket === task.bucket && t.priority === task.priority);
     const max = siblings.reduce((m, t) => Math.max(m, t.position), 0);
-    patch(task.id, { scope, task_date: anchor, position: max + 1000 });
+    patch(task.id, { scope, task_date: anchor, position: max + 1000, from_list: true });
   }
 
   // Put a planned task back on the long-term list.
   function unschedule(task: Task) {
-    patch(task.id, { scope: "backlog", task_date: null });
+    patch(task.id, { scope: "backlog", task_date: null, from_list: false });
     setExpandedId(null);
   }
 
@@ -285,7 +292,7 @@ export default function TaskBoard() {
     if (!dragId) return;
     const siblings = visible.filter(t => t.bucket === bucket && t.priority === priority && t.id !== dragId);
     const max = siblings.reduce((m, t) => Math.max(m, t.position), 0);
-    patch(dragId, { bucket, priority, position: max + 1000, scope, task_date: anchor });
+    patch(dragId, { bucket, priority, position: max + 1000, scope, task_date: anchor, from_list: staysOnList(dragId) });
     setDragId(null); setDropZone(null);
   }
 
@@ -297,7 +304,7 @@ export default function TaskBoard() {
       .sort((a, b) => a.position - b.position);
     const i = lane.findIndex(t => t.id === target.id);
     const before = i > 0 ? lane[i - 1].position : target.position - 2000;
-    patch(dragId, { bucket: target.bucket, priority: target.priority, position: (before + target.position) / 2, scope, task_date: anchor });
+    patch(dragId, { bucket: target.bucket, priority: target.priority, position: (before + target.position) / 2, scope, task_date: anchor, from_list: staysOnList(dragId) });
     setDragId(null); setDropZone(null);
   }
 
@@ -307,7 +314,7 @@ export default function TaskBoard() {
     const max = tasks
       .filter(t => t.scope === "day" && t.task_date === dateISO && t.id !== dragId)
       .reduce((m, t) => Math.max(m, t.position), 0);
-    patch(dragId, { scope: "day", task_date: dateISO, position: max + 1000 });
+    patch(dragId, { scope: "day", task_date: dateISO, position: max + 1000, from_list: staysOnList(dragId) });
     setDragId(null); setDropZone(null);
   }
 
@@ -947,7 +954,9 @@ export default function TaskBoard() {
                   <p style={{ fontSize: 10, color: "#949494", marginBottom: 8, lineHeight: 1.5 }}>
                     Drag an item onto a column, onto a day in the strip above, or onto a date in Month view. Or press → to drop it into the {view === "week" ? "week" : "day"} you&rsquo;re viewing.
                   </p>
-                  {backlog.map(t => (
+                  {backlog.map(t => {
+                    const placed = t.scope !== "backlog" && !!t.task_date;
+                    return (
                       <div
                         key={t.id}
                         draggable
@@ -960,8 +969,10 @@ export default function TaskBoard() {
                         }}
                       >
                         <button
-                          onClick={() => patch(t.id, { done: true, scope: "day", task_date: iso(new Date()) })}
-                          title="Mark done (files it under today)"
+                          onClick={() => patch(t.id, placed
+                            ? { done: true }
+                            : { done: true, scope: "day", task_date: iso(new Date()) })}
+                          title={placed ? "Mark done" : "Mark done (files it under today)"}
                           style={{
                             flexShrink: 0, width: 14, height: 14, borderRadius: 4, cursor: "pointer",
                             border: "1.5px solid rgba(0,0,0,0.22)", background: "transparent",
@@ -972,6 +983,18 @@ export default function TaskBoard() {
                           onBlur={e => { const v = e.target.value.trim(); if (v && v !== t.title) patch(t.id, { title: v }); }}
                           style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#111111", background: "transparent", outline: "none", border: "none" }}
                         />
+                        {placed && (
+                          <span
+                            title={`Planned for ${t.scope === "week" ? "the week of " : ""}${parseISO(t.task_date!).toLocaleDateString("en-US", { month: "long", day: "numeric" })}`}
+                            style={{
+                              flexShrink: 0, fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4,
+                              background: "rgba(0,0,0,0.07)", color: "#4a4a4a", whiteSpace: "nowrap",
+                            }}
+                          >
+                            {t.scope === "week" ? "wk " : ""}
+                            {parseISO(t.task_date!).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </span>
+                        )}
                         <button
                           onClick={() => schedule(t)}
                           title={`Add to the ${view === "week" ? "week" : "day"} you're viewing`}
@@ -995,7 +1018,8 @@ export default function TaskBoard() {
                           </svg>
                         </button>
                       </div>
-                  ))}
+                    );
+                  })}
                 </>
               )}
             </div>

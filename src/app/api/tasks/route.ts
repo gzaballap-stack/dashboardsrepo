@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 
 const BUCKETS = ['A', 'B', 'C', 'D', 'E'] as const;
-const COLS = 'id, title, notes, bucket, priority, position, done, due_date, delegate_to, created_at, completed_at, task_date, scope';
+const COLS = 'id, title, notes, bucket, priority, position, done, due_date, delegate_to, created_at, completed_at, task_date, scope, from_list';
 const SCOPES = ['day', 'week', 'backlog'] as const;
 
 export async function GET() {
@@ -43,6 +43,7 @@ export async function POST(req: Request) {
       delegate_to: body.delegate_to ?? null,
       task_date: body.scope === 'backlog' ? null : (body.task_date ?? new Date().toISOString().slice(0, 10)),
       scope: SCOPES.includes(body.scope) ? body.scope : 'day',
+      from_list: body.from_list === true,
     })
     .select(COLS)
     .single();
@@ -68,6 +69,7 @@ export async function PATCH(req: Request) {
   if ('delegate_to' in body) patch.delegate_to = body.delegate_to || null;
   if ('task_date' in body) patch.task_date = body.task_date || null;
   if (SCOPES.includes(body.scope)) patch.scope = body.scope;
+  if (typeof body.from_list === 'boolean') patch.from_list = body.from_list;
   if (typeof body.done === 'boolean') {
     patch.done = body.done;
     patch.completed_at = body.done ? new Date().toISOString() : null;
