@@ -107,6 +107,15 @@ function KpiCard({ label, value, accent = false }: { label: string; value: strin
   );
 }
 
+function B2BStat({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] font-semibold uppercase tracking-wider truncate" style={{ color: "#949494" }}>{label}</div>
+      <div className="text-sm tabular-nums truncate" style={{ color: strong ? "#111111" : "#4a4a4a", fontWeight: strong ? 600 : 400 }}>{value}</div>
+    </div>
+  );
+}
+
 export default function B2BTracking({ startDate, endDate }: Props) {
   const [data, setData] = useState<B2BMetrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -196,7 +205,65 @@ export default function B2BTracking({ startDate, endDate }: Props) {
       {/* ── Campaign Overview-style table row ── */}
       <section>
         <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>B2B Campaign — Overview</h2>
-        <div className="rounded-2xl overflow-x-auto" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+        {/* Phone: the same rows as cards. The 13-column table below is what
+            desktop gets and is unchanged. */}
+        <div className="md:hidden space-y-3">
+          {(data.campaigns.length > 0 ? data.campaigns : [null]).map(camp => {
+            const singleCamp = data.campaigns.length === 1 || camp === null;
+            const campSpend = camp ? camp.spend : data.ad_spend;
+            const campCtr   = camp ? camp.ctr   : data.ctr;
+            const campCpc   = camp ? camp.cpc   : data.cpc;
+            const campId    = camp?.campaign_id ?? 'total';
+            const campName  = camp?.campaign_name
+              || (camp?.campaign_id ? `Campaign …${camp.campaign_id.slice(-8)}` : "B2B Account Total");
+            const isSelected = drawerEntity?.kind === "b2b" && drawerEntity.id === campId;
+            return (
+              <div key={campId} className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+                <button
+                  onClick={() => setDrawerEntity(isSelected ? null : { kind: "b2b", name: campName, id: campId, data, startDate, endDate })}
+                  className="w-full text-left px-4 py-3"
+                >
+                  <div className="flex items-start gap-2">
+                    <svg className="w-3 h-3 mt-1 flex-shrink-0 transition-transform" style={{ color: "#767676", transform: isSelected ? "rotate(90deg)" : "none" }}
+                      fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                    <span className="font-semibold text-sm flex-1 min-w-0 break-words" style={{ color: "#111111" }}>{campName}</span>
+                    {singleCamp && (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold flex-shrink-0" style={{ color: stStyle.color, background: stStyle.bg }}>
+                        {stStyle.label}
+                      </span>
+                    )}
+                  </div>
+
+                  {singleCamp && (
+                    <div className="mt-2">
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ color: bnStyle.color, background: bnStyle.bg }}>{bottleneck}</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-x-3 gap-y-2.5 mt-3">
+                    <B2BStat label="Spend"     value={campSpend > 0 ? fmt$(campSpend) : "—"} strong />
+                    <B2BStat label="Schedules" value={singleCamp && data.intros_booked > 0 ? fmtN(data.intros_booked) : "—"} strong />
+                    <B2BStat label="CPL"       value={singleCamp && data.cost_per_lead > 0 ? fmt$(data.cost_per_lead) : "—"} />
+                    <B2BStat label="CTR"       value={campCtr != null ? fmtPct(campCtr) : "—"} />
+                    <B2BStat label="CPC"       value={campCpc != null ? `$${fmtDec(campCpc)}` : "—"} />
+                    <B2BStat label="Demos"     value={singleCamp && data.intros_shown > 0 ? fmtN(data.intros_shown) : "—"} strong />
+                  </div>
+
+                  {singleCamp && action && (
+                    <p className="text-xs mt-3 leading-snug" style={{ color: "#6b6b6b" }}>{action}</p>
+                  )}
+                </button>
+                {isSelected && drawerEntity && (
+                  <CampaignDetailDrawer entity={drawerEntity} onClose={() => setDrawerEntity(null)} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="hidden md:block rounded-2xl overflow-x-auto" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
           <table className="w-full text-sm" style={{ minWidth: 1100 }}>
             <thead>
               <tr style={{ background: "#f7f7f7", color: "#6b6b6b" }}>

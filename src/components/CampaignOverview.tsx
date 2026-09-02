@@ -80,6 +80,64 @@ const BOTTLENECK_STYLE: Record<string, { color: string; bg: string }> = {
 };
 
 
+/* ── Phone card ────────────────────────────────────────────────────────────
+   One client per card, tappable to open the same detail drawer the table row
+   opens. Rendered only below the md breakpoint; desktop never sees it. */
+function Stat({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] font-semibold uppercase tracking-wider truncate" style={{ color: "#949494" }}>{label}</div>
+      <div className="text-sm tabular-nums truncate" style={{ color: strong ? "#111111" : "#4a4a4a", fontWeight: strong ? 600 : 400 }}>{value}</div>
+    </div>
+  );
+}
+
+function MobileClientCard({ row, isOpen, onToggle, children }: {
+  row: ClientRollup;
+  isOpen: boolean;
+  onToggle: () => void;
+  children?: React.ReactNode;
+}) {
+  const st = STATUS_STYLE[row.status];
+  const rk = RANK_STYLE[row.rank];
+  const bn = BOTTLENECK_STYLE[row.bottleneck] ?? { color: "#4a4a4a", bg: "rgba(0,0,0,0.06)" };
+  return (
+    <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+      <button onClick={onToggle} className="w-full text-left px-4 py-3">
+        <div className="flex items-start gap-2">
+          <svg className="w-3 h-3 mt-1 flex-shrink-0 transition-transform" style={{ color: "#767676", transform: isOpen ? "rotate(90deg)" : "none" }}
+            fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+          <span className="font-semibold text-sm flex-1 min-w-0 break-words" style={{ color: "#111111" }}>{row.client_name}</span>
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold flex-shrink-0" style={{ color: st.color, background: st.bg }}>
+            {st.label}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ color: rk.color, background: rk.bg }}>{row.rank}</span>
+          <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold" style={{ color: bn.color, background: bn.bg }}>{row.bottleneck}</span>
+        </div>
+
+        <div className="grid grid-cols-3 gap-x-3 gap-y-2.5 mt-3">
+          <Stat label="Spend"   value={fmt$(row.spend)} strong />
+          <Stat label="Leads"   value={fmtInt(row.leads)} strong />
+          <Stat label="CPL"     value={row.cpl > 0 ? fmt$(row.cpl) : "—"} />
+          <Stat label="Appts"   value={fmtInt(row.appts)} strong />
+          <Stat label="CP Appt" value={row.cp_appt > 0 ? fmt$(row.cp_appt) : "—"} />
+          <Stat label="L2A"     value={row.l2a_pct > 0 ? fmtPct(row.l2a_pct) : "—"} />
+        </div>
+
+        {row.action && (
+          <p className="text-xs mt-3 leading-snug" style={{ color: "#6b6b6b" }}>{row.action}</p>
+        )}
+      </button>
+      {children}
+    </div>
+  );
+}
+
 function fmt$(n: number) {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
@@ -246,14 +304,14 @@ export default function CampaignOverview({ startDate, endDate }: {
       </div>
 
       <section>
-        <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto md:flex-wrap md:overflow-visible -mx-4 px-4 md:mx-0 md:px-0">
           {(["all", "critical", "above_target", "on_target", "excellent", "hold", "no_data"] as const).map(s => {
             const active = statusFilter === s;
             const style = s === "all" ? { color: "#4a4a4a", bg: "rgba(0,0,0,0.06)" } : STATUS_STYLE[s];
             const count = s === "all" ? rows.length : (statusCounts[s] ?? 0);
             return (
               <button key={s} onClick={() => setStatusFilter(s)}
-                className="px-2.5 py-1 rounded-full text-xs font-semibold transition-opacity"
+                className="px-2.5 py-1 rounded-full text-xs font-semibold transition-opacity whitespace-nowrap flex-shrink-0"
                 style={{ color: style.color, background: style.bg, opacity: active ? 1 : 0.55, border: active ? `1px solid ${style.color}` : "1px solid transparent" }}>
                 {s === "all" ? "All" : STATUS_STYLE[s].label} {count}
               </button>
@@ -261,14 +319,14 @@ export default function CampaignOverview({ startDate, endDate }: {
           })}
         </div>
 
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
           <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Campaign Overview — All Clients</h2>
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Filter clients..."
-            className="px-3 py-1.5 rounded-lg text-sm outline-none w-56"
+            className="px-3 py-1.5 rounded-lg text-sm outline-none w-full md:w-56"
             style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}
           />
         </div>
@@ -289,7 +347,29 @@ export default function CampaignOverview({ startDate, endDate }: {
             Make.com sync pulling from each platform's ads reporting — see <code>ccm-ad-campaigns.blueprint.json</code>.
           </div>
         ) : (
-          <div className="rounded-2xl overflow-x-auto" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+          <>
+          {/* A 15-column table cannot be read on a phone, so below the
+              breakpoint the same rows render as cards. The table itself is
+              untouched and still what desktop gets. */}
+          <div className="md:hidden space-y-3">
+            {filtered.map(r => {
+              const isOpen = drawerEntity?.kind === "client" && drawerEntity.client.client_id === r.client_id;
+              return (
+                <MobileClientCard
+                  key={r.client_id}
+                  row={r}
+                  isOpen={isOpen}
+                  onToggle={() => setDrawerEntity(isOpen ? null : { kind: "client", client: r, startDate: rangeStart, endDate: rangeEnd })}
+                >
+                  {isOpen && drawerEntity && (
+                    <CampaignDetailDrawer entity={drawerEntity} onClose={() => setDrawerEntity(null)} onExclusionsChange={() => loadDataRef.current()} />
+                  )}
+                </MobileClientCard>
+              );
+            })}
+          </div>
+
+          <div className="hidden md:block rounded-2xl overflow-x-auto" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
             <table className="w-full text-sm" style={{ minWidth: 1500 }}>
               <thead>
                 <tr style={{ background: "#f7f7f7", color: "#6b6b6b" }}>
@@ -373,6 +453,7 @@ export default function CampaignOverview({ startDate, endDate }: {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
     </div>

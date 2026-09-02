@@ -886,7 +886,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
             <div key={i}>
               <FunnelStage label={s.label} count={s.count} pct={s.widthPct} color={s.color} />
               {i < stages.length - 1 && stages[i + 1].count > 0 && (
-                <div className="flex items-center gap-3 mb-2 ml-28 pl-3">
+                <div className="flex items-center gap-3 mb-2 ml-8 md:ml-28 pl-3">
                   <div className="h-4 border-l" style={{ borderColor: "rgba(0,0,0,0.081)" }} />
                   <span className="text-[10px]" style={{ color: "#949494" }}>
                     {s.count > 0 ? `${((stages[i + 1].count / s.count) * 100).toFixed(1)}% conversion` : "—"}
@@ -907,8 +907,10 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     const baseline = compData[1];
     const rowKeys = compData[0]?.data ? Object.keys(compData[0].data) : [];
     return (
-      <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
-        <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+      <div className="rounded-2xl overflow-x-auto md:overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+        {/* Three periods squeezed into a phone width are unreadable, so below
+            the breakpoint the columns keep a floor and the block scrolls. */}
+        <div className="grid grid-cols-[repeat(3,minmax(150px,1fr))] md:grid-cols-3">
           {compData.map((period, pi) => (
             <div key={pi} style={{ borderRight: pi < 2 ? "1px solid rgba(0,0,0,0.095)" : "none" }}>
               <div className="px-4 py-3" style={{ background: pi === 1 ? "rgba(0,0,0,0.048)" : "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
@@ -1185,8 +1187,8 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   return (
     <div style={{ background: "#ffffff", borderTop: "2px solid #000000" }}>
       {/* ── Identity + Status bar ── */}
-      <div className="px-5 py-2.5 flex items-center justify-between flex-wrap gap-2" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)", background: "#fafafa" }}>
-        <div className="flex items-center gap-3">
+      <div className="px-4 md:px-5 py-2.5 flex items-center justify-between flex-wrap gap-2" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)", background: "#fafafa" }}>
+        <div className="flex items-center gap-2 md:gap-3 flex-wrap min-w-0">
           <button onClick={onClose} className="p-1 rounded" style={{ color: "#767676" }}
             onMouseEnter={e => (e.currentTarget.style.color = "#4a4a4a")}
             onMouseLeave={e => (e.currentTarget.style.color = "#767676")}>
@@ -1229,7 +1231,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       </div>
 
       {/* ── 4-quadrant overview ── */}
-      <div className="px-5 py-4 grid grid-cols-2 lg:grid-cols-4 gap-3" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
+      <div className="px-4 md:px-5 py-4 grid grid-cols-2 lg:grid-cols-4 gap-3" style={{ borderBottom: "1px solid rgba(0,0,0,0.081)" }}>
         {renderLeadGen()}
         {renderCallPerf()}
         {renderAppts()}
