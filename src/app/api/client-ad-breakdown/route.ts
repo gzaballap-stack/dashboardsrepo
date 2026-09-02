@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
-import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL } from '@/lib/ad-funnel';
+import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL, type TouchModel } from '@/lib/ad-funnel';
 
 interface Acc {
   id_field: string; id_val: string; name_val: string | null;
@@ -20,6 +20,7 @@ export async function GET(req: Request) {
   const start_date  = searchParams.get('start_date');
   const end_date    = searchParams.get('end_date');
   const campaign_id = searchParams.get('campaign_id');
+  const model       = (searchParams.get('model') === 'last' ? 'last' : 'first') as TouchModel;
 
   if (!client_id)                          return NextResponse.json({ error: 'client_id required' }, { status: 400 });
   if (level !== 'adset' && level !== 'ad') return NextResponse.json({ error: "level must be 'adset' or 'ad'" }, { status: 400 });
@@ -43,7 +44,7 @@ export async function GET(req: Request) {
   let funnel: Awaited<ReturnType<typeof rollupFunnelByAd>>;
   try {
     funnel = await rollupFunnelByAd(ctx.service, {
-      table: 'events', level, client_id, campaign_id, start_date, end_date,
+      table: 'events', level, model, client_id, campaign_id, start_date, end_date,
     });
   } catch {
     // The funnel join is an enrichment on top of spend. If it fails (e.g. an

@@ -5,6 +5,19 @@ type Service = ReturnType<typeof createServiceClient>;
 /** Which attribution column the rollup is keyed on. */
 export type AdLevel = 'campaign' | 'adset' | 'ad';
 
+/**
+ * Which touch the outcome is credited to.
+ *
+ * 'first' uses the attribution columns — the ad that originally produced the
+ * contact, stamped at first touch and inherited down the funnel.
+ * 'last' uses the `last_touch` json, GHL's `lastAttributionSource` — the most
+ * recent ad the contact interacted with before converting.
+ *
+ * They answer different questions: first-touch credits what created the lead,
+ * last-touch credits what closed it. Neither is more correct.
+ */
+export type TouchModel = 'first' | 'last';
+
 const LEVEL_COLUMN: Record<AdLevel, 'campaign_id' | 'adset_id' | 'ad_id'> = {
   campaign: 'campaign_id',
   adset:    'adset_id',
@@ -62,6 +75,7 @@ export async function rollupFunnelByAd(
   opts: {
     table: 'events' | 'b2b_events';
     level: AdLevel;
+    model?: TouchModel;
     start_date?: string | null;
     end_date?: string | null;
     client_id?: string | null;
@@ -70,7 +84,14 @@ export async function rollupFunnelByAd(
 ): Promise<Map<string, AdFunnel>> {
   const col    = LEVEL_COLUMN[opts.level];
   const stages = STAGE_MAP[opts.table];
+  const model  = opts.model ?? 'first';
   const out    = new Map<string, AdFunnel>();
+
+  // Last-touch ids live inside a json blob rather than their own columns, so the
+  // row is filtered on the blob being present and the id is read in JS below.
+  const selectCols = model === 'last'
+    ? `last_touch, event_type, revenue`
+    : `${col}, event_type, revenue`;
 
   const PAGE = 1000;
   let offset = 0;
@@ -78,8 +99,8 @@ export async function rollupFunnelByAd(
   for (;;) {
     let q = service
       .from(opts.table)
-      .select(`${col}, event_type, revenue`)
-      .not(col, 'is', null)
+      .select(selectCols)
+      .not(model === 'last' ? 'last_touch' : col, 'is', null)
       .in('event_type', Object.keys(stages));
 
     if (opts.client_id)   q = q.eq('client_id', opts.client_id);
@@ -92,7 +113,9 @@ export async function rollupFunnelByAd(
     if (!data || data.length === 0) break;
 
     for (const row of data as unknown as Array<Record<string, unknown>>) {
-      const key = row[col] as string | null;
+      const key = model === 'last'
+        ? ((row.last_touch as Record<string, string | null> | null)?.[col] ?? null)
+        : (row[col] as string | null);
       if (!key) continue;
 
       const slot = stages[row.event_type as string];

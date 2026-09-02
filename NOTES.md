@@ -142,3 +142,179 @@ and is the point of doing it now: the moment attribution flows, it shows up.
 **Also found:** V1 has no `show`, `no_show` or `closed` events at all — only
 `lead` (248), `dial` (623), `appointment_booked` (142). So "which ads drive
 closes" has a second blocker independent of attribution. B2B does have `close`.
+
+---
+
+## 2026-08-31 — GHL already had the ad attribution all along
+
+**The whole B2C attribution problem was solved by reading GHL instead of
+reconfiguring it.** GoHighLevel stores campaign/ad-set/ad IDs on the *contact*,
+including for Meta Instant Form leads that never touch a landing page. No pixel,
+no Meta App Review, no CAPI, no workflow custom-data, no Make changes.
+
+Verified against V1 production: **307 of 310 contacts carry full attribution**;
+the 3 misses are contacts deleted in GHL. Dry run says **1,156 of 1,159 events
+would be attributed** — i.e. essentially all of V1's history, retroactively.
+
+Sample of what GHL returns per contact (`attributionSource`):
+
+```
+campaignId  120246290176920347   campaign   Tomsi Media | Qualified Estimates | 05/13/26
+adSetId     120251389263680347   utmMedium  Chattanooga 50 Miles (Radius) | Feeds, Stories, Reels
+adId        120251389263650347   utmContent Bathroom Script 12
+```
+
+### Access
+
+- `GHL_API_KEY` in `.env.local` — a **sub-account** Private Integration token
+  (`pit-…`) with `contacts.readonly`.
+- **Agency-level** private integrations do *not* offer contact scopes; only
+  company scopes (companies/locations/SaaS/snapshots/users/…). A token made
+  there returns 401 `not authorized for this scope` on everything except
+  `/locations/{id}`. Create the integration *inside* a sub-account.
+- The legacy per-sub-account API key (Settings → Business Info, a JWT) still
+  reads contacts on API **v1** (`rest.gohighlevel.com/v1`) but is being gated
+  behind a paid plan. Private Integrations are the supported path.
+- One token turned out to read contacts across all nine dashboard clients.
+
+### Built
+
+- `src/lib/ghl-attribution.ts` — `fetchGhlAttribution()` + `mapGhlAttribution()`.
+  Field spelling varies by sub-account (`utmCampaign` vs `utm_campaign`), so
+  every read goes through a multi-name `pick()`. Retries 429 with exponential
+  backoff and honours `Retry-After`.
+- `src/app/api/admin/backfill-ghl-attribution/route.ts` — `POST` with
+  `{ dry_run, table, limit, only_missing }`. **`dry_run` defaults to true**;
+  nothing writes unless explicitly `false`. One lookup per *contact*, not per
+  event (1,159 events → 310 calls). Added to `BYPASS_ROUTES`.
+
+### Gotchas
+
+- GHL 429s readily. Concurrency 3 + a 200 ms pause between batches + backoff took
+  failures from 37 → 0 (rate-limit ones).
+- `adset_name` / `ad_name` come from `utmMedium` / `utmContent`, which is this
+  portfolio's ad-naming convention, not a dedicated GHL field. **The IDs are
+  reliable; the names are best-effort.**
+- Uses `attributionSource` (first touch), matching the first-touch model
+  `lib/attribution` already applies downstream.
+
+### Still open
+
+- Backfill has **not been run against V1** — dry run only, awaiting the go-ahead.
+- New events still arrive unattributed. Preferred fix is scheduling this route
+  with `only_missing: true` rather than touching `/api/webhooks`, which is live
+  production ingestion.
+- Two credentials were exposed in chat during this work (a v1 JWT and a
+  `pit-` token) — both should be rotated.
+
+---
+
+## 2026-08-31 — Creative leaderboard + attribution health
+
+Two additions beyond parity with Hyros.
+
+### 1. Cross-client creative leaderboard (`/api/creative-leaderboard`, nav: Overview)
+
+The same creative runs for many clients under different ad IDs. Verified in V1:
+**907 ad-level spend rows, 44 distinct creatives, 11 of them running for more
+than one client** — "Bathroom Script 12" runs for 4 clients under 6 ad IDs.
+
+Per-account tools (Hyros included) can only score each copy separately, splitting
+one creative's record across several thin samples. Grouping by creative *name*
+across the portfolio pools them, so a creative is judged on all the appointments
+it produced rather than the handful under one client this month. This is a
+structural advantage of being the agency, and is not something a single-account
+tracker can reproduce.
+
+- Levels: creative / ad set / campaign.
+- Sorted by cost per appointment; entities with zero appointments sort last by
+  spend descending, so expensive silent creatives surface immediately.
+- `normaliseName()` folds "– Copy", "(copy 2)", case and whitespace drift.
+- Spend rows are per-day, so each entity's funnel is folded in exactly once
+  (`seenEntity`) — otherwise a 30-day creative would count its funnel 30 times.
+
+**Known limit:** "Bathroom Script 12" and "Script 12 Bathroom" are almost
+certainly the same creative but will not pool — matching is exact after
+normalisation. Fuzzy matching was deliberately not attempted; wrongly merging two
+creatives is worse than leaving them apart.
+
+### 2. Attribution health monitor (`/api/attribution-health`)
+
+Attribution stopped arriving for months with no error anywhere — spend showed,
+leads showed, and the join between them silently returned nothing. Nothing in the
+dashboard could have surfaced that.
+
+This measures the share of events carrying ad data, per client, and compares the
+last 7 days against the prior window. Flags a client when coverage falls ≥25pp
+(both windows need ≥5 events, to avoid noise) or sits below 50%.
+
+Rendered as a banner at the top of the leaderboard rather than a separate page —
+the table is only as complete as its inputs, so coverage is stated where the
+numbers are read, not somewhere you would have to go looking.
+
+### Deliberately not built
+
+- **First/last-touch toggle.** GHL returns `lastAttributionSource` alongside
+  `attributionSource` for free, so multi-touch is cheap *except* that storing it
+  needs new columns on V1 `events` — a production migration. Worth doing; wanted
+  explicit approval first.
+- **Call tracking / dynamic number insertion.** Call data already arrives from
+  GHL; DNI would duplicate it.
+- **Conversions API.** Already built separately by the user.
+
+---
+
+## 2026-08-31 — Order-insensitive creative pooling + first/last touch toggle
+
+### Creative pooling now ignores word order
+
+`poolKey()` in `creative-leaderboard` lowercases, strips punctuation, sorts the
+tokens and rejoins — so "Bathroom Script 12" and "Script 12 Bathroom" collapse to
+`12 bathroom script`. Still exact on the words themselves, so "Bathroom Script 10"
+and "Bathroom Script 12" stay apart.
+
+Verified against V1: **44 groups → 40, four merges, all genuine.**
+
+| merged | clients | spend |
+|---|---|---|
+| Bathroom Script 12 + Script 12 Bathroom | 6 | $3,479 |
+| Kitchen Script 12 + Script 12 Kitchen | 4 | $1,635 |
+| Us VS Them Clipboard/Kitchen (both orders) | 4 | $178 |
+| Us VS Them Clipboard/Bathroom (both orders) | 3 | $121 |
+
+Every pooled spelling is returned on the row as `pooled_names` and shown under
+the creative name in the UI, so an unintended merge is caught by eye rather than
+trusted. Display name is the highest-spend spelling.
+
+> A fuller creative/copy hub is planned; this is the leaderboard-only version.
+
+### First / last touch toggle
+
+GHL returns `lastAttributionSource` on the same call as `attributionSource`, so
+last touch costs nothing extra to capture.
+
+- **Migration:** `supabase/migrations/add_last_touch_attribution.sql` adds a
+  single `last_touch jsonb` column to `events` and `b2b_events`, plus partial
+  expression indexes on the ad/adset/campaign ids. One json column rather than 13
+  more columns — the reporting routes aggregate in application code, so separate
+  columns buy nothing.
+- `rollupFunnelByAd()` takes `model: 'first' | 'last'`. First touch reads the
+  attribution columns; last touch reads `last_touch->>{id}`. Default stays
+  `first` everywhere.
+- `?model=` supported on `/api/creative-leaderboard` and
+  `/api/client-ad-breakdown`; UI toggle on the leaderboard.
+- The backfill writes `last_touch` alongside the first-touch columns.
+
+First touch credits the ad that created the lead, last touch credits the ad seen
+most recently before converting. They routinely disagree and neither is more
+correct — hence a toggle rather than a chosen default.
+
+### Two production actions still outstanding
+
+1. **Run `add_last_touch_attribution.sql` on V1** (and V2). Purely additive —
+   `add column if not exists` + `create index if not exists`. Until it runs, the
+   Last Touch toggle returns empty.
+2. **Run the backfill.** Still dry-run only.
+
+Order matters: migration first, then backfill, or last touch is discarded.
+

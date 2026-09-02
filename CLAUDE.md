@@ -256,6 +256,7 @@ Census fetching in `src/lib/census.ts` (needs `CENSUS_API_KEY`).
 | `RAILWAY_TOKEN` | Railway API |
 | `CENSUS_API_KEY` | Census data for zip features |
 | `ANTHROPIC_API_KEY` | AI Campaign Chat (unset by default) |
+| `GHL_API_KEY` | GoHighLevel Private Integration token — reads per-contact ad attribution |
 
 Never commit `.env*` — they're gitignored. Production values live in Railway.
 
