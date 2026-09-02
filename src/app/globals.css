@@ -49,3 +49,31 @@ html, body {
 /* Inputs and selects inherit the sheet rather than the old dark chrome. */
 input, select, textarea { color: var(--text); }
 select option { background: #ffffff; color: #111111; }
+
+/* Installed to the home screen the page runs edge-to-edge, so keep content
+   clear of the notch and the home indicator. No effect in a normal browser. */
+@media (display-mode: standalone) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* ── Phone ─────────────────────────────────────────────────────────────────
+   iOS zooms the whole page when a focused field is under 16px, which leaves
+   the layout shifted after the keyboard closes. 16px inputs avoid it; the rest
+   of the type stays as designed. */
+@media (max-width: 767px) {
+  input, select, textarea { font-size: 16px; }
+}
+
+/* Grey flash on every tap reads as a bug once this is on a home screen. */
+@media (hover: none) {
+  * { -webkit-tap-highlight-color: transparent; }
+}
+
+/* Wide tables scroll sideways on their own; let them do it with momentum and
+   without the page rubber-banding along. */
+.overflow-x-auto { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }

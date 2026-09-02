@@ -28,6 +28,9 @@ const BYPASS_ROUTES = [
   '/login',
   '/auth',
   '/report',
+  // The home-screen app manifest: public metadata only, and the browser fetches
+  // it before sign-in, so it must not redirect to /login.
+  '/manifest.webmanifest',
 ];
 
 export async function middleware(request: NextRequest) {

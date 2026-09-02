@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -15,6 +15,21 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "TFU AI — Call Center Dashboard",
   description: "Multi-client call center reporting dashboard",
+  // Installed to the home screen it runs chrome-free, like an app.
+  appleWebApp: {
+    capable: true,
+    title: "TFU AI",
+    statusBarStyle: "default",
+  },
+  // Next emits the modern `mobile-web-app-capable`; older iOS only reads this one.
+  other: { "apple-mobile-web-app-capable": "yes" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#ffffff",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

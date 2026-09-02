@@ -175,7 +175,7 @@ function Select({ value, onChange, children, className = "" }: {
     <select
       value={value}
       onChange={e => onChange(e.target.value)}
-      className={`px-4 py-2 rounded-lg text-sm font-medium outline-none cursor-pointer transition-colors ${className}`}
+      className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium outline-none cursor-pointer transition-colors max-w-[45vw] md:max-w-none ${className}`}
       style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}
     >
       {children}
@@ -466,7 +466,9 @@ export default function DashboardView() {
   }, [pageTitle]);
 
   return (
-    <div className="h-screen overflow-hidden flex" style={{ background: "transparent", position: "relative" }}>
+    // 100dvh, not 100vh — on a phone the address bar is counted in vh, so the
+    // last row of every screen sat below the fold.
+    <div className="h-[100dvh] overflow-hidden flex" style={{ background: "transparent", position: "relative" }}>
       <BrandBackground />
 
       {sidebarOpen && (
@@ -742,19 +744,21 @@ export default function DashboardView() {
       <div className="flex-1 min-w-0 flex flex-col" style={{ position: "relative", zIndex: 1 }}>
 
         {/* Header */}
-        <header className="flex items-center gap-3 px-6 py-4 flex-wrap"
+        <header className="flex items-center gap-2 md:gap-3 px-4 py-3 md:px-6 md:py-4 flex-wrap"
           style={{ position: "relative", zIndex: 30, background: "rgba(255,255,255,0.72)", backdropFilter: "saturate(180%) blur(20px)", WebkitBackdropFilter: "saturate(180%) blur(20px)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
 
-          <button className="md:hidden mr-1" onClick={() => setSidebarOpen(true)}
+          <button className="md:hidden -ml-1 p-1.5 flex-shrink-0" aria-label="Open menu" onClick={() => setSidebarOpen(true)}
             style={{ color: "#767676" }}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
 
 
-          <h1 className="text-base font-semibold mr-auto" style={{ color: "#111111" }}>
-            {crumb[0] && <span style={{ color: "#949494" }}>{crumb[0]} / </span>}
+          {/* The parent crumb is dropped on a phone — it costs half the bar and
+              the menu already says where you are. */}
+          <h1 className="text-sm md:text-base font-semibold mr-auto min-w-0 truncate" style={{ color: "#111111" }}>
+            {crumb[0] && <span className="hidden md:inline" style={{ color: "#949494" }}>{crumb[0]} / </span>}
             {crumb[1]}
           </h1>
 
@@ -763,8 +767,8 @@ export default function DashboardView() {
             <div className="relative" ref={presetRef}>
               <button
                 onClick={() => setShowPresetMenu(v => !v)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                style={{ background: "#000000", color: "#fff", minWidth: "9rem" }}
+                className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors flex-shrink-0 md:min-w-[9rem]"
+                style={{ background: "#000000", color: "#fff" }}
               >
                 <span className="flex-1 text-left">{PRESET_LABELS[tomsiPreset]}</span>
                 <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -816,8 +820,8 @@ export default function DashboardView() {
               <div className="relative" ref={presetRef}>
                 <button
                   onClick={() => setShowPresetMenu(v => !v)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  style={{ background: "#000000", color: "#fff", minWidth: "9rem" }}
+                  className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors flex-shrink-0 md:min-w-[9rem]"
+                  style={{ background: "#000000", color: "#fff" }}
                 >
                   <span className="flex-1 text-left">{PRESET_LABELS[preset]}</span>
                   <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -880,7 +884,7 @@ export default function DashboardView() {
         </header>
 
         {/* Content */}
-        <main className={`flex-1 overflow-auto ${view === "zip_tool" && topSection === "tools" ? "p-0 flex flex-col" : "p-6 md:p-8"}`} style={{ background: "transparent" }}>
+        <main className={`flex-1 overflow-auto ${view === "zip_tool" && topSection === "tools" ? "p-0 flex flex-col" : "p-4 sm:p-6 md:p-8"}`} style={{ background: "transparent" }}>
 
           {/* ── Tomsi Media Dashboard ── */}
           {topSection === "tomsi_media" && (

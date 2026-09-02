@@ -522,8 +522,8 @@ function AvailabilityTab({ agents }: { agents: Agent[] }) {
         </div>
       </div>
 
-      <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
-        <table className="w-full text-sm">
+      <div className="rounded-2xl overflow-x-auto" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+        <table className="w-full text-sm" style={{ minWidth: 640 }}>
           <thead>
             <tr style={{ background: "#fafafa" }}>
               {["Setter", "Day", "Available From", "Available Until", "Status", ""].map(h => (
@@ -648,8 +648,8 @@ function ClientWindowsTab({ clients }: { clients: Client[] }) {
         </div>
       </div>
 
-      <div className="rounded-2xl overflow-hidden" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
-        <table className="w-full text-sm">
+      <div className="rounded-2xl overflow-x-auto" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+        <table className="w-full text-sm" style={{ minWidth: 640 }}>
           <thead>
             <tr style={{ background: "#fafafa" }}>
               {["Client", "Day", "Session 1", "Session 2", "Status", ""].map(h => (
