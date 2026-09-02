@@ -79,3 +79,38 @@ select option { background: #ffffff; color: #111111; }
 @media (max-width: 767px) {
   .overflow-x-auto { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
 }
+
+/* ── Zip tool on a phone ───────────────────────────────────────────────────
+   The tool is a fixed 288px control column beside a map, which leaves the map
+   about 90px wide on a phone. Below the breakpoint it stacks instead: map on
+   top at a usable height, controls scrolling underneath, and the per-zip panel
+   flowing inline rather than floating over the map. Desktop is untouched —
+   every rule here lives inside the phone media query. */
+@media (max-width: 767px) {
+  .zip-shell {
+    flex-direction: column !important;
+    overflow-y: auto !important;
+  }
+  .zip-map {
+    flex: none !important;
+    height: 52vh !important;
+    min-height: 300px !important;
+    order: -1;
+  }
+  .zip-sidebar {
+    width: 100% !important;
+    border-right: none !important;
+    border-top: 1px solid rgba(0, 0, 0, 0.095) !important;
+    overflow-y: visible !important;
+  }
+  /* The per-zip readout becomes a bottom sheet over the map — a 268px card
+     pinned to the right corner covers most of a phone screen. */
+  .zip-zippanel {
+    top: auto !important;
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    width: auto !important;
+    max-height: 70% !important;
+  }
+}

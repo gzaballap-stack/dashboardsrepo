@@ -129,7 +129,7 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSav
   }, [perfData, zip]);
 
   return (
-    <div style={{
+    <div className="zip-zippanel" style={{
       position: "absolute", top: 12, right: 12, width: 268, maxHeight: "calc(100% - 24px)",
       zIndex: 1000, display: "flex", flexDirection: "column",
       background: "#fafafa", border: "1px solid rgba(0,0,0,0.135)",
@@ -977,16 +977,17 @@ export default function ZipTool() {
   const activeClientSessionLabel = activeSession ? clientSessions.find(s => s.id === activeSession)?.name : undefined;
 
   return (
-    <div style={{ display: "flex", flex: 1, overflow: "hidden", height: "100%" }}>
+    <div className="zip-shell" style={{ display: "flex", flex: 1, overflow: "hidden", height: "100%" }}>
 
       {/* ── Sidebar ── */}
-      <div style={{
+      <div className="zip-sidebar" style={{
         width: 288, flexShrink: 0, display: "flex", flexDirection: "column",
-        borderRight: "1px solid rgba(0,0,0,0.095)", background: "#fafafa", overflow: "hidden",
+        borderRight: "1px solid rgba(0,0,0,0.095)", background: "#fafafa",
+        overflowY: "auto", overflowX: "hidden",
       }}>
 
         {/* ── Scrollable top block: everything above the zip panel ── */}
-        <div style={{ overflowY: "auto", flexShrink: 1, minHeight: 0 }}>
+        <div style={{ flexShrink: 0 }}>
 
         {/* ── Clients (server-backed sessions, shared across the team) ── */}
         <div style={{ borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
@@ -1390,7 +1391,7 @@ export default function ZipTool() {
         </>)}
 
         {/* Pins */}
-        <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(0,0,0,0.095)", maxHeight: 180, overflowY: "auto", flexShrink: 0 }}>
+        <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(0,0,0,0.095)", flexShrink: 0 }}>
           {pins.length === 0 ? (
             <div style={{ padding: "6px 4px", color: "#949494", fontSize: 11, lineHeight: 1.5 }}>
               Click the map to drop a pin, or search a zip above.
@@ -1440,7 +1441,7 @@ export default function ZipTool() {
         </div>{/* ── end scrollable top block ── */}
 
         {/* Zip chips */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ flexShrink: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "7px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(0,0,0,0.068)", flexShrink: 0 }}>
             <span style={{ fontSize: 10, color: "#767676", textTransform: "uppercase", letterSpacing: "0.07em" }}>
               {selectedPin ? selectedPin.label : "Targeted Zips"}
@@ -1508,12 +1509,12 @@ export default function ZipTool() {
                 return (clientPerf[b]?.leads ?? 0) - (clientPerf[a]?.leads ?? 0);
               });
             if (!ranked.length) return (
-              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ minHeight: 90, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span style={{ fontSize: 12, color: "#949494", textAlign: "center", padding: "0 16px" }}>No performance data yet</span>
               </div>
             );
             return (
-              <div style={{ flex: 1, overflowY: "auto", padding: "8px 12px" }}>
+              <div style={{ padding: "8px 12px" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   {ranked.map(zip => {
                     const p = clientPerf[zip];
@@ -1531,7 +1532,7 @@ export default function ZipTool() {
               </div>
             );
           })() : allChipZips.length > 0 ? (
-            <div style={{ flex: 1, overflowY: "auto", padding: "8px 16px" }}>
+            <div style={{ padding: "8px 16px" }}>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                 {allChipZips.map(zip => {
                   const zs = zipScores[zip];
@@ -1553,7 +1554,7 @@ export default function ZipTool() {
               </div>
             </div>
           ) : (
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ minHeight: 90, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <span style={{ fontSize: 12, color: "#949494", textAlign: "center", padding: "0 16px" }}>
                 {totalLoading ? "Loading…" : "No targeted zips yet"}
               </span>
@@ -1562,7 +1563,8 @@ export default function ZipTool() {
         </div>
 
         {/* Actions */}
-        <div style={{ padding: "10px 12px", borderTop: "1px solid rgba(0,0,0,0.095)", display: "flex", gap: 6, flexShrink: 0 }}>
+        <div style={{ padding: "10px 12px", borderTop: "1px solid rgba(0,0,0,0.095)", display: "flex", gap: 6, flexShrink: 0,
+          position: "sticky", bottom: 0, background: "#fafafa", marginTop: "auto", zIndex: 2 }}>
           <button onClick={copyZips} disabled={!displayZips.length}
             style={{
               flex: 1, padding: "9px 0", borderRadius: 8, border: "none",
@@ -1584,7 +1586,7 @@ export default function ZipTool() {
       </div>
 
       {/* ── Map ── */}
-      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+      <div className="zip-map" style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <ZipMap
           pins={pins}
           selectedPinId={selectedId}
