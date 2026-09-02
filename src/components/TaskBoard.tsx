@@ -156,8 +156,6 @@ export default function TaskBoard() {
     [visible],
   );
 
-  const draggingFromList = dragId != null && tasks.some(t => t.id === dragId && t.scope === "backlog");
-
   const doneCount = visible.filter(t => t.done).length;
   const pct = visible.length ? Math.round((doneCount / visible.length) * 100) : 0;
 
@@ -315,6 +313,13 @@ export default function TaskBoard() {
     const i = lane.findIndex(t => t.id === target.id);
     const before = i > 0 ? lane[i - 1].position : target.position - 2000;
     patch(dragId, { bucket: target.bucket, priority: target.priority, position: (before + target.position) / 2, scope, task_date: anchor });
+    setDragId(null); setDropZone(null);
+  }
+
+  // Dropping onto a date in the day strip or the month grid schedules it there.
+  function dropOnDate(dateISO: string) {
+    if (!dragId) return;
+    patch(dragId, { scope: "day", task_date: dateISO, position: Date.now() });
     setDragId(null); setDropZone(null);
   }
 
@@ -549,7 +554,9 @@ export default function TaskBoard() {
   const label = view === "day" ? dayLabel(dayDate) : view === "week" ? weekLabel(weekDate) : monthLabel(monthDate);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
 
       {/* ── Frog banner ── */}
       {view !== "month" && (
@@ -690,10 +697,13 @@ export default function TaskBoard() {
                 <button
                   key={d.key}
                   onClick={() => setDayDate(d.key)}
+                  onDragOver={e => { e.preventDefault(); setDropZone(`date:${d.key}`); }}
+                  onDragLeave={() => setDropZone(z => (z === `date:${d.key}` ? null : z))}
+                  onDrop={e => { e.preventDefault(); dropOnDate(d.key); }}
                   style={{
                     padding: "6px 2px 5px", borderRadius: 8, cursor: "pointer", textAlign: "center",
-                    background: active ? "rgba(245,158,11,0.12)" : "rgba(0,0,0,0.027)",
-                    border: `1px solid ${active ? "rgba(245,158,11,0.35)" : d.isToday ? "rgba(0,0,0,0.189)" : "transparent"}`,
+                    background: dropZone === `date:${d.key}` ? "rgba(0,0,0,0.12)" : active ? "rgba(245,158,11,0.12)" : "rgba(0,0,0,0.027)",
+                    border: `1px solid ${dropZone === `date:${d.key}` ? "rgba(0,0,0,0.5)" : active ? "rgba(245,158,11,0.35)" : d.isToday ? "rgba(0,0,0,0.189)" : "transparent"}`,
                   }}
                 >
                   <p style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: "0.08em", color: active ? "#000000" : "#949494" }}>{d.letter}</p>
@@ -863,12 +873,15 @@ export default function TaskBoard() {
                   <button
                     key={c.key}
                     onClick={() => { setDayDate(c.key); setView("day"); }}
+                    onDragOver={e => { e.preventDefault(); setDropZone(`date:${c.key}`); }}
+                    onDragLeave={() => setDropZone(z => (z === `date:${c.key}` ? null : z))}
+                    onDrop={e => { e.preventDefault(); dropOnDate(c.key); }}
                     title={c.total ? `${c.done} of ${c.total} done` : "Nothing planned"}
                     style={{
                       minHeight: 62, padding: "6px 4px", borderRadius: 8, cursor: "pointer", textAlign: "center",
                       opacity: c.inMonth ? 1 : 0.32,
-                      background: complete ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.027)",
-                      border: `1px solid ${c.isToday ? "rgba(0,0,0,0.42)" : "transparent"}`,
+                      background: dropZone === `date:${c.key}` ? "rgba(0,0,0,0.14)" : complete ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.027)",
+                      border: `1px solid ${dropZone === `date:${c.key}` ? "rgba(0,0,0,0.5)" : c.isToday ? "rgba(0,0,0,0.42)" : "transparent"}`,
                       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
                     }}
                   >
@@ -926,24 +939,17 @@ export default function TaskBoard() {
         </div>
       )}
 
-      {/* ── Long-term to-do list ── */}
+      </div>
+
+      {/* ── Long-term to-do list, docked beside the board so items can be dragged straight in ── */}
       {showList && (
         <div
-          onClick={() => setShowList(false)}
           style={{
-            position: "fixed", inset: 0, zIndex: 55, display: "flex", justifyContent: "flex-end",
-            background: draggingFromList ? "transparent" : "rgba(0,0,0,0.35)",
-            pointerEvents: draggingFromList ? "none" : "auto",
+            width: 300, flexShrink: 0, alignSelf: "flex-start", position: "sticky", top: 0,
+            maxHeight: "calc(100vh - 140px)", background: "#ffffff", border: BORDER, borderRadius: 12,
+            display: "flex", flexDirection: "column", overflow: "hidden",
           }}
         >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              width: 380, maxWidth: "100%", height: "100%", background: "#ffffff", pointerEvents: "auto",
-              boxShadow: "-14px 0 40px rgba(0,0,0,0.18)", display: "flex", flexDirection: "column",
-              opacity: draggingFromList ? 0.5 : 1, transition: "opacity 120ms",
-            }}
-          >
             <div style={{ padding: "16px 18px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>To-Do List</p>
@@ -1002,7 +1008,7 @@ export default function TaskBoard() {
               ) : (
                 <>
                   <p style={{ fontSize: 10, color: "#949494", marginBottom: 8, lineHeight: 1.5 }}>
-                    Drag an item onto the board, or use → to drop it into the {view === "week" ? "week" : "day"} you're viewing.
+                    Drag an item onto a column, onto a day in the strip above, or onto a date in Month view. Or press → to drop it into the {view === "week" ? "week" : "day"} you're viewing.
                   </p>
                   {backlog.map(t => {
                     const b = BUCKETS.find(x => x.id === t.bucket)!;
@@ -1064,7 +1070,6 @@ export default function TaskBoard() {
                 </>
               )}
             </div>
-          </div>
         </div>
       )}
 
