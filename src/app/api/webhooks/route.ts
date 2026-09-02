@@ -28,12 +28,24 @@ export async function POST(req: Request) {
     if (!client_id && payload.client_name) {
       const resolved = await resolveClientId(service, payload.client_name);
       if (!resolved) {
+        // Make records a rejection as a successful run, so a dropped event is
+        // invisible unless we say so here.
+        console.warn('[webhooks] rejected: unknown client', JSON.stringify({
+          event_type: payload.event_type,
+          client_name: payload.client_name,
+          keys: Object.keys(payload),
+        }));
         return NextResponse.json({ error: `Client "${payload.client_name}" not found` }, { status: 400 });
       }
       client_id = resolved;
     }
 
     if (!client_id) {
+      console.warn('[webhooks] rejected: no client on payload', JSON.stringify({
+        event_type: payload.event_type,
+        client_name: payload.client_name ?? null,
+        keys: Object.keys(payload),
+      }));
       return NextResponse.json({ error: 'client_id or client_name is required' }, { status: 400 });
     }
 
