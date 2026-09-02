@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
+import { resolveClientId } from '@/lib/client-lookup';
 
 // Single-shot client sync: fetches ad-level data from Meta once, aggregates to
 // adset + campaign levels server-side, and upserts ad_spend + ad_campaigns
@@ -27,9 +28,8 @@ export async function POST(req: Request) {
     const service = createServiceClient();
 
     // ── Resolve client_id from name ─────────────────────────────────────
-    const { data: client } = await service.from('clients').select('id').eq('name', client_name).single();
-    if (!client) return NextResponse.json({ error: `Client "${client_name}" not found` }, { status: 400 });
-    const client_id = client.id as string;
+    const client_id = await resolveClientId(service, client_name);
+    if (!client_id) return NextResponse.json({ error: `Client "${client_name}" not found` }, { status: 400 });
 
     // ── Fetch ad-level insights from Meta ───────────────────────────────
     const params = new URLSearchParams({

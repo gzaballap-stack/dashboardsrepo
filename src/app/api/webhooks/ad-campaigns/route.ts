@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
+import { resolveClientId } from '@/lib/client-lookup';
 
 const PLATFORMS = ['meta', 'google', 'local_services'] as const;
 const LEVELS = ['campaign', 'adset', 'ad'] as const;
@@ -119,13 +120,13 @@ export async function POST(req: Request) {
     if (!client_id && row.client_name) {
       client_id = clientCache.get(row.client_name);
       if (!client_id) {
-        const { data: client } = await service.from('clients').select('id').eq('name', row.client_name).maybeSingle();
-        if (!client?.id) {
+        const resolved = await resolveClientId(service, row.client_name);
+        if (!resolved) {
           errors.push(`row ${i}: client "${row.client_name}" not found`);
           continue;
         }
-        client_id = client.id;
-        clientCache.set(row.client_name, client.id);
+        client_id = resolved;
+        clientCache.set(row.client_name, resolved);
       }
     }
     if (!client_id) {

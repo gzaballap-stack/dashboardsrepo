@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
+import { resolveClientId } from '@/lib/client-lookup';
 
 export async function POST(req: Request) {
   try {
@@ -45,15 +46,11 @@ export async function POST(req: Request) {
     let client_id = payload.client_id as string | undefined;
 
     if (!client_id && payload.client_name) {
-      const { data: client } = await service
-        .from('clients')
-        .select('id')
-        .eq('name', payload.client_name)
-        .single();
-      if (!client) {
+      const resolved = await resolveClientId(service, payload.client_name);
+      if (!resolved) {
         return NextResponse.json({ error: `Client "${payload.client_name}" not found` }, { status: 400 });
       }
-      client_id = client.id;
+      client_id = resolved;
     }
 
     if (!client_id) {

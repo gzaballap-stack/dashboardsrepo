@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { pickAttribution, inheritAttribution } from '@/lib/attribution';
+import { resolveClientId } from '@/lib/client-lookup';
 
 const VALID_EVENT_TYPES = [
   'lead',
@@ -35,12 +36,7 @@ export async function POST(req: Request) {
     // grouped under the lead name instead.
     let client_id = (payload.client_id as string | undefined) ?? null;
     if (!client_id && payload.client_name) {
-      const { data: client } = await service
-        .from('clients')
-        .select('id')
-        .eq('name', payload.client_name)
-        .single();
-      client_id = client?.id ?? null;
+      client_id = await resolveClientId(service, payload.client_name);
     }
 
     const duration = payload.duration_seconds !== undefined && payload.duration_seconds !== null
