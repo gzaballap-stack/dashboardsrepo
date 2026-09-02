@@ -103,7 +103,21 @@ function monthLabel(startISO: string) {
   };
 }
 
+// Phones get a stacked, tap-driven layout — drag and drop is a desktop affordance.
+function usePhone() {
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const sync = () => setPhone(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return phone;
+}
+
 export default function TaskBoard() {
+  const phone = usePhone();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -350,7 +364,7 @@ export default function TaskBoard() {
           border: `1px solid ${isFrog && !task.done ? hexA(accent, 0.4) : "rgba(0,0,0,0.095)"}`,
           borderLeft: `2px solid ${task.done ? "rgba(0,0,0,0.108)" : hexA(accent, 0.75)}`,
           borderRadius: 7,
-          padding: "7px 8px",
+          padding: phone ? "10px 10px" : "7px 8px",
           marginBottom: 5,
           cursor: "grab",
           opacity: dragId === task.id ? 0.4 : task.done ? 0.45 : 1,
@@ -363,7 +377,7 @@ export default function TaskBoard() {
             onClick={() => patch(task.id, { done: !task.done })}
             title={task.done ? "Mark as not done" : "Mark as done"}
             style={{
-              flexShrink: 0, width: 14, height: 14, marginTop: 2, borderRadius: 4,
+              flexShrink: 0, width: phone ? 18 : 14, height: phone ? 18 : 14, marginTop: phone ? 0 : 2, borderRadius: 4,
               border: `1.5px solid ${task.done ? accent : "rgba(0,0,0,0.27)"}`,
               background: task.done ? accent : "transparent",
               display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
@@ -407,7 +421,7 @@ export default function TaskBoard() {
           <button
             onClick={() => remove(task.id)}
             title="Delete task"
-            style={{ flexShrink: 0, color: "#949494", cursor: "pointer", lineHeight: 0, padding: 1 }}
+            style={{ flexShrink: 0, color: "#949494", cursor: "pointer", lineHeight: 0, padding: phone ? 5 : 1 }}
             onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
             onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#949494"}
           >
@@ -510,7 +524,7 @@ export default function TaskBoard() {
         onDragLeave={() => setDropZone(z => (z === zone ? null : z))}
         onDrop={e => { e.preventDefault(); dropInto(bucket, priority); }}
         style={{
-          minHeight: 46, borderRadius: 7, padding: 3,
+          minHeight: phone ? 0 : 46, borderRadius: 7, padding: 3,
           ...(fill ? { flex: 1 } : null),
           background: dropZone === zone ? hexA(accent, 0.07) : "transparent",
           border: `1px dashed ${dropZone === zone ? hexA(accent, 0.35) : "transparent"}`,
@@ -519,7 +533,9 @@ export default function TaskBoard() {
       >
         {items.map(t => <Card key={t.id} task={t} accent={accent} />)}
         {items.length === 0 && (
-          <p style={{ fontSize: 10, color: "#c2c2c2", textAlign: "center", padding: "12px 4px" }}>{empty}</p>
+          <p style={{ fontSize: phone ? 9.5 : 10, color: "#c2c2c2", textAlign: "center", padding: phone ? "3px 4px" : "12px 4px" }}>
+            {phone ? "—" : empty}
+          </p>
         )}
       </div>
     );
@@ -641,7 +657,7 @@ export default function TaskBoard() {
                 onChange={e => { if (e.target.value) setMonthDate(`${e.target.value}-01`); }}
                 style={{ ...fieldStyle, width: "auto", fontSize: 11 }}
               />
-            ) : (
+            ) : phone ? null : (
               <input
                 type="date"
                 value={anchor}
@@ -749,17 +765,18 @@ export default function TaskBoard() {
           value={newTitle}
           onChange={e => setNewTitle(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") addTask(); }}
-          placeholder={scope === "day" ? "What needs doing this day?" : "What's the objective this week?"}
-          style={{ ...fieldStyle, flex: 1, minWidth: 180, fontSize: 12.5, padding: "8px 11px" }}
+          placeholder={view === "week" ? "What's the objective this week?" : "What needs doing this day?"}
+          style={{ ...fieldStyle, flex: 1, minWidth: phone ? "100%" : 180, fontSize: 12.5, padding: "8px 11px" }}
         />
-        <div style={{ display: "flex", gap: 3 }}>
+        <div style={{ display: "flex", gap: 3, flex: phone ? 1 : "0 0 auto" }}>
           {BUCKETS.map(b => (
             <button
               key={b.id}
               onClick={() => setNewBucket(b.id)}
               title={`${b.name} — ${b.blurb}`}
               style={{
-                width: 28, height: 32, borderRadius: 7, fontSize: 12, fontWeight: 800, cursor: "pointer",
+                width: phone ? undefined : 28, flex: phone ? 1 : "0 0 auto",
+                height: 32, borderRadius: 7, fontSize: 12, fontWeight: 800, cursor: "pointer",
                 background: newBucket === b.id ? hexA(b.color, 0.16) : "rgba(0,0,0,0.041)",
                 border: `1px solid ${newBucket === b.id ? hexA(b.color, 0.4) : "rgba(0,0,0,0.081)"}`,
                 color: newBucket === b.id ? b.color : "#767676",
@@ -785,7 +802,7 @@ export default function TaskBoard() {
         )}
         <button
           onClick={addTask}
-          style={{ background: "#000000", color: "#fff", fontSize: 12.5, fontWeight: 700, padding: "8px 16px", borderRadius: 8, cursor: "pointer" }}
+          style={{ background: "#000000", color: "#fff", fontSize: 12.5, fontWeight: 700, padding: "8px 16px", borderRadius: 8, cursor: "pointer", width: phone ? "100%" : undefined }}
         >
           Add
         </button>
@@ -794,7 +811,7 @@ export default function TaskBoard() {
       {/* ── Board controls ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <p style={{ fontSize: 10.5, color: "#949494", marginRight: "auto" }}>
-          Drag any task between columns to re-prioritise.
+          {phone ? "Tap a task to change its letter or move it." : "Drag any task between columns to re-prioritise."}
         </p>
         <button
           onClick={() => setHideDone(v => !v)}
@@ -805,8 +822,8 @@ export default function TaskBoard() {
       </div>
 
       {/* ── Five columns, always side by side ── */}
-      <div style={{ overflowX: "auto", paddingBottom: 4 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 9, minWidth: 900, alignItems: "stretch" }}>
+      <div style={{ overflowX: phone ? "visible" : "auto", paddingBottom: 4 }}>
+        <div style={{ display: "grid", gridTemplateColumns: phone ? "1fr" : "repeat(5, minmax(0, 1fr))", gap: 9, minWidth: phone ? 0 : 900, alignItems: "stretch" }}>
           {BUCKETS.map(b => {
             const total = visible.filter(t => t.bucket === b.id).length;
             const open = visible.filter(t => t.bucket === b.id && !t.done).length;
@@ -823,7 +840,7 @@ export default function TaskBoard() {
                       {open}{total !== open ? `/${total}` : ""}
                     </span>
                   </div>
-                  <p style={{ fontSize: 9.5, color: "#949494", lineHeight: 1.45 }}>{b.blurb}</p>
+                  {!phone && <p style={{ fontSize: 9.5, color: "#949494", lineHeight: 1.45 }}>{b.blurb}</p>}
                 </div>
 
                 <div style={{ padding: 7, flex: 1, display: "flex", flexDirection: "column" }}>
@@ -873,7 +890,7 @@ export default function TaskBoard() {
                     onDrop={e => { e.preventDefault(); dropOnDate(c.key); }}
                     title={c.total ? `${c.done} of ${c.total} done` : "Nothing planned"}
                     style={{
-                      minHeight: 62, padding: "6px 4px", borderRadius: 8, cursor: "pointer", textAlign: "center",
+                      minHeight: phone ? 46 : 62, padding: phone ? "4px 2px" : "6px 4px", borderRadius: 8, cursor: "pointer", textAlign: "center",
                       opacity: c.inMonth ? 1 : 0.32,
                       background: dropZone === `date:${c.key}` ? "rgba(0,0,0,0.14)" : complete ? "rgba(0,0,0,0.08)" : "rgba(0,0,0,0.027)",
                       border: `1px solid ${dropZone === `date:${c.key}` ? "rgba(0,0,0,0.5)" : c.isToday ? "rgba(0,0,0,0.42)" : "transparent"}`,
@@ -905,7 +922,10 @@ export default function TaskBoard() {
       {/* ── Long-term to-do list, docked beside the board so items can be dragged straight in ── */}
       {showList && (
         <div
-          style={{
+          style={phone ? {
+            position: "fixed", inset: 0, zIndex: 60, background: "#ffffff",
+            display: "flex", flexDirection: "column",
+          } : {
             width: 300, flexShrink: 0, alignSelf: "flex-start", position: "sticky", top: 0,
             maxHeight: "calc(100vh - 140px)", background: "#ffffff", border: BORDER, borderRadius: 12,
             display: "flex", flexDirection: "column", overflow: "hidden",
