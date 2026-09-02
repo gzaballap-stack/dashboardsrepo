@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import "leaflet/dist/leaflet.css";
-import { fmt$ } from "@/lib/zip-score";
+import { fmt$, perfGrade } from "@/lib/zip-score";
 
 export type Pin = {
   id: string;
@@ -47,25 +47,13 @@ const GRADE_COLORS: Record<string, string> = {
   A: "#10b981", B: "#3b82f6", C: "#f59e0b", D: "#ef4444",
 };
 
-// Choropleth: maps a 0–100 relative perf score (min-max across the client's territory)
-// to a fill color. Blue (cold/low) → green (mid) → amber (hot/high).
+// Performance choropleth. Uses the same green/blue/amber/red grade palette as the
+// Census view so one legend covers both — only the input differs (booked volume
+// here, demographics there). Opacity still rises with the score so the strongest
+// zips read as the most solid within their band.
 function perfScoreToFill(score: number): { color: string; opacity: number } {
   const t = Math.max(0, Math.min(100, score)) / 100;
-  let r: number, g: number, b: number;
-  if (t < 0.5) {
-    // #1d4ed8 (blue) → #22c55e (green)
-    const u = t * 2;
-    r = Math.round(29  + u * (34  - 29));
-    g = Math.round(78  + u * (197 - 78));
-    b = Math.round(216 + u * (94  - 216));
-  } else {
-    // #22c55e (green) → #d97706 (amber)
-    const u = (t - 0.5) * 2;
-    r = Math.round(34  + u * (217 - 34));
-    g = Math.round(197 + u * (119 - 197));
-    b = Math.round(94  + u * (6   - 94));
-  }
-  return { color: `rgb(${r},${g},${b})`, opacity: 0.35 + t * 0.35 };
+  return { color: GRADE_COLORS[perfGrade(score)], opacity: 0.28 + t * 0.30 };
 }
 
 export default function ZipMap({
@@ -172,8 +160,14 @@ export default function ZipMap({
                 if (perfCircles) {
                   const perf = perfCircles[zip];
                   if (perf) {
-                    const { color } = perfScoreToFill(perf.score);
-                    return { fillOpacity: 0, color, weight: isSelected ? 3 : 2, opacity: 0.9 };
+                    const { color, opacity } = perfScoreToFill(perf.score);
+                    return {
+                      fillColor: color,
+                      fillOpacity: isSelected ? Math.min(0.7, opacity + 0.18) : opacity,
+                      color,
+                      weight: isSelected ? 3 : 2,
+                      opacity: 0.9,
+                    };
                   }
                   // In territory but no perf row → faint outline only
                   return { fillOpacity: 0, color: 'rgba(148,163,184,0.35)', weight: 0.8, opacity: 0.8 };
@@ -220,7 +214,7 @@ export default function ZipMap({
                     <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
                       <div style="width:10px;height:10px;border-radius:2px;background:${color};flex-shrink:0;"></div>
                       <span style="font-size:12px;font-weight:700;color:#f1f5f9;">${zip}</span>
-                      <span style="font-size:10px;color:#94a3b8;margin-left:auto;">score ${perf.score}</span>
+                      <span style="font-size:10px;color:#94a3b8;margin-left:auto;">score ${perf.score.toFixed(1)} · ${perfGrade(perf.score)}</span>
                     </div>
                     <div style="font-size:11px;color:#cbd5e1;line-height:2.0;">
                       <span style="color:#a3e635;">${perf.leads}</span>&thinsp;leads &ensp;

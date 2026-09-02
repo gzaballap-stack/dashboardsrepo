@@ -229,9 +229,17 @@ export function scorePerformanceZips(rows: Record<string, ZipPerfInput>): Record
       const norm = max > min ? (v - min) / (max - min) : (v > 0 ? 1 : 0);
       total += norm * weight;
     }
-    scores[z] = Math.round(total * 100);
+    // One decimal place: whole numbers collide constantly across a territory of
+    // 100+ zips, which flattens the ranking and makes the map look banded.
+    scores[z] = Math.round(total * 1000) / 10;
   }
   return scores;
+}
+
+// Performance score → letter grade, using the same cut-offs as the Census lead
+// quality score so the two views read on one scale.
+export function perfGrade(score: number): "A" | "B" | "C" | "D" {
+  return score >= 75 ? "A" : score >= 55 ? "B" : score >= 35 ? "C" : "D";
 }
 
 // Maps a 0-100 composite performance score to a pixel radius for the map circle overlay.

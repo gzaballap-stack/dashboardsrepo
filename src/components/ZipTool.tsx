@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import type { Pin, ZipPerfCircle } from "@/components/ZipMap";
-import { scorePerformanceZips } from "@/lib/zip-score";
+import { scorePerformanceZips, perfGrade } from "@/lib/zip-score";
 
 const ZipMap = dynamic(() => import("@/components/ZipMap"), { ssr: false });
 
@@ -113,9 +113,10 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSavePerf }: {
+function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, perfScore, onSavePerf }: {
   data: ZipData | null; loading: boolean; zip: string; onClose: () => void;
-  clientName?: string; perfData?: ZipPerfRow | null; onSavePerf?: (updates: Partial<ZipPerfRow>) => void;
+  clientName?: string; perfData?: ZipPerfRow | null; perfScore?: number | null;
+  onSavePerf?: (updates: Partial<ZipPerfRow>) => void;
 }) {
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
   const [showPlatforms, setShowPlatforms] = useState(false);
@@ -167,6 +168,25 @@ function ZipDataPanel({ data, loading, zip, onClose, clientName, perfData, onSav
             </div>
             {perfData ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {perfScore != null && (() => {
+                  const pg = perfGrade(perfScore);
+                  const pc = gradeColor(pg);
+                  return (
+                    <div style={{ marginBottom: 4 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: "#949494", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Performance Score</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ flex: 1, height: 10, borderRadius: 5, background: "rgba(0,0,0,0.081)", overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${perfScore}%`, background: pc, borderRadius: 5, transition: "width 0.5s ease" }} />
+                        </div>
+                        <span style={{ fontSize: 18, fontWeight: 800, color: "#000000" }}>{perfScore.toFixed(1)}</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: pc, padding: "2px 7px", borderRadius: 5, background: `${pc}22`, border: `1px solid ${pc}44` }}>{pg}</span>
+                      </div>
+                      <div style={{ fontSize: 9, color: "#949494", marginTop: 6, lineHeight: 1.5 }}>
+                        Ranked against the other zips in this territory.
+                      </div>
+                    </div>
+                  );
+                })()}
                 {([
                   { label: "Leads",        value: perfData.leads,        color: "#000000" },
                   { label: "Appointments", value: perfData.appointments, color: "#4a4a4a" },
@@ -1504,6 +1524,10 @@ export default function ZipTool() {
             const ranked = allZips
               .filter(z => clientPerf[z] && (clientPerf[z].leads > 0 || clientPerf[z].closes > 0))
               .sort((a, b) => {
+                // Rank by the same composite score the map colours by, so the list
+                // and the territory always agree on which zips are strongest.
+                const as_ = perfCircles?.[a]?.score ?? -1, bs = perfCircles?.[b]?.score ?? -1;
+                if (bs !== as_) return bs - as_;
                 const ac = clientPerf[a]?.closes ?? 0, bc = clientPerf[b]?.closes ?? 0;
                 if (bc !== ac) return bc - ac;
                 return (clientPerf[b]?.leads ?? 0) - (clientPerf[a]?.leads ?? 0);
@@ -1518,9 +1542,12 @@ export default function ZipTool() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                   {ranked.map(zip => {
                     const p = clientPerf[zip];
+                    const ps = perfCircles?.[zip]?.score;
+                    const pc = ps != null ? gradeColor(perfGrade(ps)) : "rgba(0,0,0,0.15)";
                     return (
-                      <div key={zip} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderRadius: 5, background: "rgba(0,0,0,0.041)", flexShrink: 0 }}>
+                      <div key={zip} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderRadius: 5, background: "rgba(0,0,0,0.041)", flexShrink: 0, borderLeft: `3px solid ${pc}` }}>
                         <span style={{ fontSize: 10, fontWeight: 700, color: "#111111", fontFamily: "monospace", width: 40, flexShrink: 0 }}>{zip}</span>
+                        {ps != null && <span style={{ fontSize: 9, fontWeight: 700, color: pc, width: 26, flexShrink: 0 }}>{ps.toFixed(1)}</span>}
                         <span style={{ fontSize: 9, color: "#000000" }}>{p.leads}L</span>
                         <span style={{ fontSize: 9, color: "#767676" }}>{p.appointments}A</span>
                         <span style={{ fontSize: 9, color: p.closes > 0 ? "#000000" : "#767676", fontWeight: p.closes > 0 ? 700 : 400 }}>{p.closes}C</span>
@@ -1641,6 +1668,7 @@ export default function ZipTool() {
             onClose={() => { setSelectedZip(null); setZipData(null); }}
             clientName={connectedClient?.name}
             perfData={clientPerf[selectedZip] ?? null}
+            perfScore={perfCircles?.[selectedZip]?.score ?? null}
             onSavePerf={updates => saveZipPerf(selectedZip, updates)}
           />
         )}
