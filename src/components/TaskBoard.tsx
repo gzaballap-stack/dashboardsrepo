@@ -102,6 +102,7 @@ export default function TaskBoard() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropZone, setDropZone] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
   const addRef = useRef<HTMLInputElement>(null);
 
   const anchor = scope === "day" ? dayDate : weekDate;
@@ -456,6 +457,22 @@ export default function TaskBoard() {
             {frog ? frog.title : `Nothing in A — add your must-do ${scope === "day" ? "task" : "objective"}.`}
           </p>
         </div>
+        <button
+          onClick={() => setShowGuide(true)}
+          title="Eat That Frog — the 21 principles"
+          style={{
+            width: 30, height: 30, borderRadius: 8, flexShrink: 0, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#6b6b6b",
+          }}
+          onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.color = "#111111"; el.style.background = "rgba(0,0,0,0.08)"; }}
+          onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.color = "#6b6b6b"; el.style.background = "rgba(0,0,0,0.045)"; }}
+        >
+          <svg style={{ width: 15, height: 15 }} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
+        </button>
+
         {frog && (
           <button
             onClick={() => patch(frog.id, { done: true })}
@@ -465,6 +482,8 @@ export default function TaskBoard() {
           </button>
         )}
       </div>
+
+      {showGuide && <FrogGuide onClose={() => setShowGuide(false)} />}
 
       {/* ── Date bar ── */}
       <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -722,3 +741,132 @@ const fieldStyle: React.CSSProperties = {
   outline: "none",
   width: "100%",
 };
+
+/* ── Eat That Frog: the 21 principles, on demand ── */
+
+const PRINCIPLES: [string, string][] = [
+  ["Set the Table", "Get absolute clarity on what you want. Write down the goal, the deadline and the actions it needs."],
+  ["Plan Every Day in Advance", "Decide tomorrow's priorities tonight. Planning makes the next action obvious."],
+  ["Apply the 80/20 Rule", "A small number of activities produce most of your results. Concentrate your best effort there."],
+  ["Consider the Consequences", "Rank by long-term payoff or cost. The tasks with the biggest consequences deserve you first."],
+  ["Practice Creative Procrastination", "You cannot do everything. Deliberately postpone, delegate or drop low-value work."],
+  ["Use the ABCDE Method", "A must do, B should do, C nice to do, D delegate, E eliminate. Always work the highest letter available."],
+  ["Focus on Key Result Areas", "Identify the few results your role actually requires. Your weakest important area caps the rest."],
+  ["Apply the Law of Three", "Three activities create most of your value. Build the day around them."],
+  ["Prepare Thoroughly Before You Begin", "Gather everything first. Preparation removes friction and makes starting easy."],
+  ["Take It One Oil Barrel at a Time", "Focus on the next step, not the whole journey. Big goals move one action at a time."],
+  ["Upgrade Your Key Skills", "Improve the skills with the greatest impact on your results. Competence makes hard tasks easier."],
+  ["Leverage Your Special Talents", "Find what you naturally do well and spend more of your time doing it."],
+  ["Identify Your Key Constraints", "Find the bottleneck limiting progress. Removing it unlocks disproportionate results."],
+  ["Put the Pressure on Yourself", "Set your own deadlines and standards instead of waiting for someone else's."],
+  ["Maximise Your Personal Powers", "Protect your physical and mental energy. Work with your natural energy cycles."],
+  ["Motivate Yourself into Action", "Don't wait to feel motivated. Action creates the momentum, not the other way round."],
+  ["Get Out of the Technological Time Sinks", "Control email, notifications and social media. Technology should serve your priorities."],
+  ["Slice and Dice the Task", "Break intimidating projects into small pieces so starting stops being the hard part."],
+  ["Create Large Chunks of Time", "Reserve uninterrupted blocks for important work and defend them."],
+  ["Develop a Sense of Urgency", "Once you know what matters, move fast. Speed prevents procrastination taking hold."],
+  ["Single Handle Every Task", "Start it, stay with it, finish it. Switching is what kills the return."],
+];
+
+const CHECKLIST = [
+  "What is my number one priority — my frog — right now?",
+  "Have I planned this day in advance?",
+  "Am I working on the 20% that matters most?",
+  "What can I eliminate, delegate or postpone?",
+  "Have I identified the next concrete action?",
+  "Have I blocked enough uninterrupted time to finish it?",
+  "Are notifications, email and other distractions turned off?",
+  "Can I start now rather than wait to feel motivated?",
+];
+
+function FrogGuide({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#ffffff", borderRadius: 14, maxWidth: 940, width: "100%", maxHeight: "88vh",
+          overflowY: "auto", boxShadow: "0 24px 60px rgba(0,0,0,0.28)",
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          position: "sticky", top: 0, background: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.08)",
+          padding: "16px 22px", display: "flex", alignItems: "center", gap: 12, zIndex: 1,
+        }}>
+          <span style={{ fontSize: 24, lineHeight: 1 }}>🐸</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 17, fontWeight: 800, color: "#111111", letterSpacing: "-0.01em" }}>Eat That Frog!</p>
+            <p style={{ fontSize: 11, color: "#8c8c8c" }}>Brian Tracy — 21 ways to stop procrastinating and get more done</p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#8c8c8c", cursor: "pointer", background: "rgba(0,0,0,0.045)" }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#8c8c8c"}
+          >
+            <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div style={{ padding: 22 }}>
+          {/* Core idea */}
+          <div style={{ background: "rgba(0,0,0,0.035)", border: "1px solid rgba(0,0,0,0.07)", borderRadius: 10, padding: "12px 15px", marginBottom: 20 }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#8c8c8c", marginBottom: 4 }}>THE CORE IDEA</p>
+            <p style={{ fontSize: 13, lineHeight: 1.6, color: "#333333" }}>
+              Your frog is the most important task you can do — the one with the biggest payoff and the one you are
+              most likely to put off. <strong style={{ color: "#111111" }}>Identify it, prioritise it, and do it first.</strong>
+            </p>
+          </div>
+
+          {/* 21 principles */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "14px 26px" }}>
+            {PRINCIPLES.map(([title, body], i) => (
+              <div key={title} style={{ display: "flex", gap: 10 }}>
+                <span style={{
+                  flexShrink: 0, width: 20, height: 20, borderRadius: "50%", background: "#111111", color: "#ffffff",
+                  fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1,
+                }}>{i + 1}</span>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 12.5, fontWeight: 700, color: "#111111", marginBottom: 2 }}>{title}</p>
+                  <p style={{ fontSize: 11.5, lineHeight: 1.55, color: "#6b6b6b" }}>{body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Daily checklist */}
+          <div style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid rgba(0,0,0,0.08)" }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#8c8c8c", marginBottom: 10 }}>DAILY FROG CHECKLIST</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "7px 26px" }}>
+              {CHECKLIST.map(q => (
+                <div key={q} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <span style={{ flexShrink: 0, width: 11, height: 11, borderRadius: 3, border: "1.5px solid rgba(0,0,0,0.22)", marginTop: 3 }} />
+                  <p style={{ fontSize: 11.5, lineHeight: 1.5, color: "#333333" }}>{q}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p style={{ marginTop: 22, textAlign: "center", fontSize: 12, fontStyle: "italic", color: "#8c8c8c" }}>
+            “Nature does not hurry, yet everything is accomplished.” — Lao Tzu
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
