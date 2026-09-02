@@ -35,13 +35,27 @@ export async function POST(req: Request) {
   const ghlContact = body.contact ?? body.Contact ?? null;
   const customFields: GHLCustomField[] = ghlContact?.customField ?? [];
 
-  const contact_name = (
-    body.contact_name?.trim() ||
+  // Session name: the prospect's company if we have one, otherwise the person.
+  // These sessions sit unattached in the Zip Tool until someone links them to a
+  // client, so the name is the only thing identifying whose territory it is.
+  const company_name = (
+    body.company_name?.trim() ||
     body.agency_name?.trim() ||
+    ghlContact?.companyName?.trim() ||
+    ghlContact?.company_name?.trim() ||
+    extractCustomField(customFields, 'company_name') ||
+    extractCustomField(customFields, 'business_name') ||
+    ''
+  );
+
+  const person_name = (
+    body.contact_name?.trim() ||
     ghlContact?.name?.trim() ||
     `${ghlContact?.firstName ?? ''} ${ghlContact?.lastName ?? ''}`.trim() ||
-    'Unknown'
+    ''
   );
+
+  const contact_name = company_name || person_name || 'Unknown';
 
   const radius = Math.min(
     Math.max(

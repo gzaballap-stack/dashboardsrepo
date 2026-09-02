@@ -6,6 +6,40 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
+## 2026-09-02 — Sales-call territory scoring (built, never wired up)
+
+What it is: when a B2B sales call is booked in GHL, the prospect's targeting
+info is turned into a scored Zip Tool territory session automatically, and the
+worst-performing zip is written back onto the GHL contact for the sales team to
+use on the call.
+
+- Flow: GHL workflow → Make scenario **"CCM - Sales Call Territory Scoring"**
+  (`make-blueprints/ccm-sales-call-territory.blueprint.json`) → `POST
+  /api/admin/onboard` → back to GHL.
+- Reads these contact custom fields: `targeting_radius` (miles, clamped 5–75,
+  defaults to 35), plus **one** of `postal_code` / `zip_code_targeted` (one or
+  two zips) / `zip_code_list` (explicit multi-line list). Writes the result to
+  `worst_performing_zip_code`.
+- Creates a row in `client_sessions` with **`client_id = null` on purpose.**
+  These are prospects, not clients — the session stays unattached until someone
+  links it to a client. Do not "fix" this.
+- Session name is the prospect's **company** name, falling back to the person's
+  name, then `Unknown` (changed 2026-09-02; Make now also sends
+  `company_name` from `contact.companyName`).
+
+### Status: dormant — nothing has ever run through it
+
+- The blueprint ships with `REPLACE_WITH_YOUR_RAILWAY_URL` as the endpoint. It
+  was never pointed at V1 or V2.
+- Confirmed against both databases on 2026-09-02: **zero** sessions from this
+  flow in either. V1 has no `client_sessions` rows at all; V2's 17 are all
+  seeded and attached to clients.
+- So it isn't a V1 or a V2 feature — it's environment-agnostic code waiting on
+  someone to fill in the Make URL. Whichever URL goes in decides the
+  environment.
+
+---
+
 ## 2026-08-31 — Communication rules (read before replying)
 
 - **Use as few words as possible.** This is the top rule — brevity outranks

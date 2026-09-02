@@ -61,7 +61,7 @@
                 "ca": "",
                 "useMtls": false,
                 "contentType": "application/json",
-                "data": "{\"contact_name\": \"{{1.contact.name}}\", \"zip_code\": \"{{1.contact.postalCode}}\", \"zip_code_targeted\": \"{{1.contact.customField.zip_code_targeted}}\", \"zip_code_list\": \"{{1.contact.customField.zip_code_list}}\", \"radius_miles\": \"{{1.contact.customField.targeting_radius}}\"}"
+                "data": "{\"contact_name\": \"{{1.contact.name}}\", \"company_name\": \"{{1.contact.companyName}}\", \"zip_code\": \"{{1.contact.postalCode}}\", \"zip_code_targeted\": \"{{1.contact.customField.zip_code_targeted}}\", \"zip_code_list\": \"{{1.contact.customField.zip_code_list}}\", \"radius_miles\": \"{{1.contact.customField.targeting_radius}}\"}"
             },
             "metadata": {
                 "designer": { "x": 300, "y": 0, "name": "Score Territory & Create Session" }
