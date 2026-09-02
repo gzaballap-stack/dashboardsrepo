@@ -135,6 +135,8 @@ export default function TaskBoard() {
   const [showGuide, setShowGuide] = useState(false);
   const [showList, setShowList] = useState(false);
   const [listTitle, setListTitle] = useState("");
+  const [editingListId, setEditingListId] = useState<string | null>(null);
+  const [dragFromList, setDragFromList] = useState(false);
   const addRef = useRef<HTMLInputElement>(null);
 
   // The board only ever plans a day or a week; "month" is a review of what got done.
@@ -205,9 +207,11 @@ export default function TaskBoard() {
   );
 
   // Scheduling a list item keeps it on the list — only ticking it off removes it.
-  const staysOnList = (id: string | null) => {
+  // The flag is only ever set, never cleared here, so a drag can't silently unlink a task.
+  const listLink = (id: string | null) => {
     const t = tasks.find(x => x.id === id);
-    return !!t && (t.scope === "backlog" || t.from_list);
+    const linked = dragFromList || (!!t && (t.scope === "backlog" || t.from_list));
+    return linked ? { from_list: true } : {};
   };
 
   // Month review: a Mon-Sun grid of the month, plus everything completed in it.
@@ -306,20 +310,20 @@ export default function TaskBoard() {
     if (!dragId) return;
     const siblings = visible.filter(t => t.bucket === bucket && t.priority === priority && t.id !== dragId);
     const max = siblings.reduce((m, t) => Math.max(m, t.position), 0);
-    patch(dragId, { bucket, priority, position: max + 1000, scope, task_date: anchor, from_list: staysOnList(dragId) });
-    setDragId(null); setDropZone(null);
+    patch(dragId, { bucket, priority, position: max + 1000, scope, task_date: anchor, ...listLink(dragId) });
+    setDragId(null); setDropZone(null); setDragFromList(false);
   }
 
   // Drop onto a card → land immediately above it.
   function dropBefore(target: Task) {
-    if (!dragId || dragId === target.id) { setDragId(null); setDropZone(null); return; }
+    if (!dragId || dragId === target.id) { setDragId(null); setDropZone(null); setDragFromList(false); return; }
     const lane = visible
       .filter(t => t.bucket === target.bucket && t.priority === target.priority && t.id !== dragId)
       .sort((a, b) => a.position - b.position);
     const i = lane.findIndex(t => t.id === target.id);
     const before = i > 0 ? lane[i - 1].position : target.position - 2000;
-    patch(dragId, { bucket: target.bucket, priority: target.priority, position: (before + target.position) / 2, scope, task_date: anchor, from_list: staysOnList(dragId) });
-    setDragId(null); setDropZone(null);
+    patch(dragId, { bucket: target.bucket, priority: target.priority, position: (before + target.position) / 2, scope, task_date: anchor, ...listLink(dragId) });
+    setDragId(null); setDropZone(null); setDragFromList(false);
   }
 
   // Dropping onto a date in the day strip or the month grid schedules it there.
@@ -328,8 +332,8 @@ export default function TaskBoard() {
     const max = tasks
       .filter(t => t.scope === "day" && t.task_date === dateISO && t.id !== dragId)
       .reduce((m, t) => Math.max(m, t.position), 0);
-    patch(dragId, { scope: "day", task_date: dateISO, position: max + 1000, from_list: staysOnList(dragId) });
-    setDragId(null); setDropZone(null);
+    patch(dragId, { scope: "day", task_date: dateISO, position: max + 1000, ...listLink(dragId) });
+    setDragId(null); setDropZone(null); setDragFromList(false);
   }
 
   function step(n: number) {
@@ -356,7 +360,7 @@ export default function TaskBoard() {
       <div
         draggable
         onDragStart={e => { setDragId(task.id); e.dataTransfer.effectAllowed = "move"; }}
-        onDragEnd={() => { setDragId(null); setDropZone(null); }}
+        onDragEnd={() => { setDragId(null); setDropZone(null); setDragFromList(false); }}
         onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDropZone(`card:${task.id}`); }}
         onDrop={e => { e.preventDefault(); e.stopPropagation(); dropBefore(task); }}
         style={{
@@ -981,7 +985,7 @@ export default function TaskBoard() {
                         key={t.id}
                         draggable
                         onDragStart={e => { setDragId(t.id); e.dataTransfer.effectAllowed = "move"; }}
-                        onDragEnd={() => { setDragId(null); setDropZone(null); }}
+                        onDragEnd={() => { setDragId(null); setDropZone(null); setDragFromList(false); }}
                         style={{
                           display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", marginBottom: 5,
                           background: "#ffffff", border: "1px solid rgba(0,0,0,0.09)", borderLeft: "2px solid rgba(0,0,0,0.35)",
@@ -998,11 +1002,27 @@ export default function TaskBoard() {
                             border: "1.5px solid rgba(0,0,0,0.22)", background: "transparent",
                           }}
                         />
-                        <input
-                          defaultValue={t.title}
-                          onBlur={e => { const v = e.target.value.trim(); if (v && v !== t.title) patch(t.id, { title: v }); }}
-                          style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#111111", background: "transparent", outline: "none", border: "none" }}
-                        />
+                        {editingListId === t.id ? (
+                          <input
+                            autoFocus
+                            defaultValue={t.title}
+                            onBlur={e => {
+                              const v = e.target.value.trim();
+                              if (v && v !== t.title) patch(t.id, { title: v });
+                              setEditingListId(null);
+                            }}
+                            onKeyDown={e => { if (e.key === "Enter" || e.key === "Escape") (e.target as HTMLInputElement).blur(); }}
+                            style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#111111", background: "transparent", outline: "none", border: "none" }}
+                          />
+                        ) : (
+                          // A span, not an input — an input would swallow the drag when grabbed.
+                          <span
+                            onClick={() => setEditingListId(t.id)}
+                            style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#111111", wordBreak: "break-word" }}
+                          >
+                            {t.title}
+                          </span>
+                        )}
                         {placed && (
                           <span
                             title={`Planned for ${t.scope === "week" ? "the week of " : ""}${parseISO(t.task_date!).toLocaleDateString("en-US", { month: "long", day: "numeric" })}`}
