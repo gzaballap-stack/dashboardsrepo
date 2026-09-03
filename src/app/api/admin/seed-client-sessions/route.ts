@@ -18,13 +18,15 @@ import { normalizeZip } from '@/lib/zip-rollup';
 
 const TIGER_BASE = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/2';
 const PIN_COLOR   = '#000000';
-const GEO_CHUNK   = 60;
+const GEO_CHUNK   = 25;
 const MIN_RADIUS  = 10;
 const MAX_RADIUS  = 75;
 
 type LatLng = { lat: number; lng: number };
 
-// Centroids for many zips in one TIGER call rather than one call per zip.
+// Centroids for many zips in one TIGER call rather than one call per zip. TIGER
+// only returns a centroid alongside the geometry, so ask for a coarse outline
+// (maxAllowableOffset) and average its ring rather than pulling full detail.
 async function geocodeZips(zips: string[]): Promise<Map<string, LatLng>> {
   const out = new Map<string, LatLng>();
 
@@ -35,7 +37,8 @@ async function geocodeZips(zips: string[]): Promise<Map<string, LatLng>> {
       outSR: '4326',
       outFields: 'ZCTA5',
       returnCentroid: 'true',
-      returnGeometry: 'false',
+      returnGeometry: 'true',
+      maxAllowableOffset: '0.01',
       resultRecordCount: String(GEO_CHUNK),
       f: 'json',
     });
@@ -46,8 +49,18 @@ async function geocodeZips(zips: string[]): Promise<Map<string, LatLng>> {
       const data = await r.json();
       for (const feat of data.features ?? []) {
         const zip = feat?.attributes?.ZCTA5;
-        const c   = feat?.centroid;
-        if (zip && c) out.set(String(zip), { lat: c.y, lng: c.x });
+        if (!zip) continue;
+
+        if (feat.centroid) {
+          out.set(String(zip), { lat: feat.centroid.y, lng: feat.centroid.x });
+          continue;
+        }
+        const ring: [number, number][] | undefined = feat.geometry?.rings?.[0];
+        if (!ring?.length) continue;
+        out.set(String(zip), {
+          lat: ring.reduce((s, p) => s + p[1], 0) / ring.length,
+          lng: ring.reduce((s, p) => s + p[0], 0) / ring.length,
+        });
       }
     } catch {
       // A chunk that fails just leaves those zips ungeocoded; the rest still place.
