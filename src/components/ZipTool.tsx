@@ -222,8 +222,26 @@ function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfD
                         <span style={{ fontSize: 18, fontWeight: 800, color: "#000000" }}>{perfScore.toFixed(1)}</span>
                         <span style={{ fontSize: 13, fontWeight: 800, color: pc, padding: "2px 7px", borderRadius: 5, background: `${pc}22`, border: `1px solid ${pc}44` }}>{pg}</span>
                       </div>
+                      {(() => {
+                        const base = Math.max(perfData.leads, perfData.appointments, perfData.shows, perfData.closes, 0);
+                        if (!base) return null;
+                        const pct = (n: number) => `${Math.round((n / base) * 100)}%`;
+                        return (
+                          <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
+                            <div>
+                              <div style={{ fontSize: 9, color: "#949494" }}>Close rate</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#111111", fontFamily: "monospace" }}>{pct(perfData.closes)}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 9, color: "#949494" }}>Appt rate</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#111111", fontFamily: "monospace" }}>{pct(perfData.appointments)}</div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                       <div style={{ fontSize: 9, color: "#949494", marginTop: 6, lineHeight: 1.5 }}>
-                        Ranked against the other zips in this territory.
+                        Close rate first, then appointment rate, then volume — curved
+                        against the other zips in this territory.
                       </div>
                     </div>
                   );

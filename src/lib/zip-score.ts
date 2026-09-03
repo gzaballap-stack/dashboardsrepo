@@ -207,32 +207,77 @@ export type ZipPerfInput = {
   revenue: number;
 };
 
-const PERF_METRICS: (keyof ZipPerfInput)[] = ["leads", "appointments", "shows", "closes", "revenue"];
+// How a zip earns its grade: quality first. Close rate carries the most weight,
+// then how well leads turn into appointments, and volume last — enough to keep a
+// one-lead zip from topping the territory, not enough to let raw size win.
+const CLOSE_RATE_WEIGHT = 0.55;
+const APPT_RATE_WEIGHT  = 0.30;
+const VOLUME_WEIGHT     = 0.15;
 
-// Composite 0-100 performance score per zip, relative to the other zips in the same set
-// (min-max normalized, equal-weighted across lead/appointment/show/close/revenue volume).
+// Rates from thin zips are mostly noise: one lead that closed is not a 100% close
+// rate. Each rate is pulled toward the territory's own average as if the zip had
+// this many extra average-performing leads, so a zip has to earn its way out.
+const RATE_PRIOR = 5;
+
+function smoothedRate(hits: number, base: number, average: number): number {
+  return (hits + RATE_PRIOR * average) / (base + RATE_PRIOR);
+}
+
+// Leads sometimes arrive without a zip while the appointment or close that follows
+// has one, so the funnel's widest stage is the honest denominator.
+function funnelBase(r: ZipPerfInput): number {
+  return Math.max(r.leads, r.appointments, r.shows, r.closes, 0);
+}
+
+// Composite 0-100 performance score per zip — quality-weighted, then curved against
+// the other zips in the same territory so the grades spread across the map instead
+// of everything but the biggest zip landing in the red.
 export function scorePerformanceZips(rows: Record<string, ZipPerfInput>): Record<string, number> {
   const zips = Object.keys(rows);
   if (!zips.length) return {};
-  const bounds: Record<string, [number, number]> = {};
-  for (const m of PERF_METRICS) {
-    const vals = zips.map(z => rows[z][m]);
-    bounds[m] = [Math.min(...vals), Math.max(...vals)];
-  }
-  const weight = 1 / PERF_METRICS.length;
-  const scores: Record<string, number> = {};
+
+  // Territory averages — what a typical zip here converts at.
+  let totalBase = 0, totalAppts = 0, totalCloses = 0;
   for (const z of zips) {
-    let total = 0;
-    for (const m of PERF_METRICS) {
-      const [min, max] = bounds[m];
-      const v = rows[z][m];
-      const norm = max > min ? (v - min) / (max - min) : (v > 0 ? 1 : 0);
-      total += norm * weight;
-    }
+    totalBase   += funnelBase(rows[z]);
+    totalAppts  += rows[z].appointments;
+    totalCloses += rows[z].closes;
+  }
+  const avgCloseRate = totalBase > 0 ? totalCloses / totalBase : 0;
+  const avgApptRate  = totalBase > 0 ? totalAppts  / totalBase : 0;
+  const maxBase      = Math.max(...zips.map(z => funnelBase(rows[z])));
+
+  const raw: Record<string, number> = {};
+  for (const z of zips) {
+    const r    = rows[z];
+    const base = funnelBase(r);
+    raw[z] =
+      CLOSE_RATE_WEIGHT * smoothedRate(r.closes,       base, avgCloseRate) +
+      APPT_RATE_WEIGHT  * smoothedRate(r.appointments, base, avgApptRate)  +
+      VOLUME_WEIGHT     * (maxBase > 0 ? base / maxBase : 0);
+  }
+
+  // Curve: a zip's score is where it places among its neighbours, not its distance
+  // from the single best one. Ties share the average of the places they occupy.
+  const order = [...zips].sort((a, b) => raw[a] - raw[b]);
+  const scores: Record<string, number> = {};
+
+  if (order.length === 1) {
+    scores[order[0]] = raw[order[0]] > 0 ? 100 : 0;
+    return scores;
+  }
+
+  for (let i = 0; i < order.length; i++) {
+    let j = i;
+    while (j + 1 < order.length && raw[order[j + 1]] === raw[order[i]]) j++;
+    const place = (i + j) / 2;
     // One decimal place: whole numbers collide constantly across a territory of
     // 100+ zips, which flattens the ranking and makes the map look banded.
-    scores[z] = Math.round(total * 1000) / 10;
+    const score = Math.round((place / (order.length - 1)) * 1000) / 10;
+    for (let k = i; k <= j; k++) scores[order[k]] = score;
+    i = j;
   }
+
   return scores;
 }
 
