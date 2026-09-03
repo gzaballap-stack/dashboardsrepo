@@ -111,7 +111,7 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "goals",            label: "Goal Tracker",      group: "Overview"    },
   { view: "admin_agents",     label: "Agent Roster",      group: "Admin"       },
   { view: "schedule",         label: "Power Dialer Schedule", group: "Admin"    },
-  { view: "zip_tool",         label: "Zip Score System",  group: "Tools"       },
+  { view: "zip_tool",         label: "Zip Score Engine",  group: "Tools"       },
   { view: "task_board",       label: "Task Board",        group: "Tools"       },
 ];
 
@@ -451,7 +451,7 @@ export default function DashboardView() {
   const isHeatmap = view.startsWith("heatmap_");
   const isRaw = ["leads", "dials", "appointments", "speed_to_lead", "ad_spend"].includes(view);
   const isAgentView = ["agent_stats", "agent_scorecards", "recordings"].includes(view);
-  // "Tools" is deliberately absent: the Zip Score System lives under the Tools
+  // "Tools" is deliberately absent: the Zip Score Engine lives under the Tools
   // top-level section, not inside the Clients Dashboard sub-nav.
   const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Stats", "Admin"];
 
