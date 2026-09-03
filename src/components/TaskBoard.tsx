@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type Bucket = "A" | "B" | "C" | "D" | "E";
-type Scope = "day" | "week" | "backlog";
+type Scope = "day" | "week" | "backlog" | "inbox";
+type ListTab = "daily" | "long";
 type ViewMode = "day" | "week" | "month";
 
 type Task = {
@@ -135,6 +136,7 @@ export default function TaskBoard() {
   const [showGuide, setShowGuide] = useState(false);
   const [showList, setShowList] = useState(false);
   const [listTitle, setListTitle] = useState("");
+  const [listTab, setListTab] = useState<ListTab>("daily");
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const [dragFromList, setDragFromList] = useState(false);
   const addRef = useRef<HTMLInputElement>(null);
@@ -199,6 +201,14 @@ export default function TaskBoard() {
     });
   }, [tasks, dayDate]);
 
+  // The quick list for the day (or week) in view: captured, not yet given a letter.
+  const inboxAnchor = view === "month" ? iso(new Date()) : anchor;
+  const inbox = useMemo(
+    () => tasks.filter(t => t.scope === "inbox" && !t.done && t.task_date === inboxAnchor)
+                .sort((a, b) => a.position - b.position),
+    [tasks, inboxAnchor],
+  );
+
   // The long-term to-do list: everything captured but not yet placed on a day.
   const backlog = useMemo(
     () => tasks.filter(t => !t.done && (t.scope === "backlog" || t.from_list))
@@ -213,6 +223,8 @@ export default function TaskBoard() {
     const linked = dragFromList || (!!t && (t.scope === "backlog" || t.from_list));
     return linked ? { from_list: true } : {};
   };
+
+  const rows = listTab === "daily" ? inbox : backlog;
 
   // Month review: a Mon-Sun grid of the month, plus everything completed in it.
   const month = useMemo(() => {
@@ -276,7 +288,9 @@ export default function TaskBoard() {
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, bucket: "A", priority: 1, position: Date.now(), scope: "backlog" }),
+      body: JSON.stringify(listTab === "daily"
+        ? { title, bucket: "B", priority: 2, position: Date.now(), scope: "inbox", task_date: inboxAnchor }
+        : { title, bucket: "B", priority: 2, position: Date.now(), scope: "backlog" }),
     });
     const d = await res.json();
     if (d.task) setTasks(prev => [...prev, d.task]);
@@ -694,9 +708,9 @@ export default function TaskBoard() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
               To-Do List
-              {backlog.length > 0 && (
+              {backlog.length + inbox.length > 0 && (
                 <span style={{ background: "#000000", color: "#fff", fontSize: 9.5, fontWeight: 800, padding: "1px 6px", borderRadius: 20 }}>
-                  {backlog.length}
+                  {backlog.length + inbox.length}
                 </span>
               )}
             </button>
@@ -939,7 +953,9 @@ export default function TaskBoard() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>To-Do List</p>
                 <p style={{ fontSize: 10.5, color: "#949494" }}>
-                  {backlog.length === 0 ? "Everything captured is scheduled" : `${backlog.length} waiting to be scheduled`}
+                  {listTab === "daily"
+                    ? (view === "week" ? weekLabel(weekDate).main : dayLabel(inboxAnchor).main)
+                    : backlog.length === 0 ? "Everything captured is scheduled" : `${backlog.length} waiting to be scheduled`}
                 </p>
               </div>
               <button
@@ -952,12 +968,33 @@ export default function TaskBoard() {
               </button>
             </div>
 
+            <div style={{ padding: "10px 14px 0" }}>
+              <div style={{ display: "flex", background: "rgba(0,0,0,0.054)", borderRadius: 8, padding: 2 }}>
+                {([["daily", "Daily"], ["long", "Long term"]] as [ListTab, string][]).map(([id, label]) => (
+                  <button
+                    key={id}
+                    onClick={() => { setListTab(id); setEditingListId(null); }}
+                    style={{
+                      flex: 1, padding: "6px 10px", borderRadius: 6, fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+                      background: listTab === id ? "#000000" : "transparent",
+                      color: listTab === id ? "#fff" : "#767676",
+                    }}
+                  >
+                    {label}
+                    {(id === "daily" ? inbox.length : backlog.length) > 0 && (
+                      <span style={{ marginLeft: 5, opacity: 0.7 }}>{id === "daily" ? inbox.length : backlog.length}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div style={{ padding: "12px 14px", borderBottom: BORDER, display: "flex", flexDirection: "column", gap: 8 }}>
               <input
                 value={listTitle}
                 onChange={e => setListTitle(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") addToList(); }}
-                placeholder="Something you want to get done…"
+                placeholder={listTab === "daily" ? "Something to get done this " + (view === "week" ? "week" : "day") + "…" : "Something you want to get done…"}
                 style={{ ...fieldStyle, fontSize: 12.5, padding: "8px 11px" }}
               />
               <button
@@ -969,16 +1006,20 @@ export default function TaskBoard() {
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
-              {backlog.length === 0 ? (
+              {rows.length === 0 ? (
                 <p style={{ fontSize: 12, color: "#949494", textAlign: "center", padding: "40px 20px", lineHeight: 1.6 }}>
-                  Nothing on the list. Add what you want to get done, then slide items into a day when you plan it.
+                  {listTab === "daily"
+                    ? "Nothing queued. Jot down what needs doing, then drag each one into a letter."
+                    : "Nothing on the list. Add what you want to get done, then slide items into a day when you plan it."}
                 </p>
               ) : (
                 <>
                   <p style={{ fontSize: 10, color: "#949494", marginBottom: 8, lineHeight: 1.5 }}>
-                    Drag an item onto a column, onto a day in the strip above, or onto a date in Month view. Or press → to drop it into the {view === "week" ? "week" : "day"} you&rsquo;re viewing.
+                    {listTab === "daily"
+                      ? "Drag each one onto a letter column to prioritise it."
+                      : "Drag an item onto a column, a day in the strip, or a date in Month view — it stays on this list until it is done."}
                   </p>
-                  {backlog.map(t => {
+                  {rows.map(t => {
                     const placed = t.scope !== "backlog" && !!t.task_date;
                     return (
                       <div
@@ -995,8 +1036,10 @@ export default function TaskBoard() {
                         <button
                           onClick={() => patch(t.id, placed
                             ? { done: true }
+                            : t.scope === "inbox"
+                            ? { done: true, scope: view === "week" ? "week" : "day", task_date: t.task_date }
                             : { done: true, scope: "day", task_date: iso(new Date()) })}
-                          title={placed ? "Mark done" : "Mark done (files it under today)"}
+                          title="Mark done"
                           style={{
                             flexShrink: 0, width: 14, height: 14, borderRadius: 4, cursor: "pointer",
                             border: "1.5px solid rgba(0,0,0,0.22)", background: "transparent",
@@ -1035,6 +1078,7 @@ export default function TaskBoard() {
                             {parseISO(t.task_date!).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                           </span>
                         )}
+                        {listTab === "long" && (
                         <button
                           onClick={() => schedule(t)}
                           title={`Add to the ${view === "week" ? "week" : "day"} you're viewing`}
@@ -1046,6 +1090,7 @@ export default function TaskBoard() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
                           </svg>
                         </button>
+                        )}
                         <button
                           onClick={() => remove(t.id)}
                           title="Delete"

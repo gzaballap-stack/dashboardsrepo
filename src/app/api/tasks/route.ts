@@ -3,7 +3,7 @@ import { getAuthContext, isAuthError } from '@/lib/api-auth';
 
 const BUCKETS = ['A', 'B', 'C', 'D', 'E'] as const;
 const COLS = 'id, title, notes, bucket, priority, position, done, due_date, delegate_to, created_at, completed_at, task_date, scope, from_list';
-const SCOPES = ['day', 'week', 'backlog'] as const;
+const SCOPES = ['day', 'week', 'backlog', 'inbox'] as const;
 
 export async function GET() {
   const ctx = await getAuthContext();
