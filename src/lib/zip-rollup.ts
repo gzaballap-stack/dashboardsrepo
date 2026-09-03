@@ -144,3 +144,45 @@ export async function zipCreativeBreakdown(
 
   return [...groups.values()].sort((a, b) => b.count - a.count);
 }
+
+// Pre-computed per-zip creative attribution (`zip_creative_attribution`).
+//
+// Where a zip's headline numbers come from the seeded `zip_performance` table
+// rather than from events, there are no per-event ad fields to group on. These
+// rows carry that split instead, already summed per ad.
+//
+// Returns [] when the table is absent or empty — callers fall back to the live
+// event breakdown, so an environment without this table is unaffected.
+export async function storedZipCreatives(
+  service: Service,
+  clientId: string,
+  zip: string,
+  metric: ZipMetric,
+): Promise<CreativeRow[]> {
+  const { data, error } = await service
+    .from('zip_creative_attribution')
+    .select('ad_platform, campaign_name, adset_name, ad_id, ad_name, count, revenue')
+    .eq('client_id', clientId)
+    .eq('zip_code', zip)
+    .eq('metric', metric);
+
+  if (error || !data?.length) return [];
+
+  type Row = {
+    ad_platform: string | null; campaign_name: string | null; adset_name: string | null;
+    ad_id: string | null; ad_name: string | null; count: number | null; revenue: number | null;
+  };
+
+  return (data as Row[])
+    .map(r => ({
+      key:      r.ad_id ?? r.ad_name ?? 'unattributed',
+      label:    r.ad_name ?? r.adset_name ?? r.campaign_name ?? 'Unattributed',
+      platform: r.ad_platform,
+      campaign: r.campaign_name,
+      adset:    r.adset_name,
+      count:    Number(r.count) || 0,
+      revenue:  Number(r.revenue) || 0,
+    }))
+    .filter(r => r.count > 0)
+    .sort((a, b) => b.count - a.count);
+}

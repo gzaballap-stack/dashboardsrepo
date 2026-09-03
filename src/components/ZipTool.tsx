@@ -87,6 +87,15 @@ function fmt$(n: number) {
   return `$${n}`;
 }
 
+// Closed-revenue figures are actual money booked, so they show in full to the
+// cent rather than rounded to the nearest thousand like the census estimates.
+function fmtMoney(n: number) {
+  return `$${(Number(n) || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 function gradeColor(grade: string) {
   return grade === "A" ? "#10b981" : grade === "B" ? "#3b82f6" : grade === "C" ? "#f59e0b" : "#ef4444";
 }
@@ -291,7 +300,7 @@ function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfD
                 {perfData.revenue > 0 && (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 6, background: "rgba(0,0,0,0.036)", marginTop: 2 }}>
                     <span style={{ fontSize: 11, color: "#767676" }}>Revenue</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "#111111", fontFamily: "monospace" }}>{fmt$(perfData.revenue)}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#111111", fontFamily: "monospace" }}>{fmtMoney(perfData.revenue)}</span>
                   </div>
                 )}
               </div>
@@ -1641,7 +1650,7 @@ export default function ZipTool() {
                         <span style={{ fontSize: 9, color: "#000000" }}>{p.leads}L</span>
                         <span style={{ fontSize: 9, color: "#767676" }}>{p.appointments}A</span>
                         <span style={{ fontSize: 9, color: p.closes > 0 ? "#000000" : "#767676", fontWeight: p.closes > 0 ? 700 : 400 }}>{p.closes}C</span>
-                        {p.revenue > 0 && <span style={{ fontSize: 9, color: "#111111", marginLeft: "auto" }}>{fmt$(p.revenue)}</span>}
+                        {p.revenue > 0 && <span style={{ fontSize: 9, color: "#111111", marginLeft: "auto" }}>{fmtMoney(p.revenue)}</span>}
                       </div>
                     );
                   })}

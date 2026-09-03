@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
-import { zipCreativeBreakdown, ZIP_METRIC_EVENTS, normalizeZip, type ZipMetric } from '@/lib/zip-rollup';
+import { zipCreativeBreakdown, storedZipCreatives, ZIP_METRIC_EVENTS, normalizeZip, type ZipMetric } from '@/lib/zip-rollup';
 
 // Which ads / creatives produced one zip's leads, appointments, shows or closes.
 export async function GET(req: Request) {
@@ -22,7 +22,12 @@ export async function GET(req: Request) {
     );
   }
 
-  const breakdown = await zipCreativeBreakdown(ctx.service, client_id, zip, metric);
+  // Prefer pre-computed attribution (it ties to the seeded zip_performance
+  // figures); otherwise group the client's own events by their ad fields.
+  const stored = await storedZipCreatives(ctx.service, client_id, zip, metric);
+  const breakdown = stored.length
+    ? stored
+    : await zipCreativeBreakdown(ctx.service, client_id, zip, metric);
 
   return NextResponse.json({
     zip,
