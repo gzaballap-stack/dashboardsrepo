@@ -135,6 +135,7 @@ export default function TaskBoard() {
   const [dropZone, setDropZone] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [catchUpIds, setCatchUpIds] = useState<string[] | null>(null);
   const [showList, setShowList] = useState(false);
   const [listTitle, setListTitle] = useState("");
   const [listTab, setListTab] = useState<ListTab>("daily");
@@ -336,8 +337,9 @@ export default function TaskBoard() {
     setExpandedId(null);
   }
 
-  async function pullForward() {
-    const ids = stranded.map(t => t.id);
+  async function pullForward(only?: string[]) {
+    const ids = only ?? stranded.map(t => t.id);
+    if (ids.length === 0) return;
     setTasks(prev => prev.map(t => (ids.includes(t.id) ? { ...t, task_date: anchor } : t)));
     await Promise.all(ids.map(id => fetch("/api/tasks", {
       method: "PATCH",
@@ -797,12 +799,23 @@ export default function TaskBoard() {
             <strong style={{ color: "#000000" }}>{stranded.length}</strong> unfinished from earlier {scope === "day" ? "days" : "weeks"}.
           </span>
           <button
-            onClick={pullForward}
+            onClick={() => setCatchUpIds(stranded.map(t => t.id))}
             style={{ fontSize: 11, fontWeight: 700, color: "#000000", cursor: "pointer", whiteSpace: "nowrap" }}
           >
-            Move to this {scope}
+            Review them
           </button>
         </div>
+      )}
+
+      {catchUpIds && (
+        <CatchUp
+          ids={catchUpIds}
+          tasks={tasks}
+          label={view === "week" ? "this week" : dayDate === iso(new Date()) ? "today" : "this day"}
+          onTick={id => patch(id, { done: true })}
+          onReAdd={ids => { pullForward(ids); setCatchUpIds(null); }}
+          onClose={() => setCatchUpIds(null)}
+        />
       )}
 
       {/* ── Add bar ── */}
@@ -1345,6 +1358,145 @@ function FrogGuide({ onClose }: { onClose: () => void }) {
           <p style={{ marginTop: 22, textAlign: "center", fontSize: 12, fontStyle: "italic", color: "#8c8c8c" }}>
             “Nature does not hurry, yet everything is accomplished.” — Lao Tzu
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Catch-up on unfinished work from earlier days ── */
+
+function CatchUp({ ids, tasks, label, onTick, onReAdd, onClose }: {
+  ids: string[];
+  tasks: Task[];
+  label: string;
+  onTick: (id: string) => void;
+  onReAdd: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Keep every row on screen while you tick, so the list doesn't jump under the cursor.
+  const rows = ids.map(id => tasks.find(t => t.id === id)).filter((t): t is Task => !!t);
+  const remaining = rows.filter(t => !t.done);
+
+  const byDate: { date: string; items: Task[] }[] = [];
+  for (const t of rows) {
+    const key = t.task_date ?? "";
+    const row = byDate.find(r => r.date === key);
+    if (row) row.items.push(t); else byDate.push({ date: key, items: [t] });
+  }
+  byDate.sort((a, b) => b.date.localeCompare(a.date));
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.45)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "#ffffff", borderRadius: 14, maxWidth: 520, width: "100%", maxHeight: "84vh",
+          display: "flex", flexDirection: "column", boxShadow: "0 24px 60px rgba(0,0,0,0.28)",
+        }}
+      >
+        <div style={{ padding: "16px 20px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>Unfinished from earlier</p>
+            <p style={{ fontSize: 11, color: "#949494" }}>
+              Tick anything you actually did. The rest can move to {label}.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#949494", cursor: "pointer", background: "rgba(0,0,0,0.045)" }}
+          >
+            <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "14px 18px" }}>
+          {byDate.map(group => (
+            <div key={group.date} style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", color: "#949494", marginBottom: 6 }}>
+                {group.date
+                  ? parseISO(group.date).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }).toUpperCase()
+                  : "NO DATE"}
+              </p>
+              {group.items.map(t => (
+                <div
+                  key={t.id}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", marginBottom: 4,
+                    border: "1px solid rgba(0,0,0,0.09)", borderRadius: 7,
+                    opacity: t.done ? 0.45 : 1,
+                  }}
+                >
+                  <button
+                    onClick={() => { if (!t.done) onTick(t.id); }}
+                    title="I did this"
+                    style={{
+                      flexShrink: 0, width: 15, height: 15, borderRadius: 4, cursor: t.done ? "default" : "pointer",
+                      border: `1.5px solid ${t.done ? "#111111" : "rgba(0,0,0,0.22)"}`,
+                      background: t.done ? "#111111" : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    {t.done && (
+                      <svg style={{ width: 9, height: 9, color: "#ffffff" }} fill="none" stroke="currentColor" strokeWidth={4} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                  <span style={{
+                    flexShrink: 0, width: 17, height: 17, borderRadius: 5, fontSize: 9.5, fontWeight: 900,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "rgba(0,0,0,0.07)", color: "#4a4a4a",
+                  }}>
+                    {t.bucket}{HAS_LEVELS.has(t.bucket) ? t.priority : ""}
+                  </span>
+                  <span style={{
+                    flex: 1, minWidth: 0, fontSize: 12.5, color: "#111111",
+                    textDecoration: t.done ? "line-through" : "none",
+                  }}>
+                    {t.title}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ padding: "12px 18px", borderTop: BORDER, display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 11, color: "#949494", flex: 1 }}>
+            {remaining.length === 0 ? "All caught up." : `${remaining.length} still to do`}
+          </span>
+          <button
+            onClick={onClose}
+            style={{ fontSize: 11.5, fontWeight: 700, color: "#767676", cursor: "pointer" }}
+          >
+            Leave them
+          </button>
+          <button
+            onClick={() => onReAdd(remaining.map(t => t.id))}
+            disabled={remaining.length === 0}
+            style={{
+              background: remaining.length === 0 ? "rgba(0,0,0,0.12)" : "#000000", color: "#fff",
+              fontSize: 12, fontWeight: 700, padding: "8px 16px", borderRadius: 8,
+              cursor: remaining.length === 0 ? "default" : "pointer", whiteSpace: "nowrap",
+            }}
+          >
+            Re-add to {label}
+          </button>
         </div>
       </div>
     </div>
