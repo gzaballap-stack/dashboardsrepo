@@ -22,6 +22,7 @@ type Task = {
   task_date: string | null;
   scope: Scope;
   from_list: boolean;
+  origin: string | null;
 };
 
 const BUCKETS: { id: Bucket; letter: string; name: string; blurb: string; color: string }[] = [
@@ -137,6 +138,7 @@ export default function TaskBoard() {
   const [showList, setShowList] = useState(false);
   const [listTitle, setListTitle] = useState("");
   const [listTab, setListTab] = useState<ListTab>("daily");
+  const [monthTab, setMonthTab] = useState<ListTab>("daily");
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const [dragFromList, setDragFromList] = useState(false);
   const addRef = useRef<HTMLInputElement>(null);
@@ -220,8 +222,9 @@ export default function TaskBoard() {
   // The flag is only ever set, never cleared here, so a drag can't silently unlink a task.
   const listLink = (id: string | null) => {
     const t = tasks.find(x => x.id === id);
-    const linked = dragFromList || (!!t && (t.scope === "backlog" || t.from_list));
-    return linked ? { from_list: true } : {};
+    if (t?.scope === "inbox") return { origin: "inbox" };
+    const fromProjects = dragFromList || (!!t && (t.scope === "backlog" || t.from_list || t.origin === "backlog"));
+    return fromProjects ? { from_list: true, origin: "backlog" } : {};
   };
 
   const rows = listTab === "daily" ? inbox : backlog;
@@ -247,7 +250,25 @@ export default function TaskBoard() {
       };
     });
 
-    return { cells, weeks };
+    // Grouped by the day it was actually ticked off.
+    const prefix = monthDate.slice(0, 7);
+    const doneOn = (t: Task) => (t.completed_at ? t.completed_at.slice(0, 10) : t.task_date) ?? "";
+    const finished = tasks.filter(t => t.done && doneOn(t).startsWith(prefix));
+    const isProject = (t: Task) => t.origin === "backlog" || t.from_list;
+
+    const group = (list: Task[]) => {
+      const out: { date: string; items: Task[] }[] = [];
+      for (const t of [...list].sort((a, b) => doneOn(b).localeCompare(doneOn(a)) || a.position - b.position)) {
+        const key = doneOn(t);
+        const row = out.find(r => r.date === key);
+        if (row) row.items.push(t); else out.push({ date: key, items: [t] });
+      }
+      return out;
+    };
+
+    const projects = finished.filter(isProject);
+    const small = finished.filter(t => !isProject(t));
+    return { cells, weeks, projects: group(projects), small: group(small), projectCount: projects.length, smallCount: small.length };
   }, [tasks, monthDate]);
 
   async function addTask() {
@@ -299,6 +320,14 @@ export default function TaskBoard() {
     });
     const d = await res.json();
     if (d.task) setTasks(prev => [...prev, d.task]);
+  }
+
+  // The X on a board card takes it off the day. Anything that came from a list
+  // goes back to that list; only something typed straight onto the board is deleted.
+  function clearFromBoard(task: Task) {
+    if (task.origin === "backlog" || task.from_list) patch(task.id, { scope: "backlog", task_date: null });
+    else if (task.origin === "inbox") patch(task.id, { scope: "inbox" });
+    else remove(task.id);
   }
 
   // Put a planned task back on the long-term list.
@@ -435,8 +464,10 @@ export default function TaskBoard() {
           </div>
 
           <button
-            onClick={() => remove(task.id)}
-            title="Delete task"
+            onClick={() => clearFromBoard(task)}
+            title={task.origin === "backlog" || task.from_list ? "Take off this day (stays in Big Projects)"
+                 : task.origin === "inbox" ? "Take off this day (back to Small Tasks)"
+                 : "Delete task"}
             style={{ flexShrink: 0, color: "#949494", cursor: "pointer", lineHeight: 0, padding: phone ? 5 : 1 }}
             onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
             onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#949494"}
@@ -928,6 +959,60 @@ export default function TaskBoard() {
                 );
               })}
             </div>
+          </div>
+
+          <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 12, padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+              <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#949494", marginRight: "auto" }}>
+                COMPLETED THIS MONTH
+              </p>
+              <div style={{ display: "flex", background: "rgba(0,0,0,0.054)", borderRadius: 8, padding: 2 }}>
+                {([["daily", "Small Tasks", month.smallCount], ["long", "Big Projects", month.projectCount]] as [ListTab, string, number][]).map(([id, lbl, n]) => (
+                  <button
+                    key={id}
+                    onClick={() => setMonthTab(id)}
+                    style={{
+                      padding: "5px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                      background: monthTab === id ? "#000000" : "transparent",
+                      color: monthTab === id ? "#fff" : "#767676",
+                    }}
+                  >
+                    {lbl} <span style={{ opacity: 0.7 }}>{n}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {(monthTab === "daily" ? month.small : month.projects).length === 0 ? (
+              <p style={{ fontSize: 12, color: "#949494" }}>
+                No {monthTab === "daily" ? "small tasks" : "big projects"} completed this month.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {(monthTab === "daily" ? month.small : month.projects).map(row => (
+                  <div key={row.date}>
+                    <button
+                      onClick={() => { setDayDate(row.date); setView("day"); }}
+                      style={{ fontSize: 10.5, fontWeight: 800, color: "#4a4a4a", marginBottom: 5, cursor: "pointer" }}
+                    >
+                      {parseISO(row.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                    </button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      {row.items.map(t => (
+                        <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{
+                            flexShrink: 0, width: 16, height: 16, borderRadius: 5, fontSize: 9, fontWeight: 900,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            background: "rgba(0,0,0,0.07)", color: "#4a4a4a",
+                          }}>{t.bucket}</span>
+                          <span style={{ fontSize: 12, color: "#4a4a4a", textDecoration: "line-through" }}>{t.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>
