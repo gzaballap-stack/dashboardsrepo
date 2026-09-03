@@ -32,13 +32,13 @@ const BUCKETS: { id: Bucket; letter: string; name: string; blurb: string; color:
   { id: "E", letter: "E", name: "Eliminate",  blurb: "Unnecessary and wasteful. Cut it.",               color: "#b0b0b0" },
 ];
 
-// Every bucket carries the same three levels (A1-A3, B1-B3, ...). Weight, not
-// hue, signals urgency: darkest first.
+// A carries three levels (A1-A3). Weight, not hue, signals urgency: darkest
+// first.
 const LEVEL_SHADES = ["#111111", "#5a5a5a", "#8c8c8c"];
 const LEVEL_HINTS  = ["do first", "next", "last"];
 
-// Only A and B are ranked — C, D and E don't warrant ordering within themselves.
-const HAS_LEVELS = new Set<Bucket>(["A", "B"]);
+// Only A is ranked — everything below the must-do bucket is a flat list.
+const HAS_LEVELS = new Set<Bucket>(["A"]);
 
 function levelsFor(bucket: Bucket) {
   return LEVEL_SHADES.map((color, i) => ({
@@ -257,7 +257,12 @@ export default function TaskBoard() {
     const res = await fetch("/api/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, bucket: newBucket, priority: newPriority, position: Date.now(), task_date: anchor, scope }),
+      body: JSON.stringify({
+        title, bucket: newBucket,
+        // Unranked buckets all sit at one level, whatever the hidden selector still holds.
+        priority: HAS_LEVELS.has(newBucket) ? newPriority : 1,
+        position: Date.now(), task_date: anchor, scope,
+      }),
     });
     const d = await res.json();
     if (d.task) setTasks(prev => [...prev, d.task]);
