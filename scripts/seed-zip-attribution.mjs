@@ -43,10 +43,14 @@ if (REF === V1_REF && !ALLOW_V1) {
   process.exit(1);
 }
 
-// Average project size per client — mirrors avg_revenue in src/lib/mock-generator.ts.
+// Per client: average project size (mirrors avg_revenue in
+// src/lib/mock-generator.ts) and the closed-revenue total the demo should land
+// on. Job values stay realistic, so hitting the target means carrying fewer
+// closes — the close counts are scaled down to suit, never the ticket price.
+// The two targets keep the clients in proportion (BlueSky runs ~4x the zips).
 const CLIENTS = {
-  'Craftsman Kitchen Group': 42500,
-  'BlueSky Renovations':     29500,
+  'Craftsman Kitchen Group': { avgTicket: 42500, targetRevenue: 3_000_000 },
+  'BlueSky Renovations':     { avgTicket: 29500, targetRevenue: 9_370_000 },
 };
 
 // One remodel job's contract value. Right-skewed around the client's average:
@@ -284,9 +288,16 @@ async function fetchAll(path) {
 console.log(`Target: ${REF}${REF === V1_REF ? '  ** V1 PRODUCTION **' : '  (V2 demo)'}`);
 console.log(DRY ? 'Mode:   dry run — nothing will be written\n' : 'Mode:   write\n');
 
+// A zip's jobs, priced from a seed that depends only on the client and zip, so
+// re-running the script reproduces the same book of business.
+const jobsFor = (name, zip, count, avgTicket) => {
+  const rng = mulberry32(hash32(`${name}|${zip}|jobs`));
+  return Array.from({ length: count }, () => jobValue(rng, avgTicket));
+};
+
 let grandRows = 0;
 
-for (const [name, avgTicket] of Object.entries(CLIENTS)) {
+for (const [name, { avgTicket, targetRevenue }] of Object.entries(CLIENTS)) {
   const [client] = await rest(`clients?name=eq.${encodeURIComponent(name)}&select=id,name`);
   if (!client) { console.error(`✗ client not found: ${name}`); process.exit(1); }
 
@@ -294,22 +305,50 @@ for (const [name, avgTicket] of Object.entries(CLIENTS)) {
     `zip_performance?client_id=eq.${client.id}&select=client_id,zip_code,leads,appointments,shows,closes,revenue&order=zip_code`
   );
 
+  // Pass 1 — - what the current close counts would be worth at full price.
+  const atFullPrice = perf.reduce(
+    (n, r) => n + jobsFor(name, r.zip_code, Number(r.closes) || 0, avgTicket).reduce((a, b) => a + b, 0),
+    0
+  );
+
+  // Pass 2 — scale the closes down to meet the revenue target, spreading the
+  // cut across zips in proportion to what each already carries. A first guess
+  // off the full-price average lands within ~10%; carrying fewer jobs changes
+  // which ones get drawn, so re-solve against the realised figure until the
+  // total settles inside 1% of target.
+  const closesNow = perf.map(r => Number(r.closes) || 0);
+  const totalNow  = closesNow.reduce((a, b) => a + b, 0);
+
+  const revenueOf = counts => perf.reduce(
+    (n, r, i) => n + jobsFor(name, r.zip_code, counts[i], avgTicket).reduce((a, b) => a + b, 0),
+    0
+  );
+
+  let wanted    = Math.max(1, Math.round(totalNow * (targetRevenue / atFullPrice)));
+  let closesNew = allocate(wanted, closesNow, closesNow);
+  let realised  = revenueOf(closesNew);
+
+  for (let k = 0; k < 8; k++) {
+    if (Math.abs(realised - targetRevenue) / targetRevenue < 0.01) break;
+    const next = Math.max(1, Math.round(wanted * (targetRevenue / realised)));
+    if (next === wanted) break;
+    wanted    = next;
+    closesNew = allocate(wanted, closesNow, closesNow);
+    realised  = revenueOf(closesNew);
+  }
+
   const bank = buildBank(name);
   const rows = [];
   const perfUpdates = [];
   const allJobs = [];
 
-  for (const r of perf) {
-    const closes = Number(r.closes) || 0;
-    const rng = mulberry32(hash32(`${name}|${r.zip_code}|jobs`));
-
-    // Every close is its own contract, priced independently — that's what stops
-    // a zip's revenue being closes x one flat average.
-    const jobs = Array.from({ length: closes }, () => jobValue(rng, avgTicket));
+  perf.forEach((r, i) => {
+    const closes = closesNew[i];
+    const jobs   = jobsFor(name, r.zip_code, closes, avgTicket);
     allJobs.push(...jobs);
 
     const revenue = Math.round(jobs.reduce((a, b) => a + b, 0) * 100) / 100;
-    perfUpdates.push({
+    const row = {
       client_id:    r.client_id,
       zip_code:     r.zip_code,
       leads:        Number(r.leads) || 0,
@@ -318,23 +357,23 @@ for (const [name, avgTicket] of Object.entries(CLIENTS)) {
       closes,
       revenue,
       updated_at:   new Date().toISOString(),
-    });
+    };
+    perfUpdates.push(row);
+    rows.push(...attributeZip(name, bank, row, jobs));
+  });
 
-    rows.push(...attributeZip(name, bank, { ...r, revenue }, jobs));
-  }
-
-  // Verify the split ties back to the source numbers exactly.
+  // Verify the split ties back to the numbers being written.
   const sum = (metric, key = 'count') =>
     rows.filter(r => r.metric === metric).reduce((n, r) => n + r[key], 0);
-  const src = k => perf.reduce((n, r) => n + (Number(r[k]) || 0), 0);
-  const newRev = Math.round(perfUpdates.reduce((n, r) => n + r.revenue, 0) * 100) / 100;
+  const want = k => perfUpdates.reduce((n, r) => n + r[k], 0);
+  const newRev  = Math.round(want('revenue') * 100) / 100;
   const attrRev = Math.round(sum('closes', 'revenue') * 100) / 100;
 
   const checks = [
-    ['leads',        sum('leads'),        src('leads')],
-    ['appointments', sum('appointments'), src('appointments')],
-    ['shows',        sum('shows'),        src('shows')],
-    ['closes',       sum('closes'),       src('closes')],
+    ['leads',        sum('leads'),        want('leads')],
+    ['appointments', sum('appointments'), want('appointments')],
+    ['shows',        sum('shows'),        want('shows')],
+    ['closes',       sum('closes'),       want('closes')],
     ['revenue',      attrRev,             newRev],
   ];
 
@@ -342,17 +381,17 @@ for (const [name, avgTicket] of Object.entries(CLIENTS)) {
   const pct = q => sorted[Math.floor(sorted.length * q)] ?? 0;
   const money = n => '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  console.log(`${name}  (avg ticket ${money(avgTicket)})`);
+  console.log(`${name}  (avg ticket ${money(avgTicket)} · target ${money(targetRevenue)})`);
   console.log(`  zips ${perf.length} · bank ${bank.length} ads / ${new Set(bank.map(a => a.adset_id)).size} ad sets · rows ${rows.length}`);
+  console.log(`  closes ${totalNow} → ${wanted}   revenue ${money(atFullPrice)} → ${money(newRev)}`);
   console.log(`  jobs ${allJobs.length} · p10 ${money(pct(0.10))} · median ${money(pct(0.50))} · p90 ${money(pct(0.90))} · max ${money(sorted[sorted.length - 1] ?? 0)}`);
-  for (const [label, got, want] of checks) {
-    const ok = Math.abs(got - want) < 0.011;
-    console.log(`  ${ok ? '✓' : '✗'} ${label.padEnd(13)} ${got.toLocaleString()} / ${want.toLocaleString()}`);
+  for (const [label, got, w] of checks) {
+    const ok = Math.abs(got - w) < 0.011;
+    console.log(`  ${ok ? '✓' : '✗'} ${label.padEnd(13)} ${got.toLocaleString()} / ${w.toLocaleString()}`);
     if (!ok) process.exitCode = 1;
   }
 
   if (!DRY) {
-    // Re-price the zips first, then replace their creative split.
     for (let i = 0; i < perfUpdates.length; i += 500) {
       await rest('zip_performance?on_conflict=client_id,zip_code', {
         method: 'POST',
