@@ -301,13 +301,6 @@ export default function TaskBoard() {
     if (d.task) setTasks(prev => [...prev, d.task]);
   }
 
-  // Slide a list item into the day (or week) currently in view.
-  function schedule(task: Task) {
-    const siblings = visible.filter(t => t.bucket === task.bucket && t.priority === task.priority);
-    const max = siblings.reduce((m, t) => Math.max(m, t.position), 0);
-    patch(task.id, { scope, task_date: anchor, position: max + 1000, from_list: true });
-  }
-
   // Put a planned task back on the long-term list.
   function unschedule(task: Task) {
     patch(task.id, { scope: "backlog", task_date: null, from_list: false });
@@ -530,7 +523,7 @@ export default function TaskBoard() {
               onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
               onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
             >
-              ← Back to to-do list
+              ← Back to big projects
             </button>
           </div>
         )}
@@ -960,7 +953,7 @@ export default function TaskBoard() {
                 <p style={{ fontSize: 10.5, color: "#949494" }}>
                   {listTab === "daily"
                     ? (view === "week" ? weekLabel(weekDate).main : dayLabel(inboxAnchor).main)
-                    : backlog.length === 0 ? "Everything captured is scheduled" : `${backlog.length} waiting to be scheduled`}
+                    : backlog.length === 0 ? "No projects on the go" : `${backlog.length} project${backlog.length === 1 ? "" : "s"} on the go`}
                 </p>
               </div>
               <button
@@ -975,7 +968,7 @@ export default function TaskBoard() {
 
             <div style={{ padding: "10px 14px 0" }}>
               <div style={{ display: "flex", background: "rgba(0,0,0,0.054)", borderRadius: 8, padding: 2 }}>
-                {([["daily", "Daily"], ["long", "Long term"]] as [ListTab, string][]).map(([id, label]) => (
+                {([["daily", "Small Tasks"], ["long", "Big Projects"]] as [ListTab, string][]).map(([id, label]) => (
                   <button
                     key={id}
                     onClick={() => { setListTab(id); setEditingListId(null); }}
@@ -999,7 +992,7 @@ export default function TaskBoard() {
                 value={listTitle}
                 onChange={e => setListTitle(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") addToList(); }}
-                placeholder={listTab === "daily" ? "Something to get done this " + (view === "week" ? "week" : "day") + "…" : "Something you want to get done…"}
+                placeholder={listTab === "daily" ? "A small task for this " + (view === "week" ? "week" : "day") + "…" : "A big project you\u2019re working on…"}
                 style={{ ...fieldStyle, fontSize: 12.5, padding: "8px 11px" }}
               />
               <button
@@ -1014,15 +1007,15 @@ export default function TaskBoard() {
               {rows.length === 0 ? (
                 <p style={{ fontSize: 12, color: "#949494", textAlign: "center", padding: "40px 20px", lineHeight: 1.6 }}>
                   {listTab === "daily"
-                    ? "Nothing queued. Jot down what needs doing, then drag each one into a letter."
-                    : "Nothing on the list. Add what you want to get done, then slide items into a day when you plan it."}
+                    ? "No small tasks yet. Jot them down, then drag each one into a letter."
+                    : "No big projects yet. Add one, then drag it into a letter whenever you work on it — it stays here until it is done."}
                 </p>
               ) : (
                 <>
                   <p style={{ fontSize: 10, color: "#949494", marginBottom: 8, lineHeight: 1.5 }}>
                     {listTab === "daily"
                       ? "Drag each one onto a letter column to prioritise it."
-                      : "Drag an item onto a column, a day in the strip, or a date in Month view — it stays on this list until it is done."}
+                      : "Drag a project onto a letter column, a day in the strip, or a date in Month view. It stays on this list until it is done."}
                   </p>
                   {rows.map(t => {
                     const placed = t.scope !== "backlog" && !!t.task_date;
@@ -1082,19 +1075,6 @@ export default function TaskBoard() {
                             {t.scope === "week" ? "wk " : ""}
                             {parseISO(t.task_date!).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                           </span>
-                        )}
-                        {listTab === "long" && (
-                        <button
-                          onClick={() => schedule(t)}
-                          title={`Add to the ${view === "week" ? "week" : "day"} you're viewing`}
-                          style={{ flexShrink: 0, color: "#767676", cursor: "pointer", lineHeight: 0, padding: 2 }}
-                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
-                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
-                        >
-                          <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                          </svg>
-                        </button>
                         )}
                         <button
                           onClick={() => remove(t.id)}
