@@ -111,8 +111,8 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "goals",            label: "Goal Tracker",      group: "Overview"    },
   { view: "admin_agents",     label: "Agent Roster",      group: "Admin"       },
   { view: "schedule",         label: "Power Dialer Schedule", group: "Admin"    },
-  { view: "zip_tool",         label: "Zip Code Tool",     group: "Tools"       },
-  { view: "task_board",       label: "Task Board: The next step in the current", group: "Tools" },
+  { view: "zip_tool",         label: "Zip Score System",  group: "Tools"       },
+  { view: "task_board",       label: "Task Board",        group: "Tools"       },
 ];
 
 const SETTINGS_ICON = "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z";
@@ -451,7 +451,7 @@ export default function DashboardView() {
   const isHeatmap = view.startsWith("heatmap_");
   const isRaw = ["leads", "dials", "appointments", "speed_to_lead", "ad_spend"].includes(view);
   const isAgentView = ["agent_stats", "agent_scorecards", "recordings"].includes(view);
-  // "Tools" is deliberately absent: the Zip Code Tool lives under the Tools
+  // "Tools" is deliberately absent: the Zip Score System lives under the Tools
   // top-level section, not inside the Clients Dashboard sub-nav.
   const groups = ["Overview", "Raw Data", "Heat Maps", "Agent Stats", "Admin"];
 
