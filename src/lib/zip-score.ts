@@ -281,10 +281,13 @@ export function scorePerformanceZips(rows: Record<string, ZipPerfInput>): Record
   return scores;
 }
 
-// Performance score → letter grade, using the same cut-offs as the Census lead
-// quality score so the two views read on one scale.
+// Performance score → letter grade. The score is a placing within the territory
+// rather than a raw number, so the bands are set by how much of the map each
+// colour should cover: the top fifth green, the bottom fifth red, the middle 60%
+// split between them. Borrowing the Census score's cut-offs here painted a third
+// of every territory red no matter how well its zips converted.
 export function perfGrade(score: number): "A" | "B" | "C" | "D" {
-  return score >= 75 ? "A" : score >= 55 ? "B" : score >= 35 ? "C" : "D";
+  return score >= 80 ? "A" : score >= 50 ? "B" : score >= 20 ? "C" : "D";
 }
 
 // Maps a 0-100 composite performance score to a pixel radius for the map circle overlay.
