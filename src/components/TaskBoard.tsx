@@ -587,17 +587,17 @@ export default function TaskBoard() {
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
 
-      {/* ── Frog banner ── */}
+      {/* ── Priority banner ── */}
       {view !== "month" && (
       <div style={{
         background: frog ? "linear-gradient(90deg, rgba(0,0,0,0.07), rgba(0,0,0,0.014))" : PANEL_BG,
         border: `1px solid ${frog ? "rgba(0,0,0,0.14)" : "rgba(0,0,0,0.081)"}`,
         borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
       }}>
-        <span style={{ fontSize: 24, lineHeight: 1 }}>🐸</span>
+        <span style={{ fontSize: 24, lineHeight: 1 }}>🌊</span>
         <div style={{ flex: 1, minWidth: 180 }}>
           <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#6b6b6b", marginBottom: 2 }}>
-            {scope === "day" ? "EAT THIS FROG FIRST" : "BIGGEST OBJECTIVE THIS WEEK"}
+            {scope === "day" ? "THE NEXT STEP IN THE CURRENT" : "BIGGEST OBJECTIVE THIS WEEK"}
           </p>
           <p style={{ fontSize: 14.5, fontWeight: 700, color: frog ? "#111111" : "#949494" }}>
             {frog ? frog.title : `Nothing in A — add your must-do ${scope === "day" ? "task" : "objective"}.`}
