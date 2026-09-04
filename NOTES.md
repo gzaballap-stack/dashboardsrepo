@@ -352,3 +352,41 @@ correct — hence a toggle rather than a chosen default.
 
 Order matters: migration first, then backfill, or last touch is discarded.
 
+---
+
+## 2026-09-04 — Keeping attribution current
+
+The one-off backfill does not keep up: new *contacts* arrive with no attribution,
+and their whole downstream funnel inherits the blank. Coverage was visibly
+decaying — 74% on 09-02, 41% on 09-03, 0% on 09-04 — before a catch-up run.
+
+(Existing contacts are fine: `/api/webhooks` already inherits attribution onto
+later events, so only genuinely new contacts are the gap.)
+
+**Verified: `/api/admin/backfill-ghl-attribution` works against live V1 from the
+public internet** with the admin bearer secret. A catch-up run took V1 to **1,156
+of 1,285 (90%)**, with today's leads at 100%. That proves the scheduled call.
+
+### Scheduling — blocked on a Make permission
+
+`MAKE_API_KEY` cannot create scenarios:
+`403 Insufficient rights, team permission "Create scenarios" is needed.`
+(Consistent with [[make-api-gotchas]] — the key is scoped narrowly.)
+
+So `make-blueprints/ccm-attribution-refresh.blueprint.json` is written for manual
+import: a single scheduled HTTP POST, hourly, body
+`{"dry_run": false, "only_missing": true, "limit": 500}`. The Authorization
+header is a `REPLACE_WITH_ADMIN_WEBHOOK_SECRET` placeholder — the real secret is
+never committed.
+
+`only_missing` makes each run cheap: it skips everything already attributed, so a
+run costs one GHL call per genuinely new contact.
+
+### The alternative, if Make is not wanted
+
+Enrich inside `/api/webhooks` on ingest — instant instead of hourly, and no
+external scheduler. Deliberately not built: that route is live production
+ingestion for real clients, and per the V1 rule it needs explicit approval rather
+than my judgement. It would have to be strictly fire-and-forget so a GHL timeout
+can never block or fail an event insert.
+

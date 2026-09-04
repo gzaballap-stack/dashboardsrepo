@@ -1,0 +1,66 @@
+{
+    "name": "CCM - Attribution Refresh (GHL)",
+    "flow": [
+        {
+            "id": 1,
+            "module": "http:ActionSendData",
+            "version": 3,
+            "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompression": true
+            },
+            "mapper": {
+                "url": "https://dashboard.tomsimedia.com/api/admin/backfill-ghl-attribution",
+                "serializeUrl": false,
+                "method": "POST",
+                "headers": [
+                    {
+                        "name": "Authorization",
+                        "value": "Bearer REPLACE_WITH_ADMIN_WEBHOOK_SECRET"
+                    },
+                    {
+                        "name": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "qs": [],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "authUser": "",
+                "authPass": "",
+                "timeout": "",
+                "shareCookies": false,
+                "ca": "",
+                "useMtls": false,
+                "contentType": "application/json",
+                "data": "{\"dry_run\": false, \"only_missing\": true, \"limit\": 500}"
+            },
+            "metadata": {
+                "designer": {
+                    "x": 0,
+                    "y": 0,
+                    "name": "Backfill missing attribution from GHL"
+                }
+            }
+        }
+    ],
+    "metadata": {
+        "instant": false,
+        "version": 1,
+        "scenario": {
+            "roundtrips": 1,
+            "maxErrors": 3,
+            "autoCommit": true,
+            "autoCommitTriggerLast": true,
+            "sequential": false,
+            "confidential": false,
+            "dataloss": false,
+            "dlq": false,
+            "freshVariables": false
+        },
+        "designer": {
+            "orphans": []
+        },
+        "zone": "eu1.make.com"
+    }
+}
