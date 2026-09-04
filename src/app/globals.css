@@ -63,10 +63,14 @@ select option { background: #ffffff; color: #111111; }
 
 /* ── Phone ─────────────────────────────────────────────────────────────────
    iOS zooms the whole page when a focused field is under 16px, which leaves
-   the layout shifted after the keyboard closes. 16px inputs avoid it; the rest
-   of the type stays as designed. */
+   the layout shifted after the keyboard closes. 16px fields avoid it; the rest
+   of the type stays as designed.
+
+   !important is doing real work here: most fields in this app carry their size
+   as an inline style, and nothing short of !important outranks that. Scoped to
+   the phone breakpoint, so desktop keeps every size it was given. */
 @media (max-width: 767px) {
-  input, select, textarea { font-size: 16px; }
+  input, select, textarea, [contenteditable="true"] { font-size: 16px !important; }
 }
 
 /* Grey flash on every tap reads as a bug once this is on a home screen. */
