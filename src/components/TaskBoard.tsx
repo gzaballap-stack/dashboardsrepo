@@ -136,6 +136,8 @@ export default function TaskBoard() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [catchUpIds, setCatchUpIds] = useState<string[] | null>(null);
+  const [past, setPast] = useState<{ undo: () => Promise<void>; redo: () => Promise<void> }[]>([]);
+  const [future, setFuture] = useState<{ undo: () => Promise<void>; redo: () => Promise<void> }[]>([]);
   const [showList, setShowList] = useState(false);
   const [listTitle, setListTitle] = useState("");
   const [listTab, setListTab] = useState<ListTab>("daily");
@@ -290,26 +292,26 @@ export default function TaskBoard() {
     return { cells, weeks, projects: group(projects), small: group(small), projectCount: projects.length, smallCount: small.length };
   }, [tasks, monthDate]);
 
-  async function addTask() {
-    const title = newTitle.trim();
-    if (!title) return;
-    setNewTitle("");
-    const res = await fetch("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title, bucket: newBucket,
-        // Unranked buckets all sit at one level, whatever the hidden selector still holds.
-        priority: HAS_LEVELS.has(newBucket) ? newPriority : 1,
-        position: Date.now(), task_date: anchor, scope,
-      }),
-    });
-    const d = await res.json();
-    if (d.task) setTasks(prev => [...prev, d.task]);
-    addRef.current?.focus();
+  /* ── Server writes, and the history that lets them be undone ───────────────
+     Every change records how to reverse it. Undoing a delete has to create a
+     fresh row, so ids are resolved through a map before each replay. */
+
+  type Action = { undo: () => Promise<void>; redo: () => Promise<void> };
+  const idMap = useRef<Record<string, string>>({});
+
+  const liveId = (id: string) => {
+    let cur = id;
+    const seen = new Set<string>();
+    while (idMap.current[cur] && !seen.has(cur)) { seen.add(cur); cur = idMap.current[cur]; }
+    return cur;
+  };
+
+  function record(action: Action) {
+    setPast(p => [...p, action]);
+    setFuture([]);
   }
 
-  async function patch(id: string, changes: Partial<Task>) {
+  async function applyPatch(id: string, changes: Partial<Task>) {
     setTasks(prev => prev.map(t => (t.id === id ? { ...t, ...changes } as Task : t)));
     const res = await fetch("/api/tasks", {
       method: "PATCH",
@@ -320,9 +322,128 @@ export default function TaskBoard() {
     if (d.task) setTasks(prev => prev.map(t => (t.id === id ? d.task : t)));
   }
 
-  async function remove(id: string) {
+  async function applyRemove(id: string) {
     setTasks(prev => prev.filter(t => t.id !== id));
     await fetch(`/api/tasks?id=${id}`, { method: "DELETE" });
+  }
+
+  // Re-creates a row from a snapshot and returns the new task.
+  async function applyCreate(fields: Record<string, unknown>, wasDone = false) {
+    const res = await fetch("/api/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    const d = await res.json();
+    if (!d.task) return null;
+    let task: Task = d.task;
+    if (wasDone) {
+      const done = await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: task.id, done: true }),
+      }).then(r => r.json());
+      if (done.task) task = done.task;
+    }
+    setTasks(prev => [...prev, task]);
+    return task;
+  }
+
+  const nextPos = (list: Task[]) => list.reduce((m, t) => Math.max(m, t.position), 0) + 1000;
+
+  const snapshot = (t: Task) => ({
+    title: t.title, notes: t.notes, bucket: t.bucket, priority: t.priority, position: t.position,
+    due_date: t.due_date, delegate_to: t.delegate_to, task_date: t.task_date, scope: t.scope,
+    from_list: t.from_list, origin: t.origin,
+  });
+
+  // Recreate-then-remap, so later history entries still point at the live row.
+  function restoreAction(task: Task): Action {
+    const originalId = task.id;
+    return {
+      undo: async () => {
+        const fresh = await applyCreate(snapshot(task), task.done);
+        if (fresh) idMap.current[liveId(originalId)] = fresh.id;
+      },
+      redo: async () => { await applyRemove(liveId(originalId)); },
+    };
+  }
+
+  function patch(id: string, changes: Partial<Task>) {
+    const t = tasks.find(x => x.id === id);
+    if (t) {
+      const before: Partial<Task> = {};
+      for (const k of Object.keys(changes) as (keyof Task)[]) {
+        (before as Record<string, unknown>)[k] = t[k];
+      }
+      record({
+        undo: () => applyPatch(liveId(id), before),
+        redo: () => applyPatch(liveId(id), changes),
+      });
+    }
+    return applyPatch(id, changes);
+  }
+
+  function remove(id: string) {
+    const t = tasks.find(x => x.id === id);
+    if (t) record(restoreAction(t));
+    return applyRemove(id);
+  }
+
+  async function create(fields: Record<string, unknown>) {
+    const task = await applyCreate(fields);
+    if (!task) return null;
+    const originalId = task.id;
+    record({
+      undo: async () => { await applyRemove(liveId(originalId)); },
+      redo: async () => {
+        const fresh = await applyCreate(fields);
+        if (fresh) idMap.current[liveId(originalId)] = fresh.id;
+      },
+    });
+    return task;
+  }
+
+  async function undo() {
+    const action = past[past.length - 1];
+    if (!action) return;
+    setPast(p => p.slice(0, -1));
+    setFuture(f => [...f, action]);
+    await action.undo();
+  }
+
+  async function redo() {
+    const action = future[future.length - 1];
+    if (!action) return;
+    setFuture(f => f.slice(0, -1));
+    setPast(p => [...p, action]);
+    await action.redo();
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      const el = e.target as HTMLElement | null;
+      if (el && ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)) return;
+      e.preventDefault();
+      if (e.shiftKey) redo(); else undo();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  async function addTask() {
+    const title = newTitle.trim();
+    if (!title) return;
+    setNewTitle("");
+    await create({
+      title, bucket: newBucket,
+      // Unranked buckets all sit at one level, whatever the hidden selector still holds.
+      priority: HAS_LEVELS.has(newBucket) ? newPriority : 1,
+      position: nextPos(visible.filter(t => t.bucket === newBucket)),
+      task_date: anchor, scope,
+    });
+    addRef.current?.focus();
   }
 
   // Capture something into the long-term list (no date yet).
@@ -330,15 +451,9 @@ export default function TaskBoard() {
     const title = listTitle.trim();
     if (!title) return;
     setListTitle("");
-    const res = await fetch("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(listTab === "daily"
-        ? { title, bucket: "B", priority: 2, position: Date.now(), scope: "inbox", task_date: inboxAnchor }
-        : { title, bucket: "B", priority: 2, position: Date.now(), scope: "backlog" }),
-    });
-    const d = await res.json();
-    if (d.task) setTasks(prev => [...prev, d.task]);
+    await create(listTab === "daily"
+      ? { title, bucket: "B", priority: 2, position: nextPos(inbox), scope: "inbox", task_date: inboxAnchor }
+      : { title, bucket: "B", priority: 2, position: nextPos(backlog), scope: "backlog" });
   }
 
   // The X on a board card takes it off the day. Anything that came from a list
@@ -347,6 +462,13 @@ export default function TaskBoard() {
     if (task.origin === "backlog" || task.from_list) patch(task.id, { scope: "backlog", task_date: null });
     else if (task.origin === "inbox") patch(task.id, { scope: "inbox" });
     else remove(task.id);
+  }
+
+  // The X inside the list takes it off the list. If it is already sitting on a day,
+  // that card stays put — only the link to the list goes.
+  function removeFromList(t: Task) {
+    if (t.scope === "backlog" || t.scope === "inbox") remove(t.id);
+    else patch(t.id, { from_list: false, origin: null });
   }
 
   // Put a planned task back on the long-term list.
@@ -358,12 +480,13 @@ export default function TaskBoard() {
   async function pullForward(only?: string[]) {
     const ids = only ?? stranded.map(t => t.id);
     if (ids.length === 0) return;
-    setTasks(prev => prev.map(t => (ids.includes(t.id) ? { ...t, task_date: anchor } : t)));
-    await Promise.all(ids.map(id => fetch("/api/tasks", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, task_date: anchor }),
-    })));
+    const before = ids.map(id => ({ id, task_date: tasks.find(t => t.id === id)?.task_date ?? null }));
+    const target = anchor;
+    record({
+      undo: async () => { await Promise.all(before.map(b => applyPatch(liveId(b.id), { task_date: b.task_date }))); },
+      redo: async () => { await Promise.all(ids.map(id => applyPatch(liveId(id), { task_date: target }))); },
+    });
+    await Promise.all(ids.map(id => applyPatch(id, { task_date: target })));
   }
 
   // Drop onto a column (or an A-level lane) → append to the end of it.
@@ -744,6 +867,26 @@ export default function TaskBoard() {
                 {view === "day" ? "Today" : view === "week" ? "This week" : "This month"}
               </button>
             )}
+            <div style={{ display: "flex", gap: 4 }}>
+              {([["undo", past.length > 0, undo, "Undo"], ["redo", future.length > 0, redo, "Redo"]] as const).map(([id, active, run, label]) => (
+                <button
+                  key={id}
+                  onClick={() => { if (active) run(); }}
+                  disabled={!active}
+                  title={`${label} (${id === "undo" ? "⌘Z" : "⇧⌘Z"})`}
+                  style={{
+                    width: 30, height: 30, borderRadius: "50%", fontSize: 14,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)",
+                    color: active ? "#111111" : "#c2c2c2",
+                    cursor: active ? "pointer" : "default", transition: "color 0.15s",
+                  }}
+                >
+                  {id === "undo" ? "↩" : "↪"}
+                </button>
+              ))}
+            </div>
+
             <button
               onClick={() => setShowList(true)}
               title="Your long-term to-do list"
@@ -1193,8 +1336,10 @@ export default function TaskBoard() {
                           </span>
                         )}
                         <button
-                          onClick={() => remove(t.id)}
-                          title="Delete"
+                          onClick={() => removeFromList(t)}
+                          title={t.scope === "backlog" || t.scope === "inbox"
+                            ? "Delete"
+                            : "Remove from this list (stays on its day)"}
                           style={{ flexShrink: 0, color: "#c2c2c2", cursor: "pointer", lineHeight: 0, padding: 2 }}
                           onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
                           onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#c2c2c2"}
