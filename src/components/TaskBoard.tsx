@@ -169,12 +169,10 @@ export default function TaskBoard() {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") clear(); };
     window.addEventListener("dragend", clear);
     window.addEventListener("drop", clear);
-    window.addEventListener("mouseup", clear);
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("dragend", clear);
       window.removeEventListener("drop", clear);
-      window.removeEventListener("mouseup", clear);
       window.removeEventListener("keydown", onKey);
     };
   }, []);
@@ -543,7 +541,7 @@ export default function TaskBoard() {
     return (
       <div
         draggable
-        onDragStart={e => { setDragId(task.id); e.dataTransfer.effectAllowed = "move"; }}
+        onDragStart={e => { setDragId(task.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", task.id); }}
         onDragEnd={() => { setDragId(null); setDropZone(null); setDragFromList(false); }}
         onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDropZone(`card:${task.id}`); }}
         onDrop={e => { e.preventDefault(); e.stopPropagation(); dropBefore(task); }}
@@ -1282,7 +1280,7 @@ export default function TaskBoard() {
                       <div
                         key={t.id}
                         draggable
-                        onDragStart={e => { setDragId(t.id); e.dataTransfer.effectAllowed = "move"; }}
+                        onDragStart={e => { setDragId(t.id); setDragFromList(true); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.id); }}
                         onDragEnd={() => { setDragId(null); setDropZone(null); setDragFromList(false); }}
                         style={{
                           display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", marginBottom: 5,
