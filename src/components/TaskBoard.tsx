@@ -161,21 +161,6 @@ export default function TaskBoard() {
       .catch(() => { setError("Couldn't load your tasks."); setLoading(false); });
   }, []);
 
-  // A drag that ends anywhere other than a drop target — or is cancelled with Escape,
-  // or never really starts because it was just a click — can leave a card stuck in its
-  // faded "being dragged" state. Clear the drag from the window, whatever happened.
-  useEffect(() => {
-    const clear = () => { setDragId(null); setDropZone(null); setDragFromList(false); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") clear(); };
-    window.addEventListener("dragend", clear);
-    window.addEventListener("drop", clear);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("dragend", clear);
-      window.removeEventListener("drop", clear);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, []);
 
   // Everything on the board is scoped to the day (or week) currently in view.
   const visible = useMemo(
@@ -488,8 +473,8 @@ export default function TaskBoard() {
   }
 
   // Drop onto a column (or an A-level lane) → append to the end of it.
-  function dropInto(bucket: Bucket, priority: number) {
-    if (!dragId) return;
+  function dropInto(dragged: string, bucket: Bucket, priority: number) {
+    const dragId = dragged;
     const siblings = visible.filter(t => t.bucket === bucket && t.priority === priority && t.id !== dragId);
     const max = siblings.reduce((m, t) => Math.max(m, t.position), 0);
     patch(dragId, { bucket, priority, position: max + 1000, scope, task_date: anchor, ...listLink(dragId) });
@@ -497,8 +482,9 @@ export default function TaskBoard() {
   }
 
   // Drop onto a card → land immediately above it.
-  function dropBefore(target: Task) {
-    if (!dragId || dragId === target.id) { setDragId(null); setDropZone(null); setDragFromList(false); return; }
+  function dropBefore(dragged: string, target: Task) {
+    const dragId = dragged;
+    if (dragId === target.id) return;
     const lane = visible
       .filter(t => t.bucket === target.bucket && t.priority === target.priority && t.id !== dragId)
       .sort((a, b) => a.position - b.position);
@@ -509,14 +495,80 @@ export default function TaskBoard() {
   }
 
   // Dropping onto a date in the day strip or the month grid schedules it there.
-  function dropOnDate(dateISO: string) {
-    if (!dragId) return;
+  function dropOnDate(dragged: string, dateISO: string) {
+    const dragId = dragged;
     const max = tasks
       .filter(t => t.scope === "day" && t.task_date === dateISO && t.id !== dragId)
       .reduce((m, t) => Math.max(m, t.position), 0);
     patch(dragId, { scope: "day", task_date: dateISO, position: max + 1000, ...listLink(dragId) });
     setDragId(null); setDropZone(null); setDragFromList(false);
   }
+
+  /* ── Dragging ───────────────────────────────────────────────────────────────
+     Driven by pointer events rather than HTML5 drag-and-drop: the native API
+     kept refusing to start a drag session here, and never worked on touch at
+     all. A press only becomes a drag once the pointer has moved a few pixels,
+     so ordinary clicks still open a card. */
+
+  const drag = useRef<{ id: string; x: number; y: number; fromList: boolean; active: boolean } | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number; title: string } | null>(null);
+
+  function startDrag(e: React.PointerEvent, id: string, fromList: boolean) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    drag.current = { id, x: e.clientX, y: e.clientY, fromList, active: false };
+  }
+
+  useEffect(() => {
+    const zoneAt = (x: number, y: number) => {
+      const el = document.elementFromPoint(x, y) as HTMLElement | null;
+      return el?.closest("[data-drop]")?.getAttribute("data-drop") ?? null;
+    };
+    const stop = () => {
+      drag.current = null;
+      document.body.style.userSelect = "";
+      setGhost(null); setDragId(null); setDropZone(null); setDragFromList(false);
+    };
+    function move(e: PointerEvent) {
+      const d = drag.current;
+      if (!d) return;
+      if (!d.active) {
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
+        d.active = true;
+        document.body.style.userSelect = "none";
+        setDragId(d.id);
+        setDragFromList(d.fromList);
+      }
+      e.preventDefault();
+      setGhost({ x: e.clientX, y: e.clientY, title: tasks.find(t => t.id === d.id)?.title ?? "" });
+      setDropZone(zoneAt(e.clientX, e.clientY));
+    }
+    function end(e: PointerEvent) {
+      const d = drag.current;
+      const zone = d?.active ? zoneAt(e.clientX, e.clientY) : null;
+      stop();
+      if (!d || !zone) return;
+      if (zone.startsWith("lane:")) {
+        const [, bucket, priority] = zone.split(":");
+        dropInto(d.id, bucket as Bucket, Number(priority));
+      } else if (zone.startsWith("card:")) {
+        const target = tasks.find(t => t.id === zone.slice(5));
+        if (target) dropBefore(d.id, target);
+      } else if (zone.startsWith("date:")) {
+        dropOnDate(d.id, zone.slice(5));
+      }
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") stop(); };
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      window.removeEventListener("keydown", onKey);
+    };
+  });
 
   function step(n: number) {
     if (view === "day") setDayDate(iso(addDays(parseISO(dayDate), n)));
@@ -536,9 +588,8 @@ export default function TaskBoard() {
                      : monthDate === iso(monthStart(new Date()));
 
   const ctx: BoardCtx = {
-    expandedId, setExpandedId, frog, dragId, setDragId, dropZone, setDropZone,
-    setDragFromList, dropBefore, dropInto, patch, clearFromBoard, unschedule,
-    scope, phone, listFor,
+    expandedId, setExpandedId, frog, dragId, dropZone, startDrag,
+    patch, clearFromBoard, unschedule, scope, phone, listFor,
   };
 
   if (loading) {
@@ -728,9 +779,7 @@ export default function TaskBoard() {
                 <button
                   key={d.key}
                   onClick={() => setDayDate(d.key)}
-                  onDragOver={e => { e.preventDefault(); setDropZone(`date:${d.key}`); }}
-                  onDragLeave={() => setDropZone(z => (z === `date:${d.key}` ? null : z))}
-                  onDrop={e => { e.preventDefault(); dropOnDate(d.key); }}
+                  data-drop={`date:${d.key}`}
                   style={{
                     padding: "6px 2px 5px", borderRadius: 8, cursor: "pointer", textAlign: "center",
                     background: dropZone === `date:${d.key}` ? "rgba(0,0,0,0.12)" : active ? "rgba(245,158,11,0.12)" : "rgba(0,0,0,0.027)",
@@ -916,9 +965,7 @@ export default function TaskBoard() {
                   <button
                     key={c.key}
                     onClick={() => { setDayDate(c.key); setView("day"); }}
-                    onDragOver={e => { e.preventDefault(); setDropZone(`date:${c.key}`); }}
-                    onDragLeave={() => setDropZone(z => (z === `date:${c.key}` ? null : z))}
-                    onDrop={e => { e.preventDefault(); dropOnDate(c.key); }}
+                    data-drop={`date:${c.key}`}
                     title={c.total ? `${c.done} of ${c.total} done` : "Nothing planned"}
                     style={{
                       minHeight: phone ? 46 : 62, padding: phone ? "4px 2px" : "6px 4px", borderRadius: 8, cursor: "pointer", textAlign: "center",
@@ -1005,6 +1052,17 @@ export default function TaskBoard() {
       </div>
 
       {/* ── Long-term to-do list, docked beside the board so items can be dragged straight in ── */}
+      {ghost && (
+        <div style={{
+          position: "fixed", left: ghost.x + 12, top: ghost.y + 12, zIndex: 200, pointerEvents: "none",
+          background: "#111111", color: "#ffffff", fontSize: 11.5, fontWeight: 600,
+          padding: "6px 10px", borderRadius: 7, maxWidth: 240, whiteSpace: "nowrap",
+          overflow: "hidden", textOverflow: "ellipsis", boxShadow: "0 8px 20px rgba(0,0,0,0.25)",
+        }}>
+          {ghost.title}
+        </div>
+      )}
+
       {showList && (
         <div
           style={phone ? {
@@ -1091,13 +1149,14 @@ export default function TaskBoard() {
                     return (
                       <div
                         key={t.id}
-                        draggable
-                        onDragStart={e => { setDragId(t.id); setDragFromList(true); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.id); }}
-                        onDragEnd={() => { setDragId(null); setDropZone(null); setDragFromList(false); }}
+                        onPointerDown={e => startDrag(e, t.id, true)}
                         style={{
                           display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", marginBottom: 5,
-                          background: "#ffffff", border: "1px solid rgba(0,0,0,0.09)", borderLeft: "2px solid rgba(0,0,0,0.35)",
-                          borderRadius: 7, cursor: "grab",
+                          background: "#ffffff",
+                          borderTop: "1px solid rgba(0,0,0,0.09)", borderRight: "1px solid rgba(0,0,0,0.09)",
+                          borderBottom: "1px solid rgba(0,0,0,0.09)", borderLeft: "2px solid rgba(0,0,0,0.35)",
+                          borderRadius: 7, cursor: "grab", touchAction: "none",
+                          opacity: dragId === t.id ? 0.4 : 1,
                         }}
                       >
                         <button
@@ -1170,12 +1229,8 @@ type BoardCtx = {
   setExpandedId: (v: string | null) => void;
   frog: Task | null;
   dragId: string | null;
-  setDragId: (v: string | null) => void;
   dropZone: string | null;
-  setDropZone: React.Dispatch<React.SetStateAction<string | null>>;
-  setDragFromList: (v: boolean) => void;
-  dropBefore: (t: Task) => void;
-  dropInto: (b: Bucket, p: number) => void;
+  startDrag: (e: React.PointerEvent, id: string, fromList: boolean) => void;
   patch: (id: string, changes: Partial<Task>) => void;
   clearFromBoard: (t: Task) => void;
   unschedule: (t: Task) => void;
@@ -1189,19 +1244,19 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
   const isFrog = ctx.frog?.id === task.id;
   return (
     <div
-      draggable
-      onDragStart={e => { ctx.setDragId(task.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", task.id); }}
-      onDragEnd={() => { ctx.setDragId(null); ctx.setDropZone(null); ctx.setDragFromList(false); }}
-      onDragOver={e => { e.preventDefault(); e.stopPropagation(); ctx.setDropZone(`card:${task.id}`); }}
-      onDrop={e => { e.preventDefault(); e.stopPropagation(); ctx.dropBefore(task); }}
+      data-drop={`card:${task.id}`}
+      onPointerDown={e => ctx.startDrag(e, task.id, false)}
       style={{
         background: CARD_BG,
-        border: `1px solid ${isFrog && !task.done ? hexA(accent, 0.4) : "rgba(0,0,0,0.095)"}`,
+        borderTop: `1px solid ${isFrog && !task.done ? hexA(accent, 0.4) : "rgba(0,0,0,0.095)"}`,
+        borderRight: `1px solid ${isFrog && !task.done ? hexA(accent, 0.4) : "rgba(0,0,0,0.095)"}`,
+        borderBottom: `1px solid ${isFrog && !task.done ? hexA(accent, 0.4) : "rgba(0,0,0,0.095)"}`,
         borderLeft: `2px solid ${task.done ? "rgba(0,0,0,0.108)" : hexA(accent, 0.75)}`,
         borderRadius: 7,
         padding: ctx.phone ? "10px 10px" : "7px 8px",
         marginBottom: 5,
         cursor: "grab",
+        touchAction: "none",
         opacity: ctx.dragId === task.id ? 0.4 : task.done ? 0.45 : 1,
         boxShadow: ctx.dropZone === `card:${task.id}` ? `0 -2px 0 ${accent}` : "none",
         transition: "opacity 120ms, box-shadow 120ms",
@@ -1357,9 +1412,7 @@ function Lane({ bucket, priority, accent, empty, fill, ctx }: { bucket: Bucket; 
   const zone = `lane:${bucket}:${priority}`;
   return (
     <div
-      onDragOver={e => { e.preventDefault(); ctx.setDropZone(zone); }}
-      onDragLeave={() => ctx.setDropZone(z => (z === zone ? null : z))}
-      onDrop={e => { e.preventDefault(); ctx.dropInto(bucket, priority); }}
+      data-drop={zone}
       style={{
         minHeight: ctx.phone ? 0 : 46, borderRadius: 7, padding: 3,
         ...(fill ? { flex: 1 } : null),
