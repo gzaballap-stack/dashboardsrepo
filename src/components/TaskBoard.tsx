@@ -535,199 +535,11 @@ export default function TaskBoard() {
   : view === "week"  ? weekDate  === iso(weekStart(new Date()))
                      : monthDate === iso(monthStart(new Date()));
 
-  function Card({ task, accent }: { task: Task; accent: string }) {
-    const open = expandedId === task.id;
-    const isFrog = frog?.id === task.id;
-    return (
-      <div
-        draggable
-        onDragStart={e => { setDragId(task.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", task.id); }}
-        onDragEnd={() => { setDragId(null); setDropZone(null); setDragFromList(false); }}
-        onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDropZone(`card:${task.id}`); }}
-        onDrop={e => { e.preventDefault(); e.stopPropagation(); dropBefore(task); }}
-        style={{
-          background: CARD_BG,
-          border: `1px solid ${isFrog && !task.done ? hexA(accent, 0.4) : "rgba(0,0,0,0.095)"}`,
-          borderLeft: `2px solid ${task.done ? "rgba(0,0,0,0.108)" : hexA(accent, 0.75)}`,
-          borderRadius: 7,
-          padding: phone ? "10px 10px" : "7px 8px",
-          marginBottom: 5,
-          cursor: "grab",
-          opacity: dragId === task.id ? 0.4 : task.done ? 0.45 : 1,
-          boxShadow: dropZone === `card:${task.id}` ? `0 -2px 0 ${accent}` : "none",
-          transition: "opacity 120ms, box-shadow 120ms",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
-          <button
-            onClick={() => patch(task.id, { done: !task.done })}
-            title={task.done ? "Mark as not done" : "Mark as done"}
-            style={{
-              flexShrink: 0, width: phone ? 18 : 14, height: phone ? 18 : 14, marginTop: phone ? 0 : 2, borderRadius: 4,
-              border: `1.5px solid ${task.done ? accent : "rgba(0,0,0,0.27)"}`,
-              background: task.done ? accent : "transparent",
-              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-            }}
-          >
-            {task.done && (
-              <svg style={{ width: 8, height: 8, color: "#ffffff" }} fill="none" stroke="currentColor" strokeWidth={4} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            )}
-          </button>
-
-          <div style={{ flex: 1, minWidth: 0 }} onClick={() => setExpandedId(open ? null : task.id)}>
-            <p style={{
-              fontSize: 12, lineHeight: 1.45, color: task.done ? "#767676" : "#111111",
-              textDecoration: task.done ? "line-through" : "none", wordBreak: "break-word", cursor: "pointer",
-            }}>
-              {isFrog && !task.done && <span style={{ marginRight: 4 }}>🐸</span>}
-              {task.title}
-            </p>
-
-            {!open && (task.due_date || task.delegate_to || task.notes) && (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
-                {task.due_date && (
-                  <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 4, background: "rgba(245,158,11,0.12)", color: "#000000" }}>
-                    due {parseISO(task.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  </span>
-                )}
-                {task.delegate_to && (
-                  <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 4, background: "rgba(168,85,247,0.12)", color: "#c084fc" }}>
-                    → {task.delegate_to}
-                  </span>
-                )}
-                {task.notes && (
-                  <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 4, background: "rgba(0,0,0,0.068)", color: "#767676" }}>note</span>
-                )}
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={() => clearFromBoard(task)}
-            title={task.origin === "backlog" || task.from_list ? "Take off this day (stays in Big Projects)"
-                 : task.origin === "inbox" ? "Take off this day (back to Small Tasks)"
-                 : "Delete task"}
-            style={{ flexShrink: 0, color: "#949494", cursor: "pointer", lineHeight: 0, padding: phone ? 5 : 1 }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#949494"}
-          >
-            <svg style={{ width: 11, height: 11 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {open && (
-          <div style={{ marginTop: 7, paddingTop: 7, borderTop: BORDER, display: "flex", flexDirection: "column", gap: 6 }}>
-            <Field label="Task">
-              <input
-                defaultValue={task.title}
-                onBlur={e => { const v = e.target.value.trim(); if (v && v !== task.title) patch(task.id, { title: v }); }}
-                style={fieldStyle}
-              />
-            </Field>
-            <Field label="Notes">
-              <textarea
-                defaultValue={task.notes ?? ""}
-                rows={2}
-                onBlur={e => { if (e.target.value !== (task.notes ?? "")) patch(task.id, { notes: e.target.value }); }}
-                style={{ ...fieldStyle, resize: "vertical" }}
-              />
-            </Field>
-            <Field label={scope === "day" ? "Move to day" : "Move to week"}>
-              <input
-                type="date"
-                value={task.task_date ?? ""}
-                onChange={e => {
-                  if (!e.target.value) return;
-                  const d = parseISO(e.target.value);
-                  patch(task.id, { task_date: scope === "day" ? iso(d) : iso(weekStart(d)) });
-                }}
-                style={fieldStyle}
-              />
-            </Field>
-            <Field label="Deadline (optional)">
-              <input
-                type="date"
-                defaultValue={task.due_date ?? ""}
-                onChange={e => patch(task.id, { due_date: e.target.value || null })}
-                style={fieldStyle}
-              />
-            </Field>
-            {task.bucket === "D" && (
-              <Field label="Delegate to">
-                <input
-                  defaultValue={task.delegate_to ?? ""}
-                  onBlur={e => { if (e.target.value !== (task.delegate_to ?? "")) patch(task.id, { delegate_to: e.target.value }); }}
-                  style={fieldStyle}
-                />
-              </Field>
-            )}
-            <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-              {BUCKETS.map(b => (
-                <button
-                  key={b.id}
-                  onClick={() => patch(task.id, { bucket: b.id })}
-                  style={{
-                    fontSize: 9, fontWeight: 800, padding: "3px 7px", borderRadius: 4, cursor: "pointer",
-                    background: task.bucket === b.id ? hexA(b.color, 0.18) : "rgba(0,0,0,0.054)",
-                    color: task.bucket === b.id ? b.color : "#767676",
-                  }}
-                >{b.letter}</button>
-              ))}
-              {HAS_LEVELS.has(task.bucket) && levelsFor(task.bucket).map(l => (
-                <button
-                  key={l.priority}
-                  onClick={() => patch(task.id, { priority: l.priority })}
-                  style={{
-                    fontSize: 9, fontWeight: 800, padding: "3px 7px", borderRadius: 4, cursor: "pointer",
-                    background: task.priority === l.priority ? hexA(l.color, 0.18) : "rgba(0,0,0,0.054)",
-                    color: task.priority === l.priority ? l.color : "#767676",
-                  }}
-                >{l.label}</button>
-              ))}
-            </div>
-            <button
-              onClick={() => unschedule(task)}
-              style={{ alignSelf: "flex-start", fontSize: 10, fontWeight: 700, color: "#767676", cursor: "pointer" }}
-              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
-              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
-            >
-              ← Back to big projects
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  function Lane({ bucket, priority, accent, empty, fill }: { bucket: Bucket; priority: number; accent: string; empty: string; fill?: boolean }) {
-    const items = listFor(bucket, HAS_LEVELS.has(bucket) ? priority : undefined);
-    const zone = `lane:${bucket}:${priority}`;
-    return (
-      <div
-        onDragOver={e => { e.preventDefault(); setDropZone(zone); }}
-        onDragLeave={() => setDropZone(z => (z === zone ? null : z))}
-        onDrop={e => { e.preventDefault(); dropInto(bucket, priority); }}
-        style={{
-          minHeight: phone ? 0 : 46, borderRadius: 7, padding: 3,
-          ...(fill ? { flex: 1 } : null),
-          background: dropZone === zone ? hexA(accent, 0.07) : "transparent",
-          border: `1px dashed ${dropZone === zone ? hexA(accent, 0.35) : "transparent"}`,
-          transition: "background 120ms",
-        }}
-      >
-        {items.map(t => <Card key={t.id} task={t} accent={accent} />)}
-        {items.length === 0 && (
-          <p style={{ fontSize: phone ? 9.5 : 10, color: "#c2c2c2", textAlign: "center", padding: phone ? "3px 4px" : "12px 4px" }}>
-            {phone ? "—" : empty}
-          </p>
-        )}
-      </div>
-    );
-  }
+  const ctx: BoardCtx = {
+    expandedId, setExpandedId, frog, dragId, setDragId, dropZone, setDropZone,
+    setDragFromList, dropBefore, dropInto, patch, clearFromBoard, unschedule,
+    scope, phone, listFor,
+  };
 
   if (loading) {
     return (
@@ -1071,12 +883,12 @@ export default function TaskBoard() {
                           <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: l.color }}>{l.label}</span>
                           <span style={{ fontSize: 8.5, color: "#c2c2c2" }}>{l.hint}</span>
                         </div>
-                        <Lane bucket={b.id} priority={l.priority} accent={l.color} empty="Drop here" />
+                        <Lane bucket={b.id} priority={l.priority} accent={l.color} empty="Drop here" ctx={ctx} />
                       </div>
                     ))
                   ) : (
                     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                      <Lane bucket={b.id} priority={1} accent={b.color} empty="Empty" fill />
+                      <Lane bucket={b.id} priority={1} accent={b.color} empty="Empty" fill ctx={ctx} />
                     </div>
                   )}
                 </div>
@@ -1343,6 +1155,225 @@ export default function TaskBoard() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+
+/* Card and Lane live at module scope on purpose. Declared inside TaskBoard they
+   would be a new component type on every render, so React would tear down and
+   rebuild each card — which cancels any drag in progress the moment state
+   changes. Everything they need arrives in one ctx prop. */
+
+type BoardCtx = {
+  expandedId: string | null;
+  setExpandedId: (v: string | null) => void;
+  frog: Task | null;
+  dragId: string | null;
+  setDragId: (v: string | null) => void;
+  dropZone: string | null;
+  setDropZone: React.Dispatch<React.SetStateAction<string | null>>;
+  setDragFromList: (v: boolean) => void;
+  dropBefore: (t: Task) => void;
+  dropInto: (b: Bucket, p: number) => void;
+  patch: (id: string, changes: Partial<Task>) => void;
+  clearFromBoard: (t: Task) => void;
+  unschedule: (t: Task) => void;
+  scope: Scope;
+  phone: boolean;
+  listFor: (b: Bucket, p?: number) => Task[];
+};
+
+function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx }) {
+  const open = ctx.expandedId === task.id;
+  const isFrog = ctx.frog?.id === task.id;
+  return (
+    <div
+      draggable
+      onDragStart={e => { ctx.setDragId(task.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", task.id); }}
+      onDragEnd={() => { ctx.setDragId(null); ctx.setDropZone(null); ctx.setDragFromList(false); }}
+      onDragOver={e => { e.preventDefault(); e.stopPropagation(); ctx.setDropZone(`card:${task.id}`); }}
+      onDrop={e => { e.preventDefault(); e.stopPropagation(); ctx.dropBefore(task); }}
+      style={{
+        background: CARD_BG,
+        border: `1px solid ${isFrog && !task.done ? hexA(accent, 0.4) : "rgba(0,0,0,0.095)"}`,
+        borderLeft: `2px solid ${task.done ? "rgba(0,0,0,0.108)" : hexA(accent, 0.75)}`,
+        borderRadius: 7,
+        padding: ctx.phone ? "10px 10px" : "7px 8px",
+        marginBottom: 5,
+        cursor: "grab",
+        opacity: ctx.dragId === task.id ? 0.4 : task.done ? 0.45 : 1,
+        boxShadow: ctx.dropZone === `card:${task.id}` ? `0 -2px 0 ${accent}` : "none",
+        transition: "opacity 120ms, box-shadow 120ms",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+        <button
+          onClick={() => ctx.patch(task.id, { done: !task.done })}
+          title={task.done ? "Mark as not done" : "Mark as done"}
+          style={{
+            flexShrink: 0, width: ctx.phone ? 18 : 14, height: ctx.phone ? 18 : 14, marginTop: ctx.phone ? 0 : 2, borderRadius: 4,
+            border: `1.5px solid ${task.done ? accent : "rgba(0,0,0,0.27)"}`,
+            background: task.done ? accent : "transparent",
+            display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+          }}
+        >
+          {task.done && (
+            <svg style={{ width: 8, height: 8, color: "#ffffff" }} fill="none" stroke="currentColor" strokeWidth={4} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </button>
+
+        <div style={{ flex: 1, minWidth: 0 }} onClick={() => ctx.setExpandedId(open ? null : task.id)}>
+          <p style={{
+            fontSize: 12, lineHeight: 1.45, color: task.done ? "#767676" : "#111111",
+            textDecoration: task.done ? "line-through" : "none", wordBreak: "break-word", cursor: "pointer",
+          }}>
+            {isFrog && !task.done && <span style={{ marginRight: 4 }}>🐸</span>}
+            {task.title}
+          </p>
+
+          {!open && (task.due_date || task.delegate_to || task.notes) && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
+              {task.due_date && (
+                <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 4, background: "rgba(245,158,11,0.12)", color: "#000000" }}>
+                  due {parseISO(task.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </span>
+              )}
+              {task.delegate_to && (
+                <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 4, background: "rgba(168,85,247,0.12)", color: "#c084fc" }}>
+                  → {task.delegate_to}
+                </span>
+              )}
+              {task.notes && (
+                <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 4, background: "rgba(0,0,0,0.068)", color: "#767676" }}>note</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => ctx.clearFromBoard(task)}
+          title={task.origin === "backlog" || task.from_list ? "Take off this day (stays in Big Projects)"
+               : task.origin === "inbox" ? "Take off this day (back to Small Tasks)"
+               : "Delete task"}
+          style={{ flexShrink: 0, color: "#949494", cursor: "pointer", lineHeight: 0, padding: ctx.phone ? 5 : 1 }}
+          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
+          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#949494"}
+        >
+          <svg style={{ width: 11, height: 11 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 7, paddingTop: 7, borderTop: BORDER, display: "flex", flexDirection: "column", gap: 6 }}>
+          <Field label="Task">
+            <input
+              defaultValue={task.title}
+              onBlur={e => { const v = e.target.value.trim(); if (v && v !== task.title) ctx.patch(task.id, { title: v }); }}
+              style={fieldStyle}
+            />
+          </Field>
+          <Field label="Notes">
+            <textarea
+              defaultValue={task.notes ?? ""}
+              rows={2}
+              onBlur={e => { if (e.target.value !== (task.notes ?? "")) ctx.patch(task.id, { notes: e.target.value }); }}
+              style={{ ...fieldStyle, resize: "vertical" }}
+            />
+          </Field>
+          <Field label={ctx.scope === "day" ? "Move to day" : "Move to week"}>
+            <input
+              type="date"
+              value={task.task_date ?? ""}
+              onChange={e => {
+                if (!e.target.value) return;
+                const d = parseISO(e.target.value);
+                ctx.patch(task.id, { task_date: ctx.scope === "day" ? iso(d) : iso(weekStart(d)) });
+              }}
+              style={fieldStyle}
+            />
+          </Field>
+          <Field label="Deadline (optional)">
+            <input
+              type="date"
+              defaultValue={task.due_date ?? ""}
+              onChange={e => ctx.patch(task.id, { due_date: e.target.value || null })}
+              style={fieldStyle}
+            />
+          </Field>
+          {task.bucket === "D" && (
+            <Field label="Delegate to">
+              <input
+                defaultValue={task.delegate_to ?? ""}
+                onBlur={e => { if (e.target.value !== (task.delegate_to ?? "")) ctx.patch(task.id, { delegate_to: e.target.value }); }}
+                style={fieldStyle}
+              />
+            </Field>
+          )}
+          <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            {BUCKETS.map(b => (
+              <button
+                key={b.id}
+                onClick={() => ctx.patch(task.id, { bucket: b.id })}
+                style={{
+                  fontSize: 9, fontWeight: 800, padding: "3px 7px", borderRadius: 4, cursor: "pointer",
+                  background: task.bucket === b.id ? hexA(b.color, 0.18) : "rgba(0,0,0,0.054)",
+                  color: task.bucket === b.id ? b.color : "#767676",
+                }}
+              >{b.letter}</button>
+            ))}
+            {HAS_LEVELS.has(task.bucket) && levelsFor(task.bucket).map(l => (
+              <button
+                key={l.priority}
+                onClick={() => ctx.patch(task.id, { priority: l.priority })}
+                style={{
+                  fontSize: 9, fontWeight: 800, padding: "3px 7px", borderRadius: 4, cursor: "pointer",
+                  background: task.priority === l.priority ? hexA(l.color, 0.18) : "rgba(0,0,0,0.054)",
+                  color: task.priority === l.priority ? l.color : "#767676",
+                }}
+              >{l.label}</button>
+            ))}
+          </div>
+          <button
+            onClick={() => ctx.unschedule(task)}
+            style={{ alignSelf: "flex-start", fontSize: 10, fontWeight: 700, color: "#767676", cursor: "pointer" }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
+          >
+            ← Back to big projects
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Lane({ bucket, priority, accent, empty, fill, ctx }: { bucket: Bucket; priority: number; accent: string; empty: string; fill?: boolean; ctx: BoardCtx }) {
+  const items = ctx.listFor(bucket, HAS_LEVELS.has(bucket) ? priority : undefined);
+  const zone = `lane:${bucket}:${priority}`;
+  return (
+    <div
+      onDragOver={e => { e.preventDefault(); ctx.setDropZone(zone); }}
+      onDragLeave={() => ctx.setDropZone(z => (z === zone ? null : z))}
+      onDrop={e => { e.preventDefault(); ctx.dropInto(bucket, priority); }}
+      style={{
+        minHeight: ctx.phone ? 0 : 46, borderRadius: 7, padding: 3,
+        ...(fill ? { flex: 1 } : null),
+        background: ctx.dropZone === zone ? hexA(accent, 0.07) : "transparent",
+        border: `1px dashed ${ctx.dropZone === zone ? hexA(accent, 0.35) : "transparent"}`,
+        transition: "background 120ms",
+      }}
+    >
+      {items.map(t => <Card key={t.id} task={t} accent={accent} ctx={ctx} />)}
+      {items.length === 0 && (
+        <p style={{ fontSize: ctx.phone ? 9.5 : 10, color: "#c2c2c2", textAlign: "center", padding: ctx.phone ? "3px 4px" : "12px 4px" }}>
+          {ctx.phone ? "—" : empty}
+        </p>
+      )}
     </div>
   );
 }
