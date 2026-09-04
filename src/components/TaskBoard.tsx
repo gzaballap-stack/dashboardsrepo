@@ -159,6 +159,24 @@ export default function TaskBoard() {
       .catch(() => { setError("Couldn't load your tasks."); setLoading(false); });
   }, []);
 
+  // A drag that ends anywhere other than a drop target — or is cancelled with Escape,
+  // or never really starts because it was just a click — can leave a card stuck in its
+  // faded "being dragged" state. Clear the drag from the window, whatever happened.
+  useEffect(() => {
+    const clear = () => { setDragId(null); setDropZone(null); setDragFromList(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") clear(); };
+    window.addEventListener("dragend", clear);
+    window.addEventListener("drop", clear);
+    window.addEventListener("mouseup", clear);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("dragend", clear);
+      window.removeEventListener("drop", clear);
+      window.removeEventListener("mouseup", clear);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
   // Everything on the board is scoped to the day (or week) currently in view.
   const visible = useMemo(
     () => tasks.filter(t => t.scope === scope && t.task_date === anchor),
