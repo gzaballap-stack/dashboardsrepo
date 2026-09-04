@@ -1323,18 +1323,6 @@ export default function TaskBoard() {
                             {t.title}
                           </span>
                         )}
-                        {placed && (
-                          <span
-                            title={`Planned for ${t.scope === "week" ? "the week of " : ""}${parseISO(t.task_date!).toLocaleDateString("en-US", { month: "long", day: "numeric" })}`}
-                            style={{
-                              flexShrink: 0, fontSize: 9, fontWeight: 800, padding: "2px 6px", borderRadius: 4,
-                              background: "rgba(0,0,0,0.07)", color: "#4a4a4a", whiteSpace: "nowrap",
-                            }}
-                          >
-                            {t.scope === "week" ? "wk " : ""}
-                            {parseISO(t.task_date!).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </span>
-                        )}
                         <button
                           onClick={() => removeFromList(t)}
                           title={t.scope === "backlog" || t.scope === "inbox"
