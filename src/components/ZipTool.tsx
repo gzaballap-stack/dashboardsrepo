@@ -1532,28 +1532,6 @@ export default function ZipTool() {
           )}
         </>)}
 
-        {/* Loaded session — the pins below belong to it, so name it here rather than
-            leaving the client chip at the top of the panel to stand in for it. */}
-        {activeSession && (activeClientSessionLabel || activeLocalSessionLabel) && (
-          <div style={{ padding: "9px 14px", borderBottom: "1px solid rgba(0,0,0,0.095)", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 9, color: "#949494", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 2 }}>Session</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {activeClientSessionLabel ?? activeLocalSessionLabel}
-              </div>
-            </div>
-            {connectedClient && (
-              <span style={{
-                fontSize: 9, fontWeight: 700, padding: "3px 7px", borderRadius: 5, flexShrink: 0,
-                maxWidth: 110, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                background: "rgba(0,0,0,0.068)", color: "#4a4a4a",
-              }}>{connectedClient.name}</span>
-            )}
-            <button onClick={deselectSession} title="Unload this session"
-              style={{ background: "none", border: "none", color: "#949494", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>×</button>
-          </div>
-        )}
-
         {/* Pins */}
         <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(0,0,0,0.095)", flexShrink: 0 }}>
           {pins.length === 0 ? (
