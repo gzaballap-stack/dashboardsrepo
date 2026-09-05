@@ -41,6 +41,9 @@ type Props = {
   // zip -> composite performance score/metrics for the connected client; drives choropleth fill.
   perfCircles?: Record<string, ZipPerfCircle>;
   flyTrigger?: number;
+  // When a grade is picked in the legend, every other grade fades back so that
+  // band stands out on its own. Nothing is hidden or filtered out.
+  highlightGrade?: "A" | "B" | "C" | "D" | null;
 };
 
 const GRADE_COLORS: Record<string, string> = {
@@ -56,11 +59,14 @@ function perfScoreToFill(score: number): { color: string; opacity: number } {
   return { color: GRADE_COLORS[perfGrade(score)], opacity: 0.28 + t * 0.30 };
 }
 
+// How much colour a zip keeps when another grade is the one being looked at.
+const FADED = 0.16;
+
 export default function ZipMap({
   pins, selectedPinId, onMapClick, onSelectPin, onDeletePin,
   onZipClick, focusZip,
   manualExcludes, pinMode = "include", onExcludeToggle,
-  perfCircles, flyTrigger,
+  perfCircles, flyTrigger, highlightGrade,
 }: Props) {
   // Refs to avoid stale closures in persistent Leaflet event listeners
   const onZipClickRef      = useRef(onZipClick);
@@ -156,6 +162,13 @@ export default function ZipMap({
                   return { fillColor: '#ef4444', fillOpacity: 0.22, color: '#ef4444', weight: 1.5, opacity: 0.9, dashArray: '5,4' };
                 }
 
+                // Whichever grade this zip is showing right now — performance when a
+                // client is connected, Census otherwise.
+                const shownGrade = perfCircles
+                  ? (perfCircles[zip] ? perfGrade(perfCircles[zip].score) : null)
+                  : (pin.scores?.[zip]?.grade ?? null);
+                const fade = highlightGrade && shownGrade !== highlightGrade ? FADED : 1;
+
                 // Perf outline when a client is connected — fill is transparent, stroke is colored
                 if (perfCircles) {
                   const perf = perfCircles[zip];
@@ -163,14 +176,14 @@ export default function ZipMap({
                     const { color, opacity } = perfScoreToFill(perf.score);
                     return {
                       fillColor: color,
-                      fillOpacity: isSelected ? Math.min(0.7, opacity + 0.18) : opacity,
+                      fillOpacity: (isSelected ? Math.min(0.7, opacity + 0.18) : opacity) * fade,
                       color,
                       weight: isSelected ? 3 : 2,
-                      opacity: 0.9,
+                      opacity: 0.9 * fade,
                     };
                   }
                   // In territory but no perf row → faint outline only
-                  return { fillOpacity: 0, color: 'rgba(148,163,184,0.35)', weight: 0.8, opacity: 0.8 };
+                  return { fillOpacity: 0, color: 'rgba(148,163,184,0.35)', weight: 0.8, opacity: 0.8 * fade };
                 }
 
                 // No connected client → grade-based fill
@@ -178,10 +191,10 @@ export default function ZipMap({
                 const fc = grade ? GRADE_COLORS[grade] : pin.color;
                 return {
                   fillColor: fc,
-                  fillOpacity: isSelected ? 0.50 : 0.32,
+                  fillOpacity: (isSelected ? 0.50 : 0.32) * fade,
                   color: fc,
                   weight: isSelected ? 1.5 : 0.8,
-                  opacity: isSelected ? 0.9 : 0.6,
+                  opacity: (isSelected ? 0.9 : 0.6) * fade,
                 };
               },
               onEachFeature: (feat: any, layer: any) => {
@@ -327,7 +340,7 @@ export default function ZipMap({
 
       prevPinsRef.current = pins.map(p => ({ ...p }));
     });
-  }, [pins, selectedPinId, onSelectPin, manualExcludes, perfCircles]);
+  }, [pins, selectedPinId, onSelectPin, manualExcludes, perfCircles, highlightGrade]);
 
   // Fly to all pins combined when flyTrigger increments (session load)
   useEffect(() => {

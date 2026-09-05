@@ -100,12 +100,13 @@ function gradeColor(grade: string) {
   return grade === "A" ? "#10b981" : grade === "B" ? "#3b82f6" : grade === "C" ? "#f59e0b" : "#ef4444";
 }
 
-function chipStyle(grade: "A" | "B" | "C" | "D" | undefined, selected: boolean, excluded = false) {
+function chipStyle(grade: "A" | "B" | "C" | "D" | undefined, selected: boolean, excluded = false, faded = false) {
   if (excluded) return {
     fontSize: 11, fontWeight: 600, padding: "3px 7px", borderRadius: 5, cursor: "pointer",
     fontFamily: "monospace" as const, transition: "all 0.1s",
     background: "rgba(239,68,68,0.12)", color: "#f87171",
     border: "1px solid rgba(239,68,68,0.25)", textDecoration: "line-through" as const,
+    opacity: faded ? 0.3 : 1,
   };
   const gc = grade ? gradeColor(grade) : "#767676";
   return {
@@ -114,6 +115,7 @@ function chipStyle(grade: "A" | "B" | "C" | "D" | undefined, selected: boolean, 
     background: selected ? `${gc}33` : grade ? `${gc}14` : "rgba(0,0,0,0.068)",
     color: selected ? gc : grade ? gc : "#4a4a4a",
     border: `1px solid ${selected ? gc + "66" : grade ? gc + "30" : "transparent"}`,
+    opacity: faded ? 0.3 : 1,
   };
 }
 
@@ -459,6 +461,9 @@ export default function ZipTool() {
   const [copied,         setCopied]         = useState(false);
   const [manualExcludes, setManualExcludes] = useState<Set<string>>(new Set());
   const [mapOverlay,     setMapOverlay]     = useState<"census" | "performance">("census");
+  // Picked from the grade legend: that band keeps its colour, every other zip fades
+  // back. Nothing is filtered out — it just stops the rest competing for attention.
+  const [highlightGrade, setHighlightGrade] = useState<"A" | "B" | "C" | "D" | null>(null);
 
   const [selectedZip, setSelectedZip] = useState<string | null>(null);
   const [zipData,     setZipData]     = useState<ZipData | null>(null);
@@ -1566,12 +1571,33 @@ export default function ZipTool() {
           )}
         </div>
 
-        {/* Grade legend */}
+        {/* Grade legend — click a grade to fade the other bands back */}
         {includeZips.size > 0 && (
-          <div style={{ padding: "5px 16px", display: "flex", gap: 12, borderBottom: "1px solid rgba(0,0,0,0.068)", flexShrink: 0, flexWrap: "wrap", alignItems: "center" }}>
-            {(["A", "B", "C", "D"] as const).map(g => (
-              <span key={g} style={{ fontSize: 9, fontWeight: 700, color: gradeColor(g) }}>● {g}</span>
-            ))}
+          <div style={{ padding: "5px 16px", display: "flex", gap: 6, borderBottom: "1px solid rgba(0,0,0,0.068)", flexShrink: 0, flexWrap: "wrap", alignItems: "center" }}>
+            {(["A", "B", "C", "D"] as const).map(g => {
+              const active = highlightGrade === g;
+              const gc = gradeColor(g);
+              return (
+                <button key={g}
+                  onClick={() => setHighlightGrade(prev => prev === g ? null : g)}
+                  title={active ? `Showing all grades again` : `Fade everything except ${g}`}
+                  style={{
+                    padding: "2px 8px", borderRadius: 5, cursor: "pointer",
+                    fontSize: 9, fontWeight: 700, color: gc,
+                    background: active ? `${gc}22` : "transparent",
+                    border: `1px solid ${active ? `${gc}66` : "transparent"}`,
+                    opacity: highlightGrade && !active ? 0.4 : 1,
+                    transition: "all 0.15s",
+                  }}>● {g}</button>
+              );
+            })}
+            {highlightGrade && (
+              <button onClick={() => setHighlightGrade(null)}
+                style={{
+                  padding: "2px 7px", borderRadius: 5, border: "none", cursor: "pointer",
+                  background: "rgba(0,0,0,0.054)", color: "#767676", fontSize: 9, fontWeight: 700,
+                }}>Clear</button>
+            )}
           </div>
         )}
 
@@ -1661,8 +1687,9 @@ export default function ZipTool() {
                     const p = clientPerf[zip];
                     const ps = perfCircles?.[zip]?.score;
                     const pc = ps != null ? gradeColor(perfGrade(ps)) : "rgba(0,0,0,0.15)";
+                    const faded = Boolean(highlightGrade) && (ps == null || perfGrade(ps) !== highlightGrade);
                     return (
-                      <div key={zip} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderRadius: 5, background: "rgba(0,0,0,0.041)", flexShrink: 0, borderLeft: `3px solid ${pc}` }}>
+                      <div key={zip} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderRadius: 5, background: "rgba(0,0,0,0.041)", flexShrink: 0, borderLeft: `3px solid ${pc}`, opacity: faded ? 0.3 : 1, transition: "opacity 0.15s" }}>
                         <span style={{ fontSize: 10, fontWeight: 700, color: "#111111", fontFamily: "monospace", width: 40, flexShrink: 0 }}>{zip}</span>
                         {ps != null && <span style={{ fontSize: 9, fontWeight: 700, color: pc, width: 26, flexShrink: 0 }}>{ps.toFixed(1)}</span>}
                         <span style={{ fontSize: 9, color: "#000000" }}>{p.leads}L</span>
@@ -1689,7 +1716,7 @@ export default function ZipTool() {
                           handleZipClick(zip);
                         }
                       }}
-                      style={{ ...chipStyle(zs?.grade, selectedZip === zip, manualExcludes.has(zip)), display: "inline-flex", alignItems: "center", gap: 2 }}
+                      style={{ ...chipStyle(zs?.grade, selectedZip === zip, manualExcludes.has(zip), Boolean(highlightGrade) && zs?.grade !== highlightGrade), display: "inline-flex", alignItems: "center", gap: 2 }}
                       title={manualExcludes.has(zip) ? "Excluded — click to restore" : (zs ? `Score ${zs.score} · Grade ${zs.grade}` : "Click for data")}>
                       {zip}
                     </span>
@@ -1743,6 +1770,7 @@ export default function ZipTool() {
           pinMode={pinMode}
           onExcludeToggle={handleExcludeToggle}
           perfCircles={mapOverlay === "performance" ? perfCircles : undefined}
+          highlightGrade={highlightGrade}
           flyTrigger={mapFlyTrigger}
         />
         {/* Undo / Redo circular buttons — bottom-left of map */}
