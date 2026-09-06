@@ -23,6 +23,7 @@ type Task = {
   scope: Scope;
   from_list: boolean;
   origin: string | null;
+  prev_dates: string[];
 };
 
 const BUCKETS: { id: Bucket; letter: string; name: string; blurb: string; color: string }[] = [
@@ -231,6 +232,17 @@ export default function TaskBoard() {
     return fromProjects ? { from_list: true, origin: "backlog" } : {};
   };
 
+  // Tasks that were planned for the day in view but have since been moved on.
+  const ghosts = useMemo(
+    () => tasks.filter(t => !t.done && t.task_date !== anchor && (t.prev_dates ?? []).includes(anchor)),
+    [tasks, anchor],
+  );
+
+  const ghostsFor = (bucket: Bucket, priority?: number) =>
+    ghosts.filter(t => t.bucket === bucket && (priority == null || t.priority === priority));
+
+  const goToDate = (d: string) => { setDayDate(d); setView("day"); };
+
   const rows = listTab === "daily" ? inbox : backlog;
 
   // Month review: a Mon-Sun grid of the month, plus everything completed in it.
@@ -354,6 +366,12 @@ export default function TaskBoard() {
 
   function patch(id: string, changes: Partial<Task>) {
     const t = tasks.find(x => x.id === id);
+    // Moving a task off a day leaves a trace on that day, so it still shows there.
+    if (t && typeof changes.task_date === "string" && t.task_date && changes.task_date !== t.task_date
+        && !("prev_dates" in changes)) {
+      const seen = t.prev_dates ?? [];
+      if (!seen.includes(t.task_date)) changes = { ...changes, prev_dates: [...seen, t.task_date] };
+    }
     if (t) {
       const before: Partial<Task> = {};
       for (const k of Object.keys(changes) as (keyof Task)[]) {
@@ -590,6 +608,7 @@ export default function TaskBoard() {
   const ctx: BoardCtx = {
     expandedId, setExpandedId, frog, dragId, dropZone, startDrag,
     patch, clearFromBoard, unschedule, scope, phone, listFor,
+    ghostsFor, goToDate,
   };
 
   if (loading) {
@@ -1237,6 +1256,8 @@ type BoardCtx = {
   scope: Scope;
   phone: boolean;
   listFor: (b: Bucket, p?: number) => Task[];
+  ghostsFor: (b: Bucket, p?: number) => Task[];
+  goToDate: (d: string) => void;
 };
 
 function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx }) {
@@ -1407,8 +1428,36 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
   );
 }
 
+/* A task that was planned for the day you are looking at, then pushed to another
+   one. It stays visible here, faded, so a past day still reads as what you set
+   out to do — with a note of where it went. */
+function MovedCard({ task, ctx }: { task: Task; ctx: BoardCtx }) {
+  const to = task.task_date;
+  return (
+    <button
+      onClick={() => { if (to) ctx.goToDate(to); }}
+      title={to ? `Moved to ${parseISO(to).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} — click to go there` : undefined}
+      style={{
+        width: "100%", textAlign: "left", display: "block",
+        background: "transparent", border: "1px dashed rgba(0,0,0,0.18)", borderRadius: 7,
+        padding: ctx.phone ? "5px 7px" : "7px 8px", marginBottom: 5, cursor: to ? "pointer" : "default",
+      }}
+    >
+      <p style={{ fontSize: ctx.phone ? 11 : 12, lineHeight: 1.4, color: "#a8a8a8", wordBreak: "break-word" }}>
+        {task.title}
+      </p>
+      {to && (
+        <p style={{ fontSize: 9, fontWeight: 700, color: "#c2c2c2", marginTop: 3 }}>
+          → moved to {parseISO(to).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+        </p>
+      )}
+    </button>
+  );
+}
+
 function Lane({ bucket, priority, accent, empty, fill, ctx }: { bucket: Bucket; priority: number; accent: string; empty: string; fill?: boolean; ctx: BoardCtx }) {
   const items = ctx.listFor(bucket, HAS_LEVELS.has(bucket) ? priority : undefined);
+  const gone = ctx.ghostsFor(bucket, HAS_LEVELS.has(bucket) ? priority : undefined);
   const zone = `lane:${bucket}:${priority}`;
   return (
     <div
@@ -1422,7 +1471,8 @@ function Lane({ bucket, priority, accent, empty, fill, ctx }: { bucket: Bucket; 
       }}
     >
       {items.map(t => <Card key={t.id} task={t} accent={accent} ctx={ctx} />)}
-      {items.length === 0 && (
+      {gone.map(t => <MovedCard key={t.id} task={t} ctx={ctx} />)}
+      {items.length === 0 && gone.length === 0 && (
         <p style={{ fontSize: ctx.phone ? 9.5 : 10, color: "#c2c2c2", textAlign: "center", padding: ctx.phone ? "3px 4px" : "12px 4px" }}>
           {ctx.phone ? "—" : empty}
         </p>
