@@ -6,6 +6,64 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
+## 2026-09-07 — Lifting Tracker + per-user feature access
+
+Two additions, both additive to the schema.
+
+### Lifting Tracker (Tools > Lifting Tracker)
+
+A software version of the "Lean Bulk Tracker" Google Sheet. One row per week,
+keyed to that week's **Monday** — `lift_entries (user_id, week_start)` is unique,
+so saving a week overwrites it rather than stacking duplicates. The calendar is
+the input surface; the Progress tab reads back out of the same rows.
+
+Exercises are per-user and editable (`lift_settings.exercises`, a jsonb array),
+not hard-coded columns, so a second person can track different lifts. Loads and
+reps live in `lift_entries.lifts` keyed by exercise **name** — renaming an
+exercise therefore starts its history fresh, which is called out in the settings
+UI. Units are labels only; changing kg→lb does not convert stored numbers.
+
+Charts are hand-rolled SVG. There is no charting library in this project and one
+line of data did not justify adding one.
+
+**Sharing:** `lift_settings.share_token` powers `/api/lift-log/export?token=…`,
+which returns the whole log as CSV (`&format=json` for JSON). It is in
+`BYPASS_ROUTES` — the token *is* the credential — so it can be pasted into a
+Claude project, or into a Sheet via `IMPORTDATA`. Off by default; turning it off
+nulls the token and permanently breaks the old link.
+
+### Per-user feature access
+
+`profiles.allowed_views text[]` is the source of truth, **mirrored into the auth
+user's `app_metadata`** on every write (`mirrorToAuth` in `/api/users`). The
+middleware gates off that mirror, so enforcement costs no database round-trip on
+the hot path.
+
+`null` means *unrestricted*, and the column is left NULL by the migration. That
+is deliberate: every account that predates this feature keeps exactly the access
+it had, and V1 cannot be narrowed by deploying. Access only ever shrinks when an
+admin ticks boxes in Settings > Users. Admins are never restricted.
+
+Gating is in two layers — the nav hides what you can't open (`/api/me`), and the
+middleware 403s the matching API prefixes (`API_GATES` in
+`src/lib/feature-access.ts`). Adding a new gated view means adding it in both
+places, i.e. one entry in `FEATURES` and one in `API_GATES`.
+
+`/api/users` now **requires `is_admin`** — previously any signed-in user could
+create an admin account. Checked before shipping: V1 and V2 each have exactly one
+profile and it is an admin, so nobody was locked out.
+
+Tools were already user-scoped (`tasks.user_id`), so "their own clean copy" needed
+no new work beyond the tracker following the same pattern.
+
+### Migration
+
+`node scripts/migrate-lift-and-access.mjs <v1|v2>` — run once per environment.
+V2 was migrated on 2026-09-07. **V1 must be migrated before the code deploys**,
+or User Management breaks on V1 (its query selects `allowed_views`).
+
+---
+
 ## 2026-09-02 — Sales-call territory scoring (built, never wired up)
 
 What it is: when a B2B sales call is booked in GHL, the prospect's targeting

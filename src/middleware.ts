@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { canReachPath } from '@/lib/feature-access';
 
 // Routes that handle their own auth (API key or admin secret) or are public
 const BYPASS_ROUTES = [
@@ -24,6 +25,9 @@ const BYPASS_ROUTES = [
   '/api/admin/backfill-zips',
   '/api/admin/seed-client-sessions',
   '/api/cron/seed-daily',
+  // Read-only lifting-log export — the share token in the query string is the
+  // credential, so it must be reachable without a session.
+  '/api/lift-log/export',
   '/api/auth/clear',
   '/api/setup',
   '/api/users',
@@ -76,6 +80,15 @@ export async function middleware(request: NextRequest) {
 
   if (!user) {
     return NextResponse.redirect(new URL('/login', request.url));
+  }
+
+  // Per-user feature access. `allowed_views` is mirrored onto the auth user
+  // whenever an admin edits it, so this costs no extra query. Absent means
+  // unrestricted — which is every account that predates the feature.
+  const meta = user.app_metadata as { is_admin?: boolean; allowed_views?: string[] } | undefined;
+  const allowed = meta?.is_admin === true ? null : meta?.allowed_views;
+  if (Array.isArray(allowed) && !canReachPath(pathname, allowed)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   return supabaseResponse;

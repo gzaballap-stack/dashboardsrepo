@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FEATURES, FEATURE_GROUPS, ALL_FEATURE_IDS, type FeatureId } from "@/lib/feature-access";
 
 type User = {
   id: string;
   email: string;
   is_admin: boolean;
+  // null = never restricted, so this account sees everything.
+  allowed_views: string[] | null;
   created_at: string;
 };
 
@@ -31,6 +34,95 @@ function Input({ label, ...props }: { label: string } & React.InputHTMLAttribute
   );
 }
 
+// Ticking boxes for one account. An admin is always unrestricted, so the editor
+// only appears for everyone else.
+function AccessEditor({ user, onSave, onCancel }: {
+  user: User;
+  onSave: (views: string[] | null) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [full, setFull] = useState(user.allowed_views === null);
+  const [picked, setPicked] = useState<Set<string>>(new Set(user.allowed_views ?? []));
+  const [saving, setSaving] = useState(false);
+
+  const toggle = (id: FeatureId) =>
+    setPicked(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const groupIds = (group: string) => FEATURES.filter(f => f.group === group).map(f => f.id);
+
+  return (
+    <div className="rounded-2xl px-5 py-4 space-y-4"
+      style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.12)" }}>
+
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" checked={full} onChange={e => setFull(e.target.checked)} className="rounded" />
+        <span className="text-sm font-medium" style={{ color: "#111111" }}>Full access to everything</span>
+      </label>
+
+      {!full && (
+        <div className="space-y-4">
+          {FEATURE_GROUPS.map(group => {
+            const ids = groupIds(group);
+            const allOn = ids.every(id => picked.has(id));
+            return (
+              <div key={group}>
+                <div className="flex items-center gap-3 mb-1.5">
+                  <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#a8a8a8" }}>{group}</p>
+                  <button
+                    onClick={() => setPicked(prev => {
+                      const next = new Set(prev);
+                      ids.forEach(id => (allOn ? next.delete(id) : next.add(id)));
+                      return next;
+                    })}
+                    className="text-[10px] font-semibold"
+                    style={{ color: "#767676" }}>
+                    {allOn ? "none" : "all"}
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                  {ids.map(id => (
+                    <label key={id} className="flex items-center gap-2 cursor-pointer py-0.5">
+                      <input type="checkbox" checked={picked.has(id)} onChange={() => toggle(id)} className="rounded" />
+                      <span className="text-xs" style={{ color: "#4a4a4a" }}>
+                        {FEATURES.find(f => f.id === id)?.label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          <p className="text-[11px]" style={{ color: "#a8a8a8" }}>
+            Tools are personal — Task Board and Lifting Tracker only ever show that
+            person&apos;s own data, never yours.
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={async () => {
+            setSaving(true);
+            await onSave(full ? null : Array.from(picked));
+            setSaving(false);
+          }}
+          disabled={saving}
+          className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+          style={{ background: "#000000", color: "#fff" }}>
+          {saving ? "Saving..." : "Save access"}
+        </button>
+        <button onClick={onCancel} className="px-3 py-2 rounded-lg text-sm font-medium" style={{ color: "#767676" }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function UserManager() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,6 +138,7 @@ export default function UserManager() {
   const [newPw, setNewPw] = useState("");
   const [savingPw, setSavingPw] = useState(false);
 
+  const [editingAccess, setEditingAccess] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function load() {
@@ -109,12 +202,30 @@ export default function UserManager() {
     load();
   }
 
+  async function handleSaveAccess(id: string, views: string[] | null) {
+    await fetch("/api/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, allowed_views: views }),
+    });
+    setEditingAccess(null);
+    load();
+  }
+
+  function accessSummary(u: User) {
+    if (u.is_admin) return "Everything";
+    if (u.allowed_views === null) return "Everything";
+    if (u.allowed_views.length === 0) return "Nothing yet";
+    if (u.allowed_views.length === ALL_FEATURE_IDS.length) return "Everything";
+    return `${u.allowed_views.length} feature${u.allowed_views.length === 1 ? "" : "s"}`;
+  }
+
   return (
     <div className="space-y-8 max-w-2xl">
       <div>
         <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>User Management</h2>
         <p className="text-sm mt-0.5" style={{ color: "#767676" }}>
-          Add and manage dashboard users
+          Add users and choose which parts of the dashboard each one can open
         </p>
       </div>
 
@@ -130,6 +241,11 @@ export default function UserManager() {
               className="rounded" />
             <span className="text-sm" style={{ color: "#4a4a4a" }}>Admin access</span>
           </label>
+          {!newIsAdmin && (
+            <p className="text-xs" style={{ color: "#a8a8a8" }}>
+              Starts with the Task Board and Lifting Tracker only. Use Access below to give them more.
+            </p>
+          )}
           {addError && (
             <p className="text-xs px-3 py-2 rounded-lg" style={{ background: "rgba(192,57,43,0.1)", color: "#c0392b", border: "1px solid rgba(192,57,43,0.2)" }}>
               {addError}
@@ -154,7 +270,7 @@ export default function UserManager() {
             <Row>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate" style={{ color: "#111111" }}>{u.email}</p>
-                <div className="flex items-center gap-2 mt-0.5">
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   <span className="text-xs" style={{ color: "#949494" }}>
                     {new Date(u.created_at).toLocaleDateString()}
                   </span>
@@ -164,9 +280,18 @@ export default function UserManager() {
                       Admin
                     </span>
                   )}
+                  <span className="text-xs" style={{ color: "#949494" }}>· {accessSummary(u)}</span>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+                {!u.is_admin && (
+                  <button
+                    onClick={() => setEditingAccess(editingAccess === u.id ? null : u.id)}
+                    className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+                    style={{ background: "rgba(0,0,0,0.072)", color: "#4a4a4a" }}>
+                    Access
+                  </button>
+                )}
                 <button
                   onClick={() => handleToggleAdmin(u)}
                   className="text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
@@ -188,6 +313,15 @@ export default function UserManager() {
                 </button>
               </div>
             </Row>
+
+            {editingAccess === u.id && (
+              <AccessEditor
+                user={u}
+                onSave={views => handleSaveAccess(u.id, views)}
+                onCancel={() => setEditingAccess(null)}
+              />
+            )}
+
             {changingPw === u.id && (
               <div className="rounded-2xl px-5 py-4 flex items-end gap-3"
                 style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.12)" }}>
@@ -203,7 +337,7 @@ export default function UserManager() {
                 </button>
                 <button
                   onClick={() => { setChangingPw(null); setNewPw(""); }}
-                  className="px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0"
+                  className="px-3 py-2 rounded-lg text-sm font-medium"
                   style={{ color: "#767676" }}>
                   Cancel
                 </button>
