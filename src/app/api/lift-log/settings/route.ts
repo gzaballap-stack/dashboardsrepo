@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 
-const COLS = 'user_id, exercises, unit, length_unit, goal_note, share_token, updated_at';
+const COLS = 'user_id, exercises, unit, length_unit, goal_note, share_token, diet_plan, split_plan, updated_at';
 
 const DEFAULT_EXERCISES = [
   'Incline DB Press', 'Lat Pulldown Row', 'Bicep Curl', 'Tricep Extension', 'Shoulder Press',
@@ -38,7 +38,10 @@ export async function GET() {
 
   if (error) {
     return NextResponse.json({
-      settings: { user_id: ctx.userId, exercises: DEFAULT_EXERCISES, unit: 'kg', length_unit: 'cm', goal_note: null, share_token: null },
+      settings: {
+        user_id: ctx.userId, exercises: DEFAULT_EXERCISES, unit: 'kg', length_unit: 'cm',
+        goal_note: null, share_token: null, diet_plan: {}, split_plan: {},
+      },
     });
   }
   return NextResponse.json({ settings: created });
@@ -56,6 +59,20 @@ export async function PATCH(req: Request) {
   if (body.unit === 'kg' || body.unit === 'lb') patch.unit = body.unit;
   if (body.length_unit === 'cm' || body.length_unit === 'in') patch.length_unit = body.length_unit;
   if ('goal_note' in body) patch.goal_note = typeof body.goal_note === 'string' && body.goal_note.trim() ? body.goal_note.trim() : null;
+
+  // The diet plan and the gym split are free-shape documents the tool owns
+  // end to end, so they are stored as sent rather than picked apart field by
+  // field. Guarded only against a non-object and against anything big enough to
+  // be an accident.
+  for (const key of ['diet_plan', 'split_plan'] as const) {
+    if (!(key in body)) continue;
+    const val = body[key];
+    if (!val || typeof val !== 'object' || Array.isArray(val)) continue;
+    if (JSON.stringify(val).length > 200_000) {
+      return NextResponse.json({ error: `${key} is too large` }, { status: 400 });
+    }
+    patch[key] = val;
+  }
 
   // Sharing is a link the user turns on and off; rotating means turning it off
   // and on again, which invalidates whatever was handed out before.

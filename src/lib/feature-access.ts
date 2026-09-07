@@ -47,7 +47,9 @@ export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] =
   { id: "share_reports",        label: "Share Reports",         group: "Clients"           },
   { id: "zip_tool",             label: "Zip Score Engine",      group: "Tools"             },
   { id: "task_board",           label: "Task Board",            group: "Tools"             },
-  { id: "lift_tracker",         label: "Lifting Tracker",       group: "Tools"             },
+  // The id stays `lift_tracker`: it is written into saved nav state and into
+  // every account's allowed_views, so renaming it would revoke access silently.
+  { id: "lift_tracker",         label: "Health Tracker",        group: "Tools"             },
   { id: "admin_users",          label: "User Management",       group: "Settings"          },
 ];
 

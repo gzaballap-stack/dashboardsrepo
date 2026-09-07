@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 
-// Read-only export of one person's lifting log, addressed by their share token.
+// Read-only export of one person's weekly health log, addressed by their share token.
 // Public by design: the token is the credential, so it can be pasted into a
 // Claude project, a spreadsheet's IMPORTDATA, or anything else that just fetches
 // a URL. Turning sharing off in the tool deletes the token and kills the link.
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   const service = createServiceClient();
   const { data: settings } = await service
     .from('lift_settings')
-    .select('user_id, exercises, unit, length_unit, goal_note')
+    .select('user_id, exercises, unit, length_unit, goal_note, diet_plan, split_plan')
     .eq('share_token', token)
     .maybeSingle();
 
@@ -47,9 +47,13 @@ export async function GET(req: Request) {
   });
 
   if (searchParams.get('format') === 'json') {
+    // JSON carries the plans too — the CSV is the weekly log only, since a diet
+    // and a split don't flatten into the same table.
     return NextResponse.json({
       unit, length_unit: lengthUnit, exercises,
       goal: settings.goal_note ?? null,
+      diet_plan: settings.diet_plan ?? {},
+      split_plan: settings.split_plan ?? {},
       weeks: rows,
     });
   }
@@ -75,7 +79,7 @@ export async function GET(req: Request) {
   return new NextResponse(csv, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': 'inline; filename="lifting-log.csv"',
+      'Content-Disposition': 'inline; filename="health-tracker-log.csv"',
       'Cache-Control': 'no-store',
     },
   });

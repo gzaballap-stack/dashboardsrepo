@@ -97,7 +97,7 @@ function AccessEditor({ user, onSave, onCancel }: {
             );
           })}
           <p className="text-[11px]" style={{ color: "#a8a8a8" }}>
-            Tools are personal — Task Board and Lifting Tracker only ever show that
+            Tools are personal — Task Board and Health Tracker only ever show that
             person&apos;s own data, never yours.
           </p>
         </div>
@@ -243,7 +243,7 @@ export default function UserManager() {
           </label>
           {!newIsAdmin && (
             <p className="text-xs" style={{ color: "#a8a8a8" }}>
-              Starts with the Task Board and Lifting Tracker only. Use Access below to give them more.
+              Starts with the Task Board and Health Tracker only. Use Access below to give them more.
             </p>
           )}
           {addError && (

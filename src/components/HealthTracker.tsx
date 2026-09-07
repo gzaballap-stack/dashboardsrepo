@@ -3,11 +3,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ────────────────────────────────────────────────────────────────────────────
-   Lifting Tracker
+   Health Tracker
 
-   One row per week, keyed to that week's Monday — the calendar is the input
-   surface and the progress tab reads back out of it. Everything here is scoped
-   to the signed-in user by the API; nobody shares a log.
+   Four tabs over one person's data:
+     Calendar  — the weekly log. One row per week, keyed to that week's Monday.
+     Progress  — the same rows read back as stats and charts.
+     Diet      — a standing daily eating plan with macro targets.
+     Split     — a standing weekly training plan.
+
+   The log is rows in `lift_entries`. The two plans are documents on that user's
+   `lift_settings` row: they describe intent, not history, so they are edited in
+   place and autosave rather than being versioned week by week. Everything here
+   is scoped to the signed-in user by the API; nobody shares a log.
    ──────────────────────────────────────────────────────────────────────────── */
 
 type Lift = { load: number | null; reps: number | null };
@@ -31,7 +38,104 @@ type Settings = {
   length_unit: string;
   goal_note: string | null;
   share_token: string | null;
+  diet_plan: DietPlan;
+  split_plan: SplitPlan;
 };
+
+type Macro = "kcal" | "protein" | "carbs" | "fat";
+
+type DietItem = {
+  id: string;
+  name: string;
+  qty: string;
+  kcal: number | null;
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+};
+
+type Meal = { id: string; name: string; time: string; items: DietItem[] };
+
+type DietPlan = {
+  targets: Record<Macro, number | null>;
+  meals: Meal[];
+  notes: string;
+};
+
+type SplitExercise = { id: string; name: string; sets: string; reps: string; notes: string };
+
+type SplitDay = { id: string; weekday: string; title: string; rest: boolean; exercises: SplitExercise[] };
+
+type SplitPlan = { days: SplitDay[]; notes: string };
+
+const MACROS: { key: Macro; label: string; unit: string }[] = [
+  { key: "kcal", label: "Calories", unit: "kcal" },
+  { key: "protein", label: "Protein", unit: "g" },
+  { key: "carbs", label: "Carbs", unit: "g" },
+  { key: "fat", label: "Fat", unit: "g" },
+];
+
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+// The plans come back as bare `{}` before anyone has filled them in, so every
+// read has to tolerate an empty document rather than assuming shape.
+function normalizeDiet(raw: unknown): DietPlan {
+  const p = (raw ?? {}) as Partial<DietPlan>;
+  const targets = (p.targets ?? {}) as Partial<Record<Macro, number | null>>;
+  return {
+    targets: {
+      kcal: targets.kcal ?? null,
+      protein: targets.protein ?? null,
+      carbs: targets.carbs ?? null,
+      fat: targets.fat ?? null,
+    },
+    meals: (Array.isArray(p.meals) ? p.meals : []).map(m => ({
+      id: m?.id ?? uid(),
+      name: m?.name ?? "",
+      time: m?.time ?? "",
+      items: (Array.isArray(m?.items) ? m.items : []).map(it => ({
+        id: it?.id ?? uid(),
+        name: it?.name ?? "",
+        qty: it?.qty ?? "",
+        kcal: it?.kcal ?? null,
+        protein: it?.protein ?? null,
+        carbs: it?.carbs ?? null,
+        fat: it?.fat ?? null,
+      })),
+    })),
+    notes: typeof p.notes === "string" ? p.notes : "",
+  };
+}
+
+function normalizeSplit(raw: unknown): SplitPlan {
+  const p = (raw ?? {}) as Partial<SplitPlan>;
+  const days = Array.isArray(p.days) ? p.days : [];
+  // Always seven days, always in weekday order — a split with gaps in it is
+  // harder to read than one with rest days spelled out.
+  return {
+    days: WEEKDAYS.map(weekday => {
+      const found = days.find(d => d?.weekday === weekday);
+      return {
+        id: found?.id ?? uid(),
+        weekday,
+        title: found?.title ?? "",
+        rest: found?.rest ?? false,
+        exercises: (Array.isArray(found?.exercises) ? found.exercises : []).map(e => ({
+          id: e?.id ?? uid(),
+          name: e?.name ?? "",
+          sets: e?.sets ?? "",
+          reps: e?.reps ?? "",
+          notes: e?.notes ?? "",
+        })),
+      };
+    }),
+    notes: typeof p.notes === "string" ? p.notes : "",
+  };
+}
 
 const CARD = "#ffffff";
 const BORDER = "1px solid rgba(0,0,0,0.07)";
@@ -312,9 +416,16 @@ const BTN_QUIET: React.CSSProperties = {
 
 /* ── the tool ─────────────────────────────────────────────────────────────── */
 
-type Tab = "calendar" | "progress";
+type Tab = "calendar" | "progress" | "diet" | "split";
 
-export default function LiftTracker() {
+const TABS: { id: Tab; label: string }[] = [
+  { id: "calendar", label: "Calendar" },
+  { id: "progress", label: "Progress" },
+  { id: "diet", label: "Diet" },
+  { id: "split", label: "Split" },
+];
+
+export default function HealthTracker() {
   const thisMonday = useMemo(() => mondayOf(new Date()), []);
   const [year, setYear] = useState(() => new Date().getFullYear());
   const [tab, setTab] = useState<Tab>("calendar");
@@ -326,6 +437,10 @@ export default function LiftTracker() {
 
   const [openWeek, setOpenWeek] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [planSaving, setPlanSaving] = useState(false);
+  const planSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (planSaveTimer.current) clearTimeout(planSaveTimer.current); }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -391,6 +506,23 @@ export default function LiftTracker() {
     });
   }
 
+  // The plan editors change on every keystroke, so the write is coalesced —
+  // local state updates immediately, the server catches up a beat later.
+  function savePlan(patch: { diet_plan?: DietPlan } | { split_plan?: SplitPlan }) {
+    setSettings(prev => (prev ? { ...prev, ...patch } : prev));
+    if (planSaveTimer.current) clearTimeout(planSaveTimer.current);
+    planSaveTimer.current = setTimeout(() => {
+      setPlanSaving(true);
+      fetch("/api/lift-log/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      })
+        .catch(() => {})
+        .finally(() => setPlanSaving(false));
+    }, 700);
+  }
+
   async function deleteEntry(weekStart: string) {
     await fetch(`/api/lift-log?week_start=${weekStart}`, { method: "DELETE" });
     setEntries(prev => prev.filter(e => e.week_start !== weekStart));
@@ -415,25 +547,30 @@ export default function LiftTracker() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
         <div style={{ flex: 1, minWidth: 180 }}>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>Lifting Tracker</h2>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>Health Tracker</h2>
           <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-            {settings?.goal_note
-              ? settings.goal_note
-              : `${loggedThisYear} of ${weeks.length} weeks logged in ${year}`}
+            {planSaving
+              ? "Saving…"
+              : settings?.goal_note
+                ? settings.goal_note
+                : `${loggedThisYear} of ${weeks.length} weeks logged in ${year}`}
           </p>
         </div>
 
-        <div style={{ display: "flex", background: "rgba(0,0,0,0.05)", borderRadius: 10, padding: 3 }}>
-          {(["calendar", "progress"] as Tab[]).map(t => (
-            <button key={t} onClick={() => setTab(t)}
+        <div style={{
+          display: "flex", background: "rgba(0,0,0,0.05)", borderRadius: 10, padding: 3,
+          overflowX: "auto", maxWidth: "100%",
+        }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
               style={{
                 padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 600,
-                textTransform: "capitalize",
-                background: tab === t ? "#ffffff" : "transparent",
-                color: tab === t ? INK : MUTED,
-                boxShadow: tab === t ? "0 1px 3px rgba(0,0,0,0.10)" : "none",
+                whiteSpace: "nowrap",
+                background: tab === t.id ? "#ffffff" : "transparent",
+                color: tab === t.id ? INK : MUTED,
+                boxShadow: tab === t.id ? "0 1px 3px rgba(0,0,0,0.10)" : "none",
               }}>
-              {t}
+              {t.label}
             </button>
           ))}
         </div>
@@ -457,6 +594,18 @@ export default function LiftTracker() {
 
       {tab === "progress" && (
         <Progress logged={logged} exercises={exercises} unit={unit} lengthUnit={lengthUnit} />
+      )}
+
+      {tab === "diet" && settings && (
+        <DietTab plan={normalizeDiet(settings.diet_plan)} onChange={p => savePlan({ diet_plan: p })} />
+      )}
+
+      {tab === "split" && settings && (
+        <SplitTab
+          plan={normalizeSplit(settings.split_plan)}
+          trackedExercises={exercises}
+          onChange={p => savePlan({ split_plan: p })}
+        />
       )}
 
       {openWeek && (
@@ -849,6 +998,331 @@ function Progress({ logged, exercises, unit, lengthUnit }: {
   );
 }
 
+/* ── shared plan-editor inputs ────────────────────────────────────────────── */
+
+const CELL: React.CSSProperties = {
+  padding: "8px 10px", borderRadius: 9, fontSize: 15, minWidth: 0,
+  background: "#ffffff", border: "1px solid rgba(0,0,0,0.13)", color: INK, outline: "none",
+};
+
+function TextCell({ value, onChange, placeholder, list, style }: {
+  value: string; onChange: (v: string) => void; placeholder?: string;
+  list?: string; style?: React.CSSProperties;
+}) {
+  return (
+    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+      list={list} style={{ ...CELL, ...style }} />
+  );
+}
+
+// Holds its own text so half-typed values like "12." survive a keystroke, and
+// reports a number (or null) upwards.
+function NumCell({ value, onChange, placeholder, style }: {
+  value: number | null; onChange: (v: number | null) => void;
+  placeholder?: string; style?: React.CSSProperties;
+}) {
+  const [text, setText] = useState(value === null ? "" : String(value));
+  return (
+    <input
+      value={text}
+      inputMode="decimal"
+      placeholder={placeholder}
+      onChange={e => {
+        const t = e.target.value;
+        setText(t);
+        const n = t.trim() === "" ? null : Number(t);
+        onChange(n !== null && Number.isFinite(n) ? n : null);
+      }}
+      style={{ ...CELL, ...style }}
+    />
+  );
+}
+
+function IconButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} aria-label={label} title={label}
+      style={{
+        padding: 8, borderRadius: 9, background: "rgba(0,0,0,0.05)", color: MUTED,
+        lineHeight: 0, flexShrink: 0,
+      }}>
+      <svg width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+      </svg>
+    </button>
+  );
+}
+
+function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+      style={{
+        ...BTN_QUIET, padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: 6,
+      }}>
+      <svg width={13} height={13} fill="none" stroke="currentColor" strokeWidth={2.4} viewBox="0 0 24 24">
+        <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+      </svg>
+      {label}
+    </button>
+  );
+}
+
+function PlanNotes({ value, onChange, placeholder }: {
+  value: string; onChange: (v: string) => void; placeholder: string;
+}) {
+  return (
+    <div>
+      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: FAINT, marginBottom: 8 }}>
+        Notes
+      </p>
+      <textarea
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        rows={3}
+        placeholder={placeholder}
+        style={{
+          width: "100%", padding: "10px 12px", borderRadius: 12, fontSize: 14, resize: "vertical",
+          background: CARD, border: BORDER, color: INK, outline: "none", fontFamily: "inherit",
+        }}
+      />
+    </div>
+  );
+}
+
+/* ── diet ─────────────────────────────────────────────────────────────────── */
+
+function DietTab({ plan, onChange }: { plan: DietPlan; onChange: (p: DietPlan) => void }) {
+  const totals = useMemo(() => {
+    const out: Record<Macro, number> = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+    for (const meal of plan.meals) {
+      for (const item of meal.items) {
+        for (const { key } of MACROS) out[key] += item[key] ?? 0;
+      }
+    }
+    return out;
+  }, [plan]);
+
+  const mealTotal = (meal: Meal, key: Macro) =>
+    meal.items.reduce((sum, it) => sum + (it[key] ?? 0), 0);
+
+  const setMeals = (meals: Meal[]) => onChange({ ...plan, meals });
+
+  const patchMeal = (id: string, patch: Partial<Meal>) =>
+    setMeals(plan.meals.map(m => (m.id === id ? { ...m, ...patch } : m)));
+
+  const patchItem = (mealId: string, itemId: string, patch: Partial<DietItem>) =>
+    setMeals(plan.meals.map(m => m.id !== mealId ? m : {
+      ...m, items: m.items.map(it => (it.id === itemId ? { ...it, ...patch } : it)),
+    }));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* Targets vs. what the plan actually adds up to */}
+      <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 18 }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 2 }}>Daily targets</p>
+        <p style={{ fontSize: 11, color: FAINT, marginBottom: 14 }}>
+          What the meals below actually add up to is shown against each one.
+        </p>
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}>
+          {MACROS.map(({ key, label, unit }) => {
+            const target = plan.targets[key];
+            const actual = totals[key];
+            const pct = target && target > 0 ? Math.min(actual / target, 1.35) : null;
+            const over = target !== null && target > 0 && actual > target * 1.02;
+            const under = target !== null && target > 0 && actual < target * 0.98;
+            return (
+              <div key={key}>
+                <label style={{ display: "block" }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, display: "block", marginBottom: 4 }}>
+                    {label} <span style={{ color: FAINT, fontWeight: 500 }}>({unit})</span>
+                  </span>
+                  <NumCell
+                    value={target}
+                    onChange={v => onChange({ ...plan, targets: { ...plan.targets, [key]: v } })}
+                    placeholder="—"
+                    style={{ width: "100%" }}
+                  />
+                </label>
+                <div style={{ marginTop: 7 }}>
+                  <div style={{ height: 4, borderRadius: 3, background: "rgba(0,0,0,0.07)", overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%", width: `${Math.min((pct ?? 0) * 100, 100)}%`,
+                      background: pct === null ? "transparent" : over ? "#b4472e" : INK,
+                      transition: "width 200ms ease",
+                    }} />
+                  </div>
+                  <p style={{ fontSize: 10.5, color: over ? "#b4472e" : under ? MUTED : "#1a7f4b", marginTop: 4 }}>
+                    {fmt(actual, 0)} planned{target ? ` · ${fmtDelta(actual - target, 0)}` : ""}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Meals */}
+      {plan.meals.map(meal => (
+        <div key={meal.id} style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 16 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+            <TextCell value={meal.name} onChange={v => patchMeal(meal.id, { name: v })}
+              placeholder="Meal name" style={{ flex: 1, fontWeight: 600 }} />
+            <TextCell value={meal.time} onChange={v => patchMeal(meal.id, { time: v })}
+              placeholder="Time" style={{ width: 92, fontSize: 13 }} />
+            <IconButton label={`Remove ${meal.name || "meal"}`}
+              onClick={() => setMeals(plan.meals.filter(m => m.id !== meal.id))} />
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {meal.items.map(item => (
+              <div key={item.id} style={{
+                padding: 10, borderRadius: 12, background: "rgba(0,0,0,0.022)",
+                display: "flex", flexDirection: "column", gap: 7,
+              }}>
+                <div style={{ display: "flex", gap: 7 }}>
+                  <TextCell value={item.name} onChange={v => patchItem(meal.id, item.id, { name: v })}
+                    placeholder="Food" style={{ flex: 1 }} />
+                  <TextCell value={item.qty} onChange={v => patchItem(meal.id, item.id, { qty: v })}
+                    placeholder="Qty" style={{ width: 88, fontSize: 13 }} />
+                  <IconButton label="Remove item"
+                    onClick={() => patchMeal(meal.id, { items: meal.items.filter(i => i.id !== item.id) })} />
+                </div>
+                <div style={{ display: "grid", gap: 7, gridTemplateColumns: "repeat(4, 1fr)" }}>
+                  {MACROS.map(({ key, unit }) => (
+                    <NumCell key={key} value={item[key]}
+                      onChange={v => patchItem(meal.id, item.id, { [key]: v } as Partial<DietItem>)}
+                      placeholder={unit} style={{ fontSize: 13, textAlign: "center" }} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+            <AddButton label="Add food"
+              onClick={() => patchMeal(meal.id, {
+                items: [...meal.items, { id: uid(), name: "", qty: "", kcal: null, protein: null, carbs: null, fat: null }],
+              })} />
+            {meal.items.length > 0 && (
+              <span style={{ fontSize: 11, color: FAINT, marginLeft: "auto" }}>
+                {fmt(mealTotal(meal, "kcal"), 0)} kcal · {fmt(mealTotal(meal, "protein"), 0)}P
+                {" · "}{fmt(mealTotal(meal, "carbs"), 0)}C · {fmt(mealTotal(meal, "fat"), 0)}F
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+
+      <div>
+        <AddButton label="Add meal"
+          onClick={() => setMeals([...plan.meals, { id: uid(), name: "", time: "", items: [] }])} />
+      </div>
+
+      <PlanNotes value={plan.notes} onChange={v => onChange({ ...plan, notes: v })}
+        placeholder="Supplements, water, refeed days, anything that isn't a meal." />
+    </div>
+  );
+}
+
+/* ── split ────────────────────────────────────────────────────────────────── */
+
+function SplitTab({ plan, trackedExercises, onChange }: {
+  plan: SplitPlan; trackedExercises: string[]; onChange: (p: SplitPlan) => void;
+}) {
+  const patchDay = (id: string, patch: Partial<SplitDay>) =>
+    onChange({ ...plan, days: plan.days.map(d => (d.id === id ? { ...d, ...patch } : d)) });
+
+  const trainingDays = plan.days.filter(d => !d.rest && d.exercises.length > 0).length;
+  const listId = "health-tracker-exercises";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <datalist id={listId}>
+        {trackedExercises.map(x => <option key={x} value={x} />)}
+      </datalist>
+
+      <p style={{ fontSize: 11, color: FAINT }}>
+        {trainingDays} training day{trainingDays === 1 ? "" : "s"} a week.
+        Exercises you also log on the calendar will suggest themselves as you type.
+      </p>
+
+      {plan.days.map(day => (
+        <div key={day.id} style={{
+          background: day.rest ? "rgba(0,0,0,0.022)" : CARD,
+          border: day.rest ? "1px dashed rgba(0,0,0,0.13)" : BORDER,
+          boxShadow: day.rest ? "none" : SHADOW,
+          borderRadius: 18, padding: 16,
+        }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: day.rest ? FAINT : INK, width: 88, flexShrink: 0 }}>
+              {day.weekday}
+            </span>
+            {!day.rest && (
+              <TextCell value={day.title} onChange={v => patchDay(day.id, { title: v })}
+                placeholder="Push, Pull, Legs…" style={{ flex: 1, minWidth: 140, fontWeight: 600 }} />
+            )}
+            {day.rest && <span style={{ flex: 1, fontSize: 13, color: FAINT }}>Rest</span>}
+            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexShrink: 0 }}>
+              <input type="checkbox" checked={day.rest}
+                onChange={e => patchDay(day.id, { rest: e.target.checked })} />
+              <span style={{ fontSize: 11.5, color: MUTED }}>Rest day</span>
+            </label>
+          </div>
+
+          {!day.rest && (
+            <>
+              {day.exercises.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+                  {day.exercises.map(ex => (
+                    <div key={ex.id} style={{
+                      padding: 10, borderRadius: 12, background: "rgba(0,0,0,0.022)",
+                      display: "flex", flexDirection: "column", gap: 7,
+                    }}>
+                      <div style={{ display: "flex", gap: 7 }}>
+                        <TextCell value={ex.name} list={listId}
+                          onChange={v => patchDay(day.id, {
+                            exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, name: v } : e)),
+                          })}
+                          placeholder="Exercise" style={{ flex: 1 }} />
+                        <TextCell value={ex.sets}
+                          onChange={v => patchDay(day.id, {
+                            exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, sets: v } : e)),
+                          })}
+                          placeholder="Sets" style={{ width: 68, fontSize: 13, textAlign: "center" }} />
+                        <TextCell value={ex.reps}
+                          onChange={v => patchDay(day.id, {
+                            exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, reps: v } : e)),
+                          })}
+                          placeholder="Reps" style={{ width: 78, fontSize: 13, textAlign: "center" }} />
+                        <IconButton label="Remove exercise"
+                          onClick={() => patchDay(day.id, { exercises: day.exercises.filter(e => e.id !== ex.id) })} />
+                      </div>
+                      <TextCell value={ex.notes}
+                        onChange={v => patchDay(day.id, {
+                          exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, notes: v } : e)),
+                        })}
+                        placeholder="Tempo, rest, cues — optional" style={{ fontSize: 13 }} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ marginTop: 12 }}>
+                <AddButton label="Add exercise"
+                  onClick={() => patchDay(day.id, {
+                    exercises: [...day.exercises, { id: uid(), name: "", sets: "", reps: "", notes: "" }],
+                  })} />
+              </div>
+            </>
+          )}
+        </div>
+      ))}
+
+      <PlanNotes value={plan.notes} onChange={v => onChange({ ...plan, notes: v })}
+        placeholder="Warm-ups, cardio, deload weeks, anything that isn't a lift." />
+    </div>
+  );
+}
+
 /* ── settings ─────────────────────────────────────────────────────────────── */
 
 function SettingsSheet({ settings, onClose, onSaved }: {
@@ -1030,7 +1504,8 @@ function SettingsSheet({ settings, onClose, onSaved }: {
           <p style={{ fontSize: 11, color: FAINT, lineHeight: 1.5 }}>
             Anyone with this link can read your log. Paste it into a Claude project,
             or into a spreadsheet with <code>=IMPORTDATA(&quot;…&quot;)</code>. Add
-            <code> &amp;format=json</code> for JSON. Turning it off breaks the old link for good.
+            <code> &amp;format=json</code> to include your diet plan and split as well.
+            Turning it off breaks the old link for good.
           </p>
         </div>
       ) : (
@@ -1039,8 +1514,9 @@ function SettingsSheet({ settings, onClose, onSaved }: {
             Create a read-only link
           </button>
           <p style={{ fontSize: 11, color: FAINT, marginTop: 8, lineHeight: 1.5 }}>
-            Makes a private URL that returns your log as a spreadsheet — for handing
-            to Claude or a Google Sheet. Off by default.
+            Makes a private URL that returns your weekly log as a spreadsheet — and,
+            in JSON form, your diet plan and split too. For handing to Claude or a
+            Google Sheet. Off by default.
           </p>
         </div>
       )}

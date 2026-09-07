@@ -71,6 +71,9 @@ await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_lift_tr
 await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_user_feature_access.sql'), 'utf-8'),
   'profiles.allowed_views');
 
+await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_health_plans.sql'), 'utf-8'),
+  'Diet plan + gym split columns');
+
 const check = await runSQL(`
   select
     (select count(*) from information_schema.tables

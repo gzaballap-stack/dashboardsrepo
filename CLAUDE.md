@@ -154,7 +154,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `campaign-overview`, `campaign-exclusions`, `client-ad-breakdown` | Campaign views |
 | `csm-dashboard`, `client-csm-status`, `client-touchpoints`, `client-windows` | CSM health tracking |
 | `zip-*` (`zip-lookup`, `zip-data`, `zip-radius`, `zip-neighborhoods`, `zip-performance`) | In-dashboard zip/territory features (uses `src/lib/census.ts` + `zip-score.ts`) |
-| `lift-log/*` | Lifting Tracker — weekly log, settings, and the public token-based CSV/JSON export |
+| `lift-log/*` | Health Tracker — weekly log, diet/split plans, and the public token-based CSV/JSON export |
 | `me` | Who is signed in and which features they're allowed to open |
 | `ai-campaign-chat` | Claude-powered chat over a campaign/client's data — see below |
 | `admin/*` | One-off ops: seeds, backfills, schema/migration runners (bypass auth via secret) |
@@ -275,6 +275,6 @@ Never commit `.env*` — they're gitignored. Production values live in Railway.
 | Dashboard UI (nav + all views) | `src/components/DashboardView.tsx` |
 | Database schema | `supabase/schema.sql` (+ `supabase/migrations/`) |
 | Per-user feature access | `src/lib/feature-access.ts` (+ `src/middleware.ts`, Settings > Users) |
-| Lifting Tracker | `src/components/LiftTracker.tsx` |
+| Health Tracker (log, diet plan, gym split) | `src/components/HealthTracker.tsx` |
 | Env switching | `scripts/switch-env.js` |
 | First-time setup skill | `.claude/commands/start.md` (`/start`) |

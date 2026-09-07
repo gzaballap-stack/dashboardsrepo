@@ -6,11 +6,42 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
+## 2026-09-07 (later) — Renamed to Health Tracker; diet plan + gym split added
+
+Same feature, wider scope. Four tabs now: Calendar, Progress, Diet, Split.
+
+**The view id is still `lift_tracker`, and so are the API paths (`/api/lift-log/*`)
+and the tables (`lift_entries`, `lift_settings`).** Only the labels changed. The id
+is written into saved nav state in localStorage *and* into every account's
+`allowed_views`, so renaming it would silently revoke access. Not worth it.
+`LiftTracker.tsx` → `HealthTracker.tsx` was the one rename made, since nothing
+outside the import points at it.
+
+Diet and split are documents on the user's existing `lift_settings` row
+(`diet_plan`, `split_plan`, both jsonb). They describe *intent*, not history —
+one standing plan you edit in place — so they are deliberately not versioned per
+week the way the log is. If per-week plan history is ever wanted, that is a new
+table, not a change to these columns.
+
+Both editors autosave, debounced ~700ms, and the settings PATCH stores them as
+sent rather than validating field by field (guarded only on shape and a 200KB
+cap). The tool owns both ends of that shape; `normalizeDiet` / `normalizeSplit`
+on the read side tolerate the empty `{}` every existing row starts as.
+
+The JSON export now carries both plans; the CSV is still the weekly log alone,
+since a diet and a split don't flatten into the same table.
+
+Migration: re-run `node scripts/migrate-lift-and-access.mjs <v1|v2>` — the third
+statement was appended to the same script, and all of it is safe to re-run. V2
+done 2026-09-07.
+
+---
+
 ## 2026-09-07 — Lifting Tracker + per-user feature access
 
 Two additions, both additive to the schema.
 
-### Lifting Tracker (Tools > Lifting Tracker)
+### Lifting Tracker (Tools > Lifting Tracker, since renamed Health Tracker)
 
 A software version of the "Lean Bulk Tracker" Google Sheet. One row per week,
 keyed to that week's **Monday** — `lift_entries (user_id, week_start)` is unique,
