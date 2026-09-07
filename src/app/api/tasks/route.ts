@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 
 const BUCKETS = ['A', 'B', 'C', 'D', 'E'] as const;
-const COLS = 'id, title, notes, bucket, priority, position, done, due_date, delegate_to, created_at, completed_at, task_date, scope, from_list, origin, prev_dates';
+const COLS = 'id, title, notes, bucket, priority, position, done, due_date, delegate_to, created_at, completed_at, task_date, scope, from_list, origin, prev_dates, parked';
 const SCOPES = ['day', 'week', 'backlog', 'inbox'] as const;
 
 export async function GET() {
@@ -46,6 +46,7 @@ export async function POST(req: Request) {
       from_list: body.from_list === true,
       origin: body.origin ?? null,
       prev_dates: Array.isArray(body.prev_dates) ? body.prev_dates : [],
+      parked: body.parked === true,
     })
     .select(COLS)
     .single();
@@ -74,6 +75,7 @@ export async function PATCH(req: Request) {
   if (typeof body.from_list === 'boolean') patch.from_list = body.from_list;
   if ('origin' in body) patch.origin = body.origin || null;
   if (Array.isArray(body.prev_dates)) patch.prev_dates = body.prev_dates;
+  if (typeof body.parked === 'boolean') patch.parked = body.parked;
   if (typeof body.done === 'boolean') {
     patch.done = body.done;
     patch.completed_at = body.done ? new Date().toISOString() : null;

@@ -24,6 +24,7 @@ type Task = {
   from_list: boolean;
   origin: string | null;
   prev_dates: string[];
+  parked: boolean;
 };
 
 const BUCKETS: { id: Bucket; letter: string; name: string; blurb: string; color: string }[] = [
@@ -93,6 +94,16 @@ function weekLabel(startISO: string) {
     badge,
     past: diff < 0,
   };
+}
+
+// A task's life: the first day it was planned for, through the day it was ticked.
+function spanOf(t: Task) {
+  const planned = [...(t.prev_dates ?? []), t.task_date].filter(Boolean) as string[];
+  if (planned.length === 0) return null;
+  const first = planned.slice().sort()[0];
+  const last = (t.completed_at ? t.completed_at.slice(0, 10) : t.task_date) ?? first;
+  const days = Math.round((parseISO(last).getTime() - parseISO(first).getTime()) / 86400000) + 1;
+  return { days: Math.max(days, 1), pushes: (t.prev_dates ?? []).length, first };
 }
 
 function monthLabel(startISO: string) {
@@ -186,7 +197,7 @@ export default function TaskBoard() {
 
   // Unfinished work left behind on earlier days/weeks.
   const stranded = useMemo(
-    () => tasks.filter(t => t.scope === scope && !t.done && !!t.task_date && t.task_date < anchor),
+    () => tasks.filter(t => t.scope === scope && !t.done && !t.parked && !!t.task_date && t.task_date < anchor),
     [tasks, scope, anchor],
   );
 
@@ -481,13 +492,19 @@ export default function TaskBoard() {
   async function pullForward(only?: string[]) {
     const ids = only ?? stranded.map(t => t.id);
     if (ids.length === 0) return;
-    const before = ids.map(id => ({ id, task_date: tasks.find(t => t.id === id)?.task_date ?? null }));
     const target = anchor;
-    record({
-      undo: async () => { await Promise.all(before.map(b => applyPatch(liveId(b.id), { task_date: b.task_date }))); },
-      redo: async () => { await Promise.all(ids.map(id => applyPatch(liveId(id), { task_date: target }))); },
+    // Each move keeps the day it came from, so that day still shows what left it.
+    const moves = ids.map(id => {
+      const t = tasks.find(x => x.id === id);
+      const seen = t?.prev_dates ?? [];
+      const trail = t?.task_date && !seen.includes(t.task_date) ? [...seen, t.task_date] : seen;
+      return { id, from: t?.task_date ?? null, prevBefore: seen, prevAfter: trail };
     });
-    await Promise.all(ids.map(id => applyPatch(id, { task_date: target })));
+    record({
+      undo: async () => { await Promise.all(moves.map(m => applyPatch(liveId(m.id), { task_date: m.from, prev_dates: m.prevBefore }))); },
+      redo: async () => { await Promise.all(moves.map(m => applyPatch(liveId(m.id), { task_date: target, prev_dates: m.prevAfter }))); },
+    });
+    await Promise.all(moves.map(m => applyPatch(m.id, { task_date: target, prev_dates: m.prevAfter })));
   }
 
   // Drop onto a column (or an A-level lane) → append to the end of it.
@@ -851,7 +868,10 @@ export default function TaskBoard() {
           ids={catchUpIds}
           tasks={tasks}
           label={view === "week" ? "this week" : dayDate === iso(new Date()) ? "today" : "this day"}
+          anchor={anchor}
           onTick={id => patch(id, { done: true })}
+          onMove={id => pullForward([id])}
+          onPark={id => patch(id, { parked: true })}
           onReAdd={ids => { pullForward(ids); setCatchUpIds(null); }}
           onClose={() => setCatchUpIds(null)}
         />
@@ -1056,6 +1076,21 @@ export default function TaskBoard() {
                             background: "rgba(0,0,0,0.07)", color: "#4a4a4a",
                           }}>{t.bucket}</span>
                           <span style={{ fontSize: 12, color: "#4a4a4a", textDecoration: "line-through" }}>{t.title}</span>
+                          {(() => {
+                            const sp = spanOf(t);
+                            if (!sp || sp.pushes === 0) return null;
+                            return (
+                              <span
+                                title={`First planned for ${parseISO(sp.first).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}, carried forward ${sp.pushes} time${sp.pushes === 1 ? "" : "s"}`}
+                                style={{
+                                  flexShrink: 0, fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                                  background: "rgba(0,0,0,0.06)", color: "#767676", whiteSpace: "nowrap",
+                                }}
+                              >
+                                took {sp.days} days · pushed {sp.pushes}×
+                              </span>
+                            );
+                          })()}
                         </div>
                       ))}
                     </div>
@@ -1649,11 +1684,14 @@ function FrogGuide({ onClose }: { onClose: () => void }) {
 
 /* ── Catch-up on unfinished work from earlier days ── */
 
-function CatchUp({ ids, tasks, label, onTick, onReAdd, onClose }: {
+function CatchUp({ ids, tasks, label, anchor, onTick, onMove, onPark, onReAdd, onClose }: {
   ids: string[];
   tasks: Task[];
   label: string;
+  anchor: string;
   onTick: (id: string) => void;
+  onMove: (id: string) => void;
+  onPark: (id: string) => void;
   onReAdd: (ids: string[]) => void;
   onClose: () => void;
 }) {
@@ -1665,7 +1703,8 @@ function CatchUp({ ids, tasks, label, onTick, onReAdd, onClose }: {
 
   // Keep every row on screen while you tick, so the list doesn't jump under the cursor.
   const rows = ids.map(id => tasks.find(t => t.id === id)).filter((t): t is Task => !!t);
-  const remaining = rows.filter(t => !t.done);
+  const settled = (t: Task) => t.done || t.parked || t.task_date === anchor;
+  const remaining = rows.filter(t => !settled(t));
 
   const byDate: { date: string; items: Task[] }[] = [];
   for (const t of rows) {
@@ -1694,7 +1733,8 @@ function CatchUp({ ids, tasks, label, onTick, onReAdd, onClose }: {
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>Unfinished from earlier</p>
             <p style={{ fontSize: 11, color: "#949494" }}>
-              Tick anything you actually did. The rest can move to {label}.
+              Everything still open from any earlier day. Tick what you did, move what still matters
+              to {label}, or leave the rest where they are.
             </p>
           </div>
           <button
@@ -1721,7 +1761,7 @@ function CatchUp({ ids, tasks, label, onTick, onReAdd, onClose }: {
                   style={{
                     display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", marginBottom: 4,
                     border: "1px solid rgba(0,0,0,0.09)", borderRadius: 7,
-                    opacity: t.done ? 0.45 : 1,
+                    opacity: settled(t) ? 0.45 : 1,
                   }}
                 >
                   <button
@@ -1753,6 +1793,40 @@ function CatchUp({ ids, tasks, label, onTick, onReAdd, onClose }: {
                   }}>
                     {t.title}
                   </span>
+
+                  {(t.prev_dates ?? []).length > 0 && !settled(t) && (
+                    <span
+                      title={`Already carried forward ${t.prev_dates.length} time${t.prev_dates.length === 1 ? "" : "s"}`}
+                      style={{ flexShrink: 0, fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(0,0,0,0.06)", color: "#767676", whiteSpace: "nowrap" }}
+                    >
+                      pushed {t.prev_dates.length}×
+                    </span>
+                  )}
+
+                  {t.done ? (
+                    <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, color: "#767676" }}>done</span>
+                  ) : t.parked ? (
+                    <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, color: "#a8a8a8" }}>left here</span>
+                  ) : t.task_date === anchor ? (
+                    <span style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, color: "#767676" }}>moved</span>
+                  ) : (
+                    <span style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                      <button
+                        onClick={() => onMove(t.id)}
+                        title={`Move to ${label}`}
+                        style={{ fontSize: 9.5, fontWeight: 700, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "#111111", color: "#ffffff", whiteSpace: "nowrap" }}
+                      >
+                        Move
+                      </button>
+                      <button
+                        onClick={() => onPark(t.id)}
+                        title="Leave it on its own day and stop being reminded"
+                        style={{ fontSize: 9.5, fontWeight: 700, padding: "3px 8px", borderRadius: 5, cursor: "pointer", background: "rgba(0,0,0,0.055)", color: "#767676", whiteSpace: "nowrap" }}
+                      >
+                        Leave
+                      </button>
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -1761,13 +1835,13 @@ function CatchUp({ ids, tasks, label, onTick, onReAdd, onClose }: {
 
         <div style={{ padding: "12px 18px", borderTop: BORDER, display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 11, color: "#949494", flex: 1 }}>
-            {remaining.length === 0 ? "All caught up." : `${remaining.length} still to do`}
+            {remaining.length === 0 ? "All caught up." : `${remaining.length} still undecided`}
           </span>
           <button
             onClick={onClose}
             style={{ fontSize: 11.5, fontWeight: 700, color: "#767676", cursor: "pointer" }}
           >
-            Leave them
+            Close
           </button>
           <button
             onClick={() => onReAdd(remaining.map(t => t.id))}
@@ -1778,7 +1852,7 @@ function CatchUp({ ids, tasks, label, onTick, onReAdd, onClose }: {
               cursor: remaining.length === 0 ? "default" : "pointer", whiteSpace: "nowrap",
             }}
           >
-            Re-add to {label}
+            Move all to {label}
           </button>
         </div>
       </div>
