@@ -6,6 +6,43 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
+## 2026-09-07 (later still) — Multiple plans; monthly calendar
+
+**Diet and Split became collections.** `diet_plan` is now
+`{ plans: [...], activeId }` and `split_plan` is `{ programmes: [...], activeId }`.
+Selecting a plan to look at and marking one *active* are deliberately separate —
+you can draft next month's split without switching off the one you're running.
+
+The normalizers migrate the older single-plan shape into a one-item collection on
+read, so no data migration was needed and no SQL changed. Neither database had
+real plan rows yet, but the path is there anyway.
+
+Two things that will bite if these editors are touched again:
+
+- **The number inputs hold their own text** (`NumCell`) so half-typed values like
+  `12.` survive a keystroke. That means the editors *must* be keyed by plan id —
+  `<DietPlanEditor key={plan.id}>`, `<ProgrammeEditor key={prog.id}>` — or
+  switching plans leaves the previous plan's figures on screen. This was a real
+  bug, caught before shipping.
+- **Duplicating regenerates every nested id** (`cloneDietPlan`, `cloneProgramme`).
+  A shallow copy would share meal/exercise keys, and editing the copy would edit
+  the original.
+
+Carbs and fat are per-plan opt-outs (`showCarbs`, `showFat`), defaulting to on so
+nothing already entered disappears. When off they vanish from the targets, the
+food rows and the meal subtotals. Calories and protein are always shown. Nothing
+was ever *required* — blank has always stored as null.
+
+Split gained a bulk "set every exercise to N × M" action, scoped to the selected
+programme. Leaving one box empty changes only the other.
+
+The calendar now defaults to a **monthly** view (four or five boxes — the whole
+screen on a phone) with a Yearly toggle for looking back. Month navigation rolls
+over the year boundary. Weeks are filed by the month their *Monday* falls in,
+which is the same rule the year view already grouped by.
+
+---
+
 ## 2026-09-07 (later) — Renamed to Health Tracker; diet plan + gym split added
 
 Same feature, wider scope. Four tabs now: Calendar, Progress, Diet, Split.

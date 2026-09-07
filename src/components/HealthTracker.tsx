@@ -38,8 +38,10 @@ type Settings = {
   length_unit: string;
   goal_note: string | null;
   share_token: string | null;
-  diet_plan: DietPlan;
-  split_plan: SplitPlan;
+  // Raw jsonb straight off the row — normalizeDiet / normalizeSplit give these
+  // a shape, and have to cope with `{}` and with the older single-plan format.
+  diet_plan: unknown;
+  split_plan: unknown;
 };
 
 type Macro = "kcal" | "protein" | "carbs" | "fat";
@@ -57,16 +59,27 @@ type DietItem = {
 type Meal = { id: string; name: string; time: string; items: DietItem[] };
 
 type DietPlan = {
+  id: string;
+  name: string;
   targets: Record<Macro, number | null>;
   meals: Meal[];
   notes: string;
+  // Calories and protein are always tracked. Carbs and fat are opt-out per
+  // plan — some plans only ever count two numbers.
+  showCarbs: boolean;
+  showFat: boolean;
 };
 
 type SplitExercise = { id: string; name: string; sets: string; reps: string; notes: string };
 
 type SplitDay = { id: string; weekday: string; title: string; rest: boolean; exercises: SplitExercise[] };
 
-type SplitPlan = { days: SplitDay[]; notes: string };
+type SplitProgramme = { id: string; name: string; days: SplitDay[]; notes: string };
+
+// Both plans are collections with one member marked active — the one currently
+// being run. Selecting a plan to look at is separate from making it active.
+type DietDoc = { plans: DietPlan[]; activeId: string | null };
+type SplitDoc = { programmes: SplitProgramme[]; activeId: string | null };
 
 const MACROS: { key: Macro; label: string; unit: string }[] = [
   { key: "kcal", label: "Calories", unit: "kcal" },
@@ -75,18 +88,27 @@ const MACROS: { key: Macro; label: string; unit: string }[] = [
   { key: "fat", label: "Fat", unit: "g" },
 ];
 
+function macrosFor(plan: DietPlan) {
+  return MACROS.filter(m =>
+    m.key === "carbs" ? plan.showCarbs : m.key === "fat" ? plan.showFat : true);
+}
+
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-// The plans come back as bare `{}` before anyone has filled them in, so every
-// read has to tolerate an empty document rather than assuming shape.
-function normalizeDiet(raw: unknown): DietPlan {
+// The documents come back as bare `{}` before anyone has filled them in, and
+// the first version of this tool stored a single unnamed plan rather than a
+// collection. Both shapes have to survive a read.
+
+function normalizeDietPlan(raw: unknown, fallbackName: string): DietPlan {
   const p = (raw ?? {}) as Partial<DietPlan>;
   const targets = (p.targets ?? {}) as Partial<Record<Macro, number | null>>;
   return {
+    id: p.id ?? uid(),
+    name: p.name?.trim() ? p.name : fallbackName,
     targets: {
       kcal: targets.kcal ?? null,
       protein: targets.protein ?? null,
@@ -108,15 +130,33 @@ function normalizeDiet(raw: unknown): DietPlan {
       })),
     })),
     notes: typeof p.notes === "string" ? p.notes : "",
+    // Absent means the plan predates the toggle, when all four were always
+    // shown — keep showing them rather than hiding numbers already entered.
+    showCarbs: p.showCarbs ?? true,
+    showFat: p.showFat ?? true,
   };
 }
 
-function normalizeSplit(raw: unknown): SplitPlan {
-  const p = (raw ?? {}) as Partial<SplitPlan>;
+function normalizeDiet(raw: unknown): DietDoc {
+  const doc = (raw ?? {}) as Partial<DietDoc> & { meals?: unknown };
+  const plans = Array.isArray(doc.plans)
+    ? doc.plans.map((p, i) => normalizeDietPlan(p, `Plan ${i + 1}`))
+    // A pre-collection document: one unnamed plan. Anything else is empty.
+    : doc.meals !== undefined || (doc as { targets?: unknown }).targets !== undefined
+      ? [normalizeDietPlan(doc, "My plan")]
+      : [];
+  const activeId = plans.some(p => p.id === doc.activeId) ? doc.activeId! : plans[0]?.id ?? null;
+  return { plans, activeId };
+}
+
+function normalizeProgramme(raw: unknown, fallbackName: string): SplitProgramme {
+  const p = (raw ?? {}) as Partial<SplitProgramme>;
   const days = Array.isArray(p.days) ? p.days : [];
   // Always seven days, always in weekday order — a split with gaps in it is
   // harder to read than one with rest days spelled out.
   return {
+    id: p.id ?? uid(),
+    name: p.name?.trim() ? p.name : fallbackName,
     days: WEEKDAYS.map(weekday => {
       const found = days.find(d => d?.weekday === weekday);
       return {
@@ -134,6 +174,49 @@ function normalizeSplit(raw: unknown): SplitPlan {
       };
     }),
     notes: typeof p.notes === "string" ? p.notes : "",
+  };
+}
+
+function normalizeSplit(raw: unknown): SplitDoc {
+  const doc = (raw ?? {}) as Partial<SplitDoc> & { days?: unknown };
+  const programmes = Array.isArray(doc.programmes)
+    ? doc.programmes.map((p, i) => normalizeProgramme(p, `Programme ${i + 1}`))
+    : Array.isArray(doc.days)
+      ? [normalizeProgramme(doc, "My split")]
+      : [];
+  const activeId = programmes.some(p => p.id === doc.activeId) ? doc.activeId! : programmes[0]?.id ?? null;
+  return { programmes, activeId };
+}
+
+function emptyDietPlan(name: string): DietPlan {
+  return {
+    id: uid(), name,
+    targets: { kcal: null, protein: null, carbs: null, fat: null },
+    meals: [], notes: "", showCarbs: true, showFat: true,
+  };
+}
+
+function emptyProgramme(name: string): SplitProgramme {
+  return {
+    id: uid(), name,
+    days: WEEKDAYS.map(weekday => ({ id: uid(), weekday, title: "", rest: false, exercises: [] })),
+    notes: "",
+  };
+}
+
+// A copy keeps every nested id unique, or editing the duplicate would edit the
+// original through shared keys.
+function cloneDietPlan(plan: DietPlan, name: string): DietPlan {
+  return {
+    ...plan, id: uid(), name,
+    meals: plan.meals.map(m => ({ ...m, id: uid(), items: m.items.map(it => ({ ...it, id: uid() })) })),
+  };
+}
+
+function cloneProgramme(prog: SplitProgramme, name: string): SplitProgramme {
+  return {
+    ...prog, id: uid(), name,
+    days: prog.days.map(d => ({ ...d, id: uid(), exercises: d.exercises.map(e => ({ ...e, id: uid() })) })),
   };
 }
 
@@ -428,6 +511,7 @@ const TABS: { id: Tab; label: string }[] = [
 export default function HealthTracker() {
   const thisMonday = useMemo(() => mondayOf(new Date()), []);
   const [year, setYear] = useState(() => new Date().getFullYear());
+  const [month, setMonth] = useState(() => new Date().getMonth());
   const [tab, setTab] = useState<Tab>("calendar");
 
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -489,6 +573,9 @@ export default function HealthTracker() {
     [entries],
   );
 
+  const dietDoc = useMemo(() => normalizeDiet(settings?.diet_plan), [settings?.diet_plan]);
+  const splitDoc = useMemo(() => normalizeSplit(settings?.split_plan), [settings?.split_plan]);
+
   const weeks = useMemo(() => weeksOfYear(year), [year]);
   const loggedThisYear = weeks.filter(w => byWeek.has(iso(w))).length;
 
@@ -508,7 +595,7 @@ export default function HealthTracker() {
 
   // The plan editors change on every keystroke, so the write is coalesced —
   // local state updates immediately, the server catches up a beat later.
-  function savePlan(patch: { diet_plan?: DietPlan } | { split_plan?: SplitPlan }) {
+  function savePlan(patch: { diet_plan?: DietDoc } | { split_plan?: SplitDoc }) {
     setSettings(prev => (prev ? { ...prev, ...patch } : prev));
     if (planSaveTimer.current) clearTimeout(planSaveTimer.current);
     planSaveTimer.current = setTimeout(() => {
@@ -586,7 +673,8 @@ export default function HealthTracker() {
 
       {tab === "calendar" && (
         <Calendar
-          year={year} setYear={setYear} weeks={weeks} byWeek={byWeek}
+          year={year} setYear={setYear} month={month} setMonth={setMonth}
+          weeks={weeks} byWeek={byWeek}
           thisMonday={iso(thisMonday)} unit={unit}
           onOpen={setOpenWeek}
         />
@@ -597,14 +685,14 @@ export default function HealthTracker() {
       )}
 
       {tab === "diet" && settings && (
-        <DietTab plan={normalizeDiet(settings.diet_plan)} onChange={p => savePlan({ diet_plan: p })} />
+        <DietTab doc={dietDoc} onChange={d => savePlan({ diet_plan: d })} />
       )}
 
       {tab === "split" && settings && (
         <SplitTab
-          plan={normalizeSplit(settings.split_plan)}
+          doc={splitDoc}
           trackedExercises={exercises}
-          onChange={p => savePlan({ split_plan: p })}
+          onChange={d => savePlan({ split_plan: d })}
         />
       )}
 
@@ -635,51 +723,103 @@ export default function HealthTracker() {
 
 /* ── calendar ─────────────────────────────────────────────────────────────── */
 
-function Calendar({ year, setYear, weeks, byWeek, thisMonday, unit, onOpen }: {
+type CalendarScope = "month" | "year";
+
+function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, unit, onOpen }: {
   year: number;
   setYear: (y: number) => void;
+  month: number;
+  setMonth: (m: number) => void;
   weeks: Date[];
   byWeek: Map<string, Entry>;
   thisMonday: string;
   unit: string;
   onOpen: (weekStart: string) => void;
 }) {
+  // A month at a time by default — four or five boxes is the whole screen on a
+  // phone. Yearly is there for looking back, not for logging.
+  const [scope, setScope] = useState<CalendarScope>("month");
   const currentRef = useRef<HTMLButtonElement>(null);
 
-  // Land on the week you are actually in rather than the top of January.
+  // In the year view, land on the week you are actually in rather than the top
+  // of January. The month view is short enough not to need it.
   useEffect(() => {
-    currentRef.current?.scrollIntoView({ block: "center", behavior: "auto" });
-  }, [year]);
+    if (scope === "year") currentRef.current?.scrollIntoView({ block: "center", behavior: "auto" });
+  }, [year, scope]);
+
+  const shownWeeks = scope === "month" ? weeks.filter(w => w.getMonth() === month) : weeks;
 
   const byMonth = useMemo(() => {
     const groups: { month: number; weeks: Date[] }[] = [];
-    for (const w of weeks) {
+    for (const w of shownWeeks) {
       const last = groups[groups.length - 1];
       if (last && last.month === w.getMonth()) last.weeks.push(w);
       else groups.push({ month: w.getMonth(), weeks: [w] });
     }
     return groups;
-  }, [weeks]);
+  }, [shownWeeks]);
+
+  const step = (dir: 1 | -1) => {
+    if (scope === "year") { setYear(year + dir); return; }
+    const next = month + dir;
+    if (next < 0) { setMonth(11); setYear(year - 1); }
+    else if (next > 11) { setMonth(0); setYear(year + 1); }
+    else setMonth(next);
+  };
+
+  const loggedHere = shownWeeks.filter(w => byWeek.has(iso(w))).length;
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <button onClick={() => setYear(year - 1)} aria-label="Previous year" style={{ ...BTN_QUIET, padding: "6px 12px" }}>‹</button>
-        <span style={{ fontSize: 15, fontWeight: 700, color: INK, minWidth: 56, textAlign: "center" }}>{year}</span>
-        <button onClick={() => setYear(year + 1)} aria-label="Next year" style={{ ...BTN_QUIET, padding: "6px 12px" }}>›</button>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", background: "rgba(0,0,0,0.05)", borderRadius: 10, padding: 3 }}>
+          {(["month", "year"] as CalendarScope[]).map(s => (
+            <button key={s} onClick={() => setScope(s)}
+              style={{
+                padding: "6px 14px", borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                background: scope === s ? "#ffffff" : "transparent",
+                color: scope === s ? INK : MUTED,
+                boxShadow: scope === s ? "0 1px 3px rgba(0,0,0,0.10)" : "none",
+              }}>
+              {s === "month" ? "Monthly" : "Yearly"}
+            </button>
+          ))}
+        </div>
+
+        <button onClick={() => step(-1)} aria-label={scope === "month" ? "Previous month" : "Previous year"}
+          style={{ ...BTN_QUIET, padding: "6px 12px" }}>‹</button>
+        <span style={{ fontSize: 15, fontWeight: 700, color: INK, minWidth: scope === "month" ? 132 : 56, textAlign: "center" }}>
+          {scope === "month" ? `${MONTHS[month]} ${year}` : year}
+        </span>
+        <button onClick={() => step(1)} aria-label={scope === "month" ? "Next month" : "Next year"}
+          style={{ ...BTN_QUIET, padding: "6px 12px" }}>›</button>
+
         <button onClick={() => onOpen(thisMonday)} style={{ ...BTN_PRIMARY, marginLeft: "auto", padding: "8px 16px", fontSize: 13 }}>
           Log this week
         </button>
       </div>
 
-      {byMonth.map(({ month, weeks: ws }) => (
-        <section key={month} style={{ marginBottom: 22 }}>
-          <p style={{
-            fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase",
-            color: FAINT, marginBottom: 8,
-          }}>
-            {MONTHS[month]}
-          </p>
+      {scope === "month" && (
+        <p style={{ fontSize: 11, color: FAINT, marginBottom: 12 }}>
+          {loggedHere} of {shownWeeks.length} week{shownWeeks.length === 1 ? "" : "s"} logged this month.
+        </p>
+      )}
+
+      {shownWeeks.length === 0 && (
+        <p style={{ fontSize: 12, color: FAINT, padding: "24px 0" }}>No weeks start in this month.</p>
+      )}
+
+      {byMonth.map(({ month: m, weeks: ws }) => (
+        <section key={m} style={{ marginBottom: 22 }}>
+          {/* The month view already names the month in its header. */}
+          {scope === "year" && (
+            <p style={{
+              fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase",
+              color: FAINT, marginBottom: 8,
+            }}>
+              {MONTHS[m]}
+            </p>
+          )}
           <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))" }}>
             {ws.map(w => {
               const key = iso(w);
@@ -1066,6 +1206,84 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   );
 }
 
+// Picks which plan you're looking at, and which one you're actually running.
+// Those are two different things: you can draft next month's split without
+// switching off the one you're on.
+function PlanBar<T extends { id: string; name: string }>({
+  items, selectedId, activeId, noun, onSelect, onRename, onSetActive, onAdd, onDuplicate, onDelete,
+}: {
+  items: T[];
+  selectedId: string | null;
+  activeId: string | null;
+  noun: string;
+  onSelect: (id: string) => void;
+  onRename: (name: string) => void;
+  onSetActive: () => void;
+  onAdd: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  const selected = items.find(i => i.id === selectedId) ?? null;
+  const isActive = selected !== null && selected.id === activeId;
+
+  return (
+    <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 14 }}>
+      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
+        {items.map(item => {
+          const on = item.id === selectedId;
+          return (
+            <button key={item.id} onClick={() => onSelect(item.id)}
+              style={{
+                padding: "7px 13px", borderRadius: 10, fontSize: 12.5, fontWeight: 600,
+                whiteSpace: "nowrap", flexShrink: 0,
+                display: "inline-flex", alignItems: "center", gap: 6,
+                background: on ? INK : "rgba(0,0,0,0.05)",
+                color: on ? "#ffffff" : MUTED,
+              }}>
+              {item.id === activeId && (
+                <span style={{
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: on ? "#ffffff" : INK, flexShrink: 0,
+                }} />
+              )}
+              {item.name || "Untitled"}
+            </button>
+          );
+        })}
+        <button onClick={onAdd}
+          style={{
+            padding: "7px 13px", borderRadius: 10, fontSize: 12.5, fontWeight: 600,
+            whiteSpace: "nowrap", flexShrink: 0, color: MUTED,
+            background: "transparent", border: "1px dashed rgba(0,0,0,0.18)",
+          }}>
+          + New {noun}
+        </button>
+      </div>
+
+      {selected && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
+          <TextCell value={selected.name} onChange={onRename}
+            placeholder={`${noun} name`} style={{ flex: 1, minWidth: 160, fontWeight: 600 }} />
+          <button onClick={onSetActive} disabled={isActive}
+            style={{
+              ...BTN_QUIET,
+              background: isActive ? "rgba(0,0,0,0.05)" : INK,
+              color: isActive ? MUTED : "#ffffff",
+              cursor: isActive ? "default" : "pointer",
+            }}>
+            {isActive ? "Active" : "Make active"}
+          </button>
+          <button onClick={onDuplicate} style={{ ...BTN_QUIET }}>Duplicate</button>
+          <button onClick={onDelete}
+            style={{ ...BTN_QUIET, background: "rgba(180,71,46,0.09)", color: "#b4472e" }}>
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlanNotes({ value, onChange, placeholder }: {
   value: string; onChange: (v: string) => void; placeholder: string;
 }) {
@@ -1090,7 +1308,76 @@ function PlanNotes({ value, onChange, placeholder }: {
 
 /* ── diet ─────────────────────────────────────────────────────────────────── */
 
-function DietTab({ plan, onChange }: { plan: DietPlan; onChange: (p: DietPlan) => void }) {
+function DietTab({ doc, onChange }: { doc: DietDoc; onChange: (d: DietDoc) => void }) {
+  const [selectedId, setSelectedId] = useState<string | null>(doc.activeId ?? doc.plans[0]?.id ?? null);
+  const plan = doc.plans.find(p => p.id === selectedId) ?? doc.plans[0] ?? null;
+
+  const setPlans = (plans: DietPlan[], activeId = doc.activeId) => onChange({ plans, activeId });
+
+  const addPlan = () => {
+    const created = emptyDietPlan(`Plan ${doc.plans.length + 1}`);
+    setSelectedId(created.id);
+    // The very first plan becomes the active one — nothing else could be.
+    onChange({ plans: [...doc.plans, created], activeId: doc.activeId ?? created.id });
+  };
+
+  if (!plan) {
+    return (
+      <div style={{
+        background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18,
+        padding: 48, textAlign: "center",
+      }}>
+        <p style={{ fontSize: 14, fontWeight: 600, color: INK }}>No diet plans yet</p>
+        <p style={{ fontSize: 12, color: FAINT, marginTop: 6, marginBottom: 16 }}>
+          Make one for each way you eat — bulk, cut, maintenance — and mark the one you&apos;re on.
+        </p>
+        <AddButton label="Create a diet plan" onClick={addPlan} />
+      </div>
+    );
+  }
+
+  const update = (patch: Partial<DietPlan>) =>
+    setPlans(doc.plans.map(p => (p.id === plan.id ? { ...p, ...patch } : p)));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <PlanBar
+        items={doc.plans}
+        selectedId={plan.id}
+        activeId={doc.activeId}
+        noun="plan"
+        onSelect={setSelectedId}
+        onRename={name => update({ name })}
+        onSetActive={() => setPlans(doc.plans, plan.id)}
+        onAdd={addPlan}
+        onDuplicate={() => {
+          const copy = cloneDietPlan(plan, `${plan.name} copy`);
+          setSelectedId(copy.id);
+          setPlans([...doc.plans, copy]);
+        }}
+        onDelete={() => {
+          const rest = doc.plans.filter(p => p.id !== plan.id);
+          setSelectedId(rest[0]?.id ?? null);
+          onChange({
+            plans: rest,
+            activeId: doc.activeId === plan.id ? rest[0]?.id ?? null : doc.activeId,
+          });
+        }}
+      />
+      {/* Keyed by plan: the number inputs hold their own text, so without this
+          switching plans would leave the previous plan's figures on screen. */}
+      <DietPlanEditor key={plan.id} plan={plan} onChange={update} />
+    </div>
+  );
+}
+
+function DietPlanEditor({ plan, onChange: update }: {
+  plan: DietPlan; onChange: (patch: Partial<DietPlan>) => void;
+}) {
+  const shown = macrosFor(plan);
+
+  const onChange = (next: DietPlan) => update(next);
+
   const totals = useMemo(() => {
     const out: Record<Macro, number> = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
     for (const meal of plan.meals) {
@@ -1119,12 +1406,24 @@ function DietTab({ plan, onChange }: { plan: DietPlan; onChange: (p: DietPlan) =
 
       {/* Targets vs. what the plan actually adds up to */}
       <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 18 }}>
-        <p style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 2 }}>Daily targets</p>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 2 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: INK }}>Daily targets</p>
+          <div style={{ display: "flex", gap: 12, marginLeft: "auto" }}>
+            {([["showCarbs", "Carbs"], ["showFat", "Fat"]] as const).map(([key, label]) => (
+              <label key={key} style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
+                <input type="checkbox" checked={plan[key]}
+                  onChange={e => update({ [key]: e.target.checked } as Partial<DietPlan>)} />
+                <span style={{ fontSize: 11.5, color: MUTED }}>Track {label.toLowerCase()}</span>
+              </label>
+            ))}
+          </div>
+        </div>
         <p style={{ fontSize: 11, color: FAINT, marginBottom: 14 }}>
-          What the meals below actually add up to is shown against each one.
+          Nothing here is required — fill in only what you count. What the meals
+          below add up to is shown against each target.
         </p>
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}>
-          {MACROS.map(({ key, label, unit }) => {
+          {shown.map(({ key, label, unit }) => {
             const target = plan.targets[key];
             const actual = totals[key];
             const pct = target && target > 0 ? Math.min(actual / target, 1.35) : null;
@@ -1187,8 +1486,8 @@ function DietTab({ plan, onChange }: { plan: DietPlan; onChange: (p: DietPlan) =
                   <IconButton label="Remove item"
                     onClick={() => patchMeal(meal.id, { items: meal.items.filter(i => i.id !== item.id) })} />
                 </div>
-                <div style={{ display: "grid", gap: 7, gridTemplateColumns: "repeat(4, 1fr)" }}>
-                  {MACROS.map(({ key, unit }) => (
+                <div style={{ display: "grid", gap: 7, gridTemplateColumns: `repeat(${shown.length}, 1fr)` }}>
+                  {shown.map(({ key, unit }) => (
                     <NumCell key={key} value={item[key]}
                       onChange={v => patchItem(meal.id, item.id, { [key]: v } as Partial<DietItem>)}
                       placeholder={unit} style={{ fontSize: 13, textAlign: "center" }} />
@@ -1205,8 +1504,8 @@ function DietTab({ plan, onChange }: { plan: DietPlan; onChange: (p: DietPlan) =
               })} />
             {meal.items.length > 0 && (
               <span style={{ fontSize: 11, color: FAINT, marginLeft: "auto" }}>
-                {fmt(mealTotal(meal, "kcal"), 0)} kcal · {fmt(mealTotal(meal, "protein"), 0)}P
-                {" · "}{fmt(mealTotal(meal, "carbs"), 0)}C · {fmt(mealTotal(meal, "fat"), 0)}F
+                {shown.map(({ key, unit }) =>
+                  `${fmt(mealTotal(meal, key), 0)}${key === "kcal" ? " kcal" : unit}`).join(" · ")}
               </span>
             )}
           </div>
@@ -1226,11 +1525,105 @@ function DietTab({ plan, onChange }: { plan: DietPlan; onChange: (p: DietPlan) =
 
 /* ── split ────────────────────────────────────────────────────────────────── */
 
-function SplitTab({ plan, trackedExercises, onChange }: {
-  plan: SplitPlan; trackedExercises: string[]; onChange: (p: SplitPlan) => void;
+function SplitTab({ doc, trackedExercises, onChange }: {
+  doc: SplitDoc; trackedExercises: string[]; onChange: (d: SplitDoc) => void;
 }) {
+  const [selectedId, setSelectedId] = useState<string | null>(doc.activeId ?? doc.programmes[0]?.id ?? null);
+  const prog = doc.programmes.find(p => p.id === selectedId) ?? doc.programmes[0] ?? null;
+
+  const setProgrammes = (programmes: SplitProgramme[], activeId = doc.activeId) =>
+    onChange({ programmes, activeId });
+
+  const addProgramme = () => {
+    const created = emptyProgramme(`Programme ${doc.programmes.length + 1}`);
+    setSelectedId(created.id);
+    onChange({ programmes: [...doc.programmes, created], activeId: doc.activeId ?? created.id });
+  };
+
+  if (!prog) {
+    return (
+      <div style={{
+        background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18,
+        padding: 48, textAlign: "center",
+      }}>
+        <p style={{ fontSize: 14, fontWeight: 600, color: INK }}>No programmes yet</p>
+        <p style={{ fontSize: 12, color: FAINT, marginTop: 6, marginBottom: 16, maxWidth: 380, marginLeft: "auto", marginRight: "auto" }}>
+          Build one per way of training — low volume high intensity, an Arnold
+          split, push pull legs — and mark the one you&apos;re running.
+        </p>
+        <AddButton label="Create a programme" onClick={addProgramme} />
+      </div>
+    );
+  }
+
+  const update = (patch: Partial<SplitProgramme>) =>
+    setProgrammes(doc.programmes.map(p => (p.id === prog.id ? { ...p, ...patch } : p)));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <PlanBar
+        items={doc.programmes}
+        selectedId={prog.id}
+        activeId={doc.activeId}
+        noun="programme"
+        onSelect={setSelectedId}
+        onRename={name => update({ name })}
+        onSetActive={() => setProgrammes(doc.programmes, prog.id)}
+        onAdd={addProgramme}
+        onDuplicate={() => {
+          const copy = cloneProgramme(prog, `${prog.name} copy`);
+          setSelectedId(copy.id);
+          setProgrammes([...doc.programmes, copy]);
+        }}
+        onDelete={() => {
+          const rest = doc.programmes.filter(p => p.id !== prog.id);
+          setSelectedId(rest[0]?.id ?? null);
+          onChange({
+            programmes: rest,
+            activeId: doc.activeId === prog.id ? rest[0]?.id ?? null : doc.activeId,
+          });
+        }}
+      />
+      <ProgrammeEditor
+        key={prog.id}
+        prog={prog}
+        trackedExercises={trackedExercises}
+        onChange={update}
+      />
+    </div>
+  );
+}
+
+function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
+  prog: SplitProgramme; trackedExercises: string[]; onChange: (patch: Partial<SplitProgramme>) => void;
+}) {
+  const plan = prog;
+  const onChange = (next: SplitProgramme) => update(next);
+
+  const [bulkSets, setBulkSets] = useState("");
+  const [bulkReps, setBulkReps] = useState("");
+
   const patchDay = (id: string, patch: Partial<SplitDay>) =>
     onChange({ ...plan, days: plan.days.map(d => (d.id === id ? { ...d, ...patch } : d)) });
+
+  const exerciseCount = plan.days.reduce((n, d) => n + (d.rest ? 0 : d.exercises.length), 0);
+
+  // One prescription across a whole programme is the normal case — 4×8 for
+  // everything, then tweak the handful that differ.
+  const applyToAll = () => {
+    if (!bulkSets.trim() && !bulkReps.trim()) return;
+    onChange({
+      ...plan,
+      days: plan.days.map(d => d.rest ? d : {
+        ...d,
+        exercises: d.exercises.map(e => ({
+          ...e,
+          sets: bulkSets.trim() || e.sets,
+          reps: bulkReps.trim() || e.reps,
+        })),
+      }),
+    });
+  };
 
   const trainingDays = plan.days.filter(d => !d.rest && d.exercises.length > 0).length;
   const listId = "health-tracker-exercises";
@@ -1240,6 +1633,30 @@ function SplitTab({ plan, trackedExercises, onChange }: {
       <datalist id={listId}>
         {trackedExercises.map(x => <option key={x} value={x} />)}
       </datalist>
+
+      <div style={{
+        background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 14,
+        display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+      }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: INK }}>Set every exercise to</span>
+        <TextCell value={bulkSets} onChange={setBulkSets} placeholder="Sets"
+          style={{ width: 74, fontSize: 13, textAlign: "center" }} />
+        <span style={{ fontSize: 12, color: FAINT }}>×</span>
+        <TextCell value={bulkReps} onChange={setBulkReps} placeholder="Reps"
+          style={{ width: 84, fontSize: 13, textAlign: "center" }} />
+        <button onClick={applyToAll}
+          disabled={!exerciseCount || (!bulkSets.trim() && !bulkReps.trim())}
+          style={{
+            ...BTN_PRIMARY, padding: "8px 16px", fontSize: 13,
+            opacity: !exerciseCount || (!bulkSets.trim() && !bulkReps.trim()) ? 0.4 : 1,
+          }}>
+          Apply to all {exerciseCount || ""}
+        </button>
+        <span style={{ fontSize: 11, color: FAINT, flexBasis: "100%" }}>
+          Overwrites sets and reps on every exercise in {plan.name || "this programme"}.
+          Leave one box empty to change only the other.
+        </span>
+      </div>
 
       <p style={{ fontSize: 11, color: FAINT }}>
         {trainingDays} training day{trainingDays === 1 ? "" : "s"} a week.
