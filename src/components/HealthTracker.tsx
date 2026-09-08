@@ -675,7 +675,7 @@ export default function HealthTracker() {
         <Calendar
           year={year} setYear={setYear} month={month} setMonth={setMonth}
           weeks={weeks} byWeek={byWeek}
-          thisMonday={iso(thisMonday)} unit={unit}
+          thisMonday={iso(thisMonday)} unit={unit} lengthUnit={lengthUnit}
           onOpen={setOpenWeek}
         />
       )}
@@ -725,7 +725,111 @@ export default function HealthTracker() {
 
 type CalendarScope = "month" | "year";
 
-function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, unit, onOpen }: {
+function WeekCard({ monday, entry, isNow, big, unit, lengthUnit, onOpen, cardRef }: {
+  monday: Date;
+  entry: Entry | undefined;
+  isNow: boolean;
+  big: boolean;
+  unit: string;
+  lengthUnit: string;
+  onOpen: (weekStart: string) => void;
+  cardRef?: React.Ref<HTMLButtonElement>;
+}) {
+  const key = iso(monday);
+  const filled = !!entry;
+  const weight = entry ? avgOf([entry.weight_1, entry.weight_2, entry.weight_3]) : null;
+  const liftCount = entry ? Object.keys(entry.lifts ?? {}).length : 0;
+
+  const footer = liftCount
+    ? `${liftCount} lift${liftCount === 1 ? "" : "s"} logged`
+    : filled ? "Measurements only" : "Not logged";
+
+  return (
+    <button
+      ref={cardRef}
+      onClick={() => onOpen(key)}
+      style={{
+        textAlign: "left",
+        padding: big ? "16px 18px" : "11px 13px",
+        borderRadius: big ? 18 : 14,
+        // Grid rows stretch to the tallest card, so a shorter empty card costs
+        // nothing on a wide screen and saves a lot of scrolling on a phone.
+        minHeight: big ? (filled ? 196 : 140) : 84,
+        background: filled ? CARD : "rgba(0,0,0,0.018)",
+        border: filled ? BORDER : "1px dashed rgba(0,0,0,0.13)",
+        boxShadow: filled ? SHADOW : "none",
+        outline: isNow ? `2px solid ${INK}` : "none",
+        outlineOffset: isNow ? 1 : 0,
+        display: "flex", flexDirection: "column", gap: big ? 6 : 4,
+        transition: "transform 120ms ease",
+      }}
+      onMouseEnter={e => (e.currentTarget.style.transform = "translateY(-1px)")}
+      onMouseLeave={e => (e.currentTarget.style.transform = "none")}
+    >
+      <span style={{
+        display: "flex", alignItems: "center", gap: 7,
+        fontSize: big ? 12.5 : 11, fontWeight: 600, color: filled ? MUTED : FAINT,
+      }}>
+        {weekLabel(monday)}
+        {isNow && (
+          big ? (
+            <span style={{
+              fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+              padding: "2px 7px", borderRadius: 20, background: INK, color: "#ffffff",
+            }}>
+              This week
+            </span>
+          ) : <span>· now</span>
+        )}
+      </span>
+
+      {weight !== null ? (
+        <span style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+          <span style={{ fontSize: big ? 38 : 19, fontWeight: 700, color: INK, letterSpacing: "-0.03em", lineHeight: 1.05 }}>
+            {fmt(weight)}
+          </span>
+          <span style={{ fontSize: big ? 13 : 10, color: FAINT }}>{unit}</span>
+        </span>
+      ) : (
+        <span style={{
+          fontSize: big ? 38 : 19, fontWeight: 700, lineHeight: 1.05,
+          color: filled ? INK : "rgba(0,0,0,0.14)", letterSpacing: "-0.03em",
+        }}>
+          {filled ? "·" : "+"}
+        </span>
+      )}
+
+      {/* The big card has the room to say what's actually in the week. */}
+      {big && (
+        <div style={{ display: "flex", gap: 18, marginTop: 2 }}>
+          {([["Waist", entry?.waist], ["Bicep", entry?.bicep]] as const).map(([label, value]) => (
+            <span key={label} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: FAINT }}>{label}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: value == null ? "rgba(0,0,0,0.2)" : "#3a3a3a" }}>
+                {value == null ? "—" : `${fmt(value)} ${lengthUnit}`}
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {big && entry?.notes && (
+        <span style={{
+          fontSize: 12, color: "#6b6b6b", lineHeight: 1.45, marginTop: 2,
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+        }}>
+          {entry.notes}
+        </span>
+      )}
+
+      <span style={{ fontSize: big ? 11.5 : 10, color: FAINT, marginTop: "auto" }}>
+        {footer}
+      </span>
+    </button>
+  );
+}
+
+function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, unit, lengthUnit, onOpen }: {
   year: number;
   setYear: (y: number) => void;
   month: number;
@@ -734,6 +838,7 @@ function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, u
   byWeek: Map<string, Entry>;
   thisMonday: string;
   unit: string;
+  lengthUnit: string;
   onOpen: (weekStart: string) => void;
 }) {
   // A month at a time by default — four or five boxes is the whole screen on a
@@ -747,7 +852,8 @@ function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, u
     if (scope === "year") currentRef.current?.scrollIntoView({ block: "center", behavior: "auto" });
   }, [year, scope]);
 
-  const shownWeeks = scope === "month" ? weeks.filter(w => w.getMonth() === month) : weeks;
+  const big = scope === "month";
+  const shownWeeks = big ? weeks.filter(w => w.getMonth() === month) : weeks;
 
   const byMonth = useMemo(() => {
     const groups: { month: number; weeks: Date[] }[] = [];
@@ -786,13 +892,20 @@ function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, u
           ))}
         </div>
 
-        <button onClick={() => step(-1)} aria-label={scope === "month" ? "Previous month" : "Previous year"}
-          style={{ ...BTN_QUIET, padding: "6px 12px" }}>‹</button>
-        <span style={{ fontSize: 15, fontWeight: 700, color: INK, minWidth: scope === "month" ? 132 : 56, textAlign: "center" }}>
-          {scope === "month" ? `${MONTHS[month]} ${year}` : year}
-        </span>
-        <button onClick={() => step(1)} aria-label={scope === "month" ? "Next month" : "Next year"}
-          style={{ ...BTN_QUIET, padding: "6px 12px" }}>›</button>
+        {/* The arrows and the label move as one unit, or the second arrow ends
+            up alone on the next line on a phone. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => step(-1)} aria-label={scope === "month" ? "Previous month" : "Previous year"}
+            style={{ ...BTN_QUIET, padding: "6px 12px" }}>‹</button>
+          <span style={{
+            fontSize: 15, fontWeight: 700, color: INK, textAlign: "center",
+            minWidth: scope === "month" ? 132 : 56,
+          }}>
+            {scope === "month" ? `${MONTHS[month]} ${year}` : year}
+          </span>
+          <button onClick={() => step(1)} aria-label={scope === "month" ? "Next month" : "Next year"}
+            style={{ ...BTN_QUIET, padding: "6px 12px" }}>›</button>
+        </div>
 
         <button onClick={() => onOpen(thisMonday)} style={{ ...BTN_PRIMARY, marginLeft: "auto", padding: "8px 16px", fontSize: 13 }}>
           Log this week
@@ -820,52 +933,28 @@ function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, u
               {MONTHS[m]}
             </p>
           )}
-          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))" }}>
-            {ws.map(w => {
-              const key = iso(w);
-              const entry = byWeek.get(key);
-              const weight = entry ? avgOf([entry.weight_1, entry.weight_2, entry.weight_3]) : null;
-              const liftCount = entry ? Object.keys(entry.lifts ?? {}).length : 0;
-              const isNow = key === thisMonday;
-              const filled = !!entry;
-
-              return (
-                <button
-                  key={key}
-                  ref={isNow ? currentRef : undefined}
-                  onClick={() => onOpen(key)}
-                  style={{
-                    textAlign: "left", padding: "11px 13px", borderRadius: 14, minHeight: 84,
-                    background: filled ? CARD : "rgba(0,0,0,0.018)",
-                    border: filled ? BORDER : "1px dashed rgba(0,0,0,0.13)",
-                    boxShadow: filled ? SHADOW : "none",
-                    outline: isNow ? `2px solid ${INK}` : "none",
-                    outlineOffset: isNow ? 1 : 0,
-                    display: "flex", flexDirection: "column", gap: 4,
-                    transition: "transform 120ms ease",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.transform = "translateY(-1px)")}
-                  onMouseLeave={e => (e.currentTarget.style.transform = "none")}
-                >
-                  <span style={{ fontSize: 11, fontWeight: 600, color: filled ? MUTED : FAINT }}>
-                    {weekLabel(w)}{isNow ? " · now" : ""}
-                  </span>
-                  {weight !== null ? (
-                    <span style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                      <span style={{ fontSize: 19, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>{fmt(weight)}</span>
-                      <span style={{ fontSize: 10, color: FAINT }}>{unit}</span>
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: 19, fontWeight: 700, color: filled ? INK : "rgba(0,0,0,0.14)", letterSpacing: "-0.02em" }}>
-                      {filled ? "·" : "+"}
-                    </span>
-                  )}
-                  <span style={{ fontSize: 10, color: FAINT, marginTop: "auto" }}>
-                    {liftCount ? `${liftCount} lift${liftCount === 1 ? "" : "s"}` : filled ? "measurements only" : "not logged"}
-                  </span>
-                </button>
-              );
-            })}
+          {/* A month is four or five boxes, so they get the room — the year view
+              stays compact because it has fifty-two of them. */}
+          <div style={{
+            display: "grid",
+            gap: big ? 14 : 8,
+            gridTemplateColumns: big
+              ? "repeat(auto-fit, minmax(min(100%, 420px), 1fr))"
+              : "repeat(auto-fill, minmax(148px, 1fr))",
+          }}>
+            {ws.map(w => (
+              <WeekCard
+                key={iso(w)}
+                monday={w}
+                entry={byWeek.get(iso(w))}
+                isNow={iso(w) === thisMonday}
+                big={big}
+                unit={unit}
+                lengthUnit={lengthUnit}
+                onOpen={onOpen}
+                cardRef={iso(w) === thisMonday ? currentRef : undefined}
+              />
+            ))}
           </div>
         </section>
       ))}
@@ -1940,3 +2029,4 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
