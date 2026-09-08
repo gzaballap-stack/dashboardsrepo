@@ -20,6 +20,7 @@ import BrandBackground from "./BrandBackground";
 import TaskBoard from "./TaskBoard";
 import HealthTracker from "./HealthTracker";
 import { hasFeature, type FeatureId } from "@/lib/feature-access";
+import { pathForRoute, routeForSlug, type DashRoute } from "@/lib/dashboard-routes";
 import CampaignOverview from "./CampaignOverview";
 import CreativeLeaderboard from "./CreativeLeaderboard";
 import CSMDashboard from "./CSMDashboard";
@@ -299,7 +300,7 @@ function alertKey(a: Alert) {
   return `${a.client_id}:${a.last_booked_at ?? "never"}:${a.days_since_booking ?? "never"}`;
 }
 
-export default function DashboardView() {
+export default function DashboardView({ initialRoute }: { initialRoute?: DashRoute | null }) {
   const [topSection, setTopSection] = useState<TopSection>("clients_dashboard");
   const [tomsiView, setTomsiView] = useState<TomsiView>("b2b_tracking");
   const [tomsiPreset, setTomsiPreset] = useState<Preset>("last_7");
@@ -340,10 +341,21 @@ export default function DashboardView() {
   const presetRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Restore nav position on mount
+  // Restore nav position on mount. A URL wins over the saved position — someone
+  // opening a link to a specific view should land on it, not on wherever they
+  // happened to be last time.
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(NAV_STATE_KEY) ?? "{}");
+      if (saved.expandedSections) setExpandedSections(new Set(saved.expandedSections as TopSection[]));
+
+      if (initialRoute) {
+        setTopSection(initialRoute.section as TopSection);
+        if (initialRoute.view) setView(initialRoute.view as View);
+        if (initialRoute.clientsView) setClientsView(initialRoute.clientsView as ClientsView);
+        return;
+      }
+
       const savedTop = ["clients_dashboard","tomsi_media","tools","clients","settings"].includes(saved.topSection)
         ? saved.topSection as TopSection
         : null;
@@ -354,8 +366,34 @@ export default function DashboardView() {
         setView(saved.view as View);
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
       if (saved.clientsView) setClientsView(saved.clientsView as ClientsView);
-      if (saved.expandedSections) setExpandedSections(new Set(saved.expandedSections as TopSection[]));
     } catch {}
+  }, [initialRoute]);
+
+  // Keep the address bar on the view you're looking at, without a server round
+  // trip — a Next navigation would re-run the page's auth check on every click.
+  const urlSynced = useRef(false);
+  useEffect(() => {
+    const path = pathForRoute({ section: topSection, view, clientsView });
+    if (window.location.pathname === path) { urlSynced.current = true; return; }
+    // The first correction (a bare /dashboard resolving to the saved view)
+    // replaces; real navigation after that builds normal back-button history.
+    if (urlSynced.current) window.history.pushState(null, "", path);
+    else window.history.replaceState(null, "", path);
+    urlSynced.current = true;
+  }, [topSection, view, clientsView]);
+
+  // Back/forward between views.
+  useEffect(() => {
+    const onPop = () => {
+      const parts = window.location.pathname.split("/").filter(Boolean).slice(1);
+      const r = routeForSlug(parts);
+      if (!r) return;
+      setTopSection(r.section as TopSection);
+      if (r.view) setView(r.view as View);
+      if (r.clientsView) setClientsView(r.clientsView as ClientsView);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   useEffect(() => {
@@ -531,7 +569,16 @@ export default function DashboardView() {
 
   const pageTitle = crumb[1];
   useEffect(() => {
-    document.title = `${pageTitle} — Tomsi Media`;
+    const title = `${pageTitle} — Tomsi Media`;
+    document.title = title;
+    // Next streams metadata after the initial UI, so on a fresh load the page's
+    // own <title> can land *after* this runs and overwrite it — which is what
+    // used to snap the tab back to "TFU AI — Call Center Dashboard". Re-assert
+    // once the document has finished loading.
+    if (document.readyState === "complete") return;
+    const reassert = () => { document.title = title; };
+    window.addEventListener("load", reassert);
+    return () => window.removeEventListener("load", reassert);
   }, [pageTitle]);
 
   return (
