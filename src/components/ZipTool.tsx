@@ -464,6 +464,7 @@ export default function ZipTool() {
   // Picked from the grade legend: that band keeps its colour, every other zip fades
   // back. Nothing is filtered out — it just stops the rest competing for attention.
   const [highlightGrade, setHighlightGrade] = useState<"A" | "B" | "C" | "D" | null>(null);
+  const [reportLoading,  setReportLoading]  = useState(false);
 
   const [selectedZip, setSelectedZip] = useState<string | null>(null);
   const [zipData,     setZipData]     = useState<ZipData | null>(null);
@@ -1084,6 +1085,39 @@ export default function ZipTool() {
   // Net (non-excluded) zips — used for copy count and copy action
   const displayZips = selectedPin ? [...selectedPin.zips].filter(z => !manualExcludes.has(z)).sort() : netZips;
   const totalLoading = pins.some(p => p.loading);
+
+  // Downloads the session's Meta targeting brief — the zips to target, the zips to
+  // exclude, the ads producing the closes, and who the winning zips are made of.
+  const getReport = async () => {
+    if (!activeSession || !netZips.length || reportLoading) return;
+    setReportLoading(true);
+    try {
+      const r = await fetch('/api/zip-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id:    connectedClient?.id ?? null,
+          client_name:  connectedClient?.name ?? null,
+          session_name: activeClientSessionLabel ?? activeLocalSessionLabel ?? null,
+          zips: netZips,
+          days: 90,
+        }),
+      });
+      const d = await r.json();
+      if (!d.markdown) return;
+
+      const url = URL.createObjectURL(new Blob([d.markdown], { type: 'text/markdown;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = d.filename ?? 'meta-brief.md';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {} finally {
+      setReportLoading(false);
+    }
+  };
 
   const copyZips = () => {
     const toCopy = selectedPin ? displayZips : netZips;
@@ -1734,8 +1768,22 @@ export default function ZipTool() {
         </div>
 
         {/* Actions */}
-        <div style={{ padding: "10px 12px", borderTop: "1px solid rgba(0,0,0,0.095)", display: "flex", gap: 6, flexShrink: 0,
-          position: "sticky", bottom: 0, background: "#fafafa", marginTop: "auto", zIndex: 2 }}>
+        <div style={{ padding: "10px 12px 0", flexShrink: 0, position: "sticky", bottom: 0, background: "#fafafa", marginTop: "auto", zIndex: 2 }}>
+          {activeSession && netZips.length > 0 && (
+            <button onClick={getReport} disabled={reportLoading}
+              title="Download a Meta targeting brief for this session"
+              style={{
+                width: "100%", padding: "9px 0", borderRadius: 8, marginBottom: 6,
+                border: "1px solid rgba(0,0,0,0.135)", background: "#ffffff", color: "#111111",
+                fontSize: 12, fontWeight: 600, cursor: reportLoading ? "default" : "pointer",
+                opacity: reportLoading ? 0.6 : 1, transition: "all 0.15s",
+              }}>
+              {reportLoading ? "Building report…" : "Get Report"}
+            </button>
+          )}
+        </div>
+        <div style={{ padding: "0 12px 10px", borderTop: "none", display: "flex", gap: 6, flexShrink: 0,
+          position: "sticky", bottom: 0, background: "#fafafa", zIndex: 2 }}>
           <button onClick={copyZips} disabled={!displayZips.length}
             style={{
               flex: 1, padding: "9px 0", borderRadius: 8, border: "none",

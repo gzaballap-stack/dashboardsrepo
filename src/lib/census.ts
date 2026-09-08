@@ -49,9 +49,21 @@ export async function getZctasNearPoint(lat: number, lng: number, radiusMiles: n
 // same formula used elsewhere in the ZIP tool, deliberately independent of any client's own
 // lead/show/close history so it works for a brand-new territory with zero performance data.
 export async function fetchZipScores(zips: string[]): Promise<Record<string, { score: number; grade: "A" | "B" | "C" | "D" }>> {
+  const full = await fetchZipMetrics(zips);
+  const scores: Record<string, { score: number; grade: "A" | "B" | "C" | "D" }> = {};
+  for (const [zip, m] of Object.entries(full)) scores[zip] = { score: m.score, grade: m.grade };
+  return scores;
+}
+
+export type ScoredZipMetrics = ZipMetrics & { score: number; grade: "A" | "B" | "C" | "D" };
+
+// The same Census pull, keeping the underlying demographics rather than reducing
+// them to a score — the targeting brief quotes income, home value and ownership
+// per zip, which is the part a media buyer actually builds an audience from.
+export async function fetchZipMetrics(zips: string[]): Promise<Record<string, ScoredZipMetrics>> {
   if (!CENSUS_KEY || !zips.length) return {};
   const CHUNK = 50;
-  const scores: Record<string, { score: number; grade: "A" | "B" | "C" | "D" }> = {};
+  const scores: Record<string, ScoredZipMetrics> = {};
 
   for (let i = 0; i < zips.length; i += CHUNK) {
     const chunk = zips.slice(i, i + CHUNK);
@@ -110,7 +122,7 @@ export async function fetchZipScores(zips: string[]): Promise<Record<string, { s
       if (pop < 500) continue; // skip near-empty ZCTAs, same threshold used elsewhere in the ZIP tool
 
       const { score, tier } = scoreZip(metrics);
-      scores[zip] = { score, grade: tier };
+      scores[zip] = { ...metrics, score, grade: tier };
     }
   }
   return scores;
