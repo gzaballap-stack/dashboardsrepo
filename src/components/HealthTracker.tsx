@@ -1295,80 +1295,163 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   );
 }
 
-// Picks which plan you're looking at, and which one you're actually running.
-// Those are two different things: you can draft next month's split without
-// switching off the one you're on.
-function PlanBar<T extends { id: string; name: string }>({
-  items, selectedId, activeId, noun, onSelect, onRename, onSetActive, onAdd, onDuplicate, onDelete,
+// What one plan looks like on the index: a headline number, a couple of
+// supporting figures, and a line of detail.
+type PlanCard = {
+  headline: string;
+  headlineUnit: string;
+  facts: { label: string; value: string }[];
+  footer: string;
+  notes: string;
+};
+
+// The index. Every plan as a card, the one you're running marked, and a slot at
+// the end to start another. Picking a card opens it; making one active is a
+// separate act, done inside.
+function PlanGrid<T extends { id: string; name: string }>({
+  items, activeId, noun, describe, onOpen, onAdd,
 }: {
   items: T[];
-  selectedId: string | null;
   activeId: string | null;
   noun: string;
-  onSelect: (id: string) => void;
+  describe: (item: T) => PlanCard;
+  onOpen: (id: string) => void;
+  onAdd: () => void;
+}) {
+  return (
+    <div style={{
+      display: "grid", gap: 14,
+      gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))",
+    }}>
+      {items.map(item => {
+        const card = describe(item);
+        const isActive = item.id === activeId;
+        return (
+          <button
+            key={item.id}
+            onClick={() => onOpen(item.id)}
+            style={{
+              textAlign: "left", padding: "18px 20px", borderRadius: 18, minHeight: 186,
+              background: CARD, border: BORDER, boxShadow: SHADOW,
+              outline: isActive ? `2px solid ${INK}` : "none",
+              outlineOffset: isActive ? 1 : 0,
+              display: "flex", flexDirection: "column", gap: 8,
+              transition: "transform 120ms ease",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.transform = "translateY(-1px)")}
+            onMouseLeave={e => (e.currentTarget.style.transform = "none")}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <span style={{
+                fontSize: 16, fontWeight: 700, color: INK, letterSpacing: "-0.01em",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {item.name || `Untitled ${noun}`}
+              </span>
+              {isActive && (
+                <span style={{
+                  fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+                  padding: "2px 7px", borderRadius: 20, background: INK, color: "#ffffff", flexShrink: 0,
+                }}>
+                  Active
+                </span>
+              )}
+            </span>
+
+            <span style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+              <span style={{ fontSize: 34, fontWeight: 700, color: INK, letterSpacing: "-0.03em", lineHeight: 1.05 }}>
+                {card.headline}
+              </span>
+              <span style={{ fontSize: 12.5, color: FAINT }}>{card.headlineUnit}</span>
+            </span>
+
+            <span style={{ display: "flex", gap: 18 }}>
+              {card.facts.map(f => (
+                <span key={f.label} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: FAINT }}>{f.label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "#3a3a3a" }}>{f.value}</span>
+                </span>
+              ))}
+            </span>
+
+            {card.notes && (
+              <span style={{
+                fontSize: 12, color: "#6b6b6b", lineHeight: 1.45,
+                display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+              }}>
+                {card.notes}
+              </span>
+            )}
+
+            <span style={{ fontSize: 11.5, color: FAINT, marginTop: "auto" }}>{card.footer}</span>
+          </button>
+        );
+      })}
+
+      <button
+        onClick={onAdd}
+        style={{
+          padding: "18px 20px", borderRadius: 18, minHeight: 186,
+          background: "rgba(0,0,0,0.018)", border: "1px dashed rgba(0,0,0,0.16)",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+          color: MUTED, transition: "transform 120ms ease",
+        }}
+        onMouseEnter={e => (e.currentTarget.style.transform = "translateY(-1px)")}
+        onMouseLeave={e => (e.currentTarget.style.transform = "none")}
+      >
+        <svg width={22} height={22} fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+          <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+        </svg>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>New {noun}</span>
+      </button>
+    </div>
+  );
+}
+
+// The bar above an opened plan: the way back to the index, the name, and the
+// three things you can do to the plan as a whole.
+function PlanHeader({ name, isActive, noun, onBack, onRename, onSetActive, onDuplicate, onDelete }: {
+  name: string;
+  isActive: boolean;
+  noun: string;
+  onBack: () => void;
   onRename: (name: string) => void;
   onSetActive: () => void;
-  onAdd: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
 }) {
-  const selected = items.find(i => i.id === selectedId) ?? null;
-  const isActive = selected !== null && selected.id === activeId;
-
   return (
     <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 14 }}>
-      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
-        {items.map(item => {
-          const on = item.id === selectedId;
-          return (
-            <button key={item.id} onClick={() => onSelect(item.id)}
-              style={{
-                padding: "7px 13px", borderRadius: 10, fontSize: 12.5, fontWeight: 600,
-                whiteSpace: "nowrap", flexShrink: 0,
-                display: "inline-flex", alignItems: "center", gap: 6,
-                background: on ? INK : "rgba(0,0,0,0.05)",
-                color: on ? "#ffffff" : MUTED,
-              }}>
-              {item.id === activeId && (
-                <span style={{
-                  width: 6, height: 6, borderRadius: "50%",
-                  background: on ? "#ffffff" : INK, flexShrink: 0,
-                }} />
-              )}
-              {item.name || "Untitled"}
-            </button>
-          );
-        })}
-        <button onClick={onAdd}
+      <button
+        onClick={onBack}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 12,
+          fontSize: 12, fontWeight: 600, color: MUTED,
+        }}>
+        <svg width={13} height={13} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+        All {noun}s
+      </button>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <TextCell value={name} onChange={onRename}
+          placeholder={`${noun} name`} style={{ flex: 1, minWidth: 160, fontWeight: 600 }} />
+        <button onClick={onSetActive} disabled={isActive}
           style={{
-            padding: "7px 13px", borderRadius: 10, fontSize: 12.5, fontWeight: 600,
-            whiteSpace: "nowrap", flexShrink: 0, color: MUTED,
-            background: "transparent", border: "1px dashed rgba(0,0,0,0.18)",
+            ...BTN_QUIET,
+            background: isActive ? "rgba(0,0,0,0.05)" : INK,
+            color: isActive ? MUTED : "#ffffff",
+            cursor: isActive ? "default" : "pointer",
           }}>
-          + New {noun}
+          {isActive ? "Active" : "Make active"}
+        </button>
+        <button onClick={onDuplicate} style={{ ...BTN_QUIET }}>Duplicate</button>
+        <button onClick={onDelete}
+          style={{ ...BTN_QUIET, background: "rgba(180,71,46,0.09)", color: "#b4472e" }}>
+          Delete
         </button>
       </div>
-
-      {selected && (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-          <TextCell value={selected.name} onChange={onRename}
-            placeholder={`${noun} name`} style={{ flex: 1, minWidth: 160, fontWeight: 600 }} />
-          <button onClick={onSetActive} disabled={isActive}
-            style={{
-              ...BTN_QUIET,
-              background: isActive ? "rgba(0,0,0,0.05)" : INK,
-              color: isActive ? MUTED : "#ffffff",
-              cursor: isActive ? "default" : "pointer",
-            }}>
-            {isActive ? "Active" : "Make active"}
-          </button>
-          <button onClick={onDuplicate} style={{ ...BTN_QUIET }}>Duplicate</button>
-          <button onClick={onDelete}
-            style={{ ...BTN_QUIET, background: "rgba(180,71,46,0.09)", color: "#b4472e" }}>
-            Delete
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -1398,19 +1481,20 @@ function PlanNotes({ value, onChange, placeholder }: {
 /* ── diet ─────────────────────────────────────────────────────────────────── */
 
 function DietTab({ doc, onChange }: { doc: DietDoc; onChange: (d: DietDoc) => void }) {
-  const [selectedId, setSelectedId] = useState<string | null>(doc.activeId ?? doc.plans[0]?.id ?? null);
-  const plan = doc.plans.find(p => p.id === selectedId) ?? doc.plans[0] ?? null;
+  // null = showing the index. Opening a card sets it; the back button clears it.
+  const [openId, setOpenId] = useState<string | null>(null);
+  const plan = doc.plans.find(p => p.id === openId) ?? null;
 
   const setPlans = (plans: DietPlan[], activeId = doc.activeId) => onChange({ plans, activeId });
 
   const addPlan = () => {
     const created = emptyDietPlan(`Plan ${doc.plans.length + 1}`);
-    setSelectedId(created.id);
+    setOpenId(created.id);
     // The very first plan becomes the active one — nothing else could be.
     onChange({ plans: [...doc.plans, created], activeId: doc.activeId ?? created.id });
   };
 
-  if (!plan) {
+  if (!plan && doc.plans.length === 0) {
     return (
       <div style={{
         background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18,
@@ -1425,28 +1509,58 @@ function DietTab({ doc, onChange }: { doc: DietDoc; onChange: (d: DietDoc) => vo
     );
   }
 
+  if (!plan) {
+    return (
+      <PlanGrid
+        items={doc.plans}
+        activeId={doc.activeId}
+        noun="plan"
+        onOpen={setOpenId}
+        onAdd={addPlan}
+        describe={p => {
+          const items = p.meals.flatMap(m => m.items);
+          const planned = (key: Macro) => items.reduce((s, i) => s + (i[key] ?? 0), 0);
+          // The target is the point of the plan; what the meals add up to is
+          // the fallback for a plan that has food in it but no target set.
+          const kcal = p.targets.kcal ?? (items.length ? planned("kcal") : null);
+          const protein = p.targets.protein ?? (items.length ? planned("protein") : null);
+          return {
+            headline: kcal === null ? "—" : fmt(kcal, 0),
+            headlineUnit: "kcal a day",
+            facts: [
+              { label: "Protein", value: protein === null ? "—" : `${fmt(protein, 0)} g` },
+              { label: "Meals", value: String(p.meals.length) },
+            ],
+            footer: items.length
+              ? `${items.length} food${items.length === 1 ? "" : "s"}`
+              : "Nothing added yet",
+            notes: p.notes,
+          };
+        }}
+      />
+    );
+  }
+
   const update = (patch: Partial<DietPlan>) =>
     setPlans(doc.plans.map(p => (p.id === plan.id ? { ...p, ...patch } : p)));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <PlanBar
-        items={doc.plans}
-        selectedId={plan.id}
-        activeId={doc.activeId}
+      <PlanHeader
+        name={plan.name}
+        isActive={plan.id === doc.activeId}
         noun="plan"
-        onSelect={setSelectedId}
+        onBack={() => setOpenId(null)}
         onRename={name => update({ name })}
         onSetActive={() => setPlans(doc.plans, plan.id)}
-        onAdd={addPlan}
         onDuplicate={() => {
           const copy = cloneDietPlan(plan, `${plan.name} copy`);
-          setSelectedId(copy.id);
+          setOpenId(copy.id);
           setPlans([...doc.plans, copy]);
         }}
         onDelete={() => {
           const rest = doc.plans.filter(p => p.id !== plan.id);
-          setSelectedId(rest[0]?.id ?? null);
+          setOpenId(null);
           onChange({
             plans: rest,
             activeId: doc.activeId === plan.id ? rest[0]?.id ?? null : doc.activeId,
@@ -1617,19 +1731,20 @@ function DietPlanEditor({ plan, onChange: update }: {
 function SplitTab({ doc, trackedExercises, onChange }: {
   doc: SplitDoc; trackedExercises: string[]; onChange: (d: SplitDoc) => void;
 }) {
-  const [selectedId, setSelectedId] = useState<string | null>(doc.activeId ?? doc.programmes[0]?.id ?? null);
-  const prog = doc.programmes.find(p => p.id === selectedId) ?? doc.programmes[0] ?? null;
+  // null = showing the index. Opening a card sets it; the back button clears it.
+  const [openId, setOpenId] = useState<string | null>(null);
+  const prog = doc.programmes.find(p => p.id === openId) ?? null;
 
   const setProgrammes = (programmes: SplitProgramme[], activeId = doc.activeId) =>
     onChange({ programmes, activeId });
 
   const addProgramme = () => {
     const created = emptyProgramme(`Programme ${doc.programmes.length + 1}`);
-    setSelectedId(created.id);
+    setOpenId(created.id);
     onChange({ programmes: [...doc.programmes, created], activeId: doc.activeId ?? created.id });
   };
 
-  if (!prog) {
+  if (!prog && doc.programmes.length === 0) {
     return (
       <div style={{
         background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18,
@@ -1645,28 +1760,53 @@ function SplitTab({ doc, trackedExercises, onChange }: {
     );
   }
 
+  if (!prog) {
+    return (
+      <PlanGrid
+        items={doc.programmes}
+        activeId={doc.activeId}
+        noun="programme"
+        onOpen={setOpenId}
+        onAdd={addProgramme}
+        describe={p => {
+          const training = p.days.filter(d => !d.rest);
+          const exercises = training.reduce((n, d) => n + d.exercises.length, 0);
+          const titles = training.map(d => d.title.trim()).filter(Boolean);
+          return {
+            headline: String(training.length),
+            headlineUnit: training.length === 1 ? "training day" : "training days",
+            facts: [
+              { label: "Exercises", value: String(exercises) },
+              { label: "Rest", value: String(p.days.length - training.length) },
+            ],
+            footer: titles.length ? titles.join(" · ") : "No days named yet",
+            notes: p.notes,
+          };
+        }}
+      />
+    );
+  }
+
   const update = (patch: Partial<SplitProgramme>) =>
     setProgrammes(doc.programmes.map(p => (p.id === prog.id ? { ...p, ...patch } : p)));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <PlanBar
-        items={doc.programmes}
-        selectedId={prog.id}
-        activeId={doc.activeId}
+      <PlanHeader
+        name={prog.name}
+        isActive={prog.id === doc.activeId}
         noun="programme"
-        onSelect={setSelectedId}
+        onBack={() => setOpenId(null)}
         onRename={name => update({ name })}
         onSetActive={() => setProgrammes(doc.programmes, prog.id)}
-        onAdd={addProgramme}
         onDuplicate={() => {
           const copy = cloneProgramme(prog, `${prog.name} copy`);
-          setSelectedId(copy.id);
+          setOpenId(copy.id);
           setProgrammes([...doc.programmes, copy]);
         }}
         onDelete={() => {
           const rest = doc.programmes.filter(p => p.id !== prog.id);
-          setSelectedId(rest[0]?.id ?? null);
+          setOpenId(null);
           onChange({
             programmes: rest,
             activeId: doc.activeId === prog.id ? rest[0]?.id ?? null : doc.activeId,
@@ -2029,4 +2169,5 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
 
