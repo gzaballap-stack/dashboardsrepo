@@ -132,6 +132,60 @@ or User Management breaks on V1 (its query selects `allowed_views`).
 
 ---
 
+## 2026-09-09 — All Make scenarios rerouted to app.tomsimedia.com (outage fix)
+
+- **All funnel ingestion was down from the evening of 8 Sept.** 15 Make
+  scenarios (client dials/leads/appointments/shows/no-shows/callbacks and all
+  six B2B funnel ones) posted to `daring-creation-production.up.railway.app`,
+  which no longer exists ("Application not found"). Make still reported every
+  run as successful, so nothing looked wrong. 36 client runs (30 dials, 4
+  appointments, 2 leads) on 9 Sept went to the dead address and are lost — the
+  Make API has no replay endpoint; replay is UI-only.
+- **Every scenario with a webhook URL — 27 in total — now calls
+  `app.tomsimedia.com`.** Done via the Make API (blueprint PATCH). Make
+  rate-limits at roughly 15 scenario edits a minute.
+- One casualty of the bulk host swap: `CCM - Sales Call Territory Scoring`
+  has a second HTTP call to GHL (`services.leadconnectorhq.com/contacts/…`)
+  that was overwritten too; restored from blueprint version history.
+- **The six B2B funnel scenarios had never worked.** Their HTTP module lacked
+  `followRedirect` and `rejectUnauthorized` — Make's "Validation failed for 2
+  parameter(s)" — so any real event errored and Make auto-disabled the scenario.
+  Rebuilt the modules on the working All Dials structure. Do NOT copy the
+  client module's filter ("Has call start time") into B2B: it silently skips
+  every B2B event (run succeeds with 1 op, nothing sent).
+- Three real B2B events (intro booked / intro shown / sales call booked, 9 Sept
+  ~16:12–17:37 UTC) were consumed by the broken runs; they can be re-sent by
+  replaying those runs in the Make UI.
+- `CCM - B2B New Lead` never received anything from GHL at all — the GHL
+  new-lead workflow for the B2B account is not pointing at its Make webhook.
+
+## 2026-09-09 — V1 moved to app.tomsimedia.com (old address kept)
+
+- **V1 is now `app.tomsimedia.com`.** `dashboard.tomsimedia.com` still points at
+  the same Railway service and must stay that way — client report links already
+  sent out live on the old address and cannot be edited once they're out.
+- Reason for the move: `dashboard` vs `dashboards` was one character apart from
+  the V2 demo, which made it easy to hit the wrong environment.
+- Both domains hold valid certificates on the `dashboard v1` Railway service.
+- Updated to the new address: the hard-coded URL in `admin/run-b2b-migration`,
+  and the `ccm-attribution-refresh` + `ccm-b2b-meta-spend` blueprints. **The
+  live Make scenarios were not touched** — they still call the old address,
+  which is fine while it stays alive, and they only change on re-import.
+
+### If a custom domain sits on "Waiting for DNS update"
+
+Railway can hang at `CERTIFICATE_STATUS_TYPE_VALIDATING_OWNERSHIP` with DNS
+already correct and propagated. It stayed stuck for a day. **Deleting the domain
+in Railway and adding it straight back** fixed it in minutes. The plan's custom
+domain limit greys out the Custom Domain button but does not block a domain
+that's already in the list — deleting one frees the slot to re-add it.
+
+Railway's API gives the real status (the UI only says "waiting"):
+`domains(projectId, environmentId, serviceId){ customDomains{ domain status{ certificateStatus dnsRecords{...} } } }`
+on `backboard.railway.com/graphql/v2`.
+
+---
+
 ## 2026-09-02 — Sales-call territory scoring (built, never wired up)
 
 What it is: when a B2B sales call is booked in GHL, the prospect's targeting
@@ -212,7 +266,8 @@ use on the call.
 
 - **Repo:** `github.com/gzaballap-stack/dashboardsrepo`, branch `main`.
 - **Deploy:** push to `main` → Railway auto-deploys both V1 and V2. No preview envs.
-- **V1** = dashboard.tomsimedia.com (real data, Supabase `fsebiwzgjenjwiyujexl`).
+- **V1** = app.tomsimedia.com (real data, Supabase `fsebiwzgjenjwiyujexl`).
+  dashboard.tomsimedia.com is the old V1 address and still works — keep it.
   **V2** = dashboards.tomsimedia.com (demo/mock data, Supabase `raboufpmctaeqgbrxppy`).
 - **Session roles:** this (code) session changes code and pushes. A separate
   "V2 data" session owns V2 mock-data seeding/backfills via
