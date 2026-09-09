@@ -56,7 +56,7 @@ export async function POST(req: Request) {
       lead_phone:     payload.lead_phone  ?? null,
       lead_email:     payload.lead_email  ?? null,
       ghl_contact_id: payload.ghl_contact_id ?? null,
-      external_id:    payload.external_id ?? null,
+      external_id:    payload.external_id || null,   // '' from GHL must be NULL, not a collidable key
       revenue,
       client_id,
       csm_name:         payload.csm_name       ?? null,
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
       raw:            payload,
     };
 
-    const { error } = payload.external_id
+    const { error } = (payload.external_id || null)
       ? await service.from('b2b_events').upsert(eventData, { onConflict: 'external_id' })
       : await service.from('b2b_events').insert(eventData);
 

@@ -115,7 +115,7 @@ export async function POST(req: Request) {
       speed_to_lead_seconds,
       ghl_contact_id: payload.ghl_contact_id ?? null,
       scheduled_at: payload.scheduled_at ?? null,
-      external_id: payload.external_id ?? null,
+      external_id: payload.external_id || null,   // '' must be NULL, not a collidable key
       calendar_name: payload.calendar_name ?? null,
       lead_name: payload.lead_name ?? null,
       lead_phone: payload.lead_phone ?? null,
