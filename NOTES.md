@@ -156,6 +156,10 @@ or User Management breaks on V1 (its query selects `allowed_views`).
 - Three real B2B events (intro booked / intro shown / sales call booked, 9 Sept
   ~16:12–17:37 UTC) were consumed by the broken runs; they can be re-sent by
   replaying those runs in the Make UI.
+- Third B2B fault: `b2b_events` had no unique index on `external_id`, so the
+  webhook's upsert-on-appointment-id failed with Postgres 42P10 on every real
+  event (Make still green). Added `b2b_events_external_id_key` on V1 directly;
+  also in `schema.sql`, `migrations/add_b2b_external_id_unique.sql`, `migrate.mjs`.
 - `CCM - B2B New Lead` never received anything from GHL at all — the GHL
   new-lead workflow for the B2B account is not pointing at its Make webhook.
 

@@ -12,7 +12,7 @@
             "mapper": {
                 "ca": "",
                 "qs": [],
-                "url": "https://dashboard.tomsimedia.com/api/admin/backfill-ghl-attribution",
+                "url": "https://app.tomsimedia.com/api/admin/backfill-ghl-attribution",
                 "data": "{\"dry_run\": false, \"only_missing\": true, \"limit\": 500}",
                 "gzip": true,
                 "method": "post",

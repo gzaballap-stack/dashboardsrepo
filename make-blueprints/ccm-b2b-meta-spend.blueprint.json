@@ -49,7 +49,7 @@
       "version": 3,
       "parameters": {"handleErrors": false, "useNewZLibDeCompression": true},
       "mapper": {
-        "url": "https://dashboard.tomsimedia.com/api/b2b-ad-spend",
+        "url": "https://app.tomsimedia.com/api/b2b-ad-spend",
         "method": "post",
         "headers": [
           {"name": "Authorization", "value": "Bearer TomsiMedia1!"},

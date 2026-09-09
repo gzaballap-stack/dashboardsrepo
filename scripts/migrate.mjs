@@ -270,4 +270,16 @@ await runSQL(`
   CREATE INDEX IF NOT EXISTS events_client_zip ON events (client_id, zip_code) WHERE zip_code IS NOT NULL;
 `, 'Add lead zip code to events');
 
+await runSQL(`
+  DO $$
+  BEGIN
+    IF to_regclass('public.b2b_events') IS NULL THEN
+      RAISE NOTICE 'b2b_events not present -- skipping';
+      RETURN;
+    END IF;
+    CREATE UNIQUE INDEX IF NOT EXISTS b2b_events_external_id_key
+      ON b2b_events (external_id) WHERE external_id IS NOT NULL;
+  END $$;
+`, 'Unique external_id on b2b_events (skipped where absent)');
+
 console.log('\nAll migrations complete.');

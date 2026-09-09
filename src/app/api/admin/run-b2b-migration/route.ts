@@ -53,7 +53,7 @@ function buildBlueprint(metaToken: string, webhookSecret: string) { return {
       id: 1, module: "http:ActionSendData", version: 3,
       parameters: { handleErrors: false, useNewZLibDeCompression: true },
       mapper: {
-        url: "https://dashboard.tomsimedia.com/api/b2b-ad-spend/sync-all",
+        url: "https://app.tomsimedia.com/api/b2b-ad-spend/sync-all",
         method: "post", qs: [], parseResponse: false, gzip: true,
         bodyType: "raw", contentType: "application/json",
         serializeUrl: false, followAllRedirects: false, useQuerystring: false,

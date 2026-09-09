@@ -352,6 +352,13 @@ create table if not exists b2b_events (
   )
 );
 
+-- The B2B webhook upserts on external_id (GHL appointment id) so a reschedule
+-- updates the row instead of duplicating it. Without this index every event
+-- that carries an appointment id is rejected with "no unique or exclusion
+-- constraint matching the ON CONFLICT specification".
+create unique index if not exists b2b_events_external_id_key
+  on b2b_events (external_id) where external_id is not null;
+
 -- ── CSM tracking ─────────────────────────────────────────────────────
 create table if not exists client_touchpoints (
   id          uuid primary key default gen_random_uuid(),

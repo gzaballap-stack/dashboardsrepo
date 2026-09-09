@@ -2,7 +2,7 @@
 
 > ## ⚠️ V1 is the priority — always
 >
-> **V1 (`dashboard.tomsimedia.com`) is production, with real client data. It
+> **V1 (`app.tomsimedia.com`) is production, with real client data. It
 > outranks V2 in every decision.** V2 is a demo environment running synthetic
 > data; it is never worth degrading V1 for.
 >
@@ -70,7 +70,8 @@ explicitly, and V1 should be treated with the caution production deserves.
 
 | | V1 (production) | V2 (demo) |
 |---|---|---|
-| URL | dashboard.tomsimedia.com | dashboards.tomsimedia.com |
+| URL | app.tomsimedia.com | dashboards.tomsimedia.com |
+| Old URL | dashboard.tomsimedia.com (still live, don't remove) | — |
 | Supabase ref | `fsebiwzgjenjwiyujexl` | `raboufpmctaeqgbrxppy` |
 | Data | real client data | synthetic / seeded mock data |
 | Env file | `.env.v1` | `.env.v2` |
