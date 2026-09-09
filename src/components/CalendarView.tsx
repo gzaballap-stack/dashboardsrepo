@@ -45,8 +45,10 @@ const field: React.CSSProperties = {
   padding: "8px 11px", fontSize: 12.5, color: "#111111", outline: "none", width: "100%",
 };
 
-export default function CalendarView() {
-  const [date, setDate] = useState(() => iso(new Date()));
+export default function CalendarView({ embedded = false, date: fixedDate }: { embedded?: boolean; date?: string } = {}) {
+  const [ownDate, setOwnDate] = useState(() => iso(new Date()));
+  const date = fixedDate ?? ownDate;
+  const setDate = setOwnDate;
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
@@ -167,6 +169,7 @@ export default function CalendarView() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
+      {!embedded && (<>
       {/* ── Date bar ── */}
       <div style={{ background: PANEL, border: BORDER, borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -243,6 +246,7 @@ export default function CalendarView() {
           })}
         </div>
       </div>
+      </>)}
 
       {/* ── Manage calendars ── */}
       {manage && connected && (
@@ -355,11 +359,11 @@ export default function CalendarView() {
                   <div
                     key={e.uid + e.start}
                     style={{
-                      display: "flex", gap: 14, padding: "12px 0", borderTop: BORDER,
+                      display: "flex", gap: embedded ? 9 : 14, padding: "12px 0", borderTop: BORDER,
                       opacity: past ? 0.45 : 1,
                     }}
                   >
-                    <div style={{ flexShrink: 0, width: 74, textAlign: "right" }}>
+                    <div style={{ flexShrink: 0, width: embedded ? 56 : 74, textAlign: "right" }}>
                       <p style={{ fontSize: 12.5, fontWeight: 700, color: "#111111" }}>{time(e.start)}</p>
                       <p style={{ fontSize: 10.5, color: "#949494" }}>{time(e.end)}</p>
                     </div>

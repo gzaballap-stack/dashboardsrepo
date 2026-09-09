@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import CalendarView from "./CalendarView";
 
 type Bucket = "A" | "B" | "C" | "D" | "E";
 type Scope = "day" | "week" | "backlog" | "inbox";
@@ -151,6 +152,7 @@ export default function TaskBoard() {
   const [past, setPast] = useState<{ undo: () => Promise<void>; redo: () => Promise<void> }[]>([]);
   const [future, setFuture] = useState<{ undo: () => Promise<void>; redo: () => Promise<void> }[]>([]);
   const [showList, setShowList] = useState(false);
+  const [showCalls, setShowCalls] = useState(false);
   const [listTitle, setListTitle] = useState("");
   const [listTab, setListTab] = useState<ListTab>("daily");
   const [monthTab, setMonthTab] = useState<ListTab>("daily");
@@ -785,7 +787,24 @@ export default function TaskBoard() {
             </div>
 
             <button
-              onClick={() => setShowList(true)}
+              onClick={() => { setShowCalls(v => !v); setShowList(false); }}
+              title="The calls in your calendar for this day"
+              style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 8, cursor: "pointer",
+                background: showCalls ? "#000000" : "rgba(0,0,0,0.045)",
+                border: `1px solid ${showCalls ? "#000000" : "rgba(0,0,0,0.09)"}`,
+                color: showCalls ? "#ffffff" : "#111111",
+                fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
+              }}
+            >
+              <svg style={{ width: 13, height: 13 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Calls
+            </button>
+
+            <button
+              onClick={() => { setShowList(true); setShowCalls(false); }}
               title="Your long-term to-do list"
               style={{
                 display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 8, cursor: "pointer",
@@ -1114,6 +1133,40 @@ export default function TaskBoard() {
           overflow: "hidden", textOverflow: "ellipsis", boxShadow: "0 8px 20px rgba(0,0,0,0.25)",
         }}>
           {ghost.title}
+        </div>
+      )}
+
+      {/* ── The day's calls, docked beside the board ── */}
+      {showCalls && (
+        <div
+          style={phone ? {
+            position: "fixed", inset: 0, zIndex: 60, background: "#ffffff",
+            display: "flex", flexDirection: "column", overflowY: "auto",
+          } : {
+            width: 320, flexShrink: 0, alignSelf: "flex-start", position: "sticky", top: 0,
+            maxHeight: "calc(100vh - 140px)", background: "#ffffff", border: BORDER, borderRadius: 12,
+            display: "flex", flexDirection: "column", overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "14px 16px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>Calls</p>
+              <p style={{ fontSize: 10.5, color: "#949494" }}>
+                {dayLabel(view === "day" ? dayDate : iso(new Date())).main}
+              </p>
+            </div>
+            <button
+              onClick={() => setShowCalls(false)}
+              style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#949494", cursor: "pointer", background: "rgba(0,0,0,0.045)" }}
+            >
+              <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
+            <CalendarView embedded date={view === "day" ? dayDate : iso(new Date())} />
+          </div>
         </div>
       )}
 

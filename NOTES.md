@@ -6,9 +6,13 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
-## 2026-09-09 — Calendar tab reads Google via a private iCal link, not OAuth
+## 2026-09-09 — Calendar reads Google via a private iCal link, not OAuth
 
-Tools > Calendar shows the day's calls. The user pastes their Google Calendar
+The calendar is a **panel inside the Task Board**, not its own tool — a "Calls"
+button in the board's date bar opens it beside the columns, following whichever
+day is in view (user's call, 2026-09-09; make it a tool again only if asked).
+`CalendarView` takes `embedded` + `date` props and hides its own date navigation
+when the board supplies them. The user pastes their Google Calendar
 **"Secret address in iCal format"** into the tab; it is stored in the new
 `calendar_feeds` table (migrated on V1 and V2) and read **server-side only** —
 that URL grants read access to the whole calendar, so it is never sent back to
