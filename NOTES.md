@@ -6,6 +6,29 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
+## 2026-09-09 — Calendar tab reads Google via a private iCal link, not OAuth
+
+Tools > Calendar shows the day's calls. The user pastes their Google Calendar
+**"Secret address in iCal format"** into the tab; it is stored in the new
+`calendar_feeds` table (migrated on V1 and V2) and read **server-side only** —
+that URL grants read access to the whole calendar, so it is never sent back to
+the browser. `/api/calendar` returns only `id`, `label` and any fetch error.
+
+OAuth was considered and rejected for now: it needs a Google Cloud project and a
+consent screen, and this is a single-user read-only view. If multiple team
+members ever need their own live calendars, that is the upgrade path.
+
+`src/lib/ics.ts` is a dependency-free RFC 5545 reader. It handles TZID wall-clock
+times (offsets probed via `Intl`, no tz database), all-day events, RRULE
+DAILY/WEEKLY/MONTHLY/YEARLY with INTERVAL/COUNT/UNTIL/BYDAY, EXDATE and
+RECURRENCE-ID overrides, and skips CANCELLED. Two traps worth remembering:
+all-day events sit at **UTC midnight** while the day window is **local**, so they
+must be matched by calendar date, not by instant; and occurrences are generated
+over a window widened by two days so events spanning a boundary are not lost.
+Verified against a synthetic Google-style feed covering all of the above.
+
+---
+
 ## 2026-09-07 (later still) — Multiple plans; monthly calendar
 
 **Diet and Split became collections.** `diet_plan` is now
@@ -169,6 +192,18 @@ or User Management breaks on V1 (its query selects `allowed_views`).
   webhooks now store `""` as NULL. The old partial index
   `b2b_events_external_id_unique` was dropped; `b2b_events_external_id_key`
   (plain unique) is the one that serves ON CONFLICT.
+- **Client-side audit after the B2B fixes:** all client scenarios had the two
+  HTTP params except `Agency Onboarding` (added). Appt Booked / Show / No Show /
+  Callback stamped `occurred_at` with no offset (Make org time, UTC-4) → those
+  events were stored 4h early. Templates now use `...ssZ`. **173 historical rows
+  (166 appointment_booked, 7 callback_booked, Jun 19 → Sep 8) still carry the
+  4h error** — identifiable by `raw->>'occurred_at'` having no timezone suffix;
+  fix is `occurred_at + 4h` on exactly those rows (all within EDT). Not applied
+  yet — needs the user's go-ahead.
+- Meta's own "results" count is never shown as leads: removed the Results / CVR /
+  Cost-per-result columns from the drawer ad tables. `ad_campaigns.leads` and
+  `b2b_ad_spend.leads` still store Meta's number but nothing displays it; every
+  lead figure on screen comes from GHL events.
 - `CCM - B2B New Lead` never received anything from GHL at all — the GHL
   new-lead workflow for the B2B account is not pointing at its Make webhook.
 
