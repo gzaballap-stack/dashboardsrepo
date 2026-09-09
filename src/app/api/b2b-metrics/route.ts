@@ -11,7 +11,7 @@ export async function GET(req: Request) {
 
   let eventsQ = ctx.service
     .from('b2b_events')
-    .select('event_type, revenue, occurred_at');
+    .select('event_type, revenue, occurred_at, ghl_contact_id');
 
   if (start_date) eventsQ = eventsQ.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsQ = eventsQ.lte('occurred_at', `${end_date}T23:59:59.999Z`);
@@ -121,6 +121,23 @@ export async function GET(req: Request) {
     cost_per_result: c.leads    > 0 ? c.spend / c.leads : null,
   }));
 
+  // Some leads never book a 15-minute intro — they get sold on the phone and go
+  // straight to a sales call. Counting events alone can't see that, so group the
+  // events by contact and look at each person's actual path.
+  const paths = new Map<string, Set<string>>();
+  for (const e of events ?? []) {
+    const id = (e as { ghl_contact_id?: string | null }).ghl_contact_id;
+    if (!id) continue;
+    const set = paths.get(id) ?? new Set<string>();
+    set.add(e.event_type);
+    paths.set(id, set);
+  }
+  const journeys = Array.from(paths.values());
+  const tracked_contacts   = journeys.length;
+  const direct_sales_calls = journeys.filter(s => s.has('sales_call_booked') && !s.has('intro_booked')).length;
+  const sales_calls_via_intro = journeys.filter(s => s.has('sales_call_booked') && s.has('intro_booked')).length;
+  const leads_no_intro     = journeys.filter(s => s.has('lead') && !s.has('intro_booked')).length;
+
   const closes       = count('close');
   const cash         = totalRevenue('close');
   const leads        = count('lead');
@@ -142,6 +159,15 @@ export async function GET(req: Request) {
     cpc:                avgCpc,
     cpm:                avgCpm,
     intro_show_rate:    introsBooked > 0 ? count('intro_shown') / introsBooked : 0,
+
+    // Lead -> sales call, regardless of whether an intro happened in between.
+    lead_to_sales_call_rate: leads > 0 ? (count('sales_call_booked') / leads) * 100 : 0,
+    lead_to_intro_rate:      leads > 0 ? (introsBooked / leads) * 100 : 0,
+    // Per-contact splits — only meaningful once ghl_contact_id is being sent.
+    direct_sales_calls,
+    sales_calls_via_intro,
+    leads_no_intro,
+    tracked_contacts,
     cost_per_lead:      leads > 0 ? totalSpend / leads : 0,
     cost_per_close:     closes > 0 ? totalSpend / closes : 0,
     campaigns,

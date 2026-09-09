@@ -31,6 +31,12 @@ interface B2BMetrics {
   cpc: number | null;
   cpm: number | null;
   intro_show_rate: number;
+  lead_to_sales_call_rate: number;
+  lead_to_intro_rate: number;
+  direct_sales_calls: number;
+  sales_calls_via_intro: number;
+  leads_no_intro: number;
+  tracked_contacts: number;
   cost_per_lead: number;
   cost_per_close: number;
   campaigns: CampaignRow[];
@@ -179,8 +185,11 @@ export default function B2BTracking({ startDate, endDate }: Props) {
       {/* ── Row 1: Pipeline ── */}
       <section>
         <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Pipeline</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           <KpiCard label="Ad Spend"           value={data.ad_spend > 0 ? fmt$(data.ad_spend) : "—"} />
+          <KpiCard label="Leads"              value={fmtN(data.leads)} />
+          <KpiCard label="Lead → Sales Call"  value={data.leads > 0 ? fmtPct(data.lead_to_sales_call_rate) : "—"} accent />
+          <KpiCard label="Straight to Demo"   value={data.tracked_contacts > 0 ? fmtN(data.direct_sales_calls) : "—"} />
           <KpiCard label="Booked Intros"      value={fmtN(data.intros_booked)} />
           <KpiCard label="Intro Show Rate"    value={data.intros_booked > 0 ? fmtPct((data.intros_shown / data.intros_booked) * 100) : "—"} accent />
           <KpiCard label="Booked Demos"       value={fmtN(data.sales_calls_booked)} />
