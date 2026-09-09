@@ -160,6 +160,15 @@ or User Management breaks on V1 (its query selects `allowed_views`).
   webhook's upsert-on-appointment-id failed with Postgres 42P10 on every real
   event (Make still green). Added `b2b_events_external_id_key` on V1 directly;
   also in `schema.sql`, `migrations/add_b2b_external_id_unique.sql`, `migrate.mjs`.
+- B2B timestamps were rendered in Make's org timezone with no offset
+  (`formatDate(now; "YYYY-MM-DDTHH:mm:ss")`) and stored 4h early. All seven B2B
+  templates now use `...ssZ`, matching the client scenarios. The one real row
+  affected (lead, 9 Sept) was corrected by hand.
+- Empty GHL ids (`customData.lead_id` / `appointment_id` absent) arrived as `""`
+  and collided on the unique `external_id` from the second event on. Both
+  webhooks now store `""` as NULL. The old partial index
+  `b2b_events_external_id_unique` was dropped; `b2b_events_external_id_key`
+  (plain unique) is the one that serves ON CONFLICT.
 - `CCM - B2B New Lead` never received anything from GHL at all — the GHL
   new-lead workflow for the B2B account is not pointing at its Make webhook.
 
