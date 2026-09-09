@@ -10,9 +10,12 @@
                 "useNewZLibDeCompression": true
             },
             "mapper": {
+                "ca": "",
+                "qs": [],
                 "url": "https://dashboard.tomsimedia.com/api/admin/backfill-ghl-attribution",
-                "serializeUrl": false,
-                "method": "POST",
+                "data": "{\"dry_run\": false, \"only_missing\": true, \"limit\": 500}",
+                "gzip": true,
+                "method": "post",
                 "headers": [
                     {
                         "name": "Authorization",
@@ -23,17 +26,19 @@
                         "value": "application/json"
                     }
                 ],
-                "qs": [],
-                "bodyType": "raw",
-                "parseResponse": true,
-                "authUser": "",
-                "authPass": "",
                 "timeout": "",
-                "shareCookies": false,
-                "ca": "",
                 "useMtls": false,
+                "authPass": "",
+                "authUser": "",
+                "bodyType": "raw",
                 "contentType": "application/json",
-                "data": "{\"dry_run\": false, \"only_missing\": true, \"limit\": 500}"
+                "serializeUrl": false,
+                "shareCookies": false,
+                "parseResponse": false,
+                "followRedirect": true,
+                "useQuerystring": false,
+                "followAllRedirects": false,
+                "rejectUnauthorized": true
             },
             "metadata": {
                 "designer": {
