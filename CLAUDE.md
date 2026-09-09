@@ -155,6 +155,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `campaign-overview`, `campaign-exclusions`, `client-ad-breakdown` | Campaign views |
 | `csm-dashboard`, `client-csm-status`, `client-touchpoints`, `client-windows` | CSM health tracking |
 | `zip-*` (`zip-lookup`, `zip-data`, `zip-radius`, `zip-neighborhoods`, `zip-performance`) | In-dashboard zip/territory features (uses `src/lib/census.ts` + `zip-score.ts`) |
+| `calendar` | Calendar tab — fetches each user's private Google Calendar iCal feed server-side and parses it with `src/lib/ics.ts`. Feed URLs are secrets: stored in `calendar_feeds`, never returned to the browser. |
 | `lift-log/*` | Health Tracker — weekly log, diet/split plans, and the public token-based CSV/JSON export |
 | `me` | Who is signed in and which features they're allowed to open |
 | `ai-campaign-chat` | Claude-powered chat over a campaign/client's data — see below |
@@ -277,5 +278,6 @@ Never commit `.env*` — they're gitignored. Production values live in Railway.
 | Database schema | `supabase/schema.sql` (+ `supabase/migrations/`) |
 | Per-user feature access | `src/lib/feature-access.ts` (+ `src/middleware.ts`, Settings > Users) |
 | Health Tracker (log, diet plan, gym split) | `src/components/HealthTracker.tsx` |
+| Calendar tab + iCal parsing | `src/components/CalendarView.tsx`, `src/lib/ics.ts` |
 | Env switching | `scripts/switch-env.js` |
 | First-time setup skill | `.claude/commands/start.md` (`/start`) |
