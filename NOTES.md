@@ -202,12 +202,13 @@ or User Management breaks on V1 (its query selects `allowed_views`).
   events were stored 4h early. Templates now use `...ssZ`. **173 historical rows
   (166 appointment_booked, 7 callback_booked, Jun 19 → Sep 8) still carry the
   4h error** — identifiable by `raw->>'occurred_at'` having no timezone suffix;
-  fix is `occurred_at + 4h` on exactly those rows (all within EDT). Not applied
-  yet — needs the user's go-ahead.
+  Applied 2026-09-09 with the user's go-ahead: `occurred_at + 4h` on exactly
+  those 173 rows, each stamped `raw.tz_corrected = "+4h"` so it can't run twice.
 - Meta's own "results" count is never shown as leads: removed the Results / CVR /
   Cost-per-result columns from the drawer ad tables. `ad_campaigns.leads` and
   `b2b_ad_spend.leads` still store Meta's number but nothing displays it; every
   lead figure on screen comes from GHL events.
+- `CCM - B2B Cash Collected` (7111670) switched on 2026-09-09 at the user's request.
 - `CCM - B2B New Lead` never received anything from GHL at all — the GHL
   new-lead workflow for the B2B account is not pointing at its Make webhook.
 
