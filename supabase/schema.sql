@@ -357,7 +357,7 @@ create table if not exists b2b_events (
 -- that carries an appointment id is rejected with "no unique or exclusion
 -- constraint matching the ON CONFLICT specification".
 create unique index if not exists b2b_events_external_id_key
-  on b2b_events (external_id) where external_id is not null;
+  on b2b_events (external_id);  -- not partial: ON CONFLICT (external_id) can't use a partial index
 
 -- ── CSM tracking ─────────────────────────────────────────────────────
 create table if not exists client_touchpoints (

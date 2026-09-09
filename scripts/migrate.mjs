@@ -277,8 +277,11 @@ await runSQL(`
       RAISE NOTICE 'b2b_events not present -- skipping';
       RETURN;
     END IF;
-    CREATE UNIQUE INDEX IF NOT EXISTS b2b_events_external_id_key
-      ON b2b_events (external_id) WHERE external_id IS NOT NULL;
+    -- Plain unique index: a partial one can't serve ON CONFLICT (external_id).
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname='b2b_events_external_id_key' AND indexdef NOT LIKE '%WHERE%') THEN
+      DROP INDEX IF EXISTS b2b_events_external_id_key;
+      CREATE UNIQUE INDEX b2b_events_external_id_key ON b2b_events (external_id);
+    END IF;
   END $$;
 `, 'Unique external_id on b2b_events (skipped where absent)');
 
