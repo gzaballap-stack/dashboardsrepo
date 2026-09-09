@@ -999,16 +999,15 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     "Budget", "Spend",
     "Leads", "Appts", "Shows", "Closes", "CPL", "CPA", "ROAS",
     "Impr.", "Reach", "Freq.", "CPM",
-    "U.Clicks", "U.CTR", "CPC", "Results", "CVR", "C/Res.",
+    "U.Clicks", "U.CTR", "CPC",
   ];
 
   const renderMetricCells = (m: AdMetrics) => {
     const freq = m.frequency ?? (m.reach > 0 ? m.impressions / m.reach : 0);
     const uClicks = m.unique_clicks;
     const uCtr = m.unique_ctr ?? (m.reach > 0 && uClicks ? (uClicks / m.reach) * 100 : undefined);
-    const leads = m.leads;
-    const cvr = m.cvr ?? (uClicks && leads !== undefined && uClicks > 0 ? (leads / uClicks) * 100 : undefined);
-    const cpr = m.cost_per_result ?? (leads ? m.spend / leads : undefined);
+    // Meta-reported "results" (m.leads / m.cvr / m.cost_per_result) are deliberately
+    // not shown: leads come from GHL only, never from the ad platform.
     // Routes that predate the funnel join simply omit it; treat that as zeroes
     // rather than blowing up the row.
     const f = m.funnel ?? { leads: 0, appts: 0, shows: 0, no_shows: 0, closes: 0, revenue: 0 };
@@ -1036,9 +1035,6 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{uClicks ? fmtN(uClicks) : dash}</td>
         <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{uCtr ? fmtPct(uCtr) : dash}</td>
         <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{m.cpc > 0 ? fmtDec(m.cpc) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#111111" }}>{leads ? fmtN(leads) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{cvr ? fmtPct(cvr) : dash}</td>
-        <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{cpr ? fmtDec(cpr) : dash}</td>
       </>
     );
   };
