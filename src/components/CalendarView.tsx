@@ -31,6 +31,15 @@ const weekStart = (d: Date) => addDays(d, -((d.getDay() + 6) % 7));
 const time = (s: string) =>
   new Date(s).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase().replace(" ", "");
 
+// A call is an event with someone else on it — an invitee or a meeting link.
+// Solo time blocks ("Driving", "Cold Calling", "Out of office") have neither, so
+// they stay out of the count. Cancelled events never reach here; the calendar
+// parser drops them.
+function isCall(e: CalEvent): boolean {
+  if (e.allDay) return false;
+  return e.attendees.length > 0 || !!e.meetUrl;
+}
+
 function dayLabel(dateISO: string) {
   const d = parseISO(dateISO);
   const diff = Math.round((d.getTime() - parseISO(iso(new Date())).getTime()) / 86400000);
@@ -59,6 +68,7 @@ export default function CalendarView({ embedded = false, date: fixedDate }: { em
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [manage, setManage] = useState(false);
+  const [callsOnly, setCallsOnly] = useState(false);
 
   const load = useCallback(async (d: string) => {
     try {
@@ -92,6 +102,8 @@ export default function CalendarView({ embedded = false, date: fixedDate }: { em
 
   const allDay = events.filter(e => e.allDay);
   const timed = events.filter(e => !e.allDay);
+  const calls = timed.filter(isCall);
+  const shown = callsOnly ? calls : timed;
 
   const nextUp = useMemo(
     () => timed.find(e => new Date(e.end).getTime() > now) ?? null,
@@ -331,9 +343,28 @@ export default function CalendarView({ embedded = false, date: fixedDate }: { em
             <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#949494", flex: 1 }}>
               {events.length === 0 ? "NOTHING SCHEDULED" : `${events.length} ${events.length === 1 ? "EVENT" : "EVENTS"}`}
             </p>
+            {calls.length > 0 && (
+              <button
+                onClick={() => setCallsOnly(v => !v)}
+                title={callsOnly ? "Show everything on this day" : "Show only calls"}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, cursor: "pointer",
+                  padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+                  border: callsOnly ? "1px solid #111111" : "1px solid rgba(0,0,0,0.12)",
+                  background: callsOnly ? "#111111" : "rgba(0,0,0,0.04)",
+                  color: callsOnly ? "#ffffff" : "#4a4a4a",
+                  transition: "background 0.15s ease, color 0.15s ease",
+                }}
+              >
+                <svg style={{ width: 11, height: 11 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+                {calls.length} {calls.length === 1 ? "call" : "calls"}
+              </button>
+            )}
           </div>
 
-          {allDay.length > 0 && (
+          {allDay.length > 0 && !callsOnly && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
               {allDay.map(e => (
                 <span key={e.uid + e.start} style={{ fontSize: 11.5, fontWeight: 600, padding: "5px 10px", borderRadius: 6, background: "rgba(0,0,0,0.055)", color: "#4a4a4a" }}>
@@ -349,7 +380,7 @@ export default function CalendarView({ embedded = false, date: fixedDate }: { em
             </p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column" }}>
-              {timed.map(e => {
+              {shown.map(e => {
                 const started = new Date(e.start).getTime();
                 const ended = new Date(e.end).getTime();
                 const live = now >= started && now < ended;

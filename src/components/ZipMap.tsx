@@ -273,6 +273,13 @@ export default function ZipMap({
           }
         }
 
+        // A pasted zip list has no centre and no radius — the zips are the territory,
+        // so it gets no ring and no marker, just its polygons.
+        if (pin.radius === 0) {
+          existing.set(pin.id, layers);
+          continue;
+        }
+
         // 2. Radius ring (non-interactive so it doesn't steal clicks)
         const ring = L.circle([pin.lat, pin.lng], {
           radius:      pin.radius * 1609.344,

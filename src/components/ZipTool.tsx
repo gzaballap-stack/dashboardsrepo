@@ -11,7 +11,9 @@ const PIN_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b
 const SESSION_KEY = "zip-tool-sessions";
 const ACTIVE_KEY  = "zip-tool-session";
 
-type SavedPin = Pick<Pin, "id" | "lat" | "lng" | "label" | "radius" | "type" | "color">;
+// A pin saved into a session. Radius pins re-derive their zips from the circle on
+// load; a pasted zip list has no circle, so it carries its zips with it.
+type SavedPin = Pick<Pin, "id" | "lat" | "lng" | "label" | "radius" | "type" | "color"> & { zips?: string[] };
 
 // Unattached, local-only session — prospecting/sales-call territory work that
 // isn't (yet) tied to a real client. Lives in localStorage only.
@@ -94,6 +96,22 @@ function fmtMoney(n: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+// Rough centre of a set of zip polygons — only used to give a pasted zip list a
+// position; it draws no circle, so precision doesn't matter.
+function featuresCentre(features: object[]): { lat: number; lng: number } {
+  let lat = 0, lng = 0, n = 0;
+  const walk = (c: unknown) => {
+    if (!Array.isArray(c)) return;
+    if (typeof c[0] === "number" && typeof c[1] === "number") {
+      lng += c[0] as number; lat += c[1] as number; n++;
+      return;
+    }
+    for (const inner of c) walk(inner);
+  };
+  for (const f of features) walk((f as { geometry?: { coordinates?: unknown } })?.geometry?.coordinates);
+  return n ? { lat: lat / n, lng: lng / n } : { lat: 39, lng: -98 };
 }
 
 function gradeColor(grade: string) {
@@ -536,7 +554,7 @@ export default function ZipTool() {
         for (const sp of skeletons) {
           const ctrl = new AbortController();
           abortRefs.current.set(sp.id, ctrl);
-          fetch(`/api/zip-radius?lat=${sp.lat}&lng=${sp.lng}&radius=${sp.radius}`, { signal: ctrl.signal })
+          fetch(pinHydrateUrl(sp), { signal: ctrl.signal })
             .then(r => r.json())
             .then(d => {
               setPins(prev => prev.map(p =>
@@ -592,7 +610,7 @@ export default function ZipTool() {
   useEffect(() => {
     try {
       localStorage.setItem(ACTIVE_KEY, JSON.stringify({
-        pins: pins.map(({ id, lat, lng, label, radius, type, color }) => ({ id, lat, lng, label, radius, type, color })),
+        pins: pinsPayload(pins),
         activeSessionId: activeSession,
       }));
     } catch {}
@@ -676,8 +694,17 @@ export default function ZipTool() {
     try { localStorage.setItem(SESSION_KEY, JSON.stringify(list)); } catch {}
   };
 
-  const pinsPayload = (list: Pin[]) =>
-    list.map(({ id, lat, lng, label, radius, type, color }) => ({ id, lat, lng, label, radius, type, color }));
+  const pinsPayload = (list: Pin[]): SavedPin[] =>
+    list.map(({ id, lat, lng, label, radius, type, color, zips }) =>
+      radius === 0
+        ? { id, lat, lng, label, radius, type, color, zips }
+        : { id, lat, lng, label, radius, type, color });
+
+  // Where a saved pin's zips come back from: its own list, or the circle it drew.
+  const pinHydrateUrl = (sp: SavedPin) =>
+    sp.radius === 0 && sp.zips?.length
+      ? `/api/zip-radius?zips=${sp.zips.join(",")}`
+      : `/api/zip-radius?lat=${sp.lat}&lng=${sp.lng}&radius=${sp.radius}`;
 
   const saveSession = async () => {
     if (!newSessionName.trim() || !pins.length) return;
@@ -737,7 +764,7 @@ export default function ZipTool() {
     for (const sp of savedPins) {
       const ctrl = new AbortController();
       abortRefs.current.set(sp.id, ctrl);
-      fetch(`/api/zip-radius?lat=${sp.lat}&lng=${sp.lng}&radius=${sp.radius}`, { signal: ctrl.signal })
+      fetch(pinHydrateUrl(sp), { signal: ctrl.signal })
         .then(r => r.json())
         .then(data => {
           setPins(prev => prev.map(p =>
@@ -982,17 +1009,23 @@ export default function ZipTool() {
     }
   }, [handleMapClick, handleZipClick]);
 
+  // Bulk zip entry. With a pin selected the zips join that pin; with none selected
+  // they become a territory in their own right — a "Zip List" pin with no circle,
+  // which is what pasting a targeting list from Ads Manager should produce. Either
+  // way the zips save with the session.
   const handleAddZipToPin = useCallback(async (raw: string, exclude = false) => {
     // Parse multiple zips — split on comma, space, or newline
-    const zips = raw.split(/[\s,]+/).map(z => z.replace(/\D/g, "").slice(0, 5)).filter(z => z.length === 5);
+    const zips = [...new Set(
+      raw.split(/[\s,]+/).map(z => z.replace(/\D/g, "").slice(0, 5)).filter(z => z.length === 5)
+    )];
     if (!zips.length) { setAddZipError("Enter valid 5-digit zip code(s)"); return; }
 
-    const pin = pins.find(p => p.id === selectedId);
-    if (!pin) return;
+    // Selected pin wins; otherwise reuse an existing zip list before starting another.
+    const target = pins.find(p => p.id === selectedId) ?? pins.find(p => p.radius === 0) ?? null;
 
     if (exclude) {
       // Mark excluded immediately — if the zip is already a chip, this alone shows
-      // the strikethrough right away. Zips not yet in the pin still get fetched
+      // the strikethrough right away. Zips not yet on the map still get fetched
       // below so they actually appear as a (struck-through) chip, not nothing.
       setManualExcludes(prev => {
         const next = new Set(prev);
@@ -1001,55 +1034,59 @@ export default function ZipTool() {
       });
     }
 
-    const newZips = zips.filter(z => !pin.zips.includes(z));
+    const newZips = zips.filter(z => !(target?.zips ?? []).includes(z));
     if (!newZips.length) {
       setAddZipInput("");
-      if (!exclude) setAddZipError("All zips already in this pin");
+      if (!exclude) setAddZipError("All zips already targeted");
       return;
     }
     setAddZipError(null);
     setAddZipLoading(true);
     try {
-      const where = newZips.length === 1 ? `ZCTA5='${newZips[0]}'` : `ZCTA5 IN (${newZips.map(z => `'${z}'`).join(",")})`;
-      const params = new URLSearchParams({ where, returnGeometry: "true", outFields: "ZCTA5", outSR: "4326", f: "geojson" });
-      const r = await fetch(`https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/2/query?${params}`);
+      // One call for shapes and scores, however many zips were pasted.
+      const r = await fetch(`/api/zip-radius?zips=${newZips.join(",")}`);
       const data = await r.json();
-      const feats = data.features ?? [];
-      if (!feats.length) { setAddZipError("No zips found"); return; }
+      const addedZips: string[] = data.zips ?? [];
+      const newFeatures: object[] = data.features ?? [];
+      const newScores: Record<string, { score: number; grade: "A" | "B" | "C" | "D" }> = data.scores ?? {};
 
-      const addedZips: string[] = [];
-      const newFeatures: object[] = [];
-      const newScores: Record<string, { score: number; grade: "A" | "B" | "C" | "D" }> = {};
+      if (!addedZips.length) { setAddZipError("No zips found"); return; }
 
-      for (const feat of feats) {
-        const z = feat.properties?.ZCTA5;
-        if (!z) continue;
-        addedZips.push(z);
-        newFeatures.push({ type: "Feature" as const, properties: { zip: z }, geometry: feat.geometry });
-      }
+      const missing: string[] = data.missing ?? [];
+      setAddZipError(missing.length ? `Not found: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? "…" : ""}` : null);
 
-      // Fetch scores in parallel
-      await Promise.all(addedZips.map(async z => {
-        try {
-          const sr = await fetch(`/api/zip-data?zip=${z}`);
-          if (sr.ok) { const sd = await sr.json(); newScores[z] = { score: sd.score, grade: sd.grade }; }
-        } catch {}
-      }));
+      pushPinHistory();
 
-      setPins(prev => prev.map(p => {
-        if (p.id !== selectedId) return p;
-        return {
+      if (target) {
+        setPins(prev => prev.map(p => p.id !== target.id ? p : {
           ...p,
           zips: [...p.zips, ...addedZips],
           features: [...p.features, ...newFeatures],
           scores: { ...p.scores, ...newScores },
-        };
-      }));
+        }));
+      } else {
+        const centre = featuresCentre(newFeatures);
+        setPins(prev => [...prev, {
+          id: `ziplist-${Date.now()}`,
+          lat: centre.lat,
+          lng: centre.lng,
+          label: "Zip List",
+          radius: 0,
+          type: "include",
+          color: PIN_COLORS[prev.length % PIN_COLORS.length],
+          zips: addedZips,
+          features: newFeatures,
+          scores: newScores,
+          loading: false,
+        }]);
+        setMapFlyTrigger(k => k + 1);
+      }
+
       setAddZipInput("");
       if (!exclude && addedZips.length === 1) handleZipClick(addedZips[0]);
     } catch { setAddZipError("Failed — check connection"); }
     finally { setAddZipLoading(false); }
-  }, [selectedId, pins, handleZipClick]);
+  }, [selectedId, pins, handleZipClick, pushPinHistory]);
 
   const clearAll = () => {
     for (const ctrl of abortRefs.current.values()) ctrl.abort();
@@ -1570,7 +1607,7 @@ export default function ZipTool() {
         <div style={{ padding: "10px 12px", borderBottom: "1px solid rgba(0,0,0,0.095)", flexShrink: 0 }}>
           {pins.length === 0 ? (
             <div style={{ padding: "6px 4px", color: "#949494", fontSize: 11, lineHeight: 1.5 }}>
-              Click the map to drop a pin, or search a zip above.
+              Click the map to drop a pin, search a zip above, or paste a list of zips below.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -1588,7 +1625,7 @@ export default function ZipTool() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 600, color: "#111111" }}>{pin.label}</div>
                       <div style={{ fontSize: 10, color: "#767676" }}>
-                        {pin.loading ? "Loading…" : `${pin.zips.length} zips · ${pin.radius} mi`}
+                        {pin.loading ? "Loading…" : pin.radius === 0 ? `${pin.zips.length} zips` : `${pin.zips.length} zips · ${pin.radius} mi`}
                       </div>
                     </div>
                     <span style={{
@@ -1661,13 +1698,13 @@ export default function ZipTool() {
               <span style={{ fontSize: 11, fontWeight: 700, color: "#6b6b6b" }}>{totalLoading ? "…" : displayZips.length}</span>
             </div>
           </div>
-          {selectedPin && mapOverlay === "census" && (
+          {mapOverlay === "census" && (
             <div style={{ padding: "6px 16px 0", flexShrink: 0 }}>
               <div style={{ display: "flex", gap: 4 }}>
                 <input
                   value={addZipInput}
                   onChange={e => { setAddZipInput(e.target.value); setAddZipError(null); }}
-                  placeholder="Zip codes (comma or space separated)…"
+                  placeholder={selectedPin ? "Add zips to this pin…" : "Paste zip codes to target…"}
                   style={{
                     flex: 1, padding: "5px 8px", borderRadius: 6, fontSize: 11, fontFamily: "monospace",
                     background: "rgba(0,0,0,0.068)", border: "1px solid rgba(0,0,0,0.135)",

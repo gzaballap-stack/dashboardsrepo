@@ -109,6 +109,38 @@ async function fetchACSScores(zips: string[]): Promise<Record<string, { score: n
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
+
+  // An explicit zip list stands in for a radius — a territory pasted in bulk
+  // rather than drawn on the map. Same response shape either way.
+  const listParam = searchParams.get('zips');
+  if (listParam) {
+    const wanted = [...new Set(
+      listParam.split(/[\s,]+/).map(z => z.replace(/\D/g, '').slice(0, 5)).filter(z => z.length === 5)
+    )].slice(0, 600);
+
+    if (!wanted.length) return NextResponse.json({ zips: [], features: [], scores: {} });
+
+    const key = `zips|${wanted.slice().sort().join(',')}`;
+    const cached = cache.get(key);
+    if (cached && Date.now() - cached.ts < CACHE_TTL) return NextResponse.json(cached.data);
+
+    const [geoMap, scores] = await Promise.all([
+      fetchGeoJSON(wanted),
+      fetchACSScores(wanted),
+    ]);
+
+    const found = wanted.filter(z => geoMap.has(z));
+    const result = {
+      zips: found.slice().sort(),
+      features: found.map(z => ({ type: 'Feature' as const, properties: { zip: z }, geometry: geoMap.get(z) })),
+      scores,
+      // Zips the Census has no shape for — usually typos or non-ZCTA codes.
+      missing: wanted.filter(z => !geoMap.has(z)),
+    };
+    cache.set(key, { ts: Date.now(), data: result });
+    return NextResponse.json(result);
+  }
+
   const lat    = parseFloat(searchParams.get('lat') ?? '');
   const lng    = parseFloat(searchParams.get('lng') ?? '');
   const radius = Math.min(parseInt(searchParams.get('radius') ?? '35'), 200);
