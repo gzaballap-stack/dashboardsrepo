@@ -137,6 +137,40 @@ function chipStyle(grade: "A" | "B" | "C" | "D" | undefined, selected: boolean, 
   };
 }
 
+const renameIconBtn = {
+  background: "none", border: "none", color: "#949494", cursor: "pointer",
+  fontSize: 12, lineHeight: 1, padding: "0 2px", flexShrink: 0,
+} as const;
+
+// Inline rename for a saved session. Keeps its own draft so typing doesn't
+// re-render (or re-save) the whole session list on every keystroke.
+function SessionRename({ value, onSave, onCancel }: {
+  value: string; onSave: (name: string) => void; onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}
+      onClick={e => e.stopPropagation()}>
+      <input autoFocus value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === "Enter" && draft.trim()) onSave(draft.trim());
+          if (e.key === "Escape") onCancel();
+        }}
+        style={{
+          flex: 1, minWidth: 0, padding: "4px 6px", borderRadius: 5, fontSize: 11,
+          background: "#ffffff", border: "1px solid rgba(0,0,0,0.18)", color: "#111111", outline: "none",
+        }} />
+      <button onClick={() => { if (draft.trim()) onSave(draft.trim()); }}
+        style={{
+          padding: "4px 7px", borderRadius: 5, border: "none", cursor: "pointer",
+          background: "rgba(0,0,0,0.12)", color: "#111111", fontSize: 10, fontWeight: 700, flexShrink: 0,
+        }}>Save</button>
+      <button onClick={onCancel} style={renameIconBtn}>×</button>
+    </div>
+  );
+}
+
 function ScoreBar({ label, value }: { label: string; value: number }) {
   return (
     <div style={{ marginBottom: 5 }}>
@@ -483,6 +517,7 @@ export default function ZipTool() {
   // back. Nothing is filtered out — it just stops the rest competing for attention.
   const [highlightGrade, setHighlightGrade] = useState<"A" | "B" | "C" | "D" | null>(null);
   const [reportLoading,  setReportLoading]  = useState(false);
+  const [renamingId,     setRenamingId]     = useState<string | null>(null);
 
   const [selectedZip, setSelectedZip] = useState<string | null>(null);
   const [zipData,     setZipData]     = useState<ZipData | null>(null);
@@ -812,6 +847,25 @@ export default function ZipTool() {
       return next;
     });
     if (activeSession === id) setActiveSession(null);
+  };
+
+  const renameLocalSession = (id: string, name: string) => {
+    setSessions(prev => {
+      const next = prev.map(sn => sn.id === id ? { ...sn, name } : sn);
+      persistSessions(next);
+      return next;
+    });
+  };
+
+  const renameClientSession = async (id: string, name: string) => {
+    setClientSessions(prev => prev.map(cs => cs.id === id ? { ...cs, name } : cs));
+    try {
+      await fetch(`/api/client-sessions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+    } catch {}
   };
 
   const deleteClientSession = async (cs: ClientSession) => {
@@ -1187,7 +1241,13 @@ export default function ZipTool() {
   );
 
   const activeLocalSessionLabel  = activeSession ? sessions.find(s => s.id === activeSession)?.name : undefined;
-  const activeClientSessionLabel = activeSession ? clientSessions.find(s => s.id === activeSession)?.name : undefined;
+  const activeClientSession      = activeSession ? clientSessions.find(s => s.id === activeSession) : undefined;
+  const activeClientSessionLabel = activeClientSession?.name;
+  // A session that hasn't been assigned to a client yet lives under Sessions, not
+  // Clients — the one that arrives from GHL is unattached until someone files it.
+  const clientsChipLabel  = activeClientSession?.client_id ? activeClientSession.name : undefined;
+  const sessionsChipLabel = activeLocalSessionLabel
+    ?? (activeClientSession && !activeClientSession.client_id ? activeClientSession.name : undefined);
 
   return (
     <div className="zip-shell" style={{ display: "flex", flex: 1, overflow: "hidden", height: "100%" }}>
@@ -1218,9 +1278,9 @@ export default function ZipTool() {
             <span style={{ fontSize: 11, fontWeight: 700, flex: 1, textAlign: "left" }}>
               Clients
             </span>
-            {activeClientSessionLabel && (
+            {clientsChipLabel && (
               <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(0,0,0,0.09)", color: "#000000", fontWeight: 700 }}>
-                {activeClientSessionLabel}
+                {clientsChipLabel}
               </span>
             )}
             <svg style={{ width: 11, height: 11, transform: showClients ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.2s" }}
@@ -1274,27 +1334,34 @@ export default function ZipTool() {
                             const isActive = activeSession === cs.id;
                             return (
                               <div key={cs.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 6px 0" }}>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: 11, fontWeight: 600, color: isActive ? "#000000" : "#333333", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                    {cs.name}
+                                {renamingId === cs.id ? (
+                                  <SessionRename value={cs.name} onCancel={() => setRenamingId(null)}
+                                    onSave={n => { renameClientSession(cs.id, n); setRenamingId(null); }} />
+                                ) : (<>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: isActive ? "#000000" : "#333333", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                      {cs.name}
+                                    </div>
+                                    <div style={{ fontSize: 9, color: "#949494" }}>
+                                      {cs.pins.length} pin{cs.pins.length !== 1 ? "s" : ""} · {fmtDate(cs.updated_at)}
+                                    </div>
                                   </div>
-                                  <div style={{ fontSize: 9, color: "#949494" }}>
-                                    {cs.pins.length} pin{cs.pins.length !== 1 ? "s" : ""} · {fmtDate(cs.updated_at)}
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() => isActive ? deselectSession() : loadClientSession(cs)}
-                                  style={{
-                                    padding: "4px 8px", borderRadius: 5, border: "none", cursor: "pointer",
-                                    fontSize: 10, fontWeight: 700, flexShrink: 0,
-                                    background: isActive ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.095)",
-                                    color: isActive ? "#000000" : "#6b6b6b",
-                                  }}
-                                >{isActive ? "Loaded" : "Load"}</button>
-                                <button
-                                  onClick={() => deleteClientSession(cs)}
-                                  style={{ background: "none", border: "none", color: "#949494", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
-                                >×</button>
+                                  <button onClick={e => { e.stopPropagation(); setRenamingId(cs.id); }}
+                                    title="Rename" style={renameIconBtn}>✎</button>
+                                  <button
+                                    onClick={() => isActive ? deselectSession() : loadClientSession(cs)}
+                                    style={{
+                                      padding: "4px 8px", borderRadius: 5, border: "none", cursor: "pointer",
+                                      fontSize: 10, fontWeight: 700, flexShrink: 0,
+                                      background: isActive ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.095)",
+                                      color: isActive ? "#000000" : "#6b6b6b",
+                                    }}
+                                  >{isActive ? "Loaded" : "Load"}</button>
+                                  <button
+                                    onClick={() => deleteClientSession(cs)}
+                                    style={{ background: "none", border: "none", color: "#949494", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
+                                  >×</button>
+                                </>)}
                               </div>
                             );
                           })}
@@ -1324,9 +1391,9 @@ export default function ZipTool() {
             <span style={{ fontSize: 11, fontWeight: 700, flex: 1, textAlign: "left" }}>
               Sessions
             </span>
-            {activeLocalSessionLabel && (
+            {sessionsChipLabel && (
               <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(0,0,0,0.09)", color: "#000000", fontWeight: 700 }}>
-                {activeLocalSessionLabel}
+                {sessionsChipLabel}
               </span>
             )}
             <svg style={{ width: 11, height: 11, transform: showSessions ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.2s" }}
@@ -1361,27 +1428,34 @@ export default function ZipTool() {
                         onClick={() => setExpandedSessionId(prev => prev === session.id ? null : session.id)}
                         style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 8, cursor: "pointer" }}
                       >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? "#000000" : "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {session.name}
+                        {renamingId === session.id ? (
+                          <SessionRename value={session.name} onCancel={() => setRenamingId(null)}
+                            onSave={n => { renameLocalSession(session.id, n); setRenamingId(null); }} />
+                        ) : (<>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? "#000000" : "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {session.name}
+                            </div>
+                            <div style={{ fontSize: 10, color: "#949494", marginTop: 1 }}>
+                              {session.pins.length} pin{session.pins.length !== 1 ? "s" : ""} · {fmtDate(session.savedAt)}
+                            </div>
                           </div>
-                          <div style={{ fontSize: 10, color: "#949494", marginTop: 1 }}>
-                            {session.pins.length} pin{session.pins.length !== 1 ? "s" : ""} · {fmtDate(session.savedAt)}
-                          </div>
-                        </div>
-                        <button
-                          onClick={e => { e.stopPropagation(); isActive ? deselectSession() : loadSession(session); }}
-                          style={{
-                            padding: "4px 8px", borderRadius: 5, border: "none", cursor: "pointer",
-                            fontSize: 10, fontWeight: 700,
-                            background: isActive ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.095)",
-                            color: isActive ? "#000000" : "#6b6b6b",
-                          }}
-                        >{isActive ? "Loaded" : "Load"}</button>
-                        <button
-                          onClick={e => { e.stopPropagation(); deleteSession(session.id); }}
-                          style={{ background: "none", border: "none", color: "#949494", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
-                        >×</button>
+                          <button onClick={e => { e.stopPropagation(); setRenamingId(session.id); }}
+                            title="Rename" style={renameIconBtn}>✎</button>
+                          <button
+                            onClick={e => { e.stopPropagation(); isActive ? deselectSession() : loadSession(session); }}
+                            style={{
+                              padding: "4px 8px", borderRadius: 5, border: "none", cursor: "pointer",
+                              fontSize: 10, fontWeight: 700,
+                              background: isActive ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.095)",
+                              color: isActive ? "#000000" : "#6b6b6b",
+                            }}
+                          >{isActive ? "Loaded" : "Load"}</button>
+                          <button
+                            onClick={e => { e.stopPropagation(); deleteSession(session.id); }}
+                            style={{ background: "none", border: "none", color: "#949494", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
+                          >×</button>
+                        </>)}
                       </div>
                       {/* Attach-to-client picker — visible when card is expanded; picking a
                           client promotes this session into a real, shared client record */}
@@ -1431,22 +1505,29 @@ export default function ZipTool() {
                         }}>
                           <div onClick={() => setExpandedSessionId(prev => prev === cs.id ? null : cs.id)}
                             style={{ display: "flex", alignItems: "center", padding: "8px 10px", gap: 8, cursor: "pointer" }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? "#000000" : "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {cs.name}
+                            {renamingId === cs.id ? (
+                              <SessionRename value={cs.name} onCancel={() => setRenamingId(null)}
+                                onSave={n => { renameClientSession(cs.id, n); setRenamingId(null); }} />
+                            ) : (<>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? "#000000" : "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {cs.name}
+                                </div>
+                                <div style={{ fontSize: 10, color: "#949494", marginTop: 1 }}>
+                                  {cs.pins.length} pin{cs.pins.length !== 1 ? "s" : ""}
+                                </div>
                               </div>
-                              <div style={{ fontSize: 10, color: "#949494", marginTop: 1 }}>
-                                {cs.pins.length} pin{cs.pins.length !== 1 ? "s" : ""}
-                              </div>
-                            </div>
-                            <button onClick={e => { e.stopPropagation(); isActive ? deselectSession() : loadClientSession(cs); }}
-                              style={{
-                                padding: "4px 8px", borderRadius: 5, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 700,
-                                background: isActive ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.095)",
-                                color: isActive ? "#000000" : "#6b6b6b",
-                              }}>{isActive ? "Loaded" : "Load"}</button>
-                            <button onClick={e => { e.stopPropagation(); deleteClientSession(cs); }}
-                              style={{ background: "none", border: "none", color: "#949494", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>×</button>
+                              <button onClick={e => { e.stopPropagation(); setRenamingId(cs.id); }}
+                                title="Rename" style={renameIconBtn}>✎</button>
+                              <button onClick={e => { e.stopPropagation(); isActive ? deselectSession() : loadClientSession(cs); }}
+                                style={{
+                                  padding: "4px 8px", borderRadius: 5, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 700,
+                                  background: isActive ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.095)",
+                                  color: isActive ? "#000000" : "#6b6b6b",
+                                }}>{isActive ? "Loaded" : "Load"}</button>
+                              <button onClick={e => { e.stopPropagation(); deleteClientSession(cs); }}
+                                style={{ background: "none", border: "none", color: "#949494", cursor: "pointer", fontSize: 15, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>×</button>
+                            </>)}
                           </div>
                           {isExpanded && (
                             <div style={{ padding: "0 10px 8px", borderTop: "1px solid rgba(0,0,0,0.068)" }}>

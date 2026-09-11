@@ -133,7 +133,11 @@ export function scoreZip(m: ZipMetrics): ScoredZip {
     0.18 * os + 0.18 * is_ + 0.13 * as_ + 0.13 * vs_ + 0.13 * pas +
     0.09 * ts + 0.04 * es + 0.07 * lts + 0.05 * ms
   );
-  const tier: ScoredZip["tier"] = score >= 75 ? "A" : score >= 55 ? "B" : score >= 35 ? "C" : "D";
+  // Cut-offs set against the national spread of every ZCTA: A is roughly the top
+  // 40% of zips in the country, B the next 30%, C the next 20%, D the bottom 8%.
+  // The old 75/55/35 bands graded 96% of the country A or B, so a normal suburban
+  // territory came out solid green and the map said nothing.
+  const tier: ScoredZip["tier"] = score >= 79 ? "A" : score >= 70 ? "B" : score >= 60 ? "C" : "D";
   return { ...m, score, owner_score: os, income_score: is_, age_score: as_, home_value_score: vs_, prime_age_score: pas, turnover_score: ts, equity_score: es, long_term_score: lts, mortgage_score: ms, tier };
 }
 

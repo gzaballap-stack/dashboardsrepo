@@ -24,6 +24,7 @@ const BYPASS_ROUTES = [
   '/api/admin/backfill-ghl-attribution',
   '/api/admin/backfill-zips',
   '/api/admin/seed-client-sessions',
+  '/api/admin/rename-sessions',
   '/api/cron/seed-daily',
   // Read-only lifting-log export — the share token in the query string is the
   // credential, so it must be reachable without a session.

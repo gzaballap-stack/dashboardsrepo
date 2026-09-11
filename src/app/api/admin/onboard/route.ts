@@ -24,6 +24,8 @@ function parseZipList(raw: string): string[] {
 //   2. Two zips + radius    → zip_code_targeted (comma/space separated) + targeting_radius
 //   3. Explicit zip list    → zip_code_list (multiline)
 // Creates an unattributed Zip Tool session and returns worst_zip for GHL to write back.
+// The session is named "<company> (Custom Area Breakdown)" — it gets shown to the
+// prospect, so it must never read as internal sales language.
 export async function POST(req: Request) {
   if (!validateWebhookSecret(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -148,7 +150,7 @@ export async function POST(req: Request) {
       .from('client_sessions')
       .insert({
         client_id: null,
-        name: `${contact_name} (Sales Call)`,
+        name: `${contact_name} (Custom Area Breakdown)`,
         pins,
         pin_counter: pins.length,
       })
