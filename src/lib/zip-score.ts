@@ -141,6 +141,22 @@ export function scoreZip(m: ZipMetrics): ScoredZip {
   return { ...m, score, owner_score: os, income_score: is_, age_score: as_, home_value_score: vs_, prime_age_score: pas, turnover_score: ts, equity_score: es, long_term_score: lts, mortgage_score: ms, tier };
 }
 
+// Grade a set of zips against each other: the top quarter of the territory is
+// A, the next quarter B, then C, and the bottom quarter D. The score itself stays
+// absolute (so "96" means the same thing everywhere); only the colour is relative,
+// which is what keeps a strong suburb from coming out wall-to-wall green.
+export function gradeByQuartile(scores: Record<string, number>): Record<string, "A" | "B" | "C" | "D"> {
+  const vals = Object.values(scores).sort((a, b) => a - b);
+  const out: Record<string, "A" | "B" | "C" | "D"> = {};
+  if (!vals.length) return out;
+  const at = (p: number) => vals[Math.min(vals.length - 1, Math.floor(p * (vals.length - 1)))];
+  const q25 = at(0.25), q50 = at(0.5), q75 = at(0.75);
+  for (const [zip, v] of Object.entries(scores)) {
+    out[zip] = v >= q75 ? "A" : v >= q50 ? "B" : v >= q25 ? "C" : "D";
+  }
+  return out;
+}
+
 export function estimateROI(census_est: number, home_value: number): {
   avg_ticket: number; close_rate: number; total_addressable_revenue: number;
 } {

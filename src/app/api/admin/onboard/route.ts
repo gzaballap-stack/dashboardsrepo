@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { geocodeZip, getZctasNearPoint, fetchZipMetrics, type ScoredZipMetrics } from '@/lib/census';
+import { gradeByQuartile } from '@/lib/zip-score';
 
 const PIN_COLOR = '#000000';
 
@@ -195,7 +196,9 @@ export async function POST(req: Request) {
   const money  = (n: number) => `$${Math.round(n / 1000)}k`;
   const detail = (m: ScoredZipMetrics) =>
     `${m.zip} — ZipScore ${m.score} · income ${money(m.median_income)} · home value ${money(m.home_value)} · ${Math.round(m.owner_pct)}% owner-occupied`;
-  const byTier = (t: ScoredZipMetrics['grade']) => scored.filter(m => m.grade === t).map(m => m.zip);
+  // Colours are relative to this territory — top quarter green, bottom quarter red.
+  const grades = gradeByQuartile(Object.fromEntries(scored.map(m => [m.zip, m.score])));
+  const byTier = (t: ScoredZipMetrics['grade']) => scored.filter(m => grades[m.zip] === t).map(m => m.zip);
   const list   = (zips: string[]) => zips.length ? zips.join(', ') : 'None';
 
   const top5    = scored.slice(0, 5);
@@ -247,7 +250,7 @@ export async function POST(req: Request) {
     zips_in_radius:  allZips.length,
     worst_zip:       worst?.zip   ?? null,
     worst_zip_score: worst?.score ?? null,
-    worst_zip_grade: worst?.grade ?? null,
+    worst_zip_grade: worst ? grades[worst.zip] : null,
     doc,
   });
 }
