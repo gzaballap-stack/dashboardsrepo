@@ -59,13 +59,33 @@ export async function POST(req: Request) {
 
   const contact_name = company_name || person_name || 'Unknown';
 
+  // The radius can arrive under several names depending on how the GHL workflow's
+  // custom data was labelled. Try them all before falling back to the default —
+  // and say which one won, so a silent fallback to 35 can't pass for a real value.
+  const customData = (body.customData ?? body.custom_data ?? {}) as Record<string, unknown>;
+  const radiusCandidates: Array<[string, unknown]> = [
+    ['radius_miles',               body.radius_miles],
+    ['targeting_radius',           body.targeting_radius],
+    ['Targeting Radius',           body['Targeting Radius']],
+    ['radius',                     body.radius],
+    ['customData.targeting_radius', customData.targeting_radius],
+    ['customData.Targeting Radius', customData['Targeting Radius']],
+    ['customData.radius_miles',    customData.radius_miles],
+    ['contact.customField',        extractCustomField(customFields, 'targeting_radius')],
+  ];
+  const radiusHit = radiusCandidates.find(([, v]) => Number.isFinite(parseFloat(String(v ?? ''))));
+  const radius_source = radiusHit ? radiusHit[0] : 'default';
   const radius = Math.min(
-    Math.max(
-      parseFloat(body.radius_miles ?? extractCustomField(customFields, 'targeting_radius')) || 35,
-      5
-    ),
+    Math.max(radiusHit ? parseFloat(String(radiusHit[1])) : 35, 5),
     75
   );
+
+  if (!radiusHit) {
+    console.warn('[onboard] no usable radius on payload, defaulting to 35', JSON.stringify({
+      keys: Object.keys(body),
+      customDataKeys: Object.keys(customData),
+    }));
+  }
 
   // ── Determine scenario ────────────────────────────────────────────────────
 
@@ -168,6 +188,8 @@ export async function POST(req: Request) {
     success: true,
     session_id:      session.id,
     scenario:        zipList.length > 0 ? 'zip_list' : targetedZips.length > 0 ? 'multi_zip' : 'single_zip',
+    radius_miles:    radius,
+    radius_source,
     zips_in_radius:  allZips.length,
     worst_zip:       worst?.[0]          ?? null,
     worst_zip_score: worst?.[1].score    ?? null,
