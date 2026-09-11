@@ -1149,12 +1149,7 @@ export default function TaskBoard() {
           }}
         >
           <div style={{ padding: "14px 16px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>Calls</p>
-              <p style={{ fontSize: 10.5, color: "#949494" }}>
-                {dayLabel(view === "day" ? dayDate : iso(new Date())).main}
-              </p>
-            </div>
+            <p style={{ fontSize: 15, fontWeight: 800, color: "#111111", flex: 1, minWidth: 0 }}>Calls</p>
             <button
               onClick={() => setShowCalls(false)}
               style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#949494", cursor: "pointer", background: "rgba(0,0,0,0.045)" }}
@@ -1165,7 +1160,11 @@ export default function TaskBoard() {
             </button>
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
-            <CalendarView embedded date={view === "day" ? dayDate : iso(new Date())} />
+            <CalendarView
+              key={view === "day" ? dayDate : iso(new Date())}
+              embedded
+              date={view === "day" ? dayDate : iso(new Date())}
+            />
           </div>
         </div>
       )}

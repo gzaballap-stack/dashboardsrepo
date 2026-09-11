@@ -54,10 +54,8 @@ const field: React.CSSProperties = {
   padding: "8px 11px", fontSize: 12.5, color: "#111111", outline: "none", width: "100%",
 };
 
-export default function CalendarView({ embedded = false, date: fixedDate }: { embedded?: boolean; date?: string } = {}) {
-  const [ownDate, setOwnDate] = useState(() => iso(new Date()));
-  const date = fixedDate ?? ownDate;
-  const setDate = setOwnDate;
+export default function CalendarView({ embedded = false, date: startDate }: { embedded?: boolean; date?: string } = {}) {
+  const [date, setDate] = useState(() => startDate ?? iso(new Date()));
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
@@ -180,6 +178,39 @@ export default function CalendarView({ embedded = false, date: fixedDate }: { em
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+      {embedded && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {(["left", "right"] as const).map(dir => (
+            <button
+              key={dir}
+              onClick={() => setDate(iso(addDays(parseISO(date), dir === "left" ? -1 : 1)))}
+              title={dir === "left" ? "Previous day" : "Next day"}
+              style={{ width: 26, height: 26, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", color: "#767676", cursor: "pointer", background: "rgba(0,0,0,0.041)" }}
+            >
+              <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d={dir === "left" ? "M15 19l-7-7 7-7" : "M9 5l7 7-7 7"} />
+              </svg>
+            </button>
+          ))}
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#111111", whiteSpace: "nowrap" }}>
+            {parseISO(date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+          </span>
+          {label.badge && (
+            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.06em", padding: "2px 6px", borderRadius: 20, background: "rgba(245,158,11,0.14)", color: "#000000" }}>
+              {label.badge.toUpperCase()}
+            </span>
+          )}
+          {date !== iso(new Date()) && (
+            <button
+              onClick={() => setDate(iso(new Date()))}
+              style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#000000", cursor: "pointer" }}
+            >
+              Today
+            </button>
+          )}
+        </div>
+      )}
 
       {!embedded && (<>
       {/* ── Date bar ── */}
