@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
-import { geocodeZip, getZctasNearPoint, fetchZipScores } from '@/lib/census';
+import { geocodeZip, getZctasNearPoint, fetchZipMetrics, type ScoredZipMetrics } from '@/lib/census';
 
 const PIN_COLOR = '#000000';
 
@@ -165,7 +165,7 @@ export async function POST(req: Request) {
 
   const service = createServiceClient();
 
-  const [{ data: session, error: sessionError }, scores] = await Promise.all([
+  const [{ data: session, error: sessionError }, metrics] = await Promise.all([
     service
       .from('client_sessions')
       .insert({
@@ -176,13 +176,52 @@ export async function POST(req: Request) {
       })
       .select('id')
       .single(),
-    fetchZipScores(allZips),
+    fetchZipMetrics(allZips),
   ]);
 
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
 
-  const scored = Object.entries(scores).sort((a, b) => a[1].score - b[1].score);
-  const worst  = scored[0];
+  // PO-box style ZCTAs report no income or home value — nothing honest to grade,
+  // and one of them ranking "worst" would put a nonsense zip in front of the prospect.
+  const scored = (Object.values(metrics) as ScoredZipMetrics[])
+    .filter(m => m.median_income > 0 && m.home_value > 0)
+    .sort((a, b) => b.score - a.score || a.zip.localeCompare(b.zip));
+
+  const worst = scored[scored.length - 1];
+
+  // ── Fields for the Custom Area Breakdown doc ──────────────────────────────
+  // Flat strings, one per {{tag}} in the Google Docs template, so Make can map
+  // them straight across without touching the content.
+  const money  = (n: number) => `$${Math.round(n / 1000)}k`;
+  const detail = (m: ScoredZipMetrics) =>
+    `${m.zip} — ZipScore ${m.score} · income ${money(m.median_income)} · home value ${money(m.home_value)} · ${Math.round(m.owner_pct)}% owner-occupied`;
+  const byTier = (t: ScoredZipMetrics['grade']) => scored.filter(m => m.grade === t).map(m => m.zip);
+  const list   = (zips: string[]) => zips.length ? zips.join(', ') : 'None';
+
+  const top5    = scored.slice(0, 5);
+  const bottom5 = scored.slice(-5).reverse();
+  const tiers   = { green: byTier('A'), blue: byTier('B'), yellow: byTier('C'), red: byTier('D') };
+
+  const service_area =
+    zipList.length > 0     ? `${allZips.length} selected zip codes` :
+    targetedZips.length > 0 ? `${radius} miles around ${targetedZips.join(' and ')}` :
+                              `${radius} miles around ${singleZip}`;
+
+  const doc = {
+    title:          `${contact_name} Custom Area Breakdown`,
+    company:        contact_name,
+    service_area,
+    date:           new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }),
+    scored_count:   String(scored.length),
+    top5:           list(top5.map(m => m.zip)),
+    top5_detail:    top5.map(detail).join('\n'),
+    bottom5:        list(bottom5.map(m => m.zip)),
+    bottom5_detail: bottom5.map(detail).join('\n'),
+    green:          list(tiers.green),  green_count:  String(tiers.green.length),
+    blue:           list(tiers.blue),   blue_count:   String(tiers.blue.length),
+    yellow:         list(tiers.yellow), yellow_count: String(tiers.yellow.length),
+    red:            list(tiers.red),    red_count:    String(tiers.red.length),
+  };
 
   return NextResponse.json({
     success: true,
@@ -191,8 +230,9 @@ export async function POST(req: Request) {
     radius_miles:    radius,
     radius_source,
     zips_in_radius:  allZips.length,
-    worst_zip:       worst?.[0]          ?? null,
-    worst_zip_score: worst?.[1].score    ?? null,
-    worst_zip_grade: worst?.[1].grade    ?? null,
+    worst_zip:       worst?.zip   ?? null,
+    worst_zip_score: worst?.score ?? null,
+    worst_zip_grade: worst?.grade ?? null,
+    doc,
   });
 }
