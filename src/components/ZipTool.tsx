@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import type { Pin, ZipPerfCircle } from "@/components/ZipMap";
-import { scorePerformanceZips, perfGrade, gradeByQuartile } from "@/lib/zip-score";
+import { scorePerformanceZips, perfGrade } from "@/lib/zip-score";
 
 const ZipMap = dynamic(() => import("@/components/ZipMap"), { ssr: false });
 
@@ -185,13 +185,10 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfData, perfScore, onSavePerf, territoryGrade }: {
+function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfData, perfScore, onSavePerf }: {
   data: ZipData | null; loading: boolean; zip: string; onClose: () => void;
   clientId?: string; clientName?: string; perfData?: ZipPerfRow | null; perfScore?: number | null;
   onSavePerf?: (updates: Partial<ZipPerfRow>) => void;
-  // Grade among the other zips on the map right now; the zip's own absolute grade
-  // is the fallback when it isn't part of a territory.
-  territoryGrade?: "A" | "B" | "C" | "D";
 }) {
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
   const [showPlatforms, setShowPlatforms] = useState(false);
@@ -200,8 +197,7 @@ function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfD
   const [openMetric, setOpenMetric] = useState<PerfMetric | null>(null);
   const [breakdown, setBreakdown] = useState<CreativeRow[] | null>(null);
   const [breakdownLoading, setBreakdownLoading] = useState(false);
-  const censusGrade = territoryGrade ?? data?.grade;
-  const gc = censusGrade ? gradeColor(censusGrade) : "#6b6b6b";
+  const gc = data ? gradeColor(data.grade) : "#6b6b6b";
 
   // Reset form when perfData changes
   useEffect(() => {
@@ -395,7 +391,7 @@ function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfD
                 <div style={{ height: "100%", width: `${data.score}%`, background: gc, borderRadius: 5, transition: "width 0.5s ease" }} />
               </div>
               <span style={{ fontSize: 18, fontWeight: 800, color: "#000000" }}>{data.score}</span>
-              <span style={{ fontSize: 13, fontWeight: 800, color: gc, padding: "2px 7px", borderRadius: 5, background: `${gc}22`, border: `1px solid ${gc}44` }}>{censusGrade}</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: gc, padding: "2px 7px", borderRadius: 5, background: `${gc}22`, border: `1px solid ${gc}44` }}>{data.grade}</span>
             </div>
             <ScoreBar label="Income"          value={data.score_breakdown.income} />
             <ScoreBar label="Owner Occupancy" value={data.score_breakdown.owner_occ} />
@@ -920,25 +916,13 @@ export default function ZipTool() {
     } catch {}
   };
 
-  // Scores are absolute; grades are relative to this territory — top quarter A,
-  // bottom quarter D — so the colours always sort the zips on screen.
   const zipScores = useMemo(() => {
-    const raw: Record<string, number> = {};
-    for (const pin of pins) {
-      for (const [z, sc] of Object.entries(pin.scores ?? {})) raw[z] = sc.score;
-    }
-    const grades = gradeByQuartile(raw);
     const map: Record<string, { score: number; grade: "A" | "B" | "C" | "D" }> = {};
-    for (const [z, score] of Object.entries(raw)) map[z] = { score, grade: grades[z] };
+    for (const pin of pins) {
+      if (pin.scores) Object.assign(map, pin.scores);
+    }
     return map;
   }, [pins]);
-
-  // The map colours each polygon from its pin's own scores, so hand it pins that
-  // carry the territory-relative grades rather than the per-zip absolute ones.
-  const gradedPins = useMemo(() => pins.map(p => p.scores
-    ? { ...p, scores: Object.fromEntries(Object.keys(p.scores).map(z => [z, zipScores[z] ?? p.scores![z]])) }
-    : p
-  ), [pins, zipScores]);
 
   const handleZipClick = useCallback(async (zip: string) => {
     setSelectedZip(zip);
@@ -1941,7 +1925,7 @@ export default function ZipTool() {
       {/* ── Map ── */}
       <div className="zip-map" style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <ZipMap
-          pins={gradedPins}
+          pins={pins}
           selectedPinId={selectedId}
           onMapClick={handleMapClick}
           onSelectPin={setSelectedId}
@@ -1995,7 +1979,6 @@ export default function ZipTool() {
             onClose={() => { setSelectedZip(null); setZipData(null); }}
             clientId={connectedClient?.id}
             clientName={connectedClient?.name}
-            territoryGrade={zipScores[selectedZip]?.grade}
             perfData={clientPerf[selectedZip] ?? null}
             perfScore={perfCircles?.[selectedZip]?.score ?? null}
             onSavePerf={updates => saveZipPerf(selectedZip, updates)}

@@ -133,28 +133,13 @@ export function scoreZip(m: ZipMetrics): ScoredZip {
     0.18 * os + 0.18 * is_ + 0.13 * as_ + 0.13 * vs_ + 0.13 * pas +
     0.09 * ts + 0.04 * es + 0.07 * lts + 0.05 * ms
   );
-  // Cut-offs set against the national spread of every ZCTA: A is roughly the top
-  // 40% of zips in the country, B the next 30%, C the next 20%, D the bottom 8%.
-  // The old 75/55/35 bands graded 96% of the country A or B, so a normal suburban
-  // territory came out solid green and the map said nothing.
-  const tier: ScoredZip["tier"] = score >= 79 ? "A" : score >= 70 ? "B" : score >= 60 ? "C" : "D";
+  // National quartiles, measured across every ZCTA in the country (Sept 2026):
+  // A is the top 25% of US zips, B the next 25%, C the next, D the bottom 25%.
+  // A zip's grade says where it stands in the country, not in its territory — so
+  // a strong suburb can legitimately have no red at all. Re-measure if the score
+  // formula changes; the quartile values are the only thing that moves.
+  const tier: ScoredZip["tier"] = score >= 83 ? "A" : score >= 76 ? "B" : score >= 68 ? "C" : "D";
   return { ...m, score, owner_score: os, income_score: is_, age_score: as_, home_value_score: vs_, prime_age_score: pas, turnover_score: ts, equity_score: es, long_term_score: lts, mortgage_score: ms, tier };
-}
-
-// Grade a set of zips against each other: the top quarter of the territory is
-// A, the next quarter B, then C, and the bottom quarter D. The score itself stays
-// absolute (so "96" means the same thing everywhere); only the colour is relative,
-// which is what keeps a strong suburb from coming out wall-to-wall green.
-export function gradeByQuartile(scores: Record<string, number>): Record<string, "A" | "B" | "C" | "D"> {
-  const vals = Object.values(scores).sort((a, b) => a - b);
-  const out: Record<string, "A" | "B" | "C" | "D"> = {};
-  if (!vals.length) return out;
-  const at = (p: number) => vals[Math.min(vals.length - 1, Math.floor(p * (vals.length - 1)))];
-  const q25 = at(0.25), q50 = at(0.5), q75 = at(0.75);
-  for (const [zip, v] of Object.entries(scores)) {
-    out[zip] = v >= q75 ? "A" : v >= q50 ? "B" : v >= q25 ? "C" : "D";
-  }
-  return out;
 }
 
 export function estimateROI(census_est: number, home_value: number): {
