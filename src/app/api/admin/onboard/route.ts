@@ -221,6 +221,21 @@ export async function POST(req: Request) {
     blue:           list(tiers.blue),   blue_count:   String(tiers.blue.length),
     yellow:         list(tiers.yellow), yellow_count: String(tiers.yellow.length),
     red:            list(tiers.red),    red_count:    String(tiers.red.length),
+    // One tag per figure for each of the top five, so the template can lay them
+    // out as nested bullets — a single multi-line value can't carry that structure.
+    ...Object.fromEntries(
+      [0, 1, 2, 3, 4].flatMap(i => {
+        const m = top5[i];
+        const n = i + 1;
+        return [
+          [`top${n}_zip`,        m ? m.zip : '—'],
+          [`top${n}_score`,      m ? String(m.score) : '—'],
+          [`top${n}_income`,     m ? money(m.median_income) : '—'],
+          [`top${n}_home_value`, m ? money(m.home_value) : '—'],
+          [`top${n}_owner`,      m ? `${Math.round(m.owner_pct)}%` : '—'],
+        ];
+      })
+    ),
   };
 
   return NextResponse.json({
