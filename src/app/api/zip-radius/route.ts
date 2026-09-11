@@ -41,20 +41,35 @@ async function fetchGeoJSON(zips: string[]): Promise<Map<string, object>> {
   return geo;
 }
 
-async function fetchACSScores(zips: string[]): Promise<Record<string, { score: number; grade: "A"|"B"|"C"|"D" }>> {
-  if (!CENSUS_KEY || !zips.length) return {};
-  const CHUNK = 50;
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// The Census API drops requests under load. One dropped batch used to leave 50
+// zips scattered across the map with no score at all — and the 24-hour cache
+// then kept that half-answer. Retry each batch, and report whether every batch
+// came back so a partial result is never cached.
+async function fetchACSScores(zips: string[]): Promise<{
+  scores: Record<string, { score: number; grade: "A"|"B"|"C"|"D" }>;
+  complete: boolean;
+}> {
   const scores: Record<string, { score: number; grade: "A"|"B"|"C"|"D" }> = {};
+  if (!CENSUS_KEY || !zips.length) return { scores, complete: !zips.length };
+  const CHUNK = 50;
+  let complete = true;
 
   for (let i = 0; i < zips.length; i += CHUNK) {
     const chunk = zips.slice(i, i + CHUNK);
     const url = `https://api.census.gov/data/2022/acs/acs5?get=${ACS_VARS}&for=zip%20code%20tabulation%20area:${chunk.join(',')}&key=${CENSUS_KEY}`;
-    let rows: string[][];
-    try {
-      const r = await fetch(url);
-      if (!r.ok) continue;
-      rows = await r.json();
-    } catch { continue; }
+    let rows: string[][] | null = null;
+    for (let attempt = 0; attempt < 3 && !rows; attempt++) {
+      try {
+        const r = await fetch(url);
+        if (r.ok) rows = await r.json();
+        else if (attempt < 2) await sleep(400 * 2 ** attempt);
+      } catch {
+        if (attempt < 2) await sleep(400 * 2 ** attempt);
+      }
+    }
+    if (!rows) { complete = false; continue; }
 
     const headers = rows[0];
     const col = (n: string) => headers.indexOf(n);
@@ -104,7 +119,7 @@ async function fetchACSScores(zips: string[]): Promise<Record<string, { score: n
       scores[zip] = { score, grade: tier };
     }
   }
-  return scores;
+  return { scores, complete };
 }
 
 export async function GET(req: Request) {
@@ -124,7 +139,7 @@ export async function GET(req: Request) {
     const cached = cache.get(key);
     if (cached && Date.now() - cached.ts < CACHE_TTL) return NextResponse.json(cached.data);
 
-    const [geoMap, scores] = await Promise.all([
+    const [geoMap, acs] = await Promise.all([
       fetchGeoJSON(wanted),
       fetchACSScores(wanted),
     ]);
@@ -133,11 +148,11 @@ export async function GET(req: Request) {
     const result = {
       zips: found.slice().sort(),
       features: found.map(z => ({ type: 'Feature' as const, properties: { zip: z }, geometry: geoMap.get(z) })),
-      scores,
+      scores: acs.scores,
       // Zips the Census has no shape for — usually typos or non-ZCTA codes.
       missing: wanted.filter(z => !geoMap.has(z)),
     };
-    cache.set(key, { ts: Date.now(), data: result });
+    if (acs.complete) cache.set(key, { ts: Date.now(), data: result });
     return NextResponse.json(result);
   }
 
@@ -154,7 +169,7 @@ export async function GET(req: Request) {
 
   const zips = await getZctasNearPoint(lat, lng, radius);
 
-  const [geoMap, scores] = await Promise.all([
+  const [geoMap, acs] = await Promise.all([
     fetchGeoJSON(zips),
     fetchACSScores(zips),
   ]);
@@ -163,7 +178,7 @@ export async function GET(req: Request) {
     .filter(z => geoMap.has(z))
     .map(z => ({ type: 'Feature' as const, properties: { zip: z }, geometry: geoMap.get(z) }));
 
-  const result = { zips: zips.sort(), features, scores };
-  cache.set(key, { ts: Date.now(), data: result });
+  const result = { zips: zips.sort(), features, scores: acs.scores };
+  if (acs.complete) cache.set(key, { ts: Date.now(), data: result });
   return NextResponse.json(result);
 }

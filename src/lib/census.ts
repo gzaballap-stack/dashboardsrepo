@@ -68,12 +68,18 @@ export async function fetchZipMetrics(zips: string[]): Promise<Record<string, Sc
   for (let i = 0; i < zips.length; i += CHUNK) {
     const chunk = zips.slice(i, i + CHUNK);
     const url = `https://api.census.gov/data/2022/acs/acs5?get=${ACS_VARS}&for=zip%20code%20tabulation%20area:${chunk.join(',')}&key=${CENSUS_KEY}`;
-    let rows: string[][];
-    try {
-      const r = await fetch(url);
-      if (!r.ok) continue;
-      rows = await r.json();
-    } catch { continue; }
+    // The Census API drops requests under load; retry before giving up on a batch.
+    let rows: string[][] | null = null;
+    for (let attempt = 0; attempt < 3 && !rows; attempt++) {
+      try {
+        const r = await fetch(url);
+        if (r.ok) rows = await r.json();
+        else if (attempt < 2) await new Promise(res => setTimeout(res, 400 * 2 ** attempt));
+      } catch {
+        if (attempt < 2) await new Promise(res => setTimeout(res, 400 * 2 ** attempt));
+      }
+    }
+    if (!rows) continue;
 
     const headers = rows[0];
     const col = (n: string) => headers.indexOf(n);
