@@ -8,22 +8,36 @@ const ACS_VARS    = 'B25003_001E,B25003_002E,B19013_001E,B25035_001E,B01003_001E
 const cache = new Map<string, { ts: number; data: object }>();
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 
+// TIGER returns at most 500 features per request. A 50-mile circle over a metro
+// holds far more than that, and the ones past the cap used to vanish — the map
+// showed holes where whole townships should be. Page until the service runs dry.
+const TIGER_PAGE = 500;
+const MAX_ZIPS   = 2500;
+
 async function getZctasNearPoint(lat: number, lng: number, radiusMiles: number): Promise<string[]> {
-  const params = new URLSearchParams({
-    geometry:      JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
-    geometryType:  'esriGeometryPoint',
-    inSR:          '4326',
-    distance:      String(radiusMiles),
-    units:         'esriSRUnit_StatuteMile',
-    outFields:     'ZCTA5',
-    returnGeometry:'false',
-    resultRecordCount: '500',
-    f: 'json',
-  });
-  const r = await fetch(`${TIGER_BASE}/query?${params}`);
-  if (!r.ok) return [];
-  const data = await r.json();
-  return (data.features ?? []).map((f: { attributes: { ZCTA5: string } }) => f.attributes.ZCTA5);
+  const out: string[] = [];
+  for (let offset = 0; offset < MAX_ZIPS; offset += TIGER_PAGE) {
+    const params = new URLSearchParams({
+      geometry:      JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
+      geometryType:  'esriGeometryPoint',
+      inSR:          '4326',
+      distance:      String(radiusMiles),
+      units:         'esriSRUnit_StatuteMile',
+      outFields:     'ZCTA5',
+      returnGeometry:'false',
+      orderByFields: 'ZCTA5',
+      resultOffset:  String(offset),
+      resultRecordCount: String(TIGER_PAGE),
+      f: 'json',
+    });
+    const r = await fetch(`${TIGER_BASE}/query?${params}`);
+    if (!r.ok) break;
+    const data = await r.json();
+    const page = (data.features ?? []).map((f: { attributes: { ZCTA5: string } }) => f.attributes.ZCTA5);
+    out.push(...page);
+    if (page.length < TIGER_PAGE) break;
+  }
+  return [...new Set(out)];
 }
 
 async function fetchGeoJSON(zips: string[]): Promise<Map<string, object>> {

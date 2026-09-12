@@ -27,22 +27,33 @@ export async function geocodeZip(zip: string): Promise<{ lat: number; lng: numbe
   return { lat, lng };
 }
 
+// TIGER caps each request at 500 features; a metro-sized circle holds more.
+// Page until the service runs dry so nothing past the cap goes missing.
 export async function getZctasNearPoint(lat: number, lng: number, radiusMiles: number): Promise<string[]> {
-  const params = new URLSearchParams({
-    geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
-    geometryType: 'esriGeometryPoint',
-    inSR: '4326',
-    distance: String(radiusMiles),
-    units: 'esriSRUnit_StatuteMile',
-    outFields: 'ZCTA5',
-    returnGeometry: 'false',
-    resultRecordCount: '500',
-    f: 'json',
-  });
-  const r = await fetch(`${TIGER_BASE}/query?${params}`);
-  if (!r.ok) return [];
-  const data = await r.json();
-  return (data.features ?? []).map((f: { attributes: { ZCTA5: string } }) => f.attributes.ZCTA5);
+  const PAGE = 500, MAX = 2500;
+  const out: string[] = [];
+  for (let offset = 0; offset < MAX; offset += PAGE) {
+    const params = new URLSearchParams({
+      geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
+      geometryType: 'esriGeometryPoint',
+      inSR: '4326',
+      distance: String(radiusMiles),
+      units: 'esriSRUnit_StatuteMile',
+      outFields: 'ZCTA5',
+      returnGeometry: 'false',
+      orderByFields: 'ZCTA5',
+      resultOffset: String(offset),
+      resultRecordCount: String(PAGE),
+      f: 'json',
+    });
+    const r = await fetch(`${TIGER_BASE}/query?${params}`);
+    if (!r.ok) break;
+    const data = await r.json();
+    const page = (data.features ?? []).map((f: { attributes: { ZCTA5: string } }) => f.attributes.ZCTA5);
+    out.push(...page);
+    if (page.length < PAGE) break;
+  }
+  return [...new Set(out)];
 }
 
 // Census/demographic-only score per zip (owner-occupancy, income, home value, age mix, etc.) --
