@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { mergeExerciseNames, activeProgrammeExercises } from '@/lib/health-tracker';
 
 // Read-only export of one person's weekly health log, addressed by their share token.
 // Public by design: the token is the credential, so it can be pasted into a
@@ -35,9 +36,20 @@ export async function GET(req: Request) {
     .eq('user_id', settings.user_id)
     .order('week_start', { ascending: true });
 
-  const exercises: string[] = Array.isArray(settings.exercises) ? settings.exercises : [];
   const unit = settings.unit ?? 'kg';
   const lengthUnit = settings.length_unit ?? 'cm';
+
+  // Same derivation the tool uses: the base list, the active programme, and
+  // anything with history — so an export names every column the log can hold.
+  const loggedNames = new Set<string>();
+  for (const e of entries ?? []) {
+    for (const name of Object.keys((e.lifts ?? {}) as Record<string, unknown>)) loggedNames.add(name);
+  }
+  const exercises = mergeExerciseNames(
+    Array.isArray(settings.exercises) ? settings.exercises : [],
+    activeProgrammeExercises(settings.split_plan),
+    [...loggedNames],
+  );
 
   const rows = (entries ?? []).map(e => {
     const weights = [e.weight_1, e.weight_2, e.weight_3].filter((w): w is number => typeof w === 'number');

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { mergeExerciseNames, activeProgrammeExercises } from "@/lib/health-tracker";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Health Tracker
@@ -558,7 +559,6 @@ export default function HealthTracker() {
     return m;
   }, [entries]);
 
-  const exercises = settings?.exercises ?? [];
   const unit = settings?.unit ?? "kg";
   const lengthUnit = settings?.length_unit ?? "cm";
 
@@ -575,6 +575,19 @@ export default function HealthTracker() {
 
   const dietDoc = useMemo(() => normalizeDiet(settings?.diet_plan), [settings?.diet_plan]);
   const splitDoc = useMemo(() => normalizeSplit(settings?.split_plan), [settings?.split_plan]);
+
+  // Your own list, plus everything the active programme trains, plus anything
+  // with history. Derived on every render rather than copied into settings, so
+  // switching programmes can't duplicate a lift or strand an old one.
+  const exercises = useMemo(() => {
+    const loggedNames = new Set<string>();
+    for (const e of entries) for (const name of Object.keys(e.lifts ?? {})) loggedNames.add(name);
+    return mergeExerciseNames(
+      settings?.exercises,
+      activeProgrammeExercises(settings?.split_plan),
+      [...loggedNames],
+    );
+  }, [settings?.exercises, settings?.split_plan, entries]);
 
   const weeks = useMemo(() => weeksOfYear(year), [year]);
   const loggedThisYear = weeks.filter(w => byWeek.has(iso(w))).length;
@@ -1985,6 +1998,13 @@ function SettingsSheet({ settings, onClose, onSaved }: {
   const [copied, setCopied] = useState(false);
   const [newName, setNewName] = useState("");
 
+  // How many lifts the weekly log gains from the active programme beyond what is
+  // listed here — the point being that this list does not have to repeat them.
+  const fromProgramme = useMemo(() => {
+    const base = mergeExerciseNames(exercises);
+    return mergeExerciseNames(base, activeProgrammeExercises(settings.split_plan)).length - base.length;
+  }, [exercises, settings.split_plan]);
+
   const shareUrl = shareToken && typeof window !== "undefined"
     ? `${window.location.origin}/api/lift-log/export?token=${shareToken}`
     : null;
@@ -2071,7 +2091,13 @@ function SettingsSheet({ settings, onClose, onSaved }: {
           </button>
         </div>
       </div>
-      <p style={{ fontSize: 11, color: FAINT, marginTop: 8 }}>
+      <p style={{ fontSize: 11, color: FAINT, marginTop: 8, lineHeight: 1.5 }}>
+        {fromProgramme > 0 && (
+          <>
+            Your active programme adds {fromProgramme} more on top of these, so you
+            only need to list lifts here that it doesn&apos;t already cover.{" "}
+          </>
+        )}
         Renaming an exercise starts its history fresh — past weeks keep the old name.
       </p>
 
