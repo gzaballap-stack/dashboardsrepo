@@ -230,8 +230,8 @@ export async function POST(req: Request) {
         const n = i + 1;
         return [
           [`top${n}_zip`,        m ? m.zip : '—'],
-          [`top${n}_score`,      m ? `${percentileLabel(m.score)} of US zip codes` : '—'],
-          [`top${n}_zipscore`,   m ? String(m.score) : '—'],
+          [`top${n}_score`,      m ? String(m.score) : '—'],
+          [`top${n}_percentile`, m ? percentileLabel(m.score) : '—'],
           [`top${n}_income`,     m ? money(m.median_income) : '—'],
           [`top${n}_home_value`, m ? money(m.home_value) : '—'],
           [`top${n}_owner`,      m ? `${Math.round(m.owner_pct)}%` : '—'],
