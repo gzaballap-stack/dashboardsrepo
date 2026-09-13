@@ -157,6 +157,7 @@ export default function TaskBoard() {
   const [listTab, setListTab] = useState<ListTab>("daily");
   const [monthTab, setMonthTab] = useState<ListTab>("daily");
   const [editingListId, setEditingListId] = useState<string | null>(null);
+  const [pickLetterId, setPickLetterId] = useState<string | null>(null);
   const [dragFromList, setDragFromList] = useState(false);
   const addRef = useRef<HTMLInputElement>(null);
 
@@ -257,6 +258,16 @@ export default function TaskBoard() {
   const goToDate = (d: string) => { setDayDate(d); setView("day"); };
 
   const rows = listTab === "daily" ? inbox : backlog;
+
+  const sections = listTab === "long"
+    ? BUCKETS
+        .map(b => ({
+          key: b.id,
+          bucket: b,
+          items: rows.filter(t => t.bucket === b.id).sort((x, y) => x.position - y.position),
+        }))
+        .filter(sec => sec.items.length > 0)
+    : [{ key: "all", bucket: null as (typeof BUCKETS)[number] | null, items: rows }];
 
   // Month review: a Mon-Sun grid of the month, plus everything completed in it.
   const month = useMemo(() => {
@@ -1248,9 +1259,22 @@ export default function TaskBoard() {
                   <p style={{ fontSize: 10, color: "#949494", marginBottom: 8, lineHeight: 1.5 }}>
                     {listTab === "daily"
                       ? "Drag each one onto a letter column to prioritise it."
-                      : "Drag a project onto a letter column, a day in the strip, or a date in Month view. It stays on this list until it is done."}
+                      : "Tap a letter to re-rank a project here, or drag it onto a column, a day in the strip, or a date in Month view. It stays on this list until it is done."}
                   </p>
-                  {rows.map(t => {
+                  {sections.map(sec => (
+                  <div key={sec.key} style={{ marginBottom: sec.bucket ? 10 : 0 }}>
+                  {sec.bucket && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 2px 5px" }}>
+                      <span style={{
+                        width: 16, height: 16, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
+                        background: "rgba(0,0,0,0.08)", color: "#111111", fontSize: 9, fontWeight: 900,
+                      }}>{sec.bucket.letter}</span>
+                      <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: "#949494" }}>
+                        {sec.bucket.name.toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                  {sec.items.map(t => {
                     const placed = t.scope !== "backlog" && !!t.task_date;
                     return (
                       <div
@@ -1258,7 +1282,7 @@ export default function TaskBoard() {
                         onPointerDown={e => startDrag(e, t.id, true)}
                         style={{
                           display: "flex", alignItems: "center", gap: 8, padding: "8px 9px", marginBottom: 5,
-                          background: "#ffffff",
+                          flexWrap: "wrap", background: "#ffffff",
                           borderTop: "1px solid rgba(0,0,0,0.09)", borderRight: "1px solid rgba(0,0,0,0.09)",
                           borderBottom: "1px solid rgba(0,0,0,0.09)", borderLeft: "2px solid rgba(0,0,0,0.35)",
                           borderRadius: 7, cursor: "grab", touchAction: "none",
@@ -1277,6 +1301,20 @@ export default function TaskBoard() {
                             border: "1.5px solid rgba(0,0,0,0.22)", background: "transparent",
                           }}
                         />
+                        {listTab === "long" && (
+                          <button
+                            onClick={() => setPickLetterId(pickLetterId === t.id ? null : t.id)}
+                            title="Change its letter"
+                            style={{
+                              flexShrink: 0, width: 18, height: 18, borderRadius: 5, fontSize: 9.5, fontWeight: 900,
+                              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                              background: pickLetterId === t.id ? "#111111" : "rgba(0,0,0,0.08)",
+                              color: pickLetterId === t.id ? "#ffffff" : "#111111",
+                            }}
+                          >
+                            {t.bucket}
+                          </button>
+                        )}
                         {editingListId === t.id ? (
                           <input
                             autoFocus
@@ -1298,6 +1336,24 @@ export default function TaskBoard() {
                             {t.title}
                           </span>
                         )}
+                        {listTab === "long" && pickLetterId === t.id && (
+                          <div style={{ width: "100%", display: "flex", gap: 4, paddingTop: 6, marginTop: 2, borderTop: "1px solid rgba(0,0,0,0.07)" }}>
+                            {BUCKETS.map(b => (
+                              <button
+                                key={b.id}
+                                onClick={() => { patch(t.id, { bucket: b.id }); setPickLetterId(null); }}
+                                title={b.name}
+                                style={{
+                                  flex: 1, height: 24, borderRadius: 5, fontSize: 10, fontWeight: 800, cursor: "pointer",
+                                  background: t.bucket === b.id ? "#111111" : "rgba(0,0,0,0.05)",
+                                  color: t.bucket === b.id ? "#ffffff" : "#767676",
+                                }}
+                              >
+                                {b.letter}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <button
                           onClick={() => removeFromList(t)}
                           title={t.scope === "backlog" || t.scope === "inbox"
@@ -1314,6 +1370,8 @@ export default function TaskBoard() {
                       </div>
                     );
                   })}
+                  </div>
+                  ))}
                 </>
               )}
             </div>
@@ -1758,13 +1816,16 @@ function CatchUp({ ids, tasks, label, anchor, onTick, onMove, onPark, onReAdd, o
   const settled = (t: Task) => t.done || t.parked || t.task_date === anchor;
   const remaining = rows.filter(t => !settled(t));
 
-  const byDate: { date: string; items: Task[] }[] = [];
-  for (const t of rows) {
-    const key = t.task_date ?? "";
-    const row = byDate.find(r => r.date === key);
-    if (row) row.items.push(t); else byDate.push({ date: key, items: [t] });
-  }
-  byDate.sort((a, b) => b.date.localeCompare(a.date));
+  // Grouped the way the board is: A first, then B, C, D, E — and by level inside
+  // each. Which day it came from is on the row, not the heading.
+  const byBucket = BUCKETS
+    .map(b => ({
+      bucket: b,
+      items: rows
+        .filter(t => t.bucket === b.id)
+        .sort((x, y) => x.priority - y.priority || (x.task_date ?? "").localeCompare(y.task_date ?? "")),
+    }))
+    .filter(g => g.items.length > 0);
 
   return (
     <div
@@ -1800,13 +1861,17 @@ function CatchUp({ ids, tasks, label, anchor, onTick, onMove, onPark, onReAdd, o
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "14px 18px" }}>
-          {byDate.map(group => (
-            <div key={group.date} style={{ marginBottom: 14 }}>
-              <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", color: "#949494", marginBottom: 6 }}>
-                {group.date
-                  ? parseISO(group.date).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }).toUpperCase()
-                  : "NO DATE"}
-              </p>
+          {byBucket.map(group => (
+            <div key={group.bucket.id} style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+                <span style={{
+                  width: 18, height: 18, borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "rgba(0,0,0,0.08)", color: "#111111", fontSize: 10, fontWeight: 900,
+                }}>{group.bucket.letter}</span>
+                <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", color: "#949494" }}>
+                  {group.bucket.name.toUpperCase()}
+                </p>
+              </div>
               {group.items.map(t => (
                 <div
                   key={t.id}
@@ -1845,6 +1910,15 @@ function CatchUp({ ids, tasks, label, anchor, onTick, onMove, onPark, onReAdd, o
                   }}>
                     {t.title}
                   </span>
+
+                  {t.task_date && (
+                    <span
+                      title={`From ${parseISO(t.task_date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}`}
+                      style={{ flexShrink: 0, fontSize: 9.5, fontWeight: 700, color: "#a8a8a8", whiteSpace: "nowrap" }}
+                    >
+                      {parseISO(t.task_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </span>
+                  )}
 
                   {(t.prev_dates ?? []).length > 0 && !settled(t) && (
                     <span
