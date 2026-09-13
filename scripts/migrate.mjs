@@ -285,4 +285,12 @@ await runSQL(`
   END $$;
 `, 'Unique external_id on b2b_events (skipped where absent)');
 
+await runSQL(`
+  DO $$
+  BEGIN
+    IF to_regclass('public.b2b_events') IS NULL THEN RETURN; END IF;
+    ALTER TABLE b2b_events ADD COLUMN IF NOT EXISTS booked_by text;
+  END $$;
+`, 'booked_by on b2b_events (skipped where absent)');
+
 console.log('\nAll migrations complete.');

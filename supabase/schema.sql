@@ -346,6 +346,7 @@ create table if not exists b2b_events (
   is_pickup        boolean,
   is_conversation  boolean,
   external_id_call text,
+  booked_by        text,   -- 'self' (lead booked via the calendar link) | 'team' (booked by us)
 
   constraint b2b_events_event_type_check check (
     event_type in ('lead', 'intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close', 'call')

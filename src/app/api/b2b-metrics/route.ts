@@ -11,7 +11,7 @@ export async function GET(req: Request) {
 
   let eventsQ = ctx.service
     .from('b2b_events')
-    .select('event_type, revenue, occurred_at, ghl_contact_id');
+    .select('event_type, revenue, occurred_at, ghl_contact_id, booked_by');
 
   if (start_date) eventsQ = eventsQ.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsQ = eventsQ.lte('occurred_at', `${end_date}T23:59:59.999Z`);
@@ -138,6 +138,10 @@ export async function GET(req: Request) {
   const sales_calls_via_intro = journeys.filter(s => s.has('sales_call_booked') && s.has('intro_booked')).length;
   const leads_no_intro     = journeys.filter(s => s.has('lead') && !s.has('intro_booked')).length;
 
+  const demosBooked = (events ?? []).filter(e => e.event_type === 'sales_call_booked');
+  const self_booked = demosBooked.filter(e => (e as { booked_by?: string|null }).booked_by === 'self').length;
+  const team_booked = demosBooked.filter(e => (e as { booked_by?: string|null }).booked_by === 'team').length;
+
   const closes       = count('close');
   const cash         = totalRevenue('close');
   const leads        = count('lead');
@@ -163,6 +167,10 @@ export async function GET(req: Request) {
     // Lead -> sales call, regardless of whether an intro happened in between.
     lead_to_sales_call_rate: leads > 0 ? (count('sales_call_booked') / leads) * 100 : 0,
     lead_to_intro_rate:      leads > 0 ? (introsBooked / leads) * 100 : 0,
+    // Who booked the demo — share of leads, as requested.
+    self_booked, team_booked,
+    self_booked_pct: leads > 0 ? (self_booked / leads) * 100 : 0,
+    team_booked_pct: leads > 0 ? (team_booked / leads) * 100 : 0,
     // Per-contact splits — only meaningful once ghl_contact_id is being sent.
     direct_sales_calls,
     sales_calls_via_intro,

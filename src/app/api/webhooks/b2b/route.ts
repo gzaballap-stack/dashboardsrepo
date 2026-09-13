@@ -67,6 +67,8 @@ export async function POST(req: Request) {
       call_summary:     payload.call_summary   ?? null,
       is_pickup:        payload.is_pickup       ?? null,
       is_conversation:  payload.is_conversation ?? null,
+      // 'self' = the lead booked through the calendar link; 'team' = we booked it.
+      booked_by:        ['self','team'].includes(String(payload.booked_by||'').toLowerCase()) ? String(payload.booked_by).toLowerCase() : null,
 
       ...attribution,
 

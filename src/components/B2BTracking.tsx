@@ -32,6 +32,7 @@ interface B2BMetrics {
   cpm: number | null;
   intro_show_rate: number;
   lead_to_sales_call_rate: number;
+  self_booked: number; team_booked: number; self_booked_pct: number; team_booked_pct: number;
   lead_to_intro_rate: number;
   direct_sales_calls: number;
   sales_calls_via_intro: number;
@@ -185,11 +186,13 @@ export default function B2BTracking({ startDate, endDate }: Props) {
       {/* ── Row 1: Pipeline ── */}
       <section>
         <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Pipeline</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           <KpiCard label="Ad Spend"           value={data.ad_spend > 0 ? fmt$(data.ad_spend) : "—"} />
           <KpiCard label="Leads"              value={fmtN(data.leads)} />
           <KpiCard label="Lead → Sales Call"  value={data.leads > 0 ? fmtPct(data.lead_to_sales_call_rate) : "—"} accent />
           <KpiCard label="Booked Demos"       value={fmtN(data.sales_calls_booked)} />
+          <KpiCard label="Self-Booked"        value={data.leads > 0 && (data.self_booked || data.team_booked) ? `${fmtPct(data.self_booked_pct)} · ${fmtN(data.self_booked)}` : "—"} />
+          <KpiCard label="Booked by You"      value={data.leads > 0 && (data.self_booked || data.team_booked) ? `${fmtPct(data.team_booked_pct)} · ${fmtN(data.team_booked)}` : "—"} />
           <KpiCard label="Demos"              value={fmtN(data.sales_calls_shown)} accent />
           <KpiCard label="Demo Show Rate"     value={data.sales_calls_booked > 0 ? fmtPct((data.sales_calls_shown / data.sales_calls_booked) * 100) : "—"} accent />
         </div>
