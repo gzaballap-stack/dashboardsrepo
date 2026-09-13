@@ -358,6 +358,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const [showPresetMenu, setShowPresetMenu] = useState(false);
   const [heatmapDays, setHeatmapDays] = useState(0);
   const [heatmapClientId, setHeatmapClientId] = useState("");
+  const [b2bKpis, setB2bKpis] = useState<{ cash_collected: number; self_booked: number; team_booked: number } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   // Who is signed in and what they're allowed to open. `allowed_views: null`
@@ -507,6 +508,16 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       .then(d => { setMetrics(d); setMetricsLoading(false); })
       .catch(() => setMetricsLoading(false));
   }, [view, selectedClientId, preset, customStart, customEnd, topSection, tomsiPreset, clients]);
+
+  // Tomsi dashboard extras: cash collected and self/team-booked demos live in B2B tracking.
+  useEffect(() => {
+    if (view !== "dashboard" || topSection !== "tomsi_media") return;
+    const { start, end } = tomsiPreset === "custom" ? { start: customStart, end: customEnd } : getDateRange(tomsiPreset);
+    const params = new URLSearchParams();
+    if (start) params.set("start_date", start);
+    if (end) params.set("end_date", end);
+    fetch(`/api/b2b-metrics?${params}`).then(r => r.json()).then(d => setB2bKpis(d)).catch(() => setB2bKpis(null));
+  }, [view, topSection, tomsiPreset, customStart, customEnd]);
 
   async function handleSignOut() {
     const supabase = createBrowserSupabaseClient();
@@ -1103,7 +1114,64 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                   <span className="text-sm font-medium">Loading metrics…</span>
                 </div>
               </div>
-            ) : metrics ? (
+            ) : metrics && inTomsi ? (() => {
+              const cash = b2bKpis?.cash_collected ?? 0;
+              const selfBooked = b2bKpis?.self_booked ?? 0, teamBooked = b2bKpis?.team_booked ?? 0;
+              const bookedByKnown = selfBooked + teamBooked > 0;
+              // Leads we had to call to book, as a share of leads that didn't book themselves.
+              const callable = Math.max(metrics.new_leads - selfBooked, 0);
+              const leadBookingRate = bookedByKnown && callable > 0 ? (teamBooked / callable) * 100 : null;
+              return (
+              <div className="space-y-8 max-w-7xl">
+                <section>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Funnel</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <KpiCard label="Leads" value={fmtInt(metrics.new_leads)} />
+                    <KpiCard label="Demos Booked" value={fmtInt(metrics.booked_appointments)} />
+                    <KpiCard label="Demo Booking Rate" value={fmtPct(metrics.appt_booking_rate)} accent />
+                    <KpiCard label="Appointments To Take Place" value={fmtInt(metrics.appts_to_take_place)} />
+                    <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
+                    <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
+                    <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
+                    <KpiCard label="Ad Spend" value={fmt$(metrics.ad_spend)} />
+                    <KpiCard label="CPL" value={metrics.new_leads > 0 ? fmt$(metrics.cpl) : "—"} />
+                    <KpiCard label="CP Demo Booked" value={metrics.booked_appointments > 0 ? fmt$(metrics.cp_appt) : "—"} />
+                    <KpiCard label="CP Demo Shown" value={metrics.shows > 0 ? fmt$(metrics.cps) : "—"} />
+                    <KpiCard label="CAC" value={metrics.closes > 0 ? fmt$(metrics.cost_per_close) : "—"} />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                    <KpiCard label="Close Rate" value={metrics.shows > 0 ? fmtPct(metrics.close_rate) : "—"} accent />
+                    <KpiCard label="Cash Collected" value={cash > 0 ? fmt$(cash) : "—"} accent />
+                    <KpiCard label="ROAS" value={metrics.ad_spend > 0 && cash > 0 ? `${(cash / metrics.ad_spend).toFixed(2)}x` : "—"} accent />
+                    {/* ROI needs revenue generated — arrives with the payment tracker. */}
+                    <KpiCard label="ROI" value="—" />
+                  </div>
+                </section>
+
+                <div style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }} />
+
+                <section>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Calling Stats</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <KpiCard label="Speed To Lead (Min)" value={fmtDec(metrics.speed_to_lead_min)} />
+                    <KpiCard label="Outbound Dials" value={fmtInt(metrics.outbound_dials)} />
+                    <KpiCard label="Dials Per Lead" value={fmtDec(metrics.dials_per_lead)} />
+                    <KpiCard label="Pickups (40s+)" value={fmtInt(metrics.pickups)} />
+                    <KpiCard label="Pick Up Rate" value={fmtPct(metrics.pickup_pct)} accent />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3">
+                    <KpiCard label="Conversations (2m+)" value={fmtInt(metrics.conversations)} />
+                    <KpiCard label="Conversation Rate" value={fmtPct(metrics.conversation_pct)} />
+                    <KpiCard label="Callback Requests" value={fmtInt(metrics.callbacks)} />
+                    <KpiCard label="Callback Rate" value={fmtPct(metrics.cb_pct)} />
+                    <KpiCard label="Lead Booking Rate" value={leadBookingRate != null ? fmtPct(leadBookingRate) : "—"} accent />
+                  </div>
+                </section>
+              </div>
+              );
+            })() : metrics ? (
               <div className="space-y-8 max-w-7xl">
                 <section>
                   <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>KPIs</h2>
