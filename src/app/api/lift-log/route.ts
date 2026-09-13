@@ -1,24 +1,32 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { parseDecimal } from '@/lib/health-tracker';
 
 const COLS = 'id, week_start, weight_1, weight_2, weight_3, waist, bicep, lifts, notes, updated_at';
 
-function num(v: unknown): number | null {
-  if (v === null || v === undefined || v === '') return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
+// Thrown for anything typed that isn't a number. Blank is fine and clears the
+// field; junk used to be turned into null and written over what was there,
+// which lost the measurement without ever saying so.
+class BadNumber extends Error {
+  constructor(public field: string) { super(`${field} is not a number`); }
 }
 
-// { "Bicep Curl": { load, reps } } — silently drops anything malformed rather
-// than failing the whole save.
+function num(v: unknown, field: string): number | null {
+  const parsed = parseDecimal(v);
+  if (!parsed.ok) throw new BadNumber(field);
+  return parsed.value;
+}
+
+// { "Bicep Curl": { load, reps } } — a lift with neither figure is dropped, but
+// a figure that can't be read stops the save like any other.
 function cleanLifts(v: unknown): Record<string, { load: number | null; reps: number | null }> {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
   const out: Record<string, { load: number | null; reps: number | null }> = {};
   for (const [name, raw] of Object.entries(v as Record<string, unknown>)) {
     if (!name.trim() || !raw || typeof raw !== 'object') continue;
     const r = raw as Record<string, unknown>;
-    const load = num(r.load);
-    const reps = num(r.reps);
+    const load = num(r.load, `${name} load`);
+    const reps = num(r.reps, `${name} reps`);
     if (load === null && reps === null) continue;
     out[name] = { load, reps };
   }
@@ -55,18 +63,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'week_start must be YYYY-MM-DD' }, { status: 400 });
   }
 
-  const row = {
-    user_id: ctx.userId,
-    week_start: weekStart,
-    weight_1: num(body.weight_1),
-    weight_2: num(body.weight_2),
-    weight_3: num(body.weight_3),
-    waist: num(body.waist),
-    bicep: num(body.bicep),
-    lifts: cleanLifts(body.lifts),
-    notes: typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null,
-    updated_at: new Date().toISOString(),
-  };
+  let row;
+  try {
+    row = {
+      user_id: ctx.userId,
+      week_start: weekStart,
+      weight_1: num(body.weight_1, 'Weigh-in 1'),
+      weight_2: num(body.weight_2, 'Weigh-in 2'),
+      weight_3: num(body.weight_3, 'Weigh-in 3'),
+      waist: num(body.waist, 'Waist'),
+      bicep: num(body.bicep, 'Bicep'),
+      lifts: cleanLifts(body.lifts),
+      notes: typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null,
+      updated_at: new Date().toISOString(),
+    };
+  } catch (e) {
+    if (e instanceof BadNumber) {
+      return NextResponse.json({ error: `${e.field} is not a number` }, { status: 400 });
+    }
+    throw e;
+  }
 
   const { data, error } = await ctx.service
     .from('lift_entries')

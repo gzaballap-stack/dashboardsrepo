@@ -11,6 +11,33 @@
 // exercise in a programme leaves no orphan behind, and (3) means a lift you have
 // history for keeps its chart even after it drops out of your programme.
 
+// Reading a number a person typed.
+//
+// `Number("81,5")` is NaN, and a phone set to Spanish puts a comma on the
+// decimal key — so a measurement typed on a phone parsed to nothing and was
+// stored as null, silently. A comma is a decimal point here.
+//
+// The three outcomes are kept apart on purpose: blank means "not measured this
+// week" and must still clear the field, while unparseable means the save should
+// stop and say so rather than quietly discarding what was typed.
+export type ParsedNumber =
+  | { ok: true; value: number | null }
+  | { ok: false };
+
+export function parseDecimal(raw: unknown): ParsedNumber {
+  if (raw === null || raw === undefined) return { ok: true, value: null };
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? { ok: true, value: raw } : { ok: false };
+  }
+  if (typeof raw !== 'string') return { ok: false };
+
+  const text = raw.trim();
+  if (!text) return { ok: true, value: null };
+
+  const n = Number(text.replace(',', '.'));
+  return Number.isFinite(n) ? { ok: true, value: n } : { ok: false };
+}
+
 type RawExercise = { name?: unknown };
 type RawDay = { rest?: unknown; exercises?: unknown };
 type RawProgramme = { id?: unknown; days?: unknown };

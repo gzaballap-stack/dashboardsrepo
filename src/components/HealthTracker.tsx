@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { mergeExerciseNames, activeProgrammeExercises } from "@/lib/health-tracker";
+import { mergeExerciseNames, activeProgrammeExercises, parseDecimal } from "@/lib/health-tracker";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Health Tracker
@@ -428,8 +428,12 @@ function Panel({ title, subtitle, children }: {
   );
 }
 
-function Sheet({ title, onClose, children, footer }: {
-  title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode;
+function Sheet({ title, onClose, children, footer, footerNote }: {
+  title: string; onClose: () => void; children: React.ReactNode;
+  footer?: React.ReactNode;
+  // Sits directly above the buttons. The sheet body scrolls and can be long, so
+  // anything the user must read before pressing Save belongs down here with it.
+  footerNote?: React.ReactNode;
 }) {
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -472,10 +476,13 @@ function Sheet({ title, onClose, children, footer }: {
         {footer && (
           <div style={{
             padding: "12px 18px", borderTop: "1px solid rgba(0,0,0,0.07)",
-            display: "flex", gap: 10, alignItems: "center", flexShrink: 0,
+            display: "flex", flexDirection: "column", gap: 10, flexShrink: 0,
             paddingBottom: "max(12px, env(safe-area-inset-bottom))",
           }}>
-            {footer}
+            {footerNote}
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              {footer}
+            </div>
           </div>
         )}
       </div>
@@ -1008,9 +1015,10 @@ function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, o
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  const nums = [w1, w2, w3].map(v => (v.trim() === "" ? null : Number(v)))
-    .map(v => (v !== null && Number.isFinite(v) ? v : null));
-  const avg = avgOf(nums);
+  const avg = avgOf([w1, w2, w3].map(v => {
+    const parsed = parseDecimal(v);
+    return parsed.ok ? parsed.value : null;
+  }));
 
   const monday = parseISO(weekStart);
   const title = `${weekLabel(monday)}, ${monday.getFullYear()}`;
@@ -1036,6 +1044,14 @@ function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, o
     <Sheet
       title={title}
       onClose={onClose}
+      footerNote={err ? (
+        <p style={{
+          fontSize: 12, color: "#b4472e", lineHeight: 1.45,
+          background: "rgba(180,71,46,0.08)", padding: "8px 11px", borderRadius: 9,
+        }}>
+          {err}
+        </p>
+      ) : null}
       footer={
         <>
           {entry && (
@@ -1053,10 +1069,6 @@ function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, o
         </>
       }
     >
-      {err && (
-        <p style={{ fontSize: 12, color: "#b4472e", marginBottom: 12 }}>{err}</p>
-      )}
-
       <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: FAINT, marginBottom: 8 }}>
         Body
       </p>
@@ -1272,8 +1284,11 @@ function NumCell({ value, onChange, placeholder, style }: {
       onChange={e => {
         const t = e.target.value;
         setText(t);
-        const n = t.trim() === "" ? null : Number(t);
-        onChange(n !== null && Number.isFinite(n) ? n : null);
+        // Half-typed and unparseable both read as "nothing yet" while the box
+        // still shows what was typed — the plans autosave, so there is no moment
+        // to complain at, unlike the weekly log's explicit Save.
+        const parsed = parseDecimal(t);
+        onChange(parsed.ok ? parsed.value : null);
       }}
       style={{ ...CELL, ...style }}
     />
@@ -2195,5 +2210,6 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
 
 
