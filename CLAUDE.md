@@ -200,6 +200,7 @@ Make blueprints read `1.customData.\`<Name>\``):
 | `UTM Source` · `UTM Medium` · `UTM Campaign` · `UTM Content` · `UTM Term` | `utm_*` | GHL fills these far more reliably than the numeric IDs — keep both |
 | `Referrer URL` | `referrer_url` | |
 | `Call Status` · `Agent Name` · `Call Summary` | `call_status` · `agent_name` · `call_summary` | dial events |
+| `booked_by` (B2B only, on the Sales Call Booked workflow) | `booked_by` | `self` = the lead booked via the calendar link, `team` = we booked it. Drives the Self-Booked / Booked by You split on B2B Tracking. |
 
 > **Call recordings are parked.** Getting a per-call recording URL out of GHL
 > proved impractical, so `Call Recording URL` was removed from the dial

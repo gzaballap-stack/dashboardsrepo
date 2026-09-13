@@ -174,6 +174,14 @@ or User Management breaks on V1 (its query selects `allowed_views`).
   filter problem, not ours. Client-side ingestion is healthy (20–40 dials/day).
 - `GHL_API_KEY` returns 401 "Invalid JWT" (13 Sept) — likely rotated. Attribution
   refresh depends on it.
+- **Self-booked vs team-booked demos.** `b2b_events.booked_by` (`self` | `team`,
+  else null) added on V1 + schema/migration/runner; the B2B webhook stores it
+  and `b2b-metrics` exposes counts and share-of-leads; two tiles on B2B
+  Tracking. The Make `Sales Call Booked` scenario now sends
+  `"booked_by": "{{1.customData.booked_by}}"` — **GHL must supply
+  `booked_by` as custom data** (`self` when the trigger is the customer booking
+  through the calendar link, `team` when booked manually). Until GHL sends it
+  the tiles show "—".
 
 ## 2026-09-09 — All Make scenarios rerouted to app.tomsimedia.com (outage fix)
 
