@@ -26,7 +26,7 @@ import CreativeLeaderboard from "./CreativeLeaderboard";
 import CSMDashboard from "./CSMDashboard";
 import B2BTracking from "./B2BTracking";
 
-type Client = { id: string; name: string; is_live?: boolean };
+type Client = { id: string; name: string; is_live?: boolean; is_internal?: boolean };
 
 type Metrics = {
   new_leads: number;
@@ -86,7 +86,34 @@ type View =
   | "b2b_tracking";
 
 // B2B view type alias — rendered under Tomsi Media section
-type TomsiView = "b2b_tracking";
+type TomsiView =
+  | "b2b_tracking" | "dashboard" | "campaign_overview" | "creative_leaderboard" | "goals"
+  | "leads" | "dials" | "appointments" | "speed_to_lead"
+  | "heatmap_show" | "heatmap_pickup" | "heatmap_leads";
+
+// The Tomsi Media section reuses the client dashboard views, locked to the
+// internal "Tomsi Media" client. Every id except b2b_tracking is also a View.
+const TOMSI_NAV: { group: string; items: { id: TomsiView; label: string; icon: string }[] }[] = [
+  { group: "Overview", items: [
+    { id: "dashboard",            label: "Dashboard",            icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+    { id: "b2b_tracking",         label: "B2B Tracking",         icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
+    { id: "campaign_overview",    label: "Campaign Overview",    icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
+    { id: "creative_leaderboard", label: "Creative Leaderboard", icon: "M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" },
+    { id: "goals",                label: "Goal Tracker",         icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
+  ]},
+  { group: "Raw Data", items: [
+    { id: "leads",         label: "New Leads",     icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
+    { id: "dials",         label: "All Dials",     icon: "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" },
+    { id: "appointments",  label: "Appointments",  icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+    { id: "speed_to_lead", label: "Speed to Lead", icon: "M13 10V3L4 14h7v7l9-11h-7z" },
+  ]},
+  { group: "Heat Maps", items: [
+    { id: "heatmap_show",   label: "Show Rate",    icon: "M4 6h16M4 10h16M4 14h16M4 18h16" },
+    { id: "heatmap_pickup", label: "Pick Up Rate", icon: "M4 6h16M4 10h16M4 14h16M4 18h16" },
+    { id: "heatmap_leads",  label: "New Leads",    icon: "M4 6h16M4 10h16M4 14h16M4 18h16" },
+  ]},
+];
+const TOMSI_LABEL: Record<TomsiView, string> = Object.fromEntries(TOMSI_NAV.flatMap(g => g.items.map(i => [i.id, i.label]))) as Record<TomsiView, string>;
 
 const PRESET_LABELS: Record<Preset, string> = {
   this_month: "This Month",
@@ -365,6 +392,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       if (saved.view && !(TOOLS_VIEWS.includes(saved.view) && savedTop !== "tools"))
         setView(saved.view as View);
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
+      if (saved.topSection === "tomsi_media" && saved.tomsiView && saved.tomsiView !== "b2b_tracking") setView(saved.tomsiView as View);
       if (saved.clientsView) setClientsView(saved.clientsView as ClientsView);
     } catch {}
   }, [initialRoute]);
@@ -463,10 +491,14 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
 
   useEffect(() => {
     if (view !== "dashboard") return;
-    const { start, end } = preset === "custom" ? { start: customStart, end: customEnd } : getDateRange(preset);
+    const tomsi = topSection === "tomsi_media";
+    const activePreset = tomsi ? tomsiPreset : preset;
+    const { start, end } = activePreset === "custom" ? { start: customStart, end: customEnd } : getDateRange(activePreset);
     setMetricsLoading(true);
     const params = new URLSearchParams();
-    if (selectedClientId === "__live__") params.set("live_only", "true");
+    const internalId = tomsi ? clients.find(c => c.is_internal)?.id : undefined;
+    if (internalId) params.set("client_id", internalId);
+    else if (selectedClientId === "__live__") params.set("live_only", "true");
     else if (selectedClientId) params.set("client_id", selectedClientId);
     if (start) params.set("start_date", start);
     if (end) params.set("end_date", end);
@@ -474,7 +506,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       .then(r => r.json())
       .then(d => { setMetrics(d); setMetricsLoading(false); })
       .catch(() => setMetricsLoading(false));
-  }, [view, selectedClientId, preset, customStart, customEnd]);
+  }, [view, selectedClientId, preset, customStart, customEnd, topSection, tomsiPreset, clients]);
 
   async function handleSignOut() {
     const supabase = createBrowserSupabaseClient();
@@ -494,6 +526,18 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const tomsiDateRange = tomsiPreset === "custom"
     ? { start: customStart, end: customEnd }
     : getDateRange(tomsiPreset);
+
+  // Tomsi Media section: the shared client views run locked to the internal
+  // "Tomsi Media" client, on the Tomsi date range. Internal clients never show
+  // in client-facing selectors.
+  const inTomsi = topSection === "tomsi_media";
+  const tomsiClient = clients.find(c => c.is_internal);
+  const publicClients = clients.filter(c => !c.is_internal);
+  const lockClientId = inTomsi ? tomsiClient?.id : undefined;
+  const viewClients = inTomsi ? (tomsiClient ? [tomsiClient] : []) : publicClients;
+  const viewPreset = inTomsi ? tomsiPreset : preset;
+  const viewStart = inTomsi ? tomsiDateRange.start : dateStart;
+  const viewEnd = inTomsi ? tomsiDateRange.end : dateEnd;
 
   const today = new Date().toISOString().split("T")[0];
   const heatmapStart = heatmapDays > 0
@@ -561,7 +605,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   // Section + page, e.g. ["Clients", "Client Roster"]. Drives the header crumb
   // and the browser tab so they can't drift apart.
   const crumb: [string | null, string] =
-    topSection === "tomsi_media" ? ["Tomsi Media", "B2B Tracking"]
+    topSection === "tomsi_media" ? ["Tomsi Media", TOMSI_LABEL[tomsiView] ?? "B2B Tracking"]
     : topSection === "payments"  ? [null, "Payments"]
     : topSection === "clients"   ? ["Clients", CLIENTS_NAV.find(c => c.id === clientsView)?.label ?? "Clients"]
     : topSection === "settings"  ? ["Settings", "Users"]
@@ -762,28 +806,34 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                 {/* Sub-nav for Tomsi Media Dashboard */}
                 {!navCollapsed && sec.id === "tomsi_media" && expandedSections.has("tomsi_media") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
-                    {([
-                      { id: "b2b_tracking" as TomsiView, label: "B2B Tracking", icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
-                    ] as const).map(item => {
-                      const active = topSection === "tomsi_media" && tomsiView === item.id;
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => { setTopSection("tomsi_media"); setTomsiView(item.id); setSidebarOpen(false); }}
-                          className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
-                          style={active
-                            ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
-                            : { color: "#767676" }}
-                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
-                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#767676"; }}
-                        >
-                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
-                          </svg>
-                          {item.label}
-                        </button>
-                      );
-                    })}
+                    {TOMSI_NAV.map(group => (
+                      <div key={group.group} className="mb-3">
+                        <p className="text-[9px] font-bold uppercase tracking-widest px-2 mb-1" style={{ color: "#c2c2c2" }}>{group.group}</p>
+                        {group.items.map(item => {
+                          const active = topSection === "tomsi_media" && tomsiView === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => {
+                                setTopSection("tomsi_media");
+                                setTomsiView(item.id);
+                                if (item.id !== "b2b_tracking") setView(item.id as View);
+                                setSidebarOpen(false);
+                              }}
+                              className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
+                              style={active ? { background: "rgba(0,0,0,0.06)", color: "#000000" } : { color: "#767676" }}
+                              onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
+                              onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#767676"; }}
+                            >
+                              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                              </svg>
+                              {item.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -929,7 +979,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                 <Select value={selectedClientId} onChange={v => setSelectedClientId(v)}>
                   <option value="">All Clients</option>
                   <option value="__live__">Live Clients</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_live === false ? " (offline)" : ""}</option>)}
+                  {publicClients.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_live === false ? " (offline)" : ""}</option>)}
                 </Select>
               )}
 
@@ -980,11 +1030,11 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           {/* Heat map controls */}
           {isHeatmap && (
             <>
-              <Select value={heatmapClientId} onChange={v => setHeatmapClientId(v)}>
+              {!inTomsi && <Select value={heatmapClientId} onChange={v => setHeatmapClientId(v)}>
                 <option value="">All Clients</option>
                 <option value="__live__">Live Clients</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_live === false ? " (offline)" : ""}</option>)}
-              </Select>
+                {publicClients.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_live === false ? " (offline)" : ""}</option>)}
+              </Select>}
               <Select value={heatmapDays} onChange={v => setHeatmapDays(Number(v))}>
                 <option value={0}>All Time</option>
                 <option value={7}>Last 7 days</option>
@@ -1036,7 +1086,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
             </div>
           )}
 
-          {(topSection === "clients_dashboard" || topSection === "tools") && (<>
+          {(topSection === "clients_dashboard" || topSection === "tools" || (topSection === "tomsi_media" && tomsiView !== "b2b_tracking")) && (<>
 
           {/* Stale-booking alerts belong to the dashboard, not the Tools views */}
           {topSection === "clients_dashboard" && <AlertBanner alerts={bannerAlerts} onDismiss={closeBanner} />}
@@ -1108,23 +1158,25 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           {/* ── Raw Data Tables ── */}
           {isRaw && (
             <RawDataTable
+              key={inTomsi ? "tomsi" : "clients"}
               type={view as "leads" | "dials" | "appointments" | "speed_to_lead" | "ad_spend"}
-              clients={clients}
-              preset={preset}
-              startDate={dateStart}
-              endDate={dateEnd}
+              clients={viewClients}
+              preset={viewPreset}
+              startDate={viewStart}
+              endDate={viewEnd}
+              lockClientId={lockClientId}
             />
           )}
 
           {/* ── Heat Maps ── */}
-          {view === "heatmap_show"   && <HeatMap type="show_rate"    startDate={heatmapStart} endDate={heatmapEnd} clientId={heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined} liveOnly={heatmapClientId === "__live__"} />}
-          {view === "heatmap_pickup" && <HeatMap type="pickup_rate"  startDate={heatmapStart} endDate={heatmapEnd} clientId={heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined} liveOnly={heatmapClientId === "__live__"} />}
-          {view === "heatmap_leads"  && <HeatMap type="new_leads"    startDate={heatmapStart} endDate={heatmapEnd} clientId={heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined} liveOnly={heatmapClientId === "__live__"} />}
+          {view === "heatmap_show"   && <HeatMap type="show_rate"    startDate={heatmapStart} endDate={heatmapEnd} clientId={lockClientId ?? (heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined)} liveOnly={!lockClientId && heatmapClientId === "__live__"} />}
+          {view === "heatmap_pickup" && <HeatMap type="pickup_rate"  startDate={heatmapStart} endDate={heatmapEnd} clientId={lockClientId ?? (heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined)} liveOnly={!lockClientId && heatmapClientId === "__live__"} />}
+          {view === "heatmap_leads"  && <HeatMap type="new_leads"    startDate={heatmapStart} endDate={heatmapEnd} clientId={lockClientId ?? (heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined)} liveOnly={!lockClientId && heatmapClientId === "__live__"} />}
 
           {/* ── Agent Stats ── */}
           {view === "agent_stats" && (
             <AgentStats
-              clients={clients}
+              clients={publicClients}
               preset={preset}
               startDate={dateStart}
               endDate={dateEnd}
@@ -1133,31 +1185,31 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
 
           {/* ── Agent Scorecards ── */}
           {view === "agent_scorecards" && (
-            <AgentScorecards clients={clients} startDate={dateStart} endDate={dateEnd} />
+            <AgentScorecards clients={publicClients} startDate={dateStart} endDate={dateEnd} />
           )}
 
           {/* ── Call Recordings ── */}
           {view === "recordings" && (
-            <RecordingBrowser clients={clients} startDate={dateStart} endDate={dateEnd} />
+            <RecordingBrowser clients={publicClients} startDate={dateStart} endDate={dateEnd} />
           )}
 
           {/* ── Goal Tracker ── */}
           {view === "goals" && (
-            <GoalTracker clients={clients} startDate={dateStart} endDate={dateEnd} />
+            <GoalTracker key={inTomsi ? "tomsi" : "clients"} clients={viewClients} startDate={viewStart} endDate={viewEnd} lockClientId={lockClientId} />
           )}
 
           {/* ── Campaign Overview (all clients) ── */}
           {view === "campaign_overview" && (
-            <CampaignOverview startDate={dateStart} endDate={dateEnd} />
+            <CampaignOverview key={inTomsi ? "tomsi" : "clients"} startDate={viewStart} endDate={viewEnd} clientId={lockClientId} />
           )}
 
           {view === "creative_leaderboard" && (
-            <CreativeLeaderboard startDate={dateStart} endDate={dateEnd} />
+            <CreativeLeaderboard key={inTomsi ? "tomsi" : "clients"} startDate={viewStart} endDate={viewEnd} clientId={lockClientId} />
           )}
           {/* ── Admin ── */}
           {view === "admin_agents"  && <AgentAdmin />}
           {view === "admin_clients" && <ClientRoster />}
-          {view === "schedule"      && <SetterSchedule clients={clients} />}
+          {view === "schedule"      && <SetterSchedule clients={publicClients} />}
           {view === "zip_tool" && topSection === "tools" && <ZipTool />}
           {view === "task_board" && topSection === "tools" && <TaskBoard />}
           {view === "lift_tracker" && topSection === "tools" && <HealthTracker />}

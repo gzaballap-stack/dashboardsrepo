@@ -237,6 +237,32 @@ That reduces the GHL rollout from six workflows per location to one.
 
 ---
 
+## Tomsi Media (B2B) dashboard = the client dashboard, locked to an internal client
+
+Tomsi Media's own funnel is modelled as a **client row** (`clients.is_internal =
+true`, name `Tomsi Media`). The B2B intake and B2B Meta spend sync **mirror**
+everything into the client-side tables under that client:
+
+- `/api/webhooks/b2b` → `events` (lead→lead, sales_call_booked→appointment_booked,
+  sales_call_shown→show (flips the booked row, like `appointment-status`),
+  close→closed, call→dial; intro_* are not mirrored). `b2b_events` still gets
+  every event — B2B Tracking reads it.
+- `/api/b2b-ad-spend/sync-all` → `ad_spend` + `ad_campaigns` (all three levels).
+
+The Tomsi Media section in `DashboardView` then **reuses the client views**
+(Dashboard KPIs, Campaign Overview, Creative Leaderboard, Goal Tracker, Raw
+Data, Heat Maps) with the client locked to the internal id (`lockClientId` /
+`clientId` props; `client_id` on `campaign-overview` and `creative-leaderboard`).
+
+Internal clients are excluded from `getLiveClientIds()`, the client selectors,
+the roster and CSM. `src/lib/tomsi.ts` resolves the id server-side.
+
+Dials and no-shows for B2B come through the **client** Make scenarios: the
+Tomsi Media GHL sub-account runs the same All Dials / No Show workflows with
+custom data `client_name = "Tomsi Media"`.
+
+---
+
 ## Zip / territory features
 
 Fully in-dashboard — there is no separate zip app. API routes `src/app/api/zip-*`

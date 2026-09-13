@@ -76,6 +76,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
+  const client_id = searchParams.get('client_id');   // one client (used for the internal Tomsi Media view)
 
   const liveClientIds = await getLiveClientIds(ctx.service);
 
@@ -83,7 +84,7 @@ export async function GET(req: Request) {
     .from('ad_campaigns')
     .select('client_id, campaign_id, campaign_name, platform, status, objective, budget, spend, impressions, reach, frequency, link_clicks, unique_clicks, unique_ctr, cpm, leads, clients(name)')
     .eq('level', 'campaign')
-    .in('client_id', liveClientFilter(liveClientIds));
+    .in('client_id', client_id ? [client_id] : liveClientFilter(liveClientIds));
   if (start_date) adQuery = adQuery.gte('report_date', start_date);
   if (end_date)   adQuery = adQuery.lte('report_date', end_date);
 

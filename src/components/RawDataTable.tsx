@@ -89,20 +89,21 @@ function formatCell(key: string, value: unknown): string {
   return String(value);
 }
 
-export default function RawDataTable({ type, clients: allClients, preset, startDate, endDate }: Props) {
+export default function RawDataTable({ type, clients: allClients, preset, startDate, endDate, lockClientId }: Props & { lockClientId?: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [clientFilter, setClientFilter] = useState("");
+  const effectiveFilter = lockClientId ?? clientFilter;   // locked for the Tomsi Media views
 
   useEffect(() => { setPage(1); }, [type, clientFilter, preset, startDate, endDate]);
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ type, page: String(page) });
-    if (clientFilter === "__live__") params.set("live_only", "true");
-    else if (clientFilter) params.set("client_id", clientFilter);
+    if (effectiveFilter === "__live__") params.set("live_only", "true");
+    else if (effectiveFilter) params.set("client_id", effectiveFilter);
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
 
@@ -110,7 +111,7 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
       .then(r => r.json())
       .then(d => { setRows(d.rows ?? []); setTotal(d.total ?? 0); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [type, clientFilter, page, startDate, endDate]);
+  }, [type, effectiveFilter, page, startDate, endDate]);
 
   const cols = COLUMNS[type] ?? [];
   const totalPages = Math.ceil(total / 100);
@@ -119,7 +120,7 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
     <div className="space-y-4">
       {/* Client filter */}
       <div className="flex items-center gap-3">
-        <select
+        {!lockClientId && <select
           value={clientFilter}
           onChange={e => setClientFilter(e.target.value)}
           className="px-4 py-2 rounded-lg text-sm font-medium outline-none"
@@ -128,7 +129,7 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
           <option value="">All Clients</option>
           <option value="__live__">Live Clients</option>
           {allClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        </select>}
         <span className="text-sm" style={{ color: "#949494" }}>{total.toLocaleString()} rows</span>
       </div>
 

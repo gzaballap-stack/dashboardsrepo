@@ -79,6 +79,7 @@ export async function GET(req: Request) {
   const start_date = searchParams.get('start_date');
   const end_date   = searchParams.get('end_date');
   const minSpend   = Number(searchParams.get('min_spend')) || 0;
+  const client_id  = searchParams.get('client_id');
 
   if (!LEVEL_NAME[level]) {
     return NextResponse.json({ error: "level must be 'ad', 'adset' or 'campaign'" }, { status: 400 });
@@ -92,6 +93,7 @@ export async function GET(req: Request) {
     .select(`client_id, ${idCol}, ${nameCol}, spend, impressions, link_clicks`)
     .eq('level', level)
     .not(idCol, 'is', null);
+  if (client_id)  q = q.eq('client_id', client_id);
   if (start_date) q = q.gte('report_date', start_date);
   if (end_date)   q = q.lte('report_date', end_date);
 

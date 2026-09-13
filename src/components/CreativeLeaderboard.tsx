@@ -58,7 +58,8 @@ const CARD = {
 const TH = "text-right px-3 py-2 text-[10px] font-bold uppercase tracking-wider";
 const TD = "text-right px-3 py-2.5 text-xs";
 
-export default function CreativeLeaderboard({ startDate, endDate }: {
+export default function CreativeLeaderboard({ startDate, endDate, clientId }: {
+  clientId?: string;
   startDate: string;
   endDate: string;
 }) {
@@ -74,7 +75,7 @@ export default function CreativeLeaderboard({ startDate, endDate }: {
     setLoading(true); setError("");
     try {
       const [lb, h] = await Promise.all([
-        fetch(`/api/creative-leaderboard?level=${level}&model=${model}&start_date=${startDate}&end_date=${endDate}&min_spend=${minSpend}`)
+        fetch(`/api/creative-leaderboard?level=${level}&model=${model}&start_date=${startDate}&end_date=${endDate}&min_spend=${minSpend}${clientId ? `&client_id=${clientId}` : ''}`)
           .then(r => r.json()),
         fetch(`/api/attribution-health?days=30`).then(r => r.json()).catch(() => null),
       ]);

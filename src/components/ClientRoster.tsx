@@ -31,7 +31,7 @@ export default function ClientRoster() {
   useEffect(() => {
     fetch("/api/clients")
       .then(r => r.json())
-      .then(d => { setClients(d.clients ?? []); setLoading(false); });
+      .then(d => { setClients((d.clients ?? []).filter((c: { is_internal?: boolean }) => !c.is_internal)); setLoading(false); });
   }, []);
 
   async function handleAdd() {

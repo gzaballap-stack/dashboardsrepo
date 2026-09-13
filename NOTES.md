@@ -159,6 +159,22 @@ or User Management breaks on V1 (its query selects `allowed_views`).
 
 ---
 
+## 2026-09-13 — Tomsi Media dashboard rebuilt on the client dashboard
+
+- Decision: rather than re-implementing every view against `b2b_*`, Tomsi Media
+  is an **internal client** (`clients.is_internal`, created on V1 and V2). The B2B
+  webhook and B2B spend sync mirror into `events` / `ad_spend` / `ad_campaigns`
+  under it, and the Tomsi Media section reuses the client views locked to that
+  id. Details in CLAUDE.md ("Tomsi Media (B2B) dashboard").
+- Backfilled the existing real B2B rows into `events` (Maria lead; Michael
+  Fischer demo booked/shown) and re-synced 30 days of B2B Meta spend into the
+  client spend tables.
+- **User to-do (GHL, Tomsi Media sub-account):** install the client-style
+  All Dials and No Show workflows posting to the existing client Make webhooks
+  with custom data `client_name = "Tomsi Media"` (plus `Phone Call Start Time`
+  / `Call Duration` on dials). Without them, calling stats and no-shows stay
+  empty for Tomsi.
+
 ## 2026-09-13 — B2B is a one-call process; intro stage removed from the views
 
 - The user dropped the 15-minute intro. B2B funnel is now lead → demo booked →

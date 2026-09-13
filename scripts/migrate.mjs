@@ -293,4 +293,10 @@ await runSQL(`
   END $$;
 `, 'booked_by on b2b_events (skipped where absent)');
 
+await runSQL(`
+  ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_internal boolean NOT NULL DEFAULT false;
+  INSERT INTO clients (name, is_live, is_internal) VALUES ('Tomsi Media', true, true)
+    ON CONFLICT (name) DO UPDATE SET is_internal = true;
+`, 'Internal client "Tomsi Media"');
+
 console.log('\nAll migrations complete.');

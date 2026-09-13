@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
+import { getTomsiClientId } from '@/lib/tomsi';
 
 // Single-shot sync: fetches ad-level data from Meta, aggregates to adset + campaign,
 // and upserts all three tables in one request. Replaces the 6-module Make blueprint.
@@ -162,6 +163,37 @@ export async function POST(req: Request) {
 
     const errors = [campErr, adsetErr, adErr].filter(Boolean).map(e => e!.message);
     if (errors.length) return NextResponse.json({ error: errors.join('; ') }, { status: 500 });
+
+    // Mirror into the client-side spend tables under the internal "Tomsi Media"
+    // client so campaign overview / leaderboard / KPIs work for B2B. Best-effort.
+    try {
+      const tomsiId = await getTomsiClientId(service);
+      if (tomsiId) {
+        const num = (v: unknown) => Number(v) || 0;
+        const base = (level: string, r: Record<string, unknown>) => ({
+          client_id: tomsiId, report_date: date, platform, level,
+          campaign_id: String(r.campaign_id ?? ''), campaign_name: String(r.campaign_name ?? ''),
+          adset_id: String(r.adset_id ?? ''), adset_name: (r.adset_name as string | null) ?? null,
+          ad_id: String(r.ad_id ?? ''), ad_name: (r.ad_name as string | null) ?? null,
+          spend: num(r.spend ?? r.amount), impressions: num(r.impressions), reach: num(r.reach), link_clicks: num(r.link_clicks),
+          ctr: (r.ctr as number | null) ?? null, cpc: (r.cpc as number | null) ?? null, cpm: (r.cpm as number | null) ?? null,
+          frequency: (r.frequency as number | null) ?? null, unique_clicks: (r.unique_clicks as number | null) ?? null,
+          unique_ctr: (r.unique_ctr as number | null) ?? null, leads: num(r.leads),
+          budget: (r.budget as number | null) ?? null, status: (r.status as string | null) ?? null, objective: (r.objective as string | null) ?? null,
+        });
+        const rows = [
+          ...campaignRecords.map(r => base('campaign', r as unknown as Record<string, unknown>)),
+          ...adsetRecords.map(r => base('adset', r as unknown as Record<string, unknown>)),
+          ...ads.map(r => base('ad', r as unknown as Record<string, unknown>)),
+        ];
+        const total = campaignRecords.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+        await Promise.all([
+          service.from('ad_spend').upsert({ client_id: tomsiId, spend_date: date, platform, amount: total }, { onConflict: 'client_id,spend_date,platform' }),
+          service.from('ad_campaigns').upsert(rows, { onConflict: 'client_id,report_date,platform,level,campaign_id,adset_id,ad_id' }),
+        ]);
+      }
+    } catch { /* mirroring is secondary */ }
+
 
     return NextResponse.json({
       success: true,

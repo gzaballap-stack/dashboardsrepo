@@ -187,7 +187,8 @@ function relativeTime(d: Date | null): string {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
-export default function CampaignOverview({ startDate, endDate }: {
+export default function CampaignOverview({ startDate, endDate, clientId }: {
+  clientId?: string;   // internal Tomsi Media view: one client only
   startDate: string;
   endDate: string;
 }) {
@@ -216,6 +217,7 @@ export default function CampaignOverview({ startDate, endDate }: {
     const params = new URLSearchParams();
     if (rangeStart) params.set("start_date", rangeStart);
     if (rangeEnd) params.set("end_date", rangeEnd);
+    if (clientId) params.set("client_id", clientId);
     fetch(`/api/campaign-overview?${params}`)
       .then(r => r.json())
       .then(d => {
