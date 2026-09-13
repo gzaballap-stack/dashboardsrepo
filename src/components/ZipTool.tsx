@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import type { Pin, ZipPerfCircle } from "@/components/ZipMap";
-import { scorePerformanceZips, perfGrade } from "@/lib/zip-score";
+import { scorePerformanceZips, perfGrade, percentileLabel } from "@/lib/zip-score";
 
 const ZipMap = dynamic(() => import("@/components/ZipMap"), { ssr: false });
 
@@ -390,8 +390,11 @@ function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfD
               <div style={{ flex: 1, height: 10, borderRadius: 5, background: "rgba(0,0,0,0.081)", overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${data.score}%`, background: gc, borderRadius: 5, transition: "width 0.5s ease" }} />
               </div>
-              <span style={{ fontSize: 18, fontWeight: 800, color: "#000000" }}>{data.score}</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: "#000000", whiteSpace: "nowrap" }}>{percentileLabel(data.score)}</span>
               <span style={{ fontSize: 13, fontWeight: 800, color: gc, padding: "2px 7px", borderRadius: 5, background: `${gc}22`, border: `1px solid ${gc}44` }}>{data.grade}</span>
+            </div>
+            <div style={{ fontSize: 9, color: "#949494", marginTop: -6, marginBottom: 8 }}>
+              of US zip codes · ZipScore {data.score}
             </div>
             <ScoreBar label="Income"          value={data.score_breakdown.income} />
             <ScoreBar label="Owner Occupancy" value={data.score_breakdown.owner_occ} />

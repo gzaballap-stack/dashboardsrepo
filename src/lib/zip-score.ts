@@ -114,6 +114,37 @@ function homeAgeScore(medianYear: number): number {
   return Math.max(70 - (age - 70) * 2, 15);
 }
 
+// Where each whole-number score sits among every populated ZCTA in the country
+// (25,697 zips, Census ACS 2022, measured Sept 2026): SCORE_PERCENTILE[s] is the
+// percentage of US zips scoring below s. Re-generate if the score formula changes.
+const SCORE_PERCENTILE: number[] = [
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0.1, 0.1, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7,
+  0.9, 1, 1.3, 1.6, 1.9, 2.4, 3, 3.7, 4.4, 5.4,
+  6.5, 7.8, 9.2, 10.9, 12.9, 14.9, 17.2, 19.5, 22, 24.9,
+  28, 31.3, 34.7, 38.2, 41.9, 45.6, 49.2, 52.9, 56.7, 60.4,
+  64.1, 67.8, 71.5, 75, 78.4, 81.9, 85.3, 88.4, 91.1, 93.6,
+  95.7, 97.4, 98.7, 99.4, 99.8, 100, 100, 100, 100, 100,
+  100,
+];
+
+// 0–100: percentage of US zips this score beats.
+export function scorePercentile(score: number): number {
+  const s = Math.max(0, Math.min(100, Math.round(score)));
+  return SCORE_PERCENTILE[s];
+}
+
+// The way a person would say it: "Top 4%" for a strong zip, "Bottom 22%" for a
+// weak one. Always at least 1% so nothing reads as "Top 0%".
+export function percentileLabel(score: number): string {
+  const pct = scorePercentile(score);
+  const top = Math.max(1, Math.round(100 - pct));
+  return top <= 50 ? `Top ${top}%` : `Bottom ${Math.max(1, Math.round(pct))}%`;
+}
+
 export function scoreZip(m: ZipMetrics): ScoredZip {
   const os  = Math.round(ownerScore(m.owner_pct));
   const is_ = Math.round(incomeScore(m.median_income));
@@ -133,12 +164,11 @@ export function scoreZip(m: ZipMetrics): ScoredZip {
     0.18 * os + 0.18 * is_ + 0.13 * as_ + 0.13 * vs_ + 0.13 * pas +
     0.09 * ts + 0.04 * es + 0.07 * lts + 0.05 * ms
   );
-  // National quartiles, measured across every ZCTA in the country (Sept 2026):
-  // A is the top 25% of US zips, B the next 25%, C the next, D the bottom 25%.
-  // A zip's grade says where it stands in the country, not in its territory — so
-  // a strong suburb can legitimately have no red at all. Re-measure if the score
-  // formula changes; the quartile values are the only thing that moves.
-  const tier: ScoredZip["tier"] = score >= 83 ? "A" : score >= 76 ? "B" : score >= 68 ? "C" : "D";
+  // Grade = national quartile: A is the top 25% of US zips, B the next 25%, C the
+  // next, D the bottom 25%. It says where the zip stands in the country, not in
+  // its territory — a strong suburb can legitimately have no red at all.
+  const pct = scorePercentile(score);
+  const tier: ScoredZip["tier"] = pct >= 75 ? "A" : pct >= 50 ? "B" : pct >= 25 ? "C" : "D";
   return { ...m, score, owner_score: os, income_score: is_, age_score: as_, home_value_score: vs_, prime_age_score: pas, turnover_score: ts, equity_score: es, long_term_score: lts, mortgage_score: ms, tier };
 }
 

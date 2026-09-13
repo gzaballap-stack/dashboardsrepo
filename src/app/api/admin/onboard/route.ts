@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { geocodeZip, getZctasNearPoint, fetchZipMetrics, type ScoredZipMetrics } from '@/lib/census';
+import { percentileLabel } from '@/lib/zip-score';
 
 const PIN_COLOR = '#000000';
 
@@ -194,7 +195,7 @@ export async function POST(req: Request) {
   // them straight across without touching the content.
   const money  = (n: number) => `$${Math.round(n / 1000)}k`;
   const detail = (m: ScoredZipMetrics) =>
-    `${m.zip} — ZipScore ${m.score} · income ${money(m.median_income)} · home value ${money(m.home_value)} · ${Math.round(m.owner_pct)}% owner-occupied`;
+    `${m.zip} — ${percentileLabel(m.score)} of US zip codes · income ${money(m.median_income)} · home value ${money(m.home_value)} · ${Math.round(m.owner_pct)}% owner-occupied`;
   const byTier = (t: ScoredZipMetrics['grade']) => scored.filter(m => m.grade === t).map(m => m.zip);
   const list   = (zips: string[]) => zips.length ? zips.join(', ') : 'None';
 
@@ -229,7 +230,8 @@ export async function POST(req: Request) {
         const n = i + 1;
         return [
           [`top${n}_zip`,        m ? m.zip : '—'],
-          [`top${n}_score`,      m ? String(m.score) : '—'],
+          [`top${n}_score`,      m ? `${percentileLabel(m.score)} of US zip codes` : '—'],
+          [`top${n}_zipscore`,   m ? String(m.score) : '—'],
           [`top${n}_income`,     m ? money(m.median_income) : '—'],
           [`top${n}_home_value`, m ? money(m.home_value) : '—'],
           [`top${n}_owner`,      m ? `${Math.round(m.owner_pct)}%` : '—'],
