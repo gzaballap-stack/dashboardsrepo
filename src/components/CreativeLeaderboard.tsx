@@ -86,7 +86,7 @@ export default function CreativeLeaderboard({ startDate, endDate, clientId }: {
     } finally {
       setLoading(false);
     }
-  }, [level, model, startDate, endDate, minSpend]);
+  }, [clientId, level, model, startDate, endDate, minSpend]);
 
   useEffect(() => { load(); }, [load]);
 

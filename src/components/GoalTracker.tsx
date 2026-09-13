@@ -36,8 +36,9 @@ function ProgressBar({ value, target, isCurrency = false }: { value: number; tar
 export default function GoalTracker({ clients, startDate, endDate, lockClientId }: Props & { lockClientId?: string }) {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [metrics, setMetrics] = useState<Metrics>({});
-  const [clientId, setClientId] = useState(lockClientId ?? "");
-  useEffect(() => { if (lockClientId) setClientId(lockClientId); }, [lockClientId]);
+  const [pickedClientId, setClientId] = useState("");
+  // Locked for the Tomsi Media view; otherwise whatever the user picked.
+  const clientId = lockClientId ?? pickedClientId;
   const [adding, setAdding] = useState(false);
   const [newGoal, setNewGoal] = useState({ metric: "new_leads", target: "" });
   const [saving, setSaving] = useState(false);
