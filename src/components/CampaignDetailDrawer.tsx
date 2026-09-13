@@ -258,7 +258,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     ? (() => {
         const d = entity.data;
         if (!d.leads && !d.ad_spend) return "no_data";
-        const r = d.leads > 0 ? d.intros_booked / d.leads : 0;
+        const r = d.leads > 0 ? d.sales_calls_booked / d.leads : 0;
         if (r >= 0.15) return "excellent";
         if (r >= 0.08) return "on_target";
         if (r >= 0.04) return "above_target";
@@ -290,8 +290,8 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
             "Spend": r.ad_spend ?? 0,
             "Leads": r.leads ?? 0,
             "CPL ($)": r.cost_per_lead ?? 0,
-            "Intros Booked": r.intros_booked ?? 0,
-            "Intro Show Rate (%)": (r.intro_show_rate ?? 0) * 100,
+            "Demos Booked": r.sales_calls_booked ?? 0,
+            "Demo Show Rate (%)": r.sales_calls_booked > 0 ? (r.sales_calls_shown / r.sales_calls_booked) * 100 : 0,
             "Demos": r.sales_calls_shown ?? 0,
             "Closes": r.closes ?? 0,
             "Cash ($)": r.cash_collected ?? 0,
@@ -447,12 +447,10 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         `Campaign: ${entity.name} | ID: ${entity.id}`,
         `Date Range: ${entity.startDate} → ${entity.endDate}`,
         `Ad Spend: $${d.ad_spend.toFixed(0)} | Leads: ${d.leads} | CPL: $${d.cost_per_lead.toFixed(2)}`,
-        `Intros Booked: ${d.intros_booked} | Intros Shown: ${d.intros_shown} | Show Rate: ${(d.intro_show_rate * 100).toFixed(1)}%`,
         `Demos Booked: ${d.sales_calls_booked} | Demos Shown: ${d.sales_calls_shown}`,
         `Demo Show Rate: ${d.sales_calls_booked > 0 ? ((d.sales_calls_shown / d.sales_calls_booked) * 100).toFixed(1) : 0}%`,
         `Closes: ${d.closes} | Cash Collected: $${d.cash_collected.toFixed(0)}`,
         `Close Rate: ${d.sales_calls_shown > 0 ? ((d.closes / d.sales_calls_shown) * 100).toFixed(1) : 0}%`,
-        `Cost per Intro: $${d.intros_booked > 0 ? (d.ad_spend / d.intros_booked).toFixed(0) : "N/A"}`,
         `Cost per Demo: $${d.sales_calls_shown > 0 ? (d.ad_spend / d.sales_calls_shown).toFixed(0) : "N/A"}`,
         `Cost per Acquisition: $${d.closes > 0 ? (d.ad_spend / d.closes).toFixed(0) : "N/A"}`,
         `CTR: ${d.ctr != null ? d.ctr.toFixed(2) + "%" : "N/A"} | CPC: ${d.cpc != null ? "$" + d.cpc.toFixed(2) : "N/A"} | CPM: ${d.cpm != null ? "$" + d.cpm.toFixed(2) : "N/A"}`,
@@ -504,14 +502,12 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   const funnelStages = isBb
     ? (() => {
         const d = entity.data;
-        const top = Math.max(d.leads, d.impressions > 0 ? 1 : 0, d.intros_booked, 1);
+        const top = Math.max(d.leads, d.impressions > 0 ? 1 : 0, d.sales_calls_booked, 1);
         return [
           { label: "Impressions",    count: d.impressions,        color: "#000000", pct: 100 },
           { label: "Link Clicks",    count: d.link_clicks,        color: "#4a4a4a", pct: d.impressions > 0 ? (d.link_clicks / d.impressions) * 100 : 0 },
           { label: "Leads",          count: d.leads,              color: "#6b6b6b", pct: d.link_clicks > 0 ? (d.leads / d.link_clicks) * 100 : 0 },
-          { label: "Intros Booked",  count: d.intros_booked,      color: "#000000", pct: d.leads > 0 ? (d.intros_booked / d.leads) * 100 : 0 },
-          { label: "Intros Shown",   count: d.intros_shown,       color: "#a3e635", pct: d.intros_booked > 0 ? (d.intros_shown / d.intros_booked) * 100 : 0 },
-          { label: "Demos Booked",   count: d.sales_calls_booked, color: "#333333", pct: d.intros_shown > 0 ? (d.sales_calls_booked / d.intros_shown) * 100 : 0 },
+          { label: "Demos Booked",   count: d.sales_calls_booked, color: "#333333", pct: d.leads > 0 ? (d.sales_calls_booked / d.leads) * 100 : 0 },
           { label: "Demos Shown",    count: d.sales_calls_shown,  color: "#4a4a4a", pct: d.sales_calls_booked > 0 ? (d.sales_calls_shown / d.sales_calls_booked) * 100 : 0 },
           { label: "Closes",         count: d.closes,             color: "#6b6b6b", pct: d.sales_calls_shown > 0 ? (d.closes / d.sales_calls_shown) * 100 : 0 },
         ];
@@ -531,7 +527,6 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   const renderLeadGen = () => {
     if (isBb) {
       const d = entity.data;
-      const cpi = d.intros_booked > 0 ? d.ad_spend / d.intros_booked : 0;
       return (
         <SectionCard title="Lead Generation" badge={<span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ color: st.color, background: st.bg }}>{d.ad_spend > 0 ? "ACTIVE" : "NO DATA"}</span>}>
           <MetricRow label="Ad Spend" value={d.ad_spend > 0 ? fmt$(d.ad_spend) : "—"} />
@@ -540,7 +535,6 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
           <MetricRow label="CTR" value={d.ctr != null ? fmtPct(d.ctr) : "—"} />
           <MetricRow label="CPC" value={d.cpc != null ? fmtDec(d.cpc) : "—"} />
           <MetricRow label="CPM" value={d.cpm != null ? fmtDec(d.cpm) : "—"} />
-          <MetricRow label="Cost per Intro" value={cpi > 0 ? fmt$(cpi) : "—"} />
         </SectionCard>
       );
     } else {
@@ -596,10 +590,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       const closeRate = d.sales_calls_shown > 0 ? (d.closes / d.sales_calls_shown) * 100 : 0;
       const cpDemo = d.sales_calls_shown > 0 ? d.ad_spend / d.sales_calls_shown : 0;
       return (
-        <SectionCard title="Intros & Demos">
-          <MetricRow label="Intros Booked" value={fmtN(d.intros_booked)} />
-          <MetricRow label="Intros Shown" value={fmtN(d.intros_shown)} />
-          <MetricRow label="Intro Show Rate" value={d.intros_booked > 0 ? fmtPct(d.intro_show_rate * 100) : "—"} />
+        <SectionCard title="Demos">
           <MetricRow label="Demos Booked" value={fmtN(d.sales_calls_booked)} />
           <MetricRow label="Demos Shown" value={fmtN(d.sales_calls_shown)} />
           <MetricRow label="Demo Show Rate" value={demoShowRate > 0 ? fmtPct(demoShowRate) : "—"} />
@@ -630,8 +621,8 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       ? (() => {
           const d = entity.data;
           if (!d.leads) return "No Data";
-          const cbr = d.leads > 0 ? d.intros_booked / d.leads : 0;
-          const showRate = d.intros_booked > 0 ? d.intros_shown / d.intros_booked : 0;
+          const cbr = d.leads > 0 ? d.sales_calls_booked / d.leads : 0;
+          const showRate = d.sales_calls_booked > 0 ? d.sales_calls_shown / d.sales_calls_booked : 0;
           const closeRate = d.sales_calls_shown > 0 ? d.closes / d.sales_calls_shown : 0;
           if (d.leads === 0) return "Targeting";
           if (cbr < 0.05) return "Funnel";

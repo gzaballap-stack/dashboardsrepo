@@ -159,6 +159,22 @@ or User Management breaks on V1 (its query selects `allowed_views`).
 
 ---
 
+## 2026-09-13 — B2B is a one-call process; intro stage removed from the views
+
+- The user dropped the 15-minute intro. B2B funnel is now lead → demo booked →
+  demo shown → close. Removed from B2B Tracking and the drawer: Booked Intros,
+  Intro Show Rate, Cost per Intro, Straight to Demo, and the two intro funnel
+  steps. Status/bottleneck logic, the campaign table's Demos/CP Demo/L2D columns
+  and the AI context now key off `sales_calls_*`. Ingestion is untouched — the
+  Intro Booked/Shown Make scenarios still exist and still accept events.
+- **B2B leads are not reaching the dashboard.** Meta reports 10 lead-form leads
+  on the new B2B campaign (8–12 Sept); one arrived (the manual test, 9 Sept).
+  The Make New Lead scenario has run exactly once since the fix, so the GHL
+  New Lead workflow is not firing for Meta lead-form contacts — a GHL trigger /
+  filter problem, not ours. Client-side ingestion is healthy (20–40 dials/day).
+- `GHL_API_KEY` returns 401 "Invalid JWT" (13 Sept) — likely rotated. Attribution
+  refresh depends on it.
+
 ## 2026-09-09 — All Make scenarios rerouted to app.tomsimedia.com (outage fix)
 
 - **All funnel ingestion was down from the evening of 8 Sept.** 15 Make

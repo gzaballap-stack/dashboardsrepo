@@ -79,7 +79,7 @@ function fmtDec(n: number, digits = 2) {
 
 function computeStatus(d: B2BMetrics): string {
   if (!d.leads && !d.ad_spend) return "no_data";
-  const cbr = d.leads > 0 ? d.intros_booked / d.leads : 0;
+  const cbr = d.leads > 0 ? d.sales_calls_booked / d.leads : 0;
   if (cbr >= 0.15) return "excellent";
   if (cbr >= 0.08) return "on_target";
   if (cbr >= 0.04) return "above_target";
@@ -88,8 +88,8 @@ function computeStatus(d: B2BMetrics): string {
 
 function computeBottleneck(d: B2BMetrics): { label: string; action: string } {
   if (!d.leads && !d.ad_spend) return { label: "No Data", action: "No events yet" };
-  const cbr       = d.leads > 0 ? d.intros_booked / d.leads : 0;
-  const showRate   = d.intros_booked > 0 ? d.intros_shown / d.intros_booked : 0;
+  const cbr       = d.leads > 0 ? d.sales_calls_booked / d.leads : 0;
+  const showRate   = d.sales_calls_booked > 0 ? d.sales_calls_shown / d.sales_calls_booked : 0;
   const closeRate  = d.sales_calls_shown > 0 ? d.closes / d.sales_calls_shown : 0;
   if (d.leads === 0)    return { label: "Targeting",    action: "No leads — review audience & creative" };
   if (cbr < 0.05)      return { label: "Funnel",       action: "Low booking rate — improve follow-up" };
@@ -169,9 +169,9 @@ export default function B2BTracking({ startDate, endDate }: Props) {
 
   if (!data) return null;
 
-  const cbr    = data.leads > 0 ? data.intros_booked / data.leads : 0;
-  const cpa    = data.intros_booked > 0 ? data.ad_spend / data.intros_booked : 0;
-  const l2a    = data.leads > 0 ? data.intros_booked / data.leads : 0;
+  const cbr    = data.leads > 0 ? data.sales_calls_booked / data.leads : 0;
+  const cpa    = data.sales_calls_booked > 0 ? data.ad_spend / data.sales_calls_booked : 0;
+  const l2a    = data.leads > 0 ? data.sales_calls_booked / data.leads : 0;
   const { label: bottleneck, action } = computeBottleneck(data);
   const bnStyle  = BOTTLENECK_STYLE[bottleneck] ?? BOTTLENECK_STYLE["No Data"];
   const statusKey = computeStatus(data);
@@ -185,13 +185,10 @@ export default function B2BTracking({ startDate, endDate }: Props) {
       {/* ── Row 1: Pipeline ── */}
       <section>
         <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Pipeline</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiCard label="Ad Spend"           value={data.ad_spend > 0 ? fmt$(data.ad_spend) : "—"} />
           <KpiCard label="Leads"              value={fmtN(data.leads)} />
           <KpiCard label="Lead → Sales Call"  value={data.leads > 0 ? fmtPct(data.lead_to_sales_call_rate) : "—"} accent />
-          <KpiCard label="Straight to Demo"   value={data.tracked_contacts > 0 ? fmtN(data.direct_sales_calls) : "—"} />
-          <KpiCard label="Booked Intros"      value={fmtN(data.intros_booked)} />
-          <KpiCard label="Intro Show Rate"    value={data.intros_booked > 0 ? fmtPct((data.intros_shown / data.intros_booked) * 100) : "—"} accent />
           <KpiCard label="Booked Demos"       value={fmtN(data.sales_calls_booked)} />
           <KpiCard label="Demos"              value={fmtN(data.sales_calls_shown)} accent />
           <KpiCard label="Demo Show Rate"     value={data.sales_calls_booked > 0 ? fmtPct((data.sales_calls_shown / data.sales_calls_booked) * 100) : "—"} accent />
@@ -201,10 +198,9 @@ export default function B2BTracking({ startDate, endDate }: Props) {
       {/* ── Row 2: Results ── */}
       <section>
         <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Results</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <KpiCard label="Closes"               value={fmtN(data.closes)} accent />
           <KpiCard label="Closing Rate"         value={data.sales_calls_shown > 0 ? fmtPct((data.closes / data.sales_calls_shown) * 100) : "—"} accent />
-          <KpiCard label="Cost per Intro"       value={data.intros_booked > 0 ? fmt$(data.ad_spend / data.intros_booked) : "—"} />
           <KpiCard label="Cost per Demo"        value={data.sales_calls_shown > 0 ? fmt$(data.ad_spend / data.sales_calls_shown) : "—"} />
           <KpiCard label="Cost per Acquisition" value={data.closes > 0 ? fmt$(data.ad_spend / data.closes) : "—"} />
           <KpiCard label="Cash Collected"       value={data.cash_collected > 0 ? fmt$(data.cash_collected) : "—"} accent />
@@ -253,11 +249,11 @@ export default function B2BTracking({ startDate, endDate }: Props) {
 
                   <div className="grid grid-cols-3 gap-x-3 gap-y-2.5 mt-3">
                     <B2BStat label="Spend"     value={campSpend > 0 ? fmt$(campSpend) : "—"} strong />
-                    <B2BStat label="Schedules" value={singleCamp && data.intros_booked > 0 ? fmtN(data.intros_booked) : "—"} strong />
+                    <B2BStat label="Demos Booked" value={singleCamp && data.sales_calls_booked > 0 ? fmtN(data.sales_calls_booked) : "—"} strong />
                     <B2BStat label="CPL"       value={singleCamp && data.cost_per_lead > 0 ? fmt$(data.cost_per_lead) : "—"} />
                     <B2BStat label="CTR"       value={campCtr != null ? fmtPct(campCtr) : "—"} />
                     <B2BStat label="CPC"       value={campCpc != null ? `$${fmtDec(campCpc)}` : "—"} />
-                    <B2BStat label="Demos"     value={singleCamp && data.intros_shown > 0 ? fmtN(data.intros_shown) : "—"} strong />
+                    <B2BStat label="Demos"     value={singleCamp && data.sales_calls_shown > 0 ? fmtN(data.sales_calls_shown) : "—"} strong />
                   </div>
 
                   {singleCamp && action && (
@@ -278,7 +274,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
               <tr style={{ background: "#f7f7f7", color: "#6b6b6b" }}>
                 <th className="text-left font-medium px-4 py-3">Campaign</th>
                 <th className="text-right font-medium px-3 py-3">Spend</th>
-                <th className="text-right font-medium px-3 py-3">Schedules</th>
+                <th className="text-right font-medium px-3 py-3">Demos Booked</th>
                 <th className="text-right font-medium px-3 py-3">CPL</th>
                 <th className="text-right font-medium px-3 py-3">CTR</th>
                 <th className="text-right font-medium px-3 py-3">CPC</th>
@@ -330,7 +326,7 @@ export default function B2BTracking({ startDate, endDate }: Props) {
                     </td>
                     {/* Schedules — account total (per-campaign pending attribution) */}
                     <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
-                      {singleCamp && data.intros_booked > 0 ? fmtN(data.intros_booked) : singleCamp ? dash : dash}
+                      {singleCamp && data.sales_calls_booked > 0 ? fmtN(data.sales_calls_booked) : dash}
                     </td>
                     {/* CPL */}
                     <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
@@ -350,15 +346,15 @@ export default function B2BTracking({ startDate, endDate }: Props) {
                     </td>
                     {/* Demos */}
                     <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
-                      {singleCamp && data.intros_shown > 0 ? fmtN(data.intros_shown) : dash}
+                      {singleCamp && data.sales_calls_shown > 0 ? fmtN(data.sales_calls_shown) : dash}
                     </td>
                     {/* CP Demo */}
                     <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
-                      {singleCamp && data.intros_shown > 0 ? fmt$(data.ad_spend / data.intros_shown) : dash}
+                      {singleCamp && data.sales_calls_shown > 0 ? fmt$(data.ad_spend / data.sales_calls_shown) : dash}
                     </td>
                     {/* L2D % */}
                     <td className="text-right px-3 py-3" style={{ color: "#111111" }}>
-                      {singleCamp && data.leads > 0 ? fmtPct((data.intros_shown / data.leads) * 100) : dash}
+                      {singleCamp && data.leads > 0 ? fmtPct((data.sales_calls_shown / data.leads) * 100) : dash}
                     </td>
                     {/* Bottleneck */}
                     <td className="px-3 py-3">
