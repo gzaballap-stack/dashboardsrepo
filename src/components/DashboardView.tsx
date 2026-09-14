@@ -495,9 +495,13 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
     const tomsi = topSection === "tomsi_media";
     const activePreset = tomsi ? tomsiPreset : preset;
     const { start, end } = activePreset === "custom" ? { start: customStart, end: customEnd } : getDateRange(activePreset);
+    // In the Tomsi section, never fall back to all-clients: if the internal
+    // client id isn't resolved yet, wait for it rather than flashing everyone's
+    // combined numbers.
+    const internalId = tomsi ? clients.find(c => c.is_internal)?.id : undefined;
+    if (tomsi && !internalId) return;
     setMetricsLoading(true);
     const params = new URLSearchParams();
-    const internalId = tomsi ? clients.find(c => c.is_internal)?.id : undefined;
     if (internalId) params.set("client_id", internalId);
     else if (selectedClientId === "__live__") params.set("live_only", "true");
     else if (selectedClientId) params.set("client_id", selectedClientId);
