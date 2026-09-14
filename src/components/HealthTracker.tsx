@@ -70,7 +70,13 @@ type DietPlan = {
   showFat: boolean;
 };
 
-type SplitExercise = { id: string; name: string; sets: string; reps: string; notes: string };
+// "" means not assigned to a muscle group — warm-ups, cardio, anything that
+// shouldn't count towards weekly volume.
+type MuscleId = "" | "chest" | "back" | "shoulders" | "biceps" | "triceps" | "legs";
+
+type SplitExercise = {
+  id: string; name: string; sets: string; reps: string; notes: string; muscle: MuscleId;
+};
 
 type SplitDay = { id: string; weekday: string; title: string; rest: boolean; exercises: SplitExercise[] };
 
@@ -94,6 +100,39 @@ function macrosFor(plan: DietPlan) {
 }
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+const MUSCLE_GROUPS: { id: Exclude<MuscleId, "">; label: string }[] = [
+  { id: "chest",     label: "Chest" },
+  { id: "back",      label: "Back" },
+  { id: "shoulders", label: "Shoulders" },
+  { id: "biceps",    label: "Biceps" },
+  { id: "triceps",   label: "Triceps" },
+  { id: "legs",      label: "Legs" },
+];
+
+const MUSCLE_IDS = new Set<string>(MUSCLE_GROUPS.map(m => m.id));
+
+// Weekly sets per muscle group across a whole programme. Sets is a free text
+// box ("4", but also "3-4" or "AMRAP"), so anything that isn't a plain number
+// counts as nothing rather than breaking the tally.
+function weeklyVolume(prog: SplitProgramme) {
+  const byMuscle = new Map<string, number>(MUSCLE_GROUPS.map(m => [m.id, 0]));
+  let unassigned = 0;
+  let unreadable = 0;
+
+  for (const day of prog.days) {
+    if (day.rest) continue;
+    for (const ex of day.exercises) {
+      if (!ex.name.trim() && !ex.sets.trim()) continue;
+      const parsed = parseDecimal(ex.sets);
+      const sets = parsed.ok ? (parsed.value ?? 0) : 0;
+      if (!parsed.ok) unreadable++;
+      if (!ex.muscle) { unassigned += sets; continue; }
+      byMuscle.set(ex.muscle, (byMuscle.get(ex.muscle) ?? 0) + sets);
+    }
+  }
+  return { byMuscle, unassigned, unreadable };
+}
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -166,6 +205,7 @@ function normalizeProgramme(raw: unknown, fallbackName: string): SplitProgramme 
           sets: e?.sets ?? "",
           reps: e?.reps ?? "",
           notes: e?.notes ?? "",
+          muscle: MUSCLE_IDS.has(e?.muscle as string) ? (e!.muscle as MuscleId) : "",
         })),
       };
     }),
@@ -2105,6 +2145,25 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
                         {/* Kept together so sets and reps wrap as a pair rather
                             than splitting across two lines. */}
                         <div style={{ display: "flex", gap: 7, alignItems: "center", flex: "0 0 auto" }}>
+                          {/* Which muscle this exercise's sets count towards.
+                              A native select is one tap on a phone, where six
+                              chips per exercise would swamp a twenty-lift day. */}
+                          <select
+                            value={ex.muscle}
+                            onChange={e => patchDay(day.id, {
+                              exercises: day.exercises.map(x =>
+                                x.id === ex.id ? { ...x, muscle: e.target.value as MuscleId } : x),
+                            })}
+                            aria-label="Muscle group"
+                            style={{
+                              ...CELL, width: 104, fontSize: 12, padding: "8px 6px",
+                              color: ex.muscle ? INK : FAINT, appearance: "auto",
+                            }}>
+                            <option value="">Muscle</option>
+                            {MUSCLE_GROUPS.map(m => (
+                              <option key={m.id} value={m.id}>{m.label}</option>
+                            ))}
+                          </select>
                           <TextCell value={ex.sets}
                             onChange={v => patchDay(day.id, {
                               exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, sets: v } : e)),
@@ -2131,13 +2190,16 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
               <div style={{ marginTop: 12 }}>
                 <AddButton label="Add exercise"
                   onClick={() => patchDay(day.id, {
-                    exercises: [...day.exercises, { id: uid(), name: "", sets: "", reps: "", notes: "" }],
+                    exercises: [...day.exercises,
+                      { id: uid(), name: "", sets: "", reps: "", notes: "", muscle: "" as MuscleId }],
                   })} />
               </div>
             </>
           )}
         </div>
       ))}
+
+      <WeeklyVolume prog={plan} />
 
       <PlanNotes value={plan.notes} onChange={v => onChange({ ...plan, notes: v })}
         placeholder="Warm-ups, cardio, deload weeks, anything that isn't a lift." />
@@ -2152,6 +2214,59 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
         }}>
           {ghost.name}
         </div>
+      )}
+    </div>
+  );
+}
+
+// Weekly sets per muscle group for one programme. Sits under the days, because
+// it is the thing you check after laying them out.
+function WeeklyVolume({ prog }: { prog: SplitProgramme }) {
+  const { byMuscle, unassigned, unreadable } = useMemo(() => weeklyVolume(prog), [prog]);
+
+  const total = MUSCLE_GROUPS.reduce((n, m) => n + (byMuscle.get(m.id) ?? 0), 0);
+  const most = Math.max(1, ...MUSCLE_GROUPS.map(m => byMuscle.get(m.id) ?? 0));
+
+  return (
+    <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 18 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: INK }}>Weekly sets</p>
+        <p style={{ fontSize: 11, color: FAINT }}>
+          {total ? `${fmt(total, 0)} sets a week across the programme` : "Tag each exercise with a muscle group to count it"}
+        </p>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        {MUSCLE_GROUPS.map(m => {
+          const sets = byMuscle.get(m.id) ?? 0;
+          return (
+            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: sets ? INK : FAINT, width: 76, flexShrink: 0 }}>
+                {m.label}
+              </span>
+              <span style={{ flex: 1, height: 8, borderRadius: 4, background: "rgba(0,0,0,0.055)", overflow: "hidden" }}>
+                <span style={{
+                  display: "block", height: "100%", borderRadius: 4,
+                  width: `${(sets / most) * 100}%`, background: INK,
+                  transition: "width 220ms ease",
+                }} />
+              </span>
+              <span style={{
+                fontSize: 13.5, fontWeight: 700, color: sets ? INK : "rgba(0,0,0,0.2)",
+                width: 32, textAlign: "right", flexShrink: 0,
+              }}>
+                {fmt(sets, 0)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {(unassigned > 0 || unreadable > 0) && (
+        <p style={{ fontSize: 11, color: FAINT, marginTop: 12, lineHeight: 1.5 }}>
+          {unassigned > 0 && `${fmt(unassigned, 0)} set${unassigned === 1 ? "" : "s"} aren't counted — those exercises have no muscle group. `}
+          {unreadable > 0 && `${unreadable} exercise${unreadable === 1 ? " has a set count that isn't" : "s have set counts that aren't"} a plain number, so ${unreadable === 1 ? "it counts" : "they count"} as nothing.`}
+        </p>
       )}
     </div>
   );
@@ -2304,6 +2419,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
 
 
 
