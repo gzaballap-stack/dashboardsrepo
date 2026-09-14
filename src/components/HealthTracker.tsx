@@ -1124,7 +1124,10 @@ function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, o
           );
         })}
         {exercises.length === 0 && (
-          <p style={{ fontSize: 12, color: FAINT }}>No exercises set up yet — add them in settings.</p>
+          <p style={{ fontSize: 12, color: FAINT, lineHeight: 1.5 }}>
+            Nothing to log yet. The lifts here come from whichever programme is
+            active on the Split tab — build one and mark it active.
+          </p>
         )}
       </div>
 
@@ -2012,21 +2015,12 @@ function SettingsSheet({ settings, onClose, onSaved }: {
   onClose: () => void;
   onSaved: (s: Settings) => void;
 }) {
-  const [exercises, setExercises] = useState<string[]>(settings.exercises ?? []);
   const [unit, setUnit] = useState(settings.unit ?? "kg");
   const [lengthUnit, setLengthUnit] = useState(settings.length_unit ?? "cm");
   const [goal, setGoal] = useState(settings.goal_note ?? "");
   const [shareToken, setShareToken] = useState<string | null>(settings.share_token);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [newName, setNewName] = useState("");
-
-  // How many lifts the weekly log gains from the active programme beyond what is
-  // listed here — the point being that this list does not have to repeat them.
-  const fromProgramme = useMemo(() => {
-    const base = mergeExerciseNames(exercises);
-    return mergeExerciseNames(base, activeProgrammeExercises(settings.split_plan)).length - base.length;
-  }, [exercises, settings.split_plan]);
 
   const shareUrl = shareToken && typeof window !== "undefined"
     ? `${window.location.origin}/api/lift-log/export?token=${shareToken}`
@@ -2048,7 +2042,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
 
   async function handleSave() {
     setSaving(true);
-    await patch({ exercises, unit, length_unit: lengthUnit, goal_note: goal });
+    await patch({ unit, length_unit: lengthUnit, goal_note: goal });
     setSaving(false);
     onClose();
   }
@@ -2068,63 +2062,6 @@ function SettingsSheet({ settings, onClose, onSaved }: {
       }
     >
       <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: FAINT, marginBottom: 8 }}>
-        Exercises
-      </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {exercises.map((name, i) => (
-          <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input
-              value={name}
-              onChange={e => setExercises(p => p.map((x, j) => (j === i ? e.target.value : x)))}
-              style={{
-                flex: 1, padding: "9px 12px", borderRadius: 10, fontSize: 15,
-                background: "#ffffff", border: "1px solid rgba(0,0,0,0.14)", color: INK, outline: "none",
-              }}
-            />
-            <button
-              onClick={() => setExercises(p => p.filter((_, j) => j !== i))}
-              aria-label={`Remove ${name}`}
-              style={{ padding: 8, borderRadius: 9, background: "rgba(0,0,0,0.05)", color: MUTED, lineHeight: 0 }}>
-              <svg width={15} height={15} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-              </svg>
-            </button>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === "Enter" && newName.trim()) {
-                setExercises(p => [...p, newName.trim()]);
-                setNewName("");
-              }
-            }}
-            placeholder="Add an exercise"
-            style={{
-              flex: 1, padding: "9px 12px", borderRadius: 10, fontSize: 15,
-              background: "#ffffff", border: "1px dashed rgba(0,0,0,0.18)", color: INK, outline: "none",
-            }}
-          />
-          <button
-            onClick={() => { if (newName.trim()) { setExercises(p => [...p, newName.trim()]); setNewName(""); } }}
-            style={{ ...BTN_QUIET, padding: "9px 14px" }}>
-            Add
-          </button>
-        </div>
-      </div>
-      <p style={{ fontSize: 11, color: FAINT, marginTop: 8, lineHeight: 1.5 }}>
-        {fromProgramme > 0 && (
-          <>
-            Your active programme adds {fromProgramme} more on top of these, so you
-            only need to list lifts here that it doesn&apos;t already cover.{" "}
-          </>
-        )}
-        Renaming an exercise starts its history fresh — past weeks keep the old name.
-      </p>
-
-      <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: FAINT, margin: "20px 0 8px" }}>
         Units
       </p>
       <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
@@ -2218,6 +2155,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
 
 
 
