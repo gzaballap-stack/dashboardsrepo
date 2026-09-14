@@ -76,6 +76,9 @@ type MuscleId = "" | "chest" | "back" | "shoulders" | "biceps" | "triceps" | "le
 
 type SplitExercise = {
   id: string; name: string; sets: string; reps: string; notes: string; muscle: MuscleId;
+  // A lift you do if there's time. Its sets are counted apart from the rest, so
+  // the headline volume is what you're committed to, not your best case.
+  optional: boolean;
 };
 
 type SplitDay = { id: string; weekday: string; title: string; rest: boolean; exercises: SplitExercise[] };
@@ -117,6 +120,7 @@ const MUSCLE_IDS = new Set<string>(MUSCLE_GROUPS.map(m => m.id));
 // counts as nothing rather than breaking the tally.
 function weeklyVolume(prog: SplitProgramme) {
   const byMuscle = new Map<string, number>(MUSCLE_GROUPS.map(m => [m.id, 0]));
+  const optionalByMuscle = new Map<string, number>(MUSCLE_GROUPS.map(m => [m.id, 0]));
   let unassigned = 0;
   let unreadable = 0;
 
@@ -128,10 +132,11 @@ function weeklyVolume(prog: SplitProgramme) {
       const sets = parsed.ok ? (parsed.value ?? 0) : 0;
       if (!parsed.ok) unreadable++;
       if (!ex.muscle) { unassigned += sets; continue; }
-      byMuscle.set(ex.muscle, (byMuscle.get(ex.muscle) ?? 0) + sets);
+      const into = ex.optional ? optionalByMuscle : byMuscle;
+      into.set(ex.muscle, (into.get(ex.muscle) ?? 0) + sets);
     }
   }
-  return { byMuscle, unassigned, unreadable };
+  return { byMuscle, optionalByMuscle, unassigned, unreadable };
 }
 
 function uid() {
@@ -206,6 +211,7 @@ function normalizeProgramme(raw: unknown, fallbackName: string): SplitProgramme 
           reps: e?.reps ?? "",
           notes: e?.notes ?? "",
           muscle: MUSCLE_IDS.has(e?.muscle as string) ? (e!.muscle as MuscleId) : "",
+          optional: e?.optional === true,
         })),
       };
     }),
@@ -2113,7 +2119,11 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
                     <div key={ex.id}
                       data-drop={`ex:${ex.id}`}
                       style={{
-                        padding: 10, borderRadius: 12, background: "rgba(0,0,0,0.022)",
+                        padding: 10, borderRadius: 12,
+                        // An optional lift is outlined rather than filled, so a
+                        // day's committed work reads at a glance.
+                        background: ex.optional ? "transparent" : "rgba(0,0,0,0.022)",
+                        border: ex.optional ? "1px dashed rgba(0,0,0,0.16)" : "1px solid transparent",
                         display: "flex", flexDirection: "column", gap: 7,
                         opacity: dragId === ex.id ? 0.4 : 1,
                         boxShadow: dropZone === `ex:${ex.id}` && dragId !== ex.id
@@ -2178,11 +2188,26 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
                             onClick={() => patchDay(day.id, { exercises: day.exercises.filter(e => e.id !== ex.id) })} />
                         </div>
                       </div>
-                      <TextCell value={ex.notes}
-                        onChange={v => patchDay(day.id, {
-                          exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, notes: v } : e)),
-                        })}
-                        placeholder="Tempo, rest, cues — optional" style={{ fontSize: 13 }} />
+                      {/* Shares the notes line rather than crowding the row
+                          above, which is already full at phone width. */}
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <label style={{
+                          display: "flex", alignItems: "center", gap: 5, cursor: "pointer",
+                          flexShrink: 0, padding: "0 2px",
+                        }}>
+                          <input type="checkbox" checked={ex.optional}
+                            onChange={e => patchDay(day.id, {
+                              exercises: day.exercises.map(x =>
+                                x.id === ex.id ? { ...x, optional: e.target.checked } : x),
+                            })} />
+                          <span style={{ fontSize: 11.5, color: ex.optional ? INK : MUTED }}>Optional</span>
+                        </label>
+                        <TextCell value={ex.notes}
+                          onChange={v => patchDay(day.id, {
+                            exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, notes: v } : e)),
+                          })}
+                          placeholder="Tempo, rest, cues" style={{ flex: 1, minWidth: 0, fontSize: 13 }} />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2191,7 +2216,7 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
                 <AddButton label="Add exercise"
                   onClick={() => patchDay(day.id, {
                     exercises: [...day.exercises,
-                      { id: uid(), name: "", sets: "", reps: "", notes: "", muscle: "" as MuscleId }],
+                      { id: uid(), name: "", sets: "", reps: "", notes: "", muscle: "" as MuscleId, optional: false }],
                   })} />
               </div>
             </>
@@ -2222,40 +2247,56 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
 // Weekly sets per muscle group for one programme. Sits under the days, because
 // it is the thing you check after laying them out.
 function WeeklyVolume({ prog }: { prog: SplitProgramme }) {
-  const { byMuscle, unassigned, unreadable } = useMemo(() => weeklyVolume(prog), [prog]);
+  const { byMuscle, optionalByMuscle, unassigned, unreadable } = useMemo(() => weeklyVolume(prog), [prog]);
 
   const total = MUSCLE_GROUPS.reduce((n, m) => n + (byMuscle.get(m.id) ?? 0), 0);
-  const most = Math.max(1, ...MUSCLE_GROUPS.map(m => byMuscle.get(m.id) ?? 0));
+  const optionalTotal = MUSCLE_GROUPS.reduce((n, m) => n + (optionalByMuscle.get(m.id) ?? 0), 0);
+  // Bars are scaled to the biggest group including its optional work, so the
+  // solid and dashed parts stay comparable across rows.
+  const most = Math.max(1, ...MUSCLE_GROUPS.map(m =>
+    (byMuscle.get(m.id) ?? 0) + (optionalByMuscle.get(m.id) ?? 0)));
 
   return (
     <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 18 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
         <p style={{ fontSize: 13, fontWeight: 700, color: INK }}>Weekly sets</p>
         <p style={{ fontSize: 11, color: FAINT }}>
-          {total ? `${fmt(total, 0)} sets a week across the programme` : "Tag each exercise with a muscle group to count it"}
+          {total || optionalTotal
+            ? `${fmt(total, 0)} sets a week${optionalTotal ? `, plus ${fmt(optionalTotal, 0)} if you do the optional work` : ""}`
+            : "Tag each exercise with a muscle group to count it"}
         </p>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
         {MUSCLE_GROUPS.map(m => {
           const sets = byMuscle.get(m.id) ?? 0;
+          const extra = optionalByMuscle.get(m.id) ?? 0;
           return (
             <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: sets ? INK : FAINT, width: 76, flexShrink: 0 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: sets || extra ? INK : FAINT, width: 76, flexShrink: 0 }}>
                 {m.label}
               </span>
-              <span style={{ flex: 1, height: 8, borderRadius: 4, background: "rgba(0,0,0,0.055)", overflow: "hidden" }}>
+              <span style={{
+                flex: 1, height: 8, borderRadius: 4, background: "rgba(0,0,0,0.055)",
+                overflow: "hidden", display: "flex",
+              }}>
                 <span style={{
-                  display: "block", height: "100%", borderRadius: 4,
-                  width: `${(sets / most) * 100}%`, background: INK,
+                  height: "100%", width: `${(sets / most) * 100}%`, background: INK,
+                  transition: "width 220ms ease",
+                }} />
+                <span style={{
+                  height: "100%", width: `${(extra / most) * 100}%`, background: "rgba(0,0,0,0.26)",
                   transition: "width 220ms ease",
                 }} />
               </span>
               <span style={{
                 fontSize: 13.5, fontWeight: 700, color: sets ? INK : "rgba(0,0,0,0.2)",
-                width: 32, textAlign: "right", flexShrink: 0,
+                minWidth: 32, textAlign: "right", flexShrink: 0,
               }}>
                 {fmt(sets, 0)}
+                {extra > 0 && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: MUTED }}> +{fmt(extra, 0)}</span>
+                )}
               </span>
             </div>
           );
@@ -2419,6 +2460,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
 
 
 
