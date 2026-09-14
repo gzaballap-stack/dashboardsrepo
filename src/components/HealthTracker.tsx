@@ -9,7 +9,7 @@ import { mergeExerciseNames, activeProgrammeExercises, parseDecimal } from "@/li
    Four tabs over one person's data:
      Calendar  — the weekly log. One row per week, keyed to that week's Monday.
      Progress  — the same rows read back as stats and charts.
-     Diet      — a standing daily eating plan with macro targets.
+     Diet      — a standing daily eating plan; its macros are summed from the food.
      Split     — a standing weekly training plan.
 
    The log is rows in `lift_entries`. The two plans are documents on that user's
@@ -62,7 +62,6 @@ type Meal = { id: string; name: string; time: string; items: DietItem[] };
 type DietPlan = {
   id: string;
   name: string;
-  targets: Record<Macro, number | null>;
   meals: Meal[];
   notes: string;
   // Calories and protein are always tracked. Carbs and fat are opt-out per
@@ -105,17 +104,13 @@ function uid() {
 // collection. Both shapes have to survive a read.
 
 function normalizeDietPlan(raw: unknown, fallbackName: string): DietPlan {
-  const p = (raw ?? {}) as Partial<DietPlan>;
-  const targets = (p.targets ?? {}) as Partial<Record<Macro, number | null>>;
+  const p = (raw ?? {}) as Partial<DietPlan> & { targets?: unknown };
   return {
     id: p.id ?? uid(),
     name: p.name?.trim() ? p.name : fallbackName,
-    targets: {
-      kcal: targets.kcal ?? null,
-      protein: targets.protein ?? null,
-      carbs: targets.carbs ?? null,
-      fat: targets.fat ?? null,
-    },
+    // Plans used to carry hand-typed daily targets. They are gone: the macros a
+    // plan comes to are now summed from its food, so the headline figure can't
+    // disagree with what the plan actually is. Old `targets` are simply dropped.
     meals: (Array.isArray(p.meals) ? p.meals : []).map(m => ({
       id: m?.id ?? uid(),
       name: m?.name ?? "",
@@ -143,7 +138,7 @@ function normalizeDiet(raw: unknown): DietDoc {
   const plans = Array.isArray(doc.plans)
     ? doc.plans.map((p, i) => normalizeDietPlan(p, `Plan ${i + 1}`))
     // A pre-collection document: one unnamed plan. Anything else is empty.
-    : doc.meals !== undefined || (doc as { targets?: unknown }).targets !== undefined
+    : doc.meals !== undefined || (doc as { targets?: unknown }).targets !== undefined // legacy marker
       ? [normalizeDietPlan(doc, "My plan")]
       : [];
   const activeId = plans.some(p => p.id === doc.activeId) ? doc.activeId! : plans[0]?.id ?? null;
@@ -192,7 +187,6 @@ function normalizeSplit(raw: unknown): SplitDoc {
 function emptyDietPlan(name: string): DietPlan {
   return {
     id: uid(), name,
-    targets: { kcal: null, protein: null, carbs: null, fat: null },
     meals: [], notes: "", showCarbs: true, showFat: true,
   };
 }
@@ -1559,10 +1553,8 @@ function DietTab({ doc, onChange }: { doc: DietDoc; onChange: (d: DietDoc) => vo
         describe={p => {
           const items = p.meals.flatMap(m => m.items);
           const planned = (key: Macro) => items.reduce((s, i) => s + (i[key] ?? 0), 0);
-          // The target is the point of the plan; what the meals add up to is
-          // the fallback for a plan that has food in it but no target set.
-          const kcal = p.targets.kcal ?? (items.length ? planned("kcal") : null);
-          const protein = p.targets.protein ?? (items.length ? planned("protein") : null);
+          const kcal = items.length ? planned("kcal") : null;
+          const protein = items.length ? planned("protein") : null;
           return {
             headline: kcal === null ? "—" : fmt(kcal, 0),
             headlineUnit: "kcal a day",
@@ -1646,10 +1638,11 @@ function DietPlanEditor({ plan, onChange: update }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
-      {/* Targets vs. what the plan actually adds up to */}
+      {/* What the plan comes to. Nothing to fill in — it is the sum of the food
+          below, so it can never drift from what the plan actually is. */}
       <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 18 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 2 }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: INK }}>Daily targets</p>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: INK }}>Daily macros</p>
           <div style={{ display: "flex", gap: 12, marginLeft: "auto" }}>
             {([["showCarbs", "Carbs"], ["showFat", "Fat"]] as const).map(([key, label]) => (
               <label key={key} style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
@@ -1660,46 +1653,22 @@ function DietPlanEditor({ plan, onChange: update }: {
             ))}
           </div>
         </div>
-        <p style={{ fontSize: 11, color: FAINT, marginBottom: 14 }}>
-          Nothing here is required — fill in only what you count. What the meals
-          below add up to is shown against each target.
-        </p>
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}>
-          {shown.map(({ key, label, unit }) => {
-            const target = plan.targets[key];
-            const actual = totals[key];
-            const pct = target && target > 0 ? Math.min(actual / target, 1.35) : null;
-            const over = target !== null && target > 0 && actual > target * 1.02;
-            const under = target !== null && target > 0 && actual < target * 0.98;
-            return (
-              <div key={key}>
-                <label style={{ display: "block" }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, display: "block", marginBottom: 4 }}>
-                    {label} <span style={{ color: FAINT, fontWeight: 500 }}>({unit})</span>
-                  </span>
-                  <NumCell
-                    value={target}
-                    onChange={v => onChange({ ...plan, targets: { ...plan.targets, [key]: v } })}
-                    placeholder="—"
-                    style={{ width: "100%" }}
-                  />
-                </label>
-                <div style={{ marginTop: 7 }}>
-                  <div style={{ height: 4, borderRadius: 3, background: "rgba(0,0,0,0.07)", overflow: "hidden" }}>
-                    <div style={{
-                      height: "100%", width: `${Math.min((pct ?? 0) * 100, 100)}%`,
-                      background: pct === null ? "transparent" : over ? "#b4472e" : INK,
-                      transition: "width 200ms ease",
-                    }} />
-                  </div>
-                  <p style={{ fontSize: 10.5, color: over ? "#b4472e" : under ? MUTED : "#1a7f4b", marginTop: 4 }}>
-                    {fmt(actual, 0)} planned{target ? ` · ${fmtDelta(actual - target, 0)}` : ""}
-                  </p>
-                </div>
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
+          {shown.map(({ key, label, unit }) => (
+            <div key={key}>
+              <p style={{ fontSize: 11, fontWeight: 600, color: MUTED, marginBottom: 4 }}>{label}</p>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+                <span style={{ fontSize: 26, fontWeight: 700, color: INK, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+                  {fmt(totals[key], 0)}
+                </span>
+                <span style={{ fontSize: 11, color: FAINT }}>{unit}</span>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
+        <p style={{ fontSize: 11, color: FAINT, marginTop: 12 }}>
+          Adds up the food below. Tick carbs or fat to count those too.
+        </p>
       </div>
 
       {/* Meals */}
@@ -1728,7 +1697,9 @@ function DietPlanEditor({ plan, onChange: update }: {
                   <IconButton label="Remove item"
                     onClick={() => patchMeal(meal.id, { items: meal.items.filter(i => i.id !== item.id) })} />
                 </div>
-                <div style={{ display: "grid", gap: 7, gridTemplateColumns: `repeat(${shown.length}, 1fr)` }}>
+                {/* Four columns whether or not carbs and fat are shown, so the
+                    boxes keep a sane width and don't jump when they're toggled. */}
+                <div style={{ display: "grid", gap: 7, gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
                   {shown.map(({ key, unit }) => (
                     <NumCell key={key} value={item[key]}
                       onChange={v => patchItem(meal.id, item.id, { [key]: v } as Partial<DietItem>)}
@@ -2155,6 +2126,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
 
 
 
