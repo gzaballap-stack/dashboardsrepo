@@ -1346,12 +1346,20 @@ function PlanGrid<T extends { id: string; name: string }>({
   onOpen: (id: string) => void;
   onAdd: () => void;
 }) {
+  // The one you're on comes first. It's the one you open most, and on a phone
+  // the rest are below the fold — so its position is the fastest way to answer
+  // "what am I running?". Everything else keeps the order it was created in.
+  const ordered = useMemo(() => {
+    const active = items.filter(i => i.id === activeId);
+    return active.length ? [...active, ...items.filter(i => i.id !== activeId)] : items;
+  }, [items, activeId]);
+
   return (
     <div style={{
       display: "grid", gap: 14,
       gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))",
     }}>
-      {items.map(item => {
+      {ordered.map(item => {
         const card = describe(item);
         const isActive = item.id === activeId;
         return (
@@ -2210,6 +2218,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
 
 
 
