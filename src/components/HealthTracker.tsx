@@ -1867,6 +1867,112 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
   const trainingDays = plan.days.filter(d => !d.rest && d.exercises.length > 0).length;
   const listId = "health-tracker-exercises";
 
+  /* ── Dragging ─────────────────────────────────────────────────────────────
+     Pointer events rather than HTML5 drag-and-drop, matching the Task Board:
+     the native API does nothing on touch, and this is edited on a phone. The
+     grip is the only handle — the row is otherwise all text inputs, and
+     dragging from those would fight text selection and focus.
+
+     Drop onto another exercise to land above it, or onto a day to land at the
+     end of it. Rest days take nothing, since what you dropped would vanish. */
+
+  const drag = useRef<{ id: string; x: number; y: number; active: boolean } | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropZone, setDropZone] = useState<string | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number; name: string } | null>(null);
+
+  function startDrag(e: React.PointerEvent, id: string) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    drag.current = { id, x: e.clientX, y: e.clientY, active: false };
+  }
+
+  function moveExercise(exId: string, zone: string) {
+    let moved: SplitExercise | undefined;
+    const without = plan.days.map(d => ({
+      ...d,
+      exercises: d.exercises.filter(e => {
+        if (e.id !== exId) return true;
+        moved = e;
+        return false;
+      }),
+    }));
+    if (!moved) return;
+    const carried = moved;
+
+    if (zone.startsWith("ex:")) {
+      const targetId = zone.slice(3);
+      if (targetId === exId) return;
+      onChange({
+        ...plan,
+        days: without.map(d => {
+          const i = d.exercises.findIndex(e => e.id === targetId);
+          if (i === -1) return d;
+          const next = [...d.exercises];
+          next.splice(i, 0, carried);
+          return { ...d, exercises: next };
+        }),
+      });
+      return;
+    }
+
+    if (zone.startsWith("day:")) {
+      const dayId = zone.slice(4);
+      const target = plan.days.find(d => d.id === dayId);
+      if (!target || target.rest) return;
+      onChange({
+        ...plan,
+        days: without.map(d => (d.id === dayId ? { ...d, exercises: [...d.exercises, carried] } : d)),
+      });
+    }
+  }
+
+  // No dependency array on purpose: re-registering each render is what keeps
+  // `plan` fresh inside the handlers, same as the Task Board does it.
+  useEffect(() => {
+    const zoneAt = (x: number, y: number) => {
+      const el = document.elementFromPoint(x, y) as HTMLElement | null;
+      return el?.closest("[data-drop]")?.getAttribute("data-drop") ?? null;
+    };
+    const stop = () => {
+      drag.current = null;
+      document.body.style.userSelect = "";
+      setGhost(null); setDragId(null); setDropZone(null);
+    };
+    function move(e: PointerEvent) {
+      const d = drag.current;
+      if (!d) return;
+      if (!d.active) {
+        // A press only becomes a drag after a few pixels, so a tap on the grip
+        // still behaves like a tap.
+        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
+        d.active = true;
+        document.body.style.userSelect = "none";
+        setDragId(d.id);
+      }
+      e.preventDefault();
+      const name = plan.days.flatMap(day => day.exercises).find(x => x.id === d.id)?.name ?? "";
+      setGhost({ x: e.clientX, y: e.clientY, name: name || "Exercise" });
+      setDropZone(zoneAt(e.clientX, e.clientY));
+    }
+    function end(e: PointerEvent) {
+      const d = drag.current;
+      const zone = d?.active ? zoneAt(e.clientX, e.clientY) : null;
+      stop();
+      if (d && zone) moveExercise(d.id, zone);
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") stop(); };
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      window.removeEventListener("keydown", onKey);
+    };
+  });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <datalist id={listId}>
@@ -1900,15 +2006,20 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
       <p style={{ fontSize: 11, color: FAINT }}>
         {trainingDays} training day{trainingDays === 1 ? "" : "s"} a week.
         Exercises you also log on the calendar will suggest themselves as you type.
+        Drag an exercise by its grip to reorder it, or onto another day to move it.
       </p>
 
       {plan.days.map(day => (
-        <div key={day.id} style={{
-          background: day.rest ? "rgba(0,0,0,0.022)" : CARD,
-          border: day.rest ? "1px dashed rgba(0,0,0,0.13)" : BORDER,
-          boxShadow: day.rest ? "none" : SHADOW,
-          borderRadius: 18, padding: 16,
-        }}>
+        <div key={day.id}
+          data-drop={day.rest ? undefined : `day:${day.id}`}
+          style={{
+            background: day.rest ? "rgba(0,0,0,0.022)" : CARD,
+            border: day.rest
+              ? "1px dashed rgba(0,0,0,0.13)"
+              : dropZone === `day:${day.id}` ? `1px solid ${INK}` : BORDER,
+            boxShadow: day.rest ? "none" : SHADOW,
+            borderRadius: 18, padding: 16,
+          }}>
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: day.rest ? FAINT : INK, width: 88, flexShrink: 0 }}>
               {day.weekday}
@@ -1930,28 +2041,54 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
               {day.exercises.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
                   {day.exercises.map(ex => (
-                    <div key={ex.id} style={{
-                      padding: 10, borderRadius: 12, background: "rgba(0,0,0,0.022)",
-                      display: "flex", flexDirection: "column", gap: 7,
-                    }}>
-                      <div style={{ display: "flex", gap: 7 }}>
+                    <div key={ex.id}
+                      data-drop={`ex:${ex.id}`}
+                      style={{
+                        padding: 10, borderRadius: 12, background: "rgba(0,0,0,0.022)",
+                        display: "flex", flexDirection: "column", gap: 7,
+                        opacity: dragId === ex.id ? 0.4 : 1,
+                        boxShadow: dropZone === `ex:${ex.id}` && dragId !== ex.id
+                          ? `0 -2px 0 ${INK}` : "none",
+                      }}>
+                      {/* Wraps on a narrow screen: grip and name take the first
+                          line, sets/reps/remove drop to the second. Without it
+                          the name is squeezed to a couple of characters. */}
+                      <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                        <span
+                          onPointerDown={e => startDrag(e, ex.id)}
+                          aria-label="Drag to reorder"
+                          title="Drag to reorder"
+                          style={{
+                            flexShrink: 0, padding: "6px 2px", cursor: "grab", color: "#c2c2c2",
+                            lineHeight: 0, touchAction: "none",
+                          }}>
+                          <svg width={14} height={14} fill="currentColor" viewBox="0 0 24 24">
+                            <circle cx="9" cy="6" r="1.7" /><circle cx="15" cy="6" r="1.7" />
+                            <circle cx="9" cy="12" r="1.7" /><circle cx="15" cy="12" r="1.7" />
+                            <circle cx="9" cy="18" r="1.7" /><circle cx="15" cy="18" r="1.7" />
+                          </svg>
+                        </span>
                         <TextCell value={ex.name} list={listId}
                           onChange={v => patchDay(day.id, {
                             exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, name: v } : e)),
                           })}
-                          placeholder="Exercise" style={{ flex: 1 }} />
-                        <TextCell value={ex.sets}
-                          onChange={v => patchDay(day.id, {
-                            exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, sets: v } : e)),
-                          })}
-                          placeholder="Sets" style={{ width: 68, fontSize: 13, textAlign: "center" }} />
-                        <TextCell value={ex.reps}
-                          onChange={v => patchDay(day.id, {
-                            exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, reps: v } : e)),
-                          })}
-                          placeholder="Reps" style={{ width: 78, fontSize: 13, textAlign: "center" }} />
-                        <IconButton label="Remove exercise"
-                          onClick={() => patchDay(day.id, { exercises: day.exercises.filter(e => e.id !== ex.id) })} />
+                          placeholder="Exercise" style={{ flex: "1 1 150px", minWidth: 120 }} />
+                        {/* Kept together so sets and reps wrap as a pair rather
+                            than splitting across two lines. */}
+                        <div style={{ display: "flex", gap: 7, alignItems: "center", flex: "0 0 auto" }}>
+                          <TextCell value={ex.sets}
+                            onChange={v => patchDay(day.id, {
+                              exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, sets: v } : e)),
+                            })}
+                            placeholder="Sets" style={{ width: 68, fontSize: 13, textAlign: "center" }} />
+                          <TextCell value={ex.reps}
+                            onChange={v => patchDay(day.id, {
+                              exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, reps: v } : e)),
+                            })}
+                            placeholder="Reps" style={{ width: 78, fontSize: 13, textAlign: "center" }} />
+                          <IconButton label="Remove exercise"
+                            onClick={() => patchDay(day.id, { exercises: day.exercises.filter(e => e.id !== ex.id) })} />
+                        </div>
                       </div>
                       <TextCell value={ex.notes}
                         onChange={v => patchDay(day.id, {
@@ -1975,6 +2112,18 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
 
       <PlanNotes value={plan.notes} onChange={v => onChange({ ...plan, notes: v })}
         placeholder="Warm-ups, cardio, deload weeks, anything that isn't a lift." />
+
+      {ghost && (
+        <div style={{
+          position: "fixed", left: ghost.x + 12, top: ghost.y - 14, zIndex: 80,
+          pointerEvents: "none", padding: "7px 12px", borderRadius: 10,
+          background: INK, color: "#ffffff", fontSize: 12.5, fontWeight: 600,
+          maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          boxShadow: "0 8px 20px rgba(0,0,0,0.25)",
+        }}>
+          {ghost.name}
+        </div>
+      )}
     </div>
   );
 }
@@ -2126,6 +2275,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
 
 
 
