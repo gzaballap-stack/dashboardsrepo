@@ -1683,28 +1683,63 @@ function DietPlanEditor({ plan, onChange: update }: {
               onClick={() => setMeals(plan.meals.filter(m => m.id !== meal.id))} />
           </div>
 
+          {/* What this meal alone comes to. It used to be small grey text in the
+              corner by the Add button, which is not where you look for it. */}
+          {meal.items.length > 0 && (
+            <div style={{
+              display: "flex", flexWrap: "wrap", gap: "4px 16px", marginBottom: 12,
+              padding: "8px 11px", borderRadius: 10, background: "rgba(0,0,0,0.035)",
+            }}>
+              {shown.map(({ key, label, unit }) => (
+                <span key={key} style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 600, color: FAINT }}>{label}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>
+                    {fmt(mealTotal(meal, key), 0)}
+                  </span>
+                  <span style={{ fontSize: 10, color: FAINT }}>{unit}</span>
+                </span>
+              ))}
+            </div>
+          )}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {meal.items.map(item => (
               <div key={item.id} style={{
                 padding: 10, borderRadius: 12, background: "rgba(0,0,0,0.022)",
                 display: "flex", flexDirection: "column", gap: 7,
               }}>
-                <div style={{ display: "flex", gap: 7 }}>
-                  <TextCell value={item.name} onChange={v => patchItem(meal.id, item.id, { name: v })}
-                    placeholder="Food" style={{ flex: 1 }} />
-                  <TextCell value={item.qty} onChange={v => patchItem(meal.id, item.id, { qty: v })}
-                    placeholder="Qty" style={{ width: 88, fontSize: 13 }} />
+                {/* The food and its macros share one four-column grid, so the
+                    macro boxes sit under the food they belong to instead of
+                    drifting off on their own. The remove button lives outside
+                    it, or the grid would run under the button. */}
+                <div style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+                  <div style={{
+                    flex: 1, minWidth: 0, display: "grid", gap: 7,
+                    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                  }}>
+                    <TextCell value={item.name} onChange={v => patchItem(meal.id, item.id, { name: v })}
+                      placeholder="Food" style={{ gridColumn: "span 3" }} />
+                    <TextCell value={item.qty} onChange={v => patchItem(meal.id, item.id, { qty: v })}
+                      placeholder="Qty" style={{ fontSize: 13 }} />
+                    {shown.map(({ key, label, unit }) => (
+                      <label key={key} style={{ display: "block", minWidth: 0 }}>
+                        {/* Named, because a placeholder disappears the moment a
+                            number is typed and then nothing says what it was. */}
+                        <span style={{
+                          display: "block", fontSize: 9.5, fontWeight: 600, color: FAINT,
+                          marginBottom: 3, textAlign: "center",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                          {label}
+                        </span>
+                        <NumCell value={item[key]}
+                          onChange={v => patchItem(meal.id, item.id, { [key]: v } as Partial<DietItem>)}
+                          placeholder={unit} style={{ width: "100%", fontSize: 13, textAlign: "center" }} />
+                      </label>
+                    ))}
+                  </div>
                   <IconButton label="Remove item"
                     onClick={() => patchMeal(meal.id, { items: meal.items.filter(i => i.id !== item.id) })} />
-                </div>
-                {/* Four columns whether or not carbs and fat are shown, so the
-                    boxes keep a sane width and don't jump when they're toggled. */}
-                <div style={{ display: "grid", gap: 7, gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
-                  {shown.map(({ key, unit }) => (
-                    <NumCell key={key} value={item[key]}
-                      onChange={v => patchItem(meal.id, item.id, { [key]: v } as Partial<DietItem>)}
-                      placeholder={unit} style={{ fontSize: 13, textAlign: "center" }} />
-                  ))}
                 </div>
               </div>
             ))}
@@ -1715,12 +1750,6 @@ function DietPlanEditor({ plan, onChange: update }: {
               onClick={() => patchMeal(meal.id, {
                 items: [...meal.items, { id: uid(), name: "", qty: "", kcal: null, protein: null, carbs: null, fat: null }],
               })} />
-            {meal.items.length > 0 && (
-              <span style={{ fontSize: 11, color: FAINT, marginLeft: "auto" }}>
-                {shown.map(({ key, unit }) =>
-                  `${fmt(mealTotal(meal, key), 0)}${key === "kcal" ? " kcal" : unit}`).join(" · ")}
-              </span>
-            )}
           </div>
         </div>
       ))}
@@ -2275,6 +2304,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
 
 
 
