@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { pickAttribution, inheritAttribution, inheritZip } from '@/lib/attribution';
+import { ensureLeadForContact, removeSyntheticLead } from '@/lib/funnel-integrity';
 import { normalizeZip } from '@/lib/zip-rollup';
 import { resolveClientId } from '@/lib/client-lookup';
 
@@ -151,6 +152,28 @@ export async function POST(req: Request) {
     }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Keep the funnel whole: a booked demo / show / no-show / close without a
+    // lead gets one synthesised; a real lead supersedes any synthesised one.
+    // Best-effort — never fail the webhook over it.
+    try {
+      const contact = payload.ghl_contact_id ?? null;
+      if (payload.event_type === 'lead') {
+        await removeSyntheticLead(service, client_id, contact);
+      } else {
+        await ensureLeadForContact(service, {
+          client_id,
+          ghl_contact_id: contact,
+          event_type: payload.event_type,
+          occurred_at: eventData.occurred_at,
+          lead_name: eventData.lead_name,
+          lead_phone: eventData.lead_phone,
+          lead_email: eventData.lead_email,
+          attribution,
+        });
+      }
+    } catch { /* funnel backfill is secondary */ }
+
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });

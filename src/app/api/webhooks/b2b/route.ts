@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { pickAttribution, inheritAttribution } from '@/lib/attribution';
 import { getTomsiClientId } from '@/lib/tomsi';
+import { ensureLeadForContact, removeSyntheticLead } from '@/lib/funnel-integrity';
 import { resolveClientId } from '@/lib/client-lookup';
 
 const VALID_EVENT_TYPES = [
@@ -111,6 +112,12 @@ export async function POST(req: Request) {
         } else {
           await service.from('events').insert(row);
         }
+        if (mirrored === 'lead') await removeSyntheticLead(service, tomsiId, eventData.ghl_contact_id);
+        else await ensureLeadForContact(service, {
+          client_id: tomsiId, ghl_contact_id: eventData.ghl_contact_id, event_type: mirrored,
+          occurred_at: eventData.occurred_at, lead_name: eventData.lead_name,
+          lead_phone: eventData.lead_phone, lead_email: eventData.lead_email, attribution,
+        });
       }
     } catch { /* mirroring is secondary */ }
 
