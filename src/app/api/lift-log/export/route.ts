@@ -46,7 +46,6 @@ export async function GET(req: Request) {
     for (const name of Object.keys((e.lifts ?? {}) as Record<string, unknown>)) loggedNames.add(name);
   }
   const exercises = mergeExerciseNames(
-    Array.isArray(settings.exercises) ? settings.exercises : [],
     activeProgrammeExercises(settings.split_plan),
     [...loggedNames],
   );

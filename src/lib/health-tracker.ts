@@ -1,15 +1,19 @@
 // Which exercises the weekly log asks about.
 //
-// The list is derived, never stored as a copy. It is the union of three things:
+// The list is derived, never stored as a copy. It comes from two places:
 //
-//   1. the base list in `lift_settings.exercises`, which the user curates by hand
-//   2. every exercise in whichever split programme is marked active
-//   3. any name that already has numbers logged against it
+//   1. every exercise in whichever split programme is marked active
+//   2. any name that already has numbers logged against it
 //
-// Deriving rather than copying is what keeps (1) and (2) from drifting. Making a
-// programme active can never duplicate something already tracked, renaming an
-// exercise in a programme leaves no orphan behind, and (3) means a lift you have
-// history for keeps its chart even after it drops out of your programme.
+// Which of the two applies depends on what's being drawn. A week you are filling
+// in asks for (1), plus whatever that week already holds — the programme you're
+// on, not a standing list. The Progress charts use both, so a lift keeps its
+// history after it drops out of your programme.
+//
+// `lift_settings.exercises` was a third source, a list kept by hand. It is no
+// longer read: it meant lifts you had stopped training reappeared on every new
+// week. The column is left alone rather than dropped, so nothing logged under
+// those names is lost.
 
 // Reading a number a person typed.
 //

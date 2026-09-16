@@ -626,15 +626,21 @@ export default function HealthTracker() {
   // Your own list, plus everything the active programme trains, plus anything
   // with history. Derived on every render rather than copied into settings, so
   // switching programmes can't duplicate a lift or strand an old one.
+  // What the active programme trains. This alone is what a fresh week asks you
+  // to fill in — a hand-kept list used to be merged in on top, which is why
+  // lifts you no longer train kept reappearing every week.
+  const programmeExercises = useMemo(
+    () => activeProgrammeExercises(settings?.split_plan),
+    [settings?.split_plan],
+  );
+
+  // Everything that has ever been logged, so history is never hidden even after
+  // the lift leaves your programme. Drives the Progress charts.
   const exercises = useMemo(() => {
     const loggedNames = new Set<string>();
     for (const e of entries) for (const name of Object.keys(e.lifts ?? {})) loggedNames.add(name);
-    return mergeExerciseNames(
-      settings?.exercises,
-      activeProgrammeExercises(settings?.split_plan),
-      [...loggedNames],
-    );
-  }, [settings?.exercises, settings?.split_plan, entries]);
+    return mergeExerciseNames(programmeExercises, [...loggedNames]);
+  }, [programmeExercises, entries]);
 
   const weeks = useMemo(() => weeksOfYear(year), [year]);
   const loggedThisYear = weeks.filter(w => byWeek.has(iso(w))).length;
@@ -761,7 +767,15 @@ export default function HealthTracker() {
           weekStart={openWeek}
           entry={byWeek.get(openWeek) ?? null}
           previous={logged.filter(e => e.week_start < openWeek).slice(-1)[0] ?? null}
-          exercises={exercises}
+          // The programme, plus anything this particular week already holds
+          // numbers for. The second half matters: saving rewrites the whole
+          // week, so a lift missing from the form would be erased by the next
+          // save. An old week keeps showing what you logged in it; a new one
+          // only asks for the programme you're on.
+          exercises={mergeExerciseNames(
+            programmeExercises,
+            Object.keys(byWeek.get(openWeek)?.lifts ?? {}),
+          )}
           unit={unit}
           lengthUnit={lengthUnit}
           onClose={() => setOpenWeek(null)}
@@ -2460,6 +2474,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
 
 
 
