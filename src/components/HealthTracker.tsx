@@ -571,8 +571,9 @@ export default function HealthTracker() {
   const [showSettings, setShowSettings] = useState(false);
   const [planSaving, setPlanSaving] = useState(false);
   const planSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => { if (planSaveTimer.current) clearTimeout(planSaveTimer.current); }, []);
+  // Plan changes not yet sent. On unmount they are sent, not cancelled — this
+  // used to clear the timer and drop the last edit.
+  const pendingPlan = useRef<Record<string, unknown>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -645,11 +646,13 @@ export default function HealthTracker() {
   const weeks = useMemo(() => weeksOfYear(year), [year]);
   const loggedThisYear = weeks.filter(w => byWeek.has(iso(w))).length;
 
-  async function saveEntry(payload: Record<string, unknown>) {
+  async function saveEntry(payload: Record<string, unknown>, opts?: { keepalive?: boolean }) {
     const res = await fetch("/api/lift-log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      // Lets the request finish even as the page is being hidden or closed.
+      keepalive: opts?.keepalive ?? false,
     });
     const d = await res.json();
     if (!res.ok) throw new Error(d.error ?? "Could not save");
@@ -661,20 +664,53 @@ export default function HealthTracker() {
 
   // The plan editors change on every keystroke, so the write is coalesced —
   // local state updates immediately, the server catches up a beat later.
+  //
+  // Pending changes accumulate rather than replace each other: a diet edit
+  // followed within the delay by a split edit used to send only the split, and
+  // the diet change was lost. They also go out the moment the page is hidden,
+  // for the same reason the weekly log does.
+  function sendPlans(keepalive = false) {
+    if (planSaveTimer.current) { clearTimeout(planSaveTimer.current); planSaveTimer.current = null; }
+    const body = pendingPlan.current;
+    if (!Object.keys(body).length) return;
+    pendingPlan.current = {};
+    setPlanSaving(true);
+    fetch("/api/lift-log/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      keepalive,
+    })
+      // No connection: put it back, newer edits on top, for the next attempt.
+      .catch(() => { pendingPlan.current = { ...body, ...pendingPlan.current }; })
+      .finally(() => setPlanSaving(false));
+  }
+
   function savePlan(patch: { diet_plan?: DietDoc } | { split_plan?: SplitDoc }) {
     setSettings(prev => (prev ? { ...prev, ...patch } : prev));
+    pendingPlan.current = { ...pendingPlan.current, ...patch };
     if (planSaveTimer.current) clearTimeout(planSaveTimer.current);
-    planSaveTimer.current = setTimeout(() => {
-      setPlanSaving(true);
-      fetch("/api/lift-log/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      })
-        .catch(() => {})
-        .finally(() => setPlanSaving(false));
-    }, 700);
+    planSaveTimer.current = setTimeout(() => sendPlans(), 700);
   }
+
+  const sendPlansRef = useRef(sendPlans);
+  useEffect(() => { sendPlansRef.current = sendPlans; });
+
+  useEffect(() => {
+    const onVisibility = () => { if (document.visibilityState === "hidden") sendPlansRef.current(true); };
+    const onPageHide = () => sendPlansRef.current(true);
+    const onOnline = () => sendPlansRef.current();
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("online", onOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("online", onOnline);
+      // Leaving the tool mid-edit sends it rather than dropping it.
+      sendPlansRef.current(true);
+    };
+  }, []);
 
   async function deleteEntry(weekStart: string) {
     await fetch(`/api/lift-log?week_start=${weekStart}`, { method: "DELETE" });
@@ -1038,6 +1074,64 @@ function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, u
 
 /* ── entry sheet ──────────────────────────────────────────────────────────── */
 
+// What the week form holds, exactly as typed — strings, so "72." survives a
+// keystroke. The server does the reading.
+type FormValues = {
+  w1: string; w2: string; w3: string; waist: string; bicep: string; notes: string;
+  lifts: Record<string, { load: string; reps: string }>;
+};
+
+function formFromEntry(entry: Entry | null, exercises: string[]): FormValues {
+  const s = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v));
+  const lifts: FormValues["lifts"] = {};
+  for (const name of exercises) {
+    const l = entry?.lifts?.[name];
+    lifts[name] = { load: s(l?.load), reps: s(l?.reps) };
+  }
+  return {
+    w1: s(entry?.weight_1), w2: s(entry?.weight_2), w3: s(entry?.weight_3),
+    waist: s(entry?.waist), bicep: s(entry?.bicep), notes: entry?.notes ?? "",
+    lifts,
+  };
+}
+
+function payloadFromForm(weekStart: string, v: FormValues) {
+  return {
+    week_start: weekStart,
+    weight_1: v.w1, weight_2: v.w2, weight_3: v.w3,
+    waist: v.waist, bicep: v.bicep, notes: v.notes,
+    lifts: v.lifts,
+  };
+}
+
+// The on-device copy of a week being typed. It lives in this browser only and
+// exists to outlast the page: a killed app, a dropped connection. The server
+// row remains the record — a draft is only restored when it is newer.
+const DRAFT_PREFIX = "health-tracker:week-draft:";
+
+function readDraft(weekStart: string): { at: number; values: FormValues } | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_PREFIX + weekStart);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function writeDraft(weekStart: string, values: FormValues) {
+  try { localStorage.setItem(DRAFT_PREFIX + weekStart, JSON.stringify({ at: Date.now(), values })); } catch {}
+}
+
+// With `ifJson`, only removes the draft if it still holds exactly what was just
+// saved — anything typed while that save was in the air stays put.
+function clearDraft(weekStart: string, ifJson?: string) {
+  try {
+    if (ifJson) {
+      const d = readDraft(weekStart);
+      if (d && JSON.stringify(d.values) !== ifJson) return;
+    }
+    localStorage.removeItem(DRAFT_PREFIX + weekStart);
+  } catch {}
+}
+
 function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, onClose, onSave, onDelete }: {
   weekStart: string;
   entry: Entry | null;
@@ -1046,28 +1140,138 @@ function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, o
   unit: string;
   lengthUnit: string;
   onClose: () => void;
-  onSave: (payload: Record<string, unknown>) => Promise<void>;
+  onSave: (payload: Record<string, unknown>, opts?: { keepalive?: boolean }) => Promise<void>;
   onDelete: (weekStart: string) => Promise<void>;
 }) {
-  const s = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v));
+  /* ── Saving ────────────────────────────────────────────────────────────────
+     The week saves itself. Every change is written straight to a draft on this
+     device, then sent to the server a moment after typing stops. Closing the
+     sheet, switching apps, locking the phone or losing signal can no longer
+     throw away what was typed:
 
-  const [w1, setW1] = useState(s(entry?.weight_1));
-  const [w2, setW2] = useState(s(entry?.weight_2));
-  const [w3, setW3] = useState(s(entry?.weight_3));
-  const [waist, setWaist] = useState(s(entry?.waist));
-  const [bicep, setBicep] = useState(s(entry?.bicep));
-  const [notes, setNotes] = useState(entry?.notes ?? "");
-  const [lifts, setLifts] = useState<Record<string, { load: string; reps: string }>>(() => {
-    const out: Record<string, { load: string; reps: string }> = {};
-    for (const name of exercises) {
-      const l = entry?.lifts?.[name];
-      out[name] = { load: s(l?.load), reps: s(l?.reps) };
+       - the draft survives the app being killed, and is restored the next time
+         the week is opened if it is newer than what the server holds
+       - closing the sheet, hiding the page, or unmounting sends immediately,
+         using a keepalive request so it completes even as the page goes away
+       - a failed send (no signal) keeps the draft and retries when the
+         connection returns
+
+     Saves go out one at a time. The server rewrites the whole week on each
+     one, so two in flight could land out of order and leave the older version
+     in place. */
+
+  const [boot] = useState(() => {
+    const server = formFromEntry(entry, exercises);
+    const serverJson = JSON.stringify(server);
+    const draft = readDraft(weekStart);
+    const serverAt = entry?.updated_at ? Date.parse(entry.updated_at) || 0 : 0;
+    if (draft && draft.at > serverAt && JSON.stringify(draft.values) !== serverJson) {
+      // Draft values win field by field; the form keeps every lift it would
+      // otherwise have shown.
+      const values: FormValues = {
+        ...server, ...draft.values,
+        lifts: { ...server.lifts, ...(draft.values.lifts ?? {}) },
+      };
+      return { values, serverJson, restored: true };
     }
-    return out;
+    if (draft) clearDraft(weekStart);
+    return { values: server, serverJson, restored: false };
   });
+
+  const [w1, setW1] = useState(boot.values.w1);
+  const [w2, setW2] = useState(boot.values.w2);
+  const [w3, setW3] = useState(boot.values.w3);
+  const [waist, setWaist] = useState(boot.values.waist);
+  const [bicep, setBicep] = useState(boot.values.bicep);
+  const [notes, setNotes] = useState(boot.values.notes);
+  const [lifts, setLifts] = useState<Record<string, { load: string; reps: string }>>(boot.values.lifts);
+
+  const values: FormValues = { w1, w2, w3, waist, bicep, notes, lifts };
+  const valuesJson = JSON.stringify(values);
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [savedMark, setSavedMark] = useState(boot.serverJson);
+  const [savedOnce, setSavedOnce] = useState(false);
+
+  const latest = useRef({ values, json: valuesJson });
+  const savedJson = useRef(boot.serverJson);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlight = useRef<Promise<boolean> | null>(null);
+  const again = useRef(false);
+  const cancelled = useRef(false);
+  // A restored draft is unsaved by definition, so it must not be skipped.
+  const skipFirst = useRef(!boot.restored);
+
+  async function flush(keepalive = false): Promise<boolean> {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    if (cancelled.current) return true;
+    const { values: v, json } = latest.current;
+    if (json === savedJson.current) return true;
+    if (inFlight.current) { again.current = true; return inFlight.current; }
+
+    setSaving(true);
+    const run = (async () => {
+      try {
+        await onSave(payloadFromForm(weekStart, v), { keepalive });
+        savedJson.current = json;
+        setSavedMark(json);
+        setSavedOnce(true);
+        setErr("");
+        clearDraft(weekStart, json);
+        return true;
+      } catch (e) {
+        // fetch rejects with a TypeError when there is no connection at all;
+        // anything else is the server refusing the numbers.
+        setErr(e instanceof TypeError
+          ? "No connection. What you typed is kept on this device and saves when you're back online."
+          : e instanceof Error ? e.message : "Could not save");
+        return false;
+      } finally {
+        inFlight.current = null;
+        setSaving(false);
+        if (again.current) { again.current = false; void flushRef.current(); }
+      }
+    })();
+    inFlight.current = run;
+    return run;
+  }
+
+  const flushRef = useRef(flush);
+
+  // Refs are brought up to date after each render rather than during it.
+  useEffect(() => {
+    latest.current = { values, json: valuesJson };
+    flushRef.current = flush;
+  });
+
+  // Every change: straight to the on-device draft, then to the server once
+  // typing pauses.
+  useEffect(() => {
+    if (skipFirst.current) { skipFirst.current = false; return; }
+    if (valuesJson === savedJson.current) return;
+    writeDraft(weekStart, latest.current.values);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => { void flushRef.current(); }, 900);
+  }, [valuesJson, weekStart]);
+
+  // Leaving — the app going to the background, the page being torn down, the
+  // sheet unmounting — sends whatever is pending there and then.
+  useEffect(() => {
+    const onVisibility = () => { if (document.visibilityState === "hidden") void flushRef.current(true); };
+    const onPageHide = () => { void flushRef.current(true); };
+    const onOnline = () => { void flushRef.current(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onPageHide);
+    window.addEventListener("online", onOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onPageHide);
+      window.removeEventListener("online", onOnline);
+      // The latest flush is exactly what's wanted here, not a stale copy.
+      void flushRef.current(true);
+    };
+  }, []);
 
   const avg = avgOf([w1, w2, w3].map(v => {
     const parsed = parseDecimal(v);
@@ -1077,27 +1281,37 @@ function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, o
   const monday = parseISO(weekStart);
   const title = `${weekLabel(monday)}, ${monday.getFullYear()}`;
 
-  async function handleSave() {
-    setSaving(true);
-    setErr("");
-    try {
-      await onSave({
-        week_start: weekStart,
-        weight_1: w1, weight_2: w2, weight_3: w3,
-        waist, bicep, notes,
-        lifts: Object.fromEntries(Object.entries(lifts).map(([k, v]) => [k, { load: v.load, reps: v.reps }])),
-      });
-      onClose();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not save");
-      setSaving(false);
-    }
+  function handleClose() {
+    void flush();
+    onClose();
   }
+
+  // Save still exists for the reassurance of pressing it: it sends now, waits
+  // for anything queued behind it, and only closes once the server has it.
+  async function handleSave() {
+    let ok = await flush();
+    for (let i = 0; ok && i < 5 && (inFlight.current || latest.current.json !== savedJson.current); i++) {
+      ok = await flush();
+    }
+    if (ok) onClose();
+  }
+
+  async function handleClear() {
+    cancelled.current = true;
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    clearDraft(weekStart);
+    if (inFlight.current) await inFlight.current;
+    await onDelete(weekStart);
+    onClose();
+  }
+
+  const pending = valuesJson !== savedMark;
+  const status = saving ? "Saving…" : pending ? "Editing…" : savedOnce ? "Saved" : "";
 
   return (
     <Sheet
       title={title}
-      onClose={onClose}
+      onClose={handleClose}
       footerNote={err ? (
         <p style={{
           fontSize: 12, color: "#b4472e", lineHeight: 1.45,
@@ -1108,18 +1322,20 @@ function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, o
       ) : null}
       footer={
         <>
-          {entry && (
+          {(entry || savedOnce) && (
             <button
-              onClick={async () => { await onDelete(weekStart); onClose(); }}
+              onClick={handleClear}
               style={{ ...BTN_QUIET, background: "rgba(180,71,46,0.09)", color: "#b4472e" }}>
               Clear week
             </button>
           )}
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} style={{ ...BTN_QUIET, background: "transparent", color: MUTED }}>Cancel</button>
-          <button onClick={handleSave} disabled={saving} style={{ ...BTN_PRIMARY, opacity: saving ? 0.6 : 1 }}>
-            {saving ? "Saving…" : "Save"}
-          </button>
+          {status && !err && (
+            <span style={{ fontSize: 12, color: status === "Saved" ? "#1a7f4b" : FAINT, whiteSpace: "nowrap" }}>
+              {status}
+            </span>
+          )}
+          <button onClick={handleSave} style={BTN_PRIMARY}>Save</button>
         </>
       }
     >
@@ -2474,6 +2690,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
     </Sheet>
   );
 }
+
 
 
 
