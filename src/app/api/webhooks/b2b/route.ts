@@ -77,6 +77,15 @@ export async function POST(req: Request) {
       raw:            payload,
     };
 
+    // One lead per contact — GHL can fire New Lead twice. A lead has no
+    // external_id, so dedupe on the contact.
+    if (payload.event_type === 'lead' && payload.ghl_contact_id) {
+      const { data: dupe } = await service
+        .from('b2b_events').select('id')
+        .eq('event_type', 'lead').eq('ghl_contact_id', payload.ghl_contact_id).limit(1);
+      if (dupe && dupe.length) return NextResponse.json({ success: true, deduped: true });
+    }
+
     const { error } = (payload.external_id || null)
       ? await service.from('b2b_events').upsert(eventData, { onConflict: 'external_id' })
       : await service.from('b2b_events').insert(eventData);

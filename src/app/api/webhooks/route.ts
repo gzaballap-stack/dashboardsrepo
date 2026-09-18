@@ -136,6 +136,24 @@ export async function POST(req: Request) {
       raw: payload,
     };
 
+    // A contact is a lead exactly once. GHL sometimes fires the New Lead webhook
+    // twice within a second or two (no external_id to dedupe on), so drop a
+    // second lead for a contact that already has one.
+    if (payload.event_type === 'lead' && payload.ghl_contact_id) {
+      const { data: dupe } = await service
+        .from('events')
+        .select('id')
+        .eq('client_id', client_id)
+        .eq('ghl_contact_id', payload.ghl_contact_id)
+        .eq('event_type', 'lead')
+        .not('external_id', 'like', 'auto-lead:%')
+        .limit(1);
+      if (dupe && dupe.length) {
+        await removeSyntheticLead(service, client_id, payload.ghl_contact_id);
+        return NextResponse.json({ success: true, deduped: true });
+      }
+    }
+
     // Upsert on external_id when provided so rescheduled appointments don't duplicate
     const write = (row: typeof eventData | Omit<typeof eventData, 'zip_code'>) =>
       payload.external_id
