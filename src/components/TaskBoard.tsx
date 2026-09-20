@@ -222,12 +222,12 @@ export default function TaskBoard() {
     });
   }, [tasks, dayDate]);
 
-  // The quick list for the day (or week) in view: captured, not yet given a letter.
-  const inboxAnchor = view === "month" ? iso(new Date()) : anchor;
+  // Small tasks sit on a standing list with no date of their own — they stay
+  // there until they are dragged onto a day or ticked off.
   const inbox = useMemo(
-    () => tasks.filter(t => t.scope === "inbox" && !t.done && t.task_date === inboxAnchor)
+    () => tasks.filter(t => t.scope === "inbox" && !t.done)
                 .sort((a, b) => a.position - b.position),
-    [tasks, inboxAnchor],
+    [tasks],
   );
 
   // The long-term to-do list: everything captured but not yet placed on a day.
@@ -390,11 +390,19 @@ export default function TaskBoard() {
 
   function patch(id: string, changes: Partial<Task>) {
     const t = tasks.find(x => x.id === id);
-    // Moving a task off a day leaves a trace on that day, so it still shows there.
+    // Pushing a task forward leaves a trace on the day it left. Pulling it back
+    // does the opposite: it means the work really happened then, so any trace
+    // from that day onwards is cleared and it reads as if it was always there.
     if (t && typeof changes.task_date === "string" && t.task_date && changes.task_date !== t.task_date
         && !("prev_dates" in changes)) {
+      const to = changes.task_date;
       const seen = t.prev_dates ?? [];
-      if (!seen.includes(t.task_date)) changes = { ...changes, prev_dates: [...seen, t.task_date] };
+      if (to > t.task_date) {
+        if (!seen.includes(t.task_date)) changes = { ...changes, prev_dates: [...seen, t.task_date] };
+      } else {
+        const kept = seen.filter(d => d < to);
+        if (kept.length !== seen.length) changes = { ...changes, prev_dates: kept };
+      }
     }
     if (t) {
       const before: Partial<Task> = {};
@@ -477,7 +485,7 @@ export default function TaskBoard() {
     if (!title) return;
     setListTitle("");
     await create(listTab === "daily"
-      ? { title, bucket: "B", priority: 2, position: nextPos(inbox), scope: "inbox", task_date: inboxAnchor }
+      ? { title, bucket: "B", priority: 2, position: nextPos(inbox), scope: "inbox", task_date: null }
       : { title, bucket: "B", priority: 2, position: nextPos(backlog), scope: "backlog" });
   }
 
@@ -485,7 +493,7 @@ export default function TaskBoard() {
   // goes back to that list; only something typed straight onto the board is deleted.
   function clearFromBoard(task: Task) {
     if (task.origin === "backlog" || task.from_list) patch(task.id, { scope: "backlog", task_date: null });
-    else if (task.origin === "inbox") patch(task.id, { scope: "inbox" });
+    else if (task.origin === "inbox") patch(task.id, { scope: "inbox", task_date: null });
     else remove(task.id);
   }
 
@@ -506,12 +514,18 @@ export default function TaskBoard() {
     const ids = only ?? stranded.map(t => t.id);
     if (ids.length === 0) return;
     const target = anchor;
-    // Each move keeps the day it came from, so that day still shows what left it.
+    // Same rule as a single move: forward leaves a trace behind, backward clears
+    // the trace and reads as though the task had always been on the earlier day.
     const moves = ids.map(id => {
       const t = tasks.find(x => x.id === id);
       const seen = t?.prev_dates ?? [];
-      const trail = t?.task_date && !seen.includes(t.task_date) ? [...seen, t.task_date] : seen;
-      return { id, from: t?.task_date ?? null, prevBefore: seen, prevAfter: trail };
+      const from = t?.task_date ?? null;
+      const trail = !from || from === target
+        ? seen
+        : target > from
+        ? (seen.includes(from) ? seen : [...seen, from])
+        : seen.filter(d => d < target);
+      return { id, from, prevBefore: seen, prevAfter: trail };
     });
     record({
       undo: async () => { await Promise.all(moves.map(m => applyPatch(liveId(m.id), { task_date: m.from, prev_dates: m.prevBefore }))); },
@@ -1196,7 +1210,7 @@ export default function TaskBoard() {
                 <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>To-Do List</p>
                 <p style={{ fontSize: 10.5, color: "#949494" }}>
                   {listTab === "daily"
-                    ? (view === "week" ? weekLabel(weekDate).main : dayLabel(inboxAnchor).main)
+                    ? (inbox.length === 0 ? "Nothing waiting" : `${inbox.length} waiting`)
                     : backlog.length === 0 ? "No projects on the go" : `${backlog.length} project${backlog.length === 1 ? "" : "s"} on the go`}
                 </p>
               </div>
@@ -1236,7 +1250,7 @@ export default function TaskBoard() {
                 value={listTitle}
                 onChange={e => setListTitle(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") addToList(); }}
-                placeholder={listTab === "daily" ? "A small task for this " + (view === "week" ? "week" : "day") + "…" : "A big project you\u2019re working on…"}
+                placeholder={listTab === "daily" ? "A small task to get to…" : "A big project you\u2019re working on…"}
                 style={{ ...fieldStyle, fontSize: 12.5, padding: "8px 11px" }}
               />
               <button
@@ -1251,7 +1265,7 @@ export default function TaskBoard() {
               {rows.length === 0 ? (
                 <p style={{ fontSize: 12, color: "#949494", textAlign: "center", padding: "40px 20px", lineHeight: 1.6 }}>
                   {listTab === "daily"
-                    ? "No small tasks yet. Jot them down, then drag each one into a letter."
+                    ? "No small tasks yet. Jot them down here — they stay on this list until you drag one onto a day or tick it off."
                     : "No big projects yet. Add one, then drag it into a letter whenever you work on it — it stays here until it is done."}
                 </p>
               ) : (
@@ -1293,7 +1307,7 @@ export default function TaskBoard() {
                           onClick={() => patch(t.id, placed
                             ? { done: true }
                             : t.scope === "inbox"
-                            ? { done: true, scope: view === "week" ? "week" : "day", task_date: t.task_date }
+                            ? { done: true, scope: "day", task_date: iso(new Date()) }
                             : { done: true, scope: "day", task_date: iso(new Date()) })}
                           title="Mark done"
                           style={{
