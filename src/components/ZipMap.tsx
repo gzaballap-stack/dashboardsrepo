@@ -110,6 +110,18 @@ export default function ZipMap({
         }
       });
 
+      // Zip labels grow with the zoom. Zoomed out they stay tiny so neighbouring
+      // zips don't pile on top of each other; zooming in they grow until they're
+      // comfortably readable, then hold — a zip you've zoomed right into shouldn't
+      // still be wearing an 8px number.
+      const sizeLabels = () => {
+        const z = map.getZoom();
+        const px = z <= 8 ? 8.5 : z >= 12 ? 15 : 8.5 + (z - 8) * (6.5 / 4);
+        containerRef.current?.style.setProperty("--zip-label-size", `${px}px`);
+      };
+      map.on("zoomend", sizeLabels);
+      sizeLabels();
+
       mapRef.current = map;
     });
     return () => {
@@ -416,7 +428,7 @@ export default function ZipMap({
           background: transparent !important;
           border: none !important;
           box-shadow: none !important;
-          font-size: 8.5px;
+          font-size: var(--zip-label-size, 8.5px);
           font-weight: 800;
           font-family: monospace;
           color: rgba(255,255,255,0.92);
