@@ -156,6 +156,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `csm-dashboard`, `client-csm-status`, `client-touchpoints`, `client-windows` | CSM health tracking |
 | `zip-*` (`zip-lookup`, `zip-data`, `zip-radius`, `zip-neighborhoods`, `zip-performance`) | In-dashboard zip/territory features (uses `src/lib/census.ts` + `zip-score.ts`) |
 | `calendar` | Calendar panel — fetches each user's private Google Calendar iCal feed server-side and parses it with `src/lib/ics.ts`. Feed URLs are secrets: stored in `calendar_feeds`, never returned to the browser. |
+| `task-templates/*` | Task Board **Weekly Non-Negotiables** — the templates, `materialize` (turns them into that week's task rows, idempotent on `(template_id, template_date)`), and `counts` (live call lists from `b2b_events`). |
 | `lift-log/*` | Health Tracker — weekly log, diet/split plans, and the public token-based CSV/JSON export |
 | `me` | Who is signed in and which features they're allowed to open |
 | `ai-campaign-chat` | Claude-powered chat over a campaign/client's data — see below |

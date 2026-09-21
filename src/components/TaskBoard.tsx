@@ -1,11 +1,35 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CalendarView from "./CalendarView";
 
 type Bucket = "A" | "B" | "C" | "D" | "E";
-type Scope = "day" | "week" | "backlog" | "inbox";
+type Scope = "day" | "week" | "backlog" | "inbox" | "skipped";
 type ListTab = "daily" | "long";
+
+type CountSource = "leads" | "triage" | "no_shows" | "no_closes";
+
+// A weekly Non-Negotiable. The board turns each one into real tasks every week.
+type Template = {
+  id: string;
+  title: string;
+  bucket: Bucket;
+  priority: number;
+  days: number[];              // 1 = Mon … 7 = Sun; empty = any day that week
+  count_source: CountSource | null;
+  position: number;
+};
+
+type CallList = { count: number; people: { name: string; phone: string | null; since: string }[] };
+
+const COUNT_LABELS: Record<CountSource, string> = {
+  leads: "Leads to call",
+  triage: "Triage calls booked",
+  no_shows: "No-shows to call",
+  no_closes: "No-closes to call",
+};
+
+const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 type ViewMode = "day" | "week" | "month";
 
 type Task = {
@@ -26,6 +50,8 @@ type Task = {
   origin: string | null;
   prev_dates: string[];
   parked: boolean;
+  template_id: string | null;
+  template_date: string | null;
 };
 
 const BUCKETS: { id: Bucket; letter: string; name: string; blurb: string; color: string }[] = [
@@ -153,6 +179,10 @@ export default function TaskBoard() {
   const [future, setFuture] = useState<{ undo: () => Promise<void>; redo: () => Promise<void> }[]>([]);
   const [showList, setShowList] = useState(false);
   const [showCalls, setShowCalls] = useState(false);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [callLists, setCallLists] = useState<Partial<Record<CountSource, CallList>>>({});
+  const [showNN, setShowNN] = useState(false);
+  const generatedWeeks = useRef<Set<string>>(new Set());
   const [listTitle, setListTitle] = useState("");
   const [listTab, setListTab] = useState<ListTab>("daily");
   const [monthTab, setMonthTab] = useState<ListTab>("daily");
@@ -174,7 +204,50 @@ export default function TaskBoard() {
         setLoading(false);
       })
       .catch(() => { setError("Couldn't load your tasks."); setLoading(false); });
+
+    fetch("/api/task-templates").then(r => r.json()).then(d => setTemplates(d.templates ?? [])).catch(() => {});
   }, []);
+
+  // Live call lists for the Non-Negotiables — refreshed on open and whenever the
+  // tab comes back into view.
+  useEffect(() => {
+    const pull = () => fetch("/api/task-templates/counts")
+      .then(r => r.json()).then(d => setCallLists(d.counts ?? {})).catch(() => {});
+    pull();
+    const onVisible = () => { if (document.visibilityState === "visible") pull(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
+  // Each week in view (this week or later) gets its Non-Negotiables generated.
+  // The server keys every copy on its slot, so repeating this is harmless.
+  const viewedWeek = iso(weekStart(parseISO(view === "week" ? weekDate : view === "month" ? iso(new Date()) : dayDate)));
+  const generateWeek = useCallback(async (week: string, force = false) => {
+    if (!force && generatedWeeks.current.has(week)) return;
+    if (week < iso(weekStart(new Date()))) return;
+    generatedWeeks.current.add(week);
+    try {
+      const res = await fetch("/api/task-templates/materialize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ week_start: week, today: iso(new Date()) }),
+      });
+      const d = await res.json();
+      const fresh: Task[] = d.tasks ?? [];
+      if (!fresh.length) return;
+      setTasks(prev => {
+        const byId = new Map(prev.map(t => [t.id, t]));
+        for (const t of fresh) if (!byId.has(t.id)) byId.set(t.id, t);
+        return [...byId.values()];
+      });
+    } catch {
+      generatedWeeks.current.delete(week);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!loading && templates.length) generateWeek(viewedWeek);
+  }, [loading, templates.length, viewedWeek, generateWeek]);
 
 
   // Everything on the board is scoped to the day (or week) currently in view.
@@ -248,7 +321,7 @@ export default function TaskBoard() {
 
   // Tasks that were planned for the day in view but have since been moved on.
   const ghosts = useMemo(
-    () => tasks.filter(t => !t.done && t.task_date !== anchor && (t.prev_dates ?? []).includes(anchor)),
+    () => tasks.filter(t => !t.done && t.scope !== "skipped" && t.task_date !== anchor && (t.prev_dates ?? []).includes(anchor)),
     [tasks, anchor],
   );
 
@@ -256,6 +329,70 @@ export default function TaskBoard() {
     ghosts.filter(t => t.bucket === bucket && (priority == null || t.priority === priority));
 
   const goToDate = (d: string) => { setDayDate(d); setView("day"); };
+
+  const templateOf = (id: string | null) => (id ? templates.find(t => t.id === id) : undefined);
+
+  // How this week's non-negotiables are going.
+  const nnWeek = useMemo(() => {
+    const end = iso(addDays(parseISO(viewedWeek), 6));
+    const mine = tasks.filter(t => t.template_id && t.scope !== "skipped"
+      && t.template_date && t.template_date >= viewedWeek && t.template_date <= end);
+    return { done: mine.filter(t => t.done).length, total: mine.length };
+  }, [tasks, viewedWeek]);
+
+  // Month view: how each week went on its non-negotiables.
+  const nnMonth = useMemo(() => {
+    const first = parseISO(monthDate);
+    const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+    const weeks: { start: string; end: string; done: number; total: number }[] = [];
+    for (let w = weekStart(first); w <= last; w = addDays(w, 7)) {
+      const start = iso(w), end = iso(addDays(w, 6));
+      const mine = tasks.filter(t => t.template_id && t.scope !== "skipped"
+        && t.template_date && t.template_date >= start && t.template_date <= end);
+      if (mine.length) weeks.push({ start, end, done: mine.filter(t => t.done).length, total: mine.length });
+    }
+    return weeks;
+  }, [tasks, monthDate]);
+
+  // After a template changes, the server may have reshaped future copies, so the
+  // board re-reads its tasks and regenerates the week in view.
+  async function refreshAfterTemplates() {
+    try {
+      const d = await fetch("/api/tasks").then(r => r.json());
+      if (d.tasks) setTasks(d.tasks);
+    } catch { /* keep what we have */ }
+    generatedWeeks.current.clear();
+    await generateWeek(viewedWeek, true);
+  }
+
+  async function addTemplate(title: string) {
+    const res = await fetch("/api/task-templates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, bucket: "A", priority: 1, days: [] }),
+    });
+    const d = await res.json();
+    if (!d.template) return;
+    setTemplates(prev => [...prev, d.template]);
+    generatedWeeks.current.clear();
+    await generateWeek(viewedWeek, true);
+  }
+
+  async function updateTemplate(id: string, changes: Partial<Template>) {
+    setTemplates(prev => prev.map(t => (t.id === id ? { ...t, ...changes } : t)));
+    await fetch("/api/task-templates", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...changes, today: iso(new Date()) }),
+    });
+    await refreshAfterTemplates();
+  }
+
+  async function removeTemplate(id: string) {
+    setTemplates(prev => prev.filter(t => t.id !== id));
+    await fetch(`/api/task-templates?id=${id}&today=${iso(new Date())}`, { method: "DELETE" });
+    await refreshAfterTemplates();
+  }
 
   const rows = listTab === "daily" ? inbox : backlog;
 
@@ -492,6 +629,8 @@ export default function TaskBoard() {
   // The X on a board card takes it off the day. Anything that came from a list
   // goes back to that list; only something typed straight onto the board is deleted.
   function clearFromBoard(task: Task) {
+    // A weekly copy has to survive as a row, or next load would generate it again.
+    if (task.template_id) { patch(task.id, { scope: "skipped" }); return; }
     if (task.origin === "backlog" || task.from_list) patch(task.id, { scope: "backlog", task_date: null });
     else if (task.origin === "inbox") patch(task.id, { scope: "inbox", task_date: null });
     else remove(task.id);
@@ -653,6 +792,7 @@ export default function TaskBoard() {
     expandedId, setExpandedId, frog, dragId, dropZone, startDrag,
     patch, clearFromBoard, unschedule, scope, phone, listFor,
     ghostsFor, goToDate,
+    templateOf, callLists, today: iso(new Date()),
   };
 
   if (loading) {
@@ -812,6 +952,19 @@ export default function TaskBoard() {
             </div>
 
             <button
+              onClick={() => setShowNN(true)}
+              title="Things that must happen every week"
+              style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 8, cursor: "pointer",
+                background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
+                fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
+              }}
+            >
+              <span style={{ fontSize: 12.5, lineHeight: 1 }}>↻</span>
+              Non-Negotiables
+            </button>
+
+            <button
               onClick={() => { setShowCalls(v => !v); setShowList(false); }}
               title="The calls in your calendar for this day"
               style={{
@@ -886,8 +1039,31 @@ export default function TaskBoard() {
           <span style={{ fontSize: 10.5, fontWeight: 700, color: "#767676", whiteSpace: "nowrap" }}>
             {doneCount} of {visible.length} done
           </span>
+          {nnWeek.total > 0 && (
+            <span
+              title="Weekly non-negotiables done this week"
+              style={{
+                fontSize: 10.5, fontWeight: 800, whiteSpace: "nowrap", padding: "2px 8px", borderRadius: 20,
+                background: nnWeek.done === nnWeek.total ? "#111111" : "rgba(0,0,0,0.06)",
+                color: nnWeek.done === nnWeek.total ? "#ffffff" : "#111111",
+              }}
+            >
+              ↻ {nnWeek.done}/{nnWeek.total} this week
+            </span>
+          )}
         </div>
         )}
+
+      {showNN && (
+        <NonNegotiables
+          templates={templates}
+          callLists={callLists}
+          onAdd={addTemplate}
+          onUpdate={updateTemplate}
+          onRemove={removeTemplate}
+          onClose={() => setShowNN(false)}
+        />
+      )}
       </div>
 
       {view !== "month" && (<>
@@ -1074,6 +1250,39 @@ export default function TaskBoard() {
               })}
             </div>
           </div>
+
+          {nnMonth.length > 0 && (
+            <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 12, padding: 16 }}>
+              <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#949494", marginBottom: 10 }}>
+                ↻ NON-NEGOTIABLES BY WEEK — {nnMonth.filter(w => w.done === w.total).length} OF {nnMonth.length} WEEKS COMPLETE
+              </p>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {nnMonth.map(w => {
+                  const full = w.done === w.total;
+                  const s1 = parseISO(w.start), s2 = parseISO(w.end);
+                  const range = `${s1.toLocaleDateString("en-US", { month: "short", day: "numeric" })}–${s1.getMonth() === s2.getMonth() ? s2.getDate() : s2.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+                  return (
+                    <button
+                      key={w.start}
+                      onClick={() => { setWeekDate(w.start); setView("week"); }}
+                      title="Open that week"
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", borderRadius: 8, cursor: "pointer",
+                        background: full ? "#111111" : "rgba(0,0,0,0.04)",
+                        color: full ? "#ffffff" : "#111111",
+                        border: `1px solid ${full ? "#111111" : "rgba(0,0,0,0.08)"}`,
+                      }}
+                    >
+                      <span style={{ fontSize: 11, fontWeight: 700 }}>{range}</span>
+                      <span style={{ fontSize: 11, fontWeight: 800, opacity: full ? 1 : 0.6 }}>
+                        {w.done}/{w.total}{full ? " ✓" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 12, padding: 16 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
@@ -1415,9 +1624,25 @@ type BoardCtx = {
   scope: Scope;
   phone: boolean;
   listFor: (b: Bucket, p?: number) => Task[];
+  templateOf: (id: string | null) => Template | undefined;
+  callLists: Partial<Record<CountSource, CallList>>;
+  today: string;
   ghostsFor: (b: Bucket, p?: number) => Task[];
   goToDate: (d: string) => void;
 };
+
+/** The live call list behind a Non-Negotiable card — only for copies today or later. */
+function liveList(task: Task, ctx: BoardCtx): CallList | null {
+  if (task.done) return null;
+  const source = ctx.templateOf(task.template_id)?.count_source;
+  if (!source) return null;
+  const slot = task.task_date ?? "";
+  const current = task.scope === "week"
+    ? slot >= iso(weekStart(parseISO(ctx.today)))
+    : slot >= ctx.today;
+  if (!current) return null;
+  return ctx.callLists[source] ?? { count: 0, people: [] };
+}
 
 function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx }) {
   const open = ctx.expandedId === task.id;
@@ -1467,7 +1692,24 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
           }}>
             {isFrog && !task.done && <span style={{ marginRight: 4 }}>🐸</span>}
             {task.title}
+            {task.template_id && (
+              <span title="Weekly non-negotiable" style={{ marginLeft: 5, fontSize: 10.5, color: "#a8a8a8" }}>↻</span>
+            )}
           </p>
+
+          {(() => {
+            const list = liveList(task, ctx);
+            if (!list) return null;
+            return (
+              <span style={{
+                display: "inline-block", marginTop: 5, fontSize: 9.5, fontWeight: 800, padding: "2px 6px", borderRadius: 4,
+                background: list.count > 0 ? "#111111" : "rgba(0,0,0,0.06)",
+                color: list.count > 0 ? "#ffffff" : "#949494",
+              }}>
+                {list.count > 0 ? `${list.count} to call` : "none waiting"}
+              </span>
+            );
+          })()}
 
           {!open && (task.due_date || task.delegate_to || task.notes) && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
@@ -1505,6 +1747,31 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
 
       {open && (
         <div style={{ marginTop: 7, paddingTop: 7, borderTop: BORDER, display: "flex", flexDirection: "column", gap: 6 }}>
+          {(() => {
+            const list = liveList(task, ctx);
+            const source = ctx.templateOf(task.template_id)?.count_source;
+            if (!list || !source) return null;
+            return (
+              <Field label={COUNT_LABELS[source]}>
+                {list.people.length === 0 ? (
+                  <p style={{ fontSize: 11, color: "#949494" }}>Nobody waiting right now.</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 180, overflowY: "auto" }}>
+                    {list.people.map((p, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 11 }}>
+                        <span style={{ color: "#111111", fontWeight: 600, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                        {p.phone && (
+                          <a href={`tel:${p.phone}`} onClick={e => e.stopPropagation()} style={{ color: "#767676", textDecoration: "none", whiteSpace: "nowrap" }}>
+                            {p.phone}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Field>
+            );
+          })()}
           <Field label="Task">
             <input
               defaultValue={task.title}
@@ -1993,6 +2260,168 @@ function CatchUp({ ids, tasks, label, anchor, onTick, onMove, onPark, onReAdd, o
             }}
           >
             Move all to {label}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Weekly Non-Negotiables: the template you set once ── */
+
+function NonNegotiables({ templates, callLists, onAdd, onUpdate, onRemove, onClose }: {
+  templates: Template[];
+  callLists: Partial<Record<CountSource, CallList>>;
+  onAdd: (title: string) => void;
+  onUpdate: (id: string, changes: Partial<Template>) => void;
+  onRemove: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState("");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const add = () => {
+    const t = draft.trim();
+    if (!t) return;
+    setDraft("");
+    onAdd(t);
+  };
+
+  const chip = (active: boolean): React.CSSProperties => ({
+    height: 24, minWidth: 24, padding: "0 7px", borderRadius: 6, fontSize: 10.5, fontWeight: 800, cursor: "pointer",
+    background: active ? "#111111" : "rgba(0,0,0,0.05)", color: active ? "#ffffff" : "#767676",
+  });
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: "#ffffff", borderRadius: 14, maxWidth: 620, width: "100%", maxHeight: "86vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 60px rgba(0,0,0,0.28)" }}
+      >
+        <div style={{ padding: "16px 20px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>↻ Weekly Non-Negotiables</p>
+            <p style={{ fontSize: 11, color: "#949494", lineHeight: 1.5 }}>
+              Set these once. Every week they land on the board by themselves, on the days you choose.
+              No day chosen means once, any day that week.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#949494", cursor: "pointer", background: "rgba(0,0,0,0.045)" }}
+          >
+            <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {templates.length === 0 && (
+            <p style={{ fontSize: 12, color: "#949494", textAlign: "center", padding: "24px 12px", lineHeight: 1.6 }}>
+              Nothing yet. Add the things that have to happen every week — checking ads, calling no-shows, and so on.
+            </p>
+          )}
+
+          {templates.map(t => (
+            <div key={t.id} style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 9 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  defaultValue={t.title}
+                  onBlur={e => { const v = e.target.value.trim(); if (v && v !== t.title) onUpdate(t.id, { title: v }); }}
+                  onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                  style={{ ...fieldStyle, flex: 1, fontSize: 12.5, fontWeight: 600 }}
+                />
+                <button
+                  onClick={() => onRemove(t.id)}
+                  title="Stop this every week (past weeks keep their record)"
+                  style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, color: "#949494", cursor: "pointer" }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#949494"}
+                >
+                  Remove
+                </button>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: "#949494", width: 44 }}>LETTER</span>
+                <div style={{ display: "flex", gap: 3 }}>
+                  {BUCKETS.map(b => (
+                    <button key={b.id} onClick={() => onUpdate(t.id, { bucket: b.id, priority: HAS_LEVELS.has(b.id) ? t.priority : 1 })} style={chip(t.bucket === b.id)}>
+                      {b.letter}
+                    </button>
+                  ))}
+                </div>
+                {HAS_LEVELS.has(t.bucket) && (
+                  <div style={{ display: "flex", gap: 3 }}>
+                    {[1, 2, 3].map(n => (
+                      <button key={n} onClick={() => onUpdate(t.id, { priority: n })} style={chip(t.priority === n)}>
+                        {t.bucket}{n}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: "#949494", width: 44 }}>DAYS</span>
+                <div style={{ display: "flex", gap: 3 }}>
+                  {WEEKDAYS.map((w, i) => {
+                    const d = i + 1;
+                    const on = t.days.includes(d);
+                    return (
+                      <button
+                        key={d}
+                        onClick={() => onUpdate(t.id, { days: on ? t.days.filter(x => x !== d) : [...t.days, d].sort() })}
+                        style={chip(on)}
+                      >
+                        {w}
+                      </button>
+                    );
+                  })}
+                </div>
+                <span style={{ fontSize: 10.5, color: "#949494" }}>
+                  {t.days.length === 0 ? "Any day this week" : t.days.length === 7 ? "Every day" : `${t.days.length}× a week`}
+                </span>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: "#949494", width: 44 }}>COUNT</span>
+                <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                  <button onClick={() => onUpdate(t.id, { count_source: null })} style={chip(!t.count_source)}>None</button>
+                  {(Object.keys(COUNT_LABELS) as CountSource[]).map(src => (
+                    <button key={src} onClick={() => onUpdate(t.id, { count_source: src })} style={chip(t.count_source === src)}>
+                      {COUNT_LABELS[src]}
+                      {callLists[src] && <span style={{ opacity: 0.6, marginLeft: 4 }}>{callLists[src]!.count}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ padding: "12px 18px", borderTop: BORDER, display: "flex", gap: 8 }}>
+          <input
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") add(); }}
+            placeholder="Add a weekly non-negotiable — e.g. Check ads backend"
+            style={{ ...fieldStyle, flex: 1, fontSize: 12.5, padding: "8px 11px" }}
+          />
+          <button
+            onClick={add}
+            style={{ background: "#000000", color: "#fff", fontSize: 12.5, fontWeight: 700, padding: "8px 16px", borderRadius: 8, cursor: "pointer" }}
+          >
+            Add
           </button>
         </div>
       </div>

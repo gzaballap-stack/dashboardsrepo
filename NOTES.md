@@ -6,6 +6,33 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
+## 2026-09-21 — Task Board: Weekly Non-Negotiables
+
+Recurring weekly tasks. A **template** (`task_templates`: title, letter/level,
+`days` 1=Mon…7=Sun — empty means once, any day that week — and an optional
+`count_source`) is turned into ordinary `tasks` rows each week by
+`POST /api/task-templates/materialize`, called by the board for the week in view.
+
+- Each copy carries `template_id` + `template_date` (its **slot**). A unique index
+  on the pair makes generation idempotent and means a copy that is moved (its
+  `task_date` changes, its slot does not) is never generated again.
+- Removing a copy from the board sets `scope = 'skipped'` rather than deleting it,
+  for the same reason. Skipped rows show nowhere.
+- Only the current week and later are generated, and never days before the
+  template was created — past weeks are history, not back-filled.
+- Editing a template changes only open copies dated today or later; changing its
+  days deletes open future copies on days no longer chosen.
+
+**Live counts** (`GET /api/task-templates/counts`) place each Tomsi Media B2B
+contact by their latest event: lead → leads to call; intro_booked < 48h → triage
+call booked; intro_booked or sales_call_booked ≥ 48h with nothing after → no-show;
+sales_call_shown with no close → no-close. The payloads carry **no appointment
+time**, only when the event arrived, so the 48-hour upcoming/no-show line is an
+approximation. If GHL ever sends the appointment start, use it here.
+First run on V1 (2026-09-21): 12 leads, 2 triage, 1 no-show, 0 no-closes.
+
+---
+
 ## 2026-09-09 — Calendar reads Google via a private iCal link, not OAuth
 
 The calendar is a **panel inside the Task Board**, not its own tool — a "Calls"

@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 
 const BUCKETS = ['A', 'B', 'C', 'D', 'E'] as const;
-const COLS = 'id, title, notes, bucket, priority, position, done, due_date, delegate_to, created_at, completed_at, task_date, scope, from_list, origin, prev_dates, parked';
-const SCOPES = ['day', 'week', 'backlog', 'inbox'] as const;
+const COLS = 'id, title, notes, bucket, priority, position, done, due_date, delegate_to, created_at, completed_at, task_date, scope, from_list, origin, prev_dates, parked, template_id, template_date';
+// 'skipped' is a weekly non-negotiable taken off its slot: it must stay as a row
+// so the slot is not generated again, but it shows nowhere.
+const SCOPES = ['day', 'week', 'backlog', 'inbox', 'skipped'] as const;
 
 export async function GET() {
   const ctx = await getAuthContext();
