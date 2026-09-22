@@ -963,18 +963,6 @@ export default function TaskBoard() {
               ))}
             </div>
 
-            <button
-              onClick={() => setShowNN(true)}
-              title="Things that must happen every week"
-              style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: 8, cursor: "pointer",
-                background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
-                fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
-              }}
-            >
-              <span style={{ fontSize: 12.5, lineHeight: 1 }}>↻</span>
-              Non-Negotiables
-            </button>
 
             <button
               onClick={() => { setShowCalls(v => !v); setShowList(false); }}
@@ -1148,7 +1136,7 @@ export default function TaskBoard() {
       </div>
 
       {/* ── Weekly non-negotiables: their own checklist, outside the ABCDE board ── */}
-      {(templates.length > 0 || nnThisWeek.length > 0) && (
+      {(
         <NonNegotiableStrip
           view={view}
           day={dayDate}
@@ -2451,8 +2439,8 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
   const today = iso(new Date());
 
   const weekDone = copies.filter(t => t.done).length;
-  // Day view: that day's slots, plus the ones due any day this week.
-  const todays = copies.filter(t => (t.scope === "day" && t.task_date === day) || t.scope === "week");
+  // Day view shows only what is scheduled for that day. "Any day" ones live in Week view.
+  const todays = copies.filter(t => t.scope === "day" && t.task_date === day);
   const dayDone = todays.filter(t => t.done).length;
 
   // A live count only means something for today or later.
@@ -2502,68 +2490,84 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
   );
 
   return (
-    <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 12, padding: "12px 14px" }}>
+    <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 10, padding: view === "day" ? "7px 10px" : "12px 14px" }}>
       {view === "day" ? (
-        <>
-          {header(day === today ? "TODAY'S NON-NEGOTIABLES" : "NON-NEGOTIABLES THIS DAY", dayDone, todays.length)}
-          {todays.length === 0 ? (
-            <p style={{ fontSize: 11.5, color: "#949494" }}>None on this day.</p>
-          ) : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {todays.map(t => {
-                const live = liveFor(t);
-                return (
-                  <div
-                    key={t.id}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: "#949494", whiteSpace: "nowrap", marginRight: 2 }}>
+            ↻ {day === today ? "TODAY" : "THIS DAY"}
+          </span>
+          {todays.length > 0 && (
+            <span style={{ fontSize: 10, fontWeight: 800, color: dayDone === todays.length ? "#111111" : "#767676", whiteSpace: "nowrap", marginRight: 4 }}>
+              {dayDone}/{todays.length}
+            </span>
+          )}
+
+          {todays.length === 0 && (
+            <span style={{ fontSize: 11, color: "#949494" }}>
+              {copies.length === 0 ? "No weekly non-negotiables set up yet." : "None scheduled for this day."}
+            </span>
+          )}
+
+          {todays.map(t => {
+            const live = liveFor(t);
+            return (
+              <div
+                key={t.id}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "3px 6px 3px 7px", borderRadius: 7,
+                  background: t.done ? "rgba(0,0,0,0.04)" : "#ffffff",
+                  border: `1px solid ${openList === t.id ? "#111111" : "rgba(0,0,0,0.12)"}`,
+                }}
+              >
+                {tick(t, 13)}
+                <button
+                  onClick={() => setOpenList(openList === t.id ? null : t.id)}
+                  style={{
+                    fontSize: 11.5, fontWeight: 600, cursor: live ? "pointer" : "default",
+                    color: t.done ? "#949494" : "#111111", textDecoration: t.done ? "line-through" : "none",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {t.title}
+                </button>
+                {live && (
+                  <button
+                    onClick={() => setOpenList(openList === t.id ? null : t.id)}
                     style={{
-                      display: "flex", alignItems: "center", gap: 7, padding: "6px 8px 6px 9px", borderRadius: 8,
-                      background: t.done ? "rgba(0,0,0,0.04)" : "#ffffff",
-                      border: `1px solid ${openList === t.id ? "#111111" : "rgba(0,0,0,0.12)"}`,
+                      fontSize: 9, fontWeight: 800, padding: "1px 5px", borderRadius: 4, cursor: "pointer",
+                      background: live.list.count > 0 ? "#111111" : "rgba(0,0,0,0.06)",
+                      color: live.list.count > 0 ? "#ffffff" : "#949494",
                     }}
                   >
-                    {tick(t)}
-                    <button
-                      onClick={() => setOpenList(openList === t.id ? null : t.id)}
-                      style={{
-                        fontSize: 12, fontWeight: 600, cursor: live ? "pointer" : "default",
-                        color: t.done ? "#949494" : "#111111", textDecoration: t.done ? "line-through" : "none",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {t.title}
-                    </button>
-                    {t.scope === "week" && (
-                      <span style={{ fontSize: 9, fontWeight: 700, color: "#a8a8a8", whiteSpace: "nowrap" }}>this week</span>
-                    )}
-                    {live && (
-                      <button
-                        onClick={() => setOpenList(openList === t.id ? null : t.id)}
-                        style={{
-                          fontSize: 9.5, fontWeight: 800, padding: "2px 6px", borderRadius: 4, cursor: "pointer",
-                          background: live.list.count > 0 ? "#111111" : "rgba(0,0,0,0.06)",
-                          color: live.list.count > 0 ? "#ffffff" : "#949494",
-                        }}
-                      >
-                        {live.list.count}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => onSkip(t)}
-                      title="Skip this one this time"
-                      style={{ color: "#c2c2c2", cursor: "pointer", lineHeight: 0, padding: 1 }}
-                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#c2c2c2"}
-                    >
-                      <svg style={{ width: 10, height: 10 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
+                    {live.list.count}
+                  </button>
+                )}
+                <button
+                  onClick={() => onSkip(t)}
+                  title="Skip this one this time"
+                  style={{ color: "#c2c2c2", cursor: "pointer", lineHeight: 0, padding: 1 }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#c2c2c2"}
+                >
+                  <svg style={{ width: 9, height: 9 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+
+          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+            {copies.length > 0 && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#949494", whiteSpace: "nowrap" }}>
+                week {weekDone}/{copies.length}
+              </span>
+            )}
+            <button onClick={onManage} style={{ fontSize: 10.5, fontWeight: 700, color: "#767676", cursor: "pointer" }}>
+              {copies.length === 0 && todays.length === 0 ? "Set up" : "Edit"}
+            </button>
+          </span>
+        </div>
       ) : (
         <>
           {header("NON-NEGOTIABLES THIS WEEK", weekDone, copies.length)}
