@@ -30,6 +30,22 @@ const COUNT_LABELS: Record<CountSource, string> = {
 };
 
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
+
+/**
+ * A calling non-negotiable gets its live count from its name — "Call B2B
+ * leads", "Call triage leads", "Call no-shows", "Call no-closes". Only names
+ * about calling qualify, so "Check lead ads" never picks one up. Order matters:
+ * "triage leads" must win over plain "leads".
+ */
+function countSourceFor(title: string): CountSource | null {
+  const t = title.toLowerCase();
+  if (!/\bcall/.test(t)) return null;
+  if (/no[\s-]?shows?/.test(t)) return "no_shows";
+  if (/no[\s-]?closes?/.test(t)) return "no_closes";
+  if (/triage/.test(t)) return "triage";
+  if (/leads?\b/.test(t)) return "leads";
+  return null;
+}
 type ViewMode = "day" | "week" | "month";
 
 type Task = {
@@ -330,7 +346,10 @@ export default function TaskBoard() {
 
   const goToDate = (d: string) => { setDayDate(d); setView("day"); };
 
-  const templateOf = (id: string | null) => (id ? templates.find(t => t.id === id) : undefined);
+  const templateOf = (id: string | null) => {
+    const t = id ? templates.find(x => x.id === id) : undefined;
+    return t ? { ...t, count_source: countSourceFor(t.title) } : undefined;
+  };
 
   // This week's non-negotiable copies, in the order the templates are listed.
   const nnThisWeek = useMemo(() => {
@@ -390,6 +409,18 @@ export default function TaskBoard() {
       body: JSON.stringify({ id, ...changes, today: iso(new Date()) }),
     });
     await refreshAfterTemplates();
+  }
+
+  async function reorderTemplates(ids: string[]) {
+    const pos = new Map(ids.map((id, i) => [id, (i + 1) * 1000]));
+    setTemplates(prev => [...prev]
+      .map(t => ({ ...t, position: pos.get(t.id) ?? t.position }))
+      .sort((a, b) => a.position - b.position));
+    await Promise.all(ids.map(id => fetch("/api/task-templates", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, position: pos.get(id), today: iso(new Date()) }),
+    })));
   }
 
   async function removeTemplate(id: string) {
@@ -1049,6 +1080,7 @@ export default function TaskBoard() {
           onAdd={addTemplate}
           onUpdate={updateTemplate}
           onRemove={removeTemplate}
+          onReorder={reorderTemplates}
           onClose={() => setShowNN(false)}
         />
       )}
@@ -2281,15 +2313,57 @@ function CatchUp({ ids, tasks, label, anchor, onTick, onMove, onPark, onReAdd, o
 
 /* ── Weekly Non-Negotiables: the template you set once ── */
 
-function NonNegotiables({ templates, callLists, onAdd, onUpdate, onRemove, onClose }: {
+function NonNegotiables({ templates, onAdd, onUpdate, onRemove, onReorder, onClose }: {
   templates: Template[];
   callLists: Partial<Record<CountSource, CallList>>;
   onAdd: (title: string) => void;
   onUpdate: (id: string, changes: Partial<Template>) => void;
   onRemove: (id: string) => void;
+  onReorder: (ids: string[]) => void;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState("");
+
+  // Drag by the grip to reorder. Pointer events, like the board — the browser's
+  // own drag-and-drop proved unreliable here.
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (dragIdx === null) return;
+    const move = (e: PointerEvent) => {
+      e.preventDefault();
+      const el = document.elementFromPoint(e.clientX, e.clientY)?.closest("[data-tpl-index]");
+      if (el) setOverIdx(Number(el.getAttribute("data-tpl-index")));
+    };
+    const up = () => {
+      if (overIdx !== null && overIdx !== dragIdx) {
+        const ids = templates.map(t => t.id);
+        const [moved] = ids.splice(dragIdx, 1);
+        ids.splice(overIdx, 0, moved);
+        onReorder(ids);
+      }
+      document.body.style.userSelect = "";
+      setDragIdx(null); setOverIdx(null);
+    };
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, [dragIdx, overIdx, templates, onReorder]);
+
+  // While dragging, show the list as it will land.
+  const shown = (() => {
+    if (dragIdx === null || overIdx === null) return templates;
+    const list = [...templates];
+    const [moved] = list.splice(dragIdx, 1);
+    list.splice(overIdx, 0, moved);
+    return list;
+  })();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -2323,7 +2397,8 @@ function NonNegotiables({ templates, callLists, onAdd, onUpdate, onRemove, onClo
             <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>↻ Weekly Non-Negotiables</p>
             <p style={{ fontSize: 11, color: "#949494", lineHeight: 1.5 }}>
               Set these once. Every week they appear in their own checklist above the board, on the days
-              you choose — never mixed in with your ABCDE tasks. No day chosen means once, any day that week.
+              you choose. Drag by the grip to set the order — the top one shows first each day. Calling
+              items (&ldquo;Call B2B leads&rdquo;, &ldquo;Call no-shows&rdquo;…) count themselves.
             </p>
           </div>
           <button
@@ -2343,9 +2418,26 @@ function NonNegotiables({ templates, callLists, onAdd, onUpdate, onRemove, onClo
             </p>
           )}
 
-          {templates.map(t => (
-            <div key={t.id} style={{ border: "1px solid rgba(0,0,0,0.09)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 9 }}>
+          {shown.map((t, i) => (
+            <div
+              key={t.id}
+              data-tpl-index={i}
+              style={{
+                border: `1px solid ${dragIdx !== null && templates[dragIdx]?.id === t.id ? "#111111" : "rgba(0,0,0,0.09)"}`,
+                borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 9,
+                background: dragIdx !== null && templates[dragIdx]?.id === t.id ? "rgba(0,0,0,0.03)" : "#ffffff",
+                boxShadow: dragIdx !== null && templates[dragIdx]?.id === t.id ? "0 6px 18px rgba(0,0,0,0.12)" : "none",
+              }}
+            >
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  onPointerDown={e => { e.preventDefault(); document.body.style.userSelect = "none"; setDragIdx(templates.findIndex(x => x.id === t.id)); setOverIdx(templates.findIndex(x => x.id === t.id)); }}
+                  title="Drag to reorder — top of the list shows first each day"
+                  style={{ flexShrink: 0, cursor: "grab", touchAction: "none", color: "#b0b0b0", fontSize: 14, lineHeight: 1, padding: "2px 2px", userSelect: "none" }}
+                >
+                  ⋮⋮
+                </span>
+                <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, color: "#949494", width: 14, textAlign: "right" }}>{i + 1}</span>
                 <input
                   defaultValue={t.title}
                   onBlur={e => { const v = e.target.value.trim(); if (v && v !== t.title) onUpdate(t.id, { title: v }); }}
@@ -2383,19 +2475,6 @@ function NonNegotiables({ templates, callLists, onAdd, onUpdate, onRemove, onClo
                 <span style={{ fontSize: 10.5, color: "#949494" }}>
                   {t.days.length === 0 ? "Any day this week" : t.days.length === 7 ? "Every day" : `${t.days.length}× a week`}
                 </span>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: "#949494", width: 44 }}>COUNT</span>
-                <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                  <button onClick={() => onUpdate(t.id, { count_source: null })} style={chip(!t.count_source)}>None</button>
-                  {(Object.keys(COUNT_LABELS) as CountSource[]).map(src => (
-                    <button key={src} onClick={() => onUpdate(t.id, { count_source: src })} style={chip(t.count_source === src)}>
-                      {COUNT_LABELS[src]}
-                      {callLists[src] && <span style={{ opacity: 0.6, marginLeft: 4 }}>{callLists[src]!.count}</span>}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
           ))}

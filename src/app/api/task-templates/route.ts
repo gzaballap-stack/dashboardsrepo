@@ -78,6 +78,7 @@ export async function PATCH(req: Request) {
   if ([1, 2, 3].includes(body.priority)) patch.priority = body.priority;
   if ('days' in body) patch.days = cleanDays(body.days);
   if ('count_source' in body) patch.count_source = SOURCES.includes(body.count_source) ? body.count_source : null;
+  if (typeof body.position === 'number') patch.position = body.position;
   if (!Object.keys(patch).length) return NextResponse.json({ error: 'nothing to update' }, { status: 400 });
 
   const { data: before } = await ctx.service
