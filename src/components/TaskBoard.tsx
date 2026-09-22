@@ -252,7 +252,7 @@ export default function TaskBoard() {
 
   // Everything on the board is scoped to the day (or week) currently in view.
   const visible = useMemo(
-    () => tasks.filter(t => t.scope === scope && t.task_date === anchor),
+    () => tasks.filter(t => t.scope === scope && t.task_date === anchor && !t.template_id),
     [tasks, scope, anchor],
   );
 
@@ -283,7 +283,7 @@ export default function TaskBoard() {
     return Array.from({ length: 7 }, (_, i) => {
       const d = addDays(s, i);
       const key = iso(d);
-      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key);
+      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key && !t.template_id);
       return {
         key,
         letter: d.toLocaleDateString("en-US", { weekday: "narrow" }),
@@ -332,13 +332,17 @@ export default function TaskBoard() {
 
   const templateOf = (id: string | null) => (id ? templates.find(t => t.id === id) : undefined);
 
-  // How this week's non-negotiables are going.
-  const nnWeek = useMemo(() => {
+  // This week's non-negotiable copies, in the order the templates are listed.
+  const nnThisWeek = useMemo(() => {
     const end = iso(addDays(parseISO(viewedWeek), 6));
-    const mine = tasks.filter(t => t.template_id && t.scope !== "skipped"
-      && t.template_date && t.template_date >= viewedWeek && t.template_date <= end);
-    return { done: mine.filter(t => t.done).length, total: mine.length };
-  }, [tasks, viewedWeek]);
+    const order = new Map(templates.map((t, i) => [t.id, i]));
+    return tasks
+      .filter(t => t.template_id && t.scope !== "skipped"
+        && t.template_date && t.template_date >= viewedWeek && t.template_date <= end)
+      .sort((a, b) => (order.get(a.template_id!) ?? 99) - (order.get(b.template_id!) ?? 99)
+        || (a.template_date ?? "").localeCompare(b.template_date ?? ""));
+  }, [tasks, templates, viewedWeek]);
+
 
   // Month view: how each week went on its non-negotiables.
   const nnMonth = useMemo(() => {
@@ -416,7 +420,7 @@ export default function TaskBoard() {
     const cells = Array.from({ length: weeks * 7 }, (_, i) => {
       const d = addDays(gridStart, i);
       const key = iso(d);
-      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key);
+      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key && !t.template_id);
       return {
         key,
         num: d.getDate(),
@@ -1047,18 +1051,6 @@ export default function TaskBoard() {
           <span style={{ fontSize: 10.5, fontWeight: 700, color: "#767676", whiteSpace: "nowrap" }}>
             {doneCount} of {visible.length} done
           </span>
-          {nnWeek.total > 0 && (
-            <span
-              title="Weekly non-negotiables done this week"
-              style={{
-                fontSize: 10.5, fontWeight: 800, whiteSpace: "nowrap", padding: "2px 8px", borderRadius: 20,
-                background: nnWeek.done === nnWeek.total ? "#111111" : "rgba(0,0,0,0.06)",
-                color: nnWeek.done === nnWeek.total ? "#ffffff" : "#111111",
-              }}
-            >
-              ↻ {nnWeek.done}/{nnWeek.total} this week
-            </span>
-          )}
         </div>
         )}
 
@@ -1154,6 +1146,22 @@ export default function TaskBoard() {
           Add
         </button>
       </div>
+
+      {/* ── Weekly non-negotiables: their own checklist, outside the ABCDE board ── */}
+      {(templates.length > 0 || nnThisWeek.length > 0) && (
+        <NonNegotiableStrip
+          view={view}
+          day={dayDate}
+          weekDays={Array.from({ length: 7 }, (_, i) => iso(addDays(parseISO(viewedWeek), i)))}
+          copies={nnThisWeek}
+          callLists={callLists}
+          templateOf={templateOf}
+          isCurrentWeek={viewedWeek === iso(weekStart(new Date()))}
+          onToggle={t => patch(t.id, { done: !t.done })}
+          onSkip={t => clearFromBoard(t)}
+          onManage={() => setShowNN(true)}
+        />
+      )}
 
       {/* ── Board controls ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -2326,8 +2334,8 @@ function NonNegotiables({ templates, callLists, onAdd, onUpdate, onRemove, onClo
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>↻ Weekly Non-Negotiables</p>
             <p style={{ fontSize: 11, color: "#949494", lineHeight: 1.5 }}>
-              Set these once. Every week they land on the board by themselves, on the days you choose.
-              No day chosen means once, any day that week.
+              Set these once. Every week they appear in their own checklist above the board, on the days
+              you choose — never mixed in with your ABCDE tasks. No day chosen means once, any day that week.
             </p>
           </div>
           <button
@@ -2365,26 +2373,6 @@ function NonNegotiables({ templates, callLists, onAdd, onUpdate, onRemove, onClo
                 >
                   Remove
                 </button>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: "#949494", width: 44 }}>LETTER</span>
-                <div style={{ display: "flex", gap: 3 }}>
-                  {BUCKETS.map(b => (
-                    <button key={b.id} onClick={() => onUpdate(t.id, { bucket: b.id, priority: HAS_LEVELS.has(b.id) ? t.priority : 1 })} style={chip(t.bucket === b.id)}>
-                      {b.letter}
-                    </button>
-                  ))}
-                </div>
-                {HAS_LEVELS.has(t.bucket) && (
-                  <div style={{ display: "flex", gap: 3 }}>
-                    {[1, 2, 3].map(n => (
-                      <button key={n} onClick={() => onUpdate(t.id, { priority: n })} style={chip(t.priority === n)}>
-                        {t.bucket}{n}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -2441,6 +2429,219 @@ function NonNegotiables({ templates, callLists, onAdd, onUpdate, onRemove, onClo
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Non-negotiables strip: a checklist of its own, above the ABCDE board ── */
+
+function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf, isCurrentWeek, onToggle, onSkip, onManage }: {
+  view: ViewMode;
+  day: string;
+  weekDays: string[];
+  copies: Task[];
+  callLists: Partial<Record<CountSource, CallList>>;
+  templateOf: (id: string | null) => Template | undefined;
+  isCurrentWeek: boolean;
+  onToggle: (t: Task) => void;
+  onSkip: (t: Task) => void;
+  onManage: () => void;
+}) {
+  const [openList, setOpenList] = useState<string | null>(null);
+  const today = iso(new Date());
+
+  const weekDone = copies.filter(t => t.done).length;
+  // Day view: that day's slots, plus the ones due any day this week.
+  const todays = copies.filter(t => (t.scope === "day" && t.task_date === day) || t.scope === "week");
+  const dayDone = todays.filter(t => t.done).length;
+
+  // A live count only means something for today or later.
+  const liveFor = (t: Task) => {
+    const src = templateOf(t.template_id)?.count_source;
+    if (!src || t.done) return null;
+    const current = t.scope === "week" ? isCurrentWeek : (t.task_date ?? "") >= today;
+    return current ? { src, list: callLists[src] ?? { count: 0, people: [] } } : null;
+  };
+
+  const tick = (t: Task, size = 15) => (
+    <button
+      onClick={() => onToggle(t)}
+      title={t.done ? "Mark as not done" : "Done"}
+      style={{
+        flexShrink: 0, width: size, height: size, borderRadius: 4, cursor: "pointer",
+        border: `1.5px solid ${t.done ? "#111111" : "rgba(0,0,0,0.25)"}`,
+        background: t.done ? "#111111" : "#ffffff",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      {t.done && (
+        <svg style={{ width: size * 0.6, height: size * 0.6, color: "#ffffff" }} fill="none" stroke="currentColor" strokeWidth={4} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      )}
+    </button>
+  );
+
+  const opened = openList ? copies.find(t => t.id === openList) : null;
+  const openedLive = opened ? liveFor(opened) : null;
+
+  const header = (label: string, done: number, total: number) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+      <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#949494", marginRight: "auto" }}>
+        ↻ {label}
+      </p>
+      {total > 0 && (
+        <span style={{ fontSize: 10.5, fontWeight: 800, color: done === total ? "#111111" : "#767676" }}>
+          {done}/{total}{view === "day" && copies.length > 0 ? ` · week ${weekDone}/${copies.length}` : ""}
+        </span>
+      )}
+      <button onClick={onManage} style={{ fontSize: 10.5, fontWeight: 700, color: "#767676", cursor: "pointer" }}>
+        Edit
+      </button>
+    </div>
+  );
+
+  return (
+    <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 12, padding: "12px 14px" }}>
+      {view === "day" ? (
+        <>
+          {header(day === today ? "TODAY'S NON-NEGOTIABLES" : "NON-NEGOTIABLES THIS DAY", dayDone, todays.length)}
+          {todays.length === 0 ? (
+            <p style={{ fontSize: 11.5, color: "#949494" }}>None on this day.</p>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {todays.map(t => {
+                const live = liveFor(t);
+                return (
+                  <div
+                    key={t.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 7, padding: "6px 8px 6px 9px", borderRadius: 8,
+                      background: t.done ? "rgba(0,0,0,0.04)" : "#ffffff",
+                      border: `1px solid ${openList === t.id ? "#111111" : "rgba(0,0,0,0.12)"}`,
+                    }}
+                  >
+                    {tick(t)}
+                    <button
+                      onClick={() => setOpenList(openList === t.id ? null : t.id)}
+                      style={{
+                        fontSize: 12, fontWeight: 600, cursor: live ? "pointer" : "default",
+                        color: t.done ? "#949494" : "#111111", textDecoration: t.done ? "line-through" : "none",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {t.title}
+                    </button>
+                    {t.scope === "week" && (
+                      <span style={{ fontSize: 9, fontWeight: 700, color: "#a8a8a8", whiteSpace: "nowrap" }}>this week</span>
+                    )}
+                    {live && (
+                      <button
+                        onClick={() => setOpenList(openList === t.id ? null : t.id)}
+                        style={{
+                          fontSize: 9.5, fontWeight: 800, padding: "2px 6px", borderRadius: 4, cursor: "pointer",
+                          background: live.list.count > 0 ? "#111111" : "rgba(0,0,0,0.06)",
+                          color: live.list.count > 0 ? "#ffffff" : "#949494",
+                        }}
+                      >
+                        {live.list.count}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onSkip(t)}
+                      title="Skip this one this time"
+                      style={{ color: "#c2c2c2", cursor: "pointer", lineHeight: 0, padding: 1 }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#c0392b"}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#c2c2c2"}
+                    >
+                      <svg style={{ width: 10, height: 10 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          {header("NON-NEGOTIABLES THIS WEEK", weekDone, copies.length)}
+          {copies.length === 0 ? (
+            <p style={{ fontSize: 11.5, color: "#949494" }}>None this week.</p>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 520 }}>
+                <thead>
+                  <tr>
+                    <th />
+                    {weekDays.map(d => (
+                      <th key={d} style={{
+                        fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", padding: "0 4px 6px", textAlign: "center",
+                        color: d === today ? "#111111" : "#949494",
+                      }}>
+                        {parseISO(d).toLocaleDateString("en-US", { weekday: "narrow" })}
+                        <span style={{ display: "block", fontSize: 10.5, fontWeight: 700 }}>{parseISO(d).getDate()}</span>
+                      </th>
+                    ))}
+                    <th style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: "#949494", padding: "0 4px 6px", textAlign: "center" }}>
+                      ANY DAY
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...new Set(copies.map(t => t.template_id!))].map(tid => {
+                    const mine = copies.filter(t => t.template_id === tid);
+                    const title = templateOf(tid)?.title ?? mine[0].title;
+                    const live = mine.map(liveFor).find(Boolean);
+                    const cell = (t: Task | undefined, key: string) => (
+                      <td key={key} style={{ padding: "5px 4px", textAlign: "center", borderTop: BORDER }}>
+                        {t ? <span style={{ display: "inline-flex" }}>{tick(t, 16)}</span>
+                           : <span style={{ color: "#dcdcdc", fontSize: 12 }}>·</span>}
+                      </td>
+                    );
+                    return (
+                      <tr key={tid}>
+                        <td style={{ padding: "5px 10px 5px 0", borderTop: BORDER, whiteSpace: "nowrap" }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#111111" }}>{title}</span>
+                          {live && live.list.count > 0 && (
+                            <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, padding: "1px 5px", borderRadius: 4, background: "#111111", color: "#ffffff" }}>
+                              {live.list.count}
+                            </span>
+                          )}
+                        </td>
+                        {weekDays.map(d => cell(mine.find(t => t.scope === "day" && t.template_date === d), d))}
+                        {cell(mine.find(t => t.scope === "week"), "any")}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Who to call, for the item opened above */}
+      {view === "day" && opened && openedLive && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: BORDER }}>
+          <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: "#949494", marginBottom: 6 }}>
+            {COUNT_LABELS[openedLive.src].toUpperCase()}
+          </p>
+          {openedLive.list.people.length === 0 ? (
+            <p style={{ fontSize: 11.5, color: "#949494" }}>Nobody waiting right now.</p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "4px 16px", maxHeight: 200, overflowY: "auto" }}>
+              {openedLive.list.people.map((p, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 11.5 }}>
+                  <span style={{ color: "#111111", fontWeight: 600, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                  {p.phone && <a href={`tel:${p.phone}`} style={{ color: "#767676", textDecoration: "none", whiteSpace: "nowrap" }}>{p.phone}</a>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

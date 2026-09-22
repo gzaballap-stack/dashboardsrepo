@@ -8,6 +8,13 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ## 2026-09-21 — Task Board: Weekly Non-Negotiables
 
+> **2026-09-22:** non-negotiables no longer sit in the ABCDE columns (the user
+> found they crowded out real prioritisation, and one became the frog). They
+> render in their own checklist strip above the board — chips for the day in Day
+> view, a template × weekday tick grid in Week view — and are excluded from the
+> columns, the frog, the day's done count and the day strip. Their letter is no
+> longer shown or edited. Their day is locked: they are done that day or not.
+
 Recurring weekly tasks. A **template** (`task_templates`: title, letter/level,
 `days` 1=Mon…7=Sun — empty means once, any day that week — and an optional
 `count_source`) is turned into ordinary `tasks` rows each week by
