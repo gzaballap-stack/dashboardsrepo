@@ -31,6 +31,21 @@ const COUNT_LABELS: Record<CountSource, string> = {
 
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
+function LockIcon({ size = 11 }: { size?: number }) {
+  return (
+    <svg style={{ width: size, height: size, flexShrink: 0, display: "inline-block", verticalAlign: "-1px" }}
+      fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+    </svg>
+  );
+}
+
+/** Weekly non-negotiables and calendar sales calls share one checklist, off the ABCDE board. */
+const isNN = (t: Task) => !!t.template_id || t.origin === "calendar";
+
+/** The day a non-negotiable belongs to. */
+const nnDay = (t: Task) => t.template_date ?? t.task_date;
+
 /**
  * A calling non-negotiable gets its live count from its name — "Call B2B
  * leads", "Call triage leads", "Call no-shows", "Call no-closes". Only names
@@ -68,6 +83,8 @@ type Task = {
   parked: boolean;
   template_id: string | null;
   template_date: string | null;
+  external_key?: string | null;
+  starts_at?: string | null;
 };
 
 const BUCKETS: { id: Bucket; letter: string; name: string; blurb: string; color: string }[] = [
@@ -265,10 +282,42 @@ export default function TaskBoard() {
     if (!loading && templates.length) generateWeek(viewedWeek);
   }, [loading, templates.length, viewedWeek, generateWeek]);
 
+  // Sales calls on the calendar join the week's non-negotiables. Re-read when the
+  // tab comes back into view, since calls get booked and moved all day.
+  const syncCalls = useCallback(async (week: string) => {
+    const offsets: Record<string, number> = {};
+    for (let i = 0; i < 8; i++) {
+      const d = addDays(parseISO(week), i);
+      offsets[iso(d)] = d.getTimezoneOffset();
+    }
+    try {
+      const res = await fetch("/api/task-templates/calls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ week_start: week, today: iso(new Date()), offsets }),
+      });
+      const d = await res.json();
+      if (!Array.isArray(d.tasks)) return;
+      const end = iso(addDays(parseISO(week), 6));
+      setTasks(prev => [
+        ...prev.filter(t => !(t.origin === "calendar" && !!t.task_date && t.task_date >= week && t.task_date <= end)),
+        ...d.tasks,
+      ]);
+    } catch { /* calendar unreachable — keep what we have */ }
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    syncCalls(viewedWeek);
+    const onVisible = () => { if (document.visibilityState === "visible") syncCalls(viewedWeek); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [loading, viewedWeek, syncCalls]);
+
 
   // Everything on the board is scoped to the day (or week) currently in view.
   const visible = useMemo(
-    () => tasks.filter(t => t.scope === scope && t.task_date === anchor && !t.template_id),
+    () => tasks.filter(t => t.scope === scope && t.task_date === anchor && !isNN(t)),
     [tasks, scope, anchor],
   );
 
@@ -289,7 +338,7 @@ export default function TaskBoard() {
 
   // Unfinished work left behind on earlier days/weeks.
   const stranded = useMemo(
-    () => tasks.filter(t => t.scope === scope && !t.done && !t.parked && !t.template_id && !!t.task_date && t.task_date < anchor),
+    () => tasks.filter(t => t.scope === scope && !t.done && !t.parked && !isNN(t) && !!t.task_date && t.task_date < anchor),
     [tasks, scope, anchor],
   );
 
@@ -299,7 +348,7 @@ export default function TaskBoard() {
     return Array.from({ length: 7 }, (_, i) => {
       const d = addDays(s, i);
       const key = iso(d);
-      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key && !t.template_id);
+      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key && !isNN(t));
       return {
         key,
         letter: d.toLocaleDateString("en-US", { weekday: "narrow" }),
@@ -355,11 +404,12 @@ export default function TaskBoard() {
   const nnThisWeek = useMemo(() => {
     const end = iso(addDays(parseISO(viewedWeek), 6));
     const order = new Map(templates.map((t, i) => [t.id, i]));
+    const rank = (t: Task) => (t.template_id ? order.get(t.template_id) ?? 99 : 1000);
     return tasks
-      .filter(t => t.template_id && t.scope !== "skipped"
-        && t.template_date && t.template_date >= viewedWeek && t.template_date <= end)
-      .sort((a, b) => (order.get(a.template_id!) ?? 99) - (order.get(b.template_id!) ?? 99)
-        || (a.template_date ?? "").localeCompare(b.template_date ?? ""));
+      .filter(t => isNN(t) && t.scope !== "skipped" && !!nnDay(t) && nnDay(t)! >= viewedWeek && nnDay(t)! <= end)
+      .sort((a, b) => rank(a) - rank(b)
+        || (a.starts_at ?? "").localeCompare(b.starts_at ?? "")
+        || (nnDay(a) ?? "").localeCompare(nnDay(b) ?? ""));
   }, [tasks, templates, viewedWeek]);
 
 
@@ -370,8 +420,8 @@ export default function TaskBoard() {
     const weeks: { start: string; end: string; done: number; total: number }[] = [];
     for (let w = weekStart(first); w <= last; w = addDays(w, 7)) {
       const start = iso(w), end = iso(addDays(w, 6));
-      const mine = tasks.filter(t => t.template_id && t.scope !== "skipped"
-        && t.template_date && t.template_date >= start && t.template_date <= end);
+      const mine = tasks.filter(t => isNN(t) && t.scope !== "skipped"
+        && !!nnDay(t) && nnDay(t)! >= start && nnDay(t)! <= end);
       if (mine.length) weeks.push({ start, end, done: mine.filter(t => t.done).length, total: mine.length });
     }
     return weeks;
@@ -451,7 +501,7 @@ export default function TaskBoard() {
     const cells = Array.from({ length: weeks * 7 }, (_, i) => {
       const d = addDays(gridStart, i);
       const key = iso(d);
-      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key && !t.template_id);
+      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key && !isNN(t));
       return {
         key,
         num: d.getDate(),
@@ -563,7 +613,7 @@ export default function TaskBoard() {
   function patch(id: string, changes: Partial<Task>) {
     const t = tasks.find(x => x.id === id);
     // A weekly non-negotiable is done on its day or not at all — it never moves.
-    if (t?.template_id && "task_date" in changes && changes.task_date !== t.task_date) {
+    if (t && isNN(t) && "task_date" in changes && changes.task_date !== t.task_date) {
       const { task_date: _drop, ...rest } = changes;
       void _drop;
       changes = rest;
@@ -672,7 +722,7 @@ export default function TaskBoard() {
   // goes back to that list; only something typed straight onto the board is deleted.
   function clearFromBoard(task: Task) {
     // A weekly copy has to survive as a row, or next load would generate it again.
-    if (task.template_id) { patch(task.id, { scope: "skipped" }); return; }
+    if (isNN(task)) { patch(task.id, { scope: "skipped" }); return; }
     if (task.origin === "backlog" || task.from_list) patch(task.id, { scope: "backlog", task_date: null });
     else if (task.origin === "inbox") patch(task.id, { scope: "inbox", task_date: null });
     else remove(task.id);
@@ -740,7 +790,7 @@ export default function TaskBoard() {
   // Dropping onto a date in the day strip or the month grid schedules it there.
   function dropOnDate(dragged: string, dateISO: string) {
     const dragId = dragged;
-    if (tasks.find(t => t.id === dragId)?.template_id) return;
+    { const d = tasks.find(t => t.id === dragId); if (d && isNN(d)) return; }
     const max = tasks
       .filter(t => t.scope === "day" && t.task_date === dateISO && t.id !== dragId)
       .reduce((m, t) => Math.max(m, t.position), 0);
@@ -1290,7 +1340,7 @@ export default function TaskBoard() {
           {nnMonth.length > 0 && (
             <div style={{ background: PANEL_BG, border: BORDER, borderRadius: 12, padding: 16 }}>
               <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#949494", marginBottom: 10 }}>
-                ↻ NON-NEGOTIABLES BY WEEK — {nnMonth.filter(w => w.done === w.total).length} OF {nnMonth.length} WEEKS COMPLETE
+                <LockIcon size={10} /> NON-NEGOTIABLES BY WEEK — {nnMonth.filter(w => w.done === w.total).length} OF {nnMonth.length} WEEKS COMPLETE
               </p>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {nnMonth.map(w => {
@@ -1729,7 +1779,7 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
             {isFrog && !task.done && <span style={{ marginRight: 4 }}>🐸</span>}
             {task.title}
             {task.template_id && (
-              <span title="Weekly non-negotiable" style={{ marginLeft: 5, fontSize: 10.5, color: "#a8a8a8" }}>↻</span>
+              <span title="Weekly non-negotiable" style={{ marginLeft: 5, color: "#a8a8a8" }}><LockIcon size={10} /></span>
             )}
           </p>
 
@@ -1825,7 +1875,7 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
           </Field>
           {task.template_id ? (
             <p style={{ fontSize: 10.5, color: "#949494", lineHeight: 1.5 }}>
-              ↻ Weekly non-negotiable — it stays on its day. Done that day, or not done.
+              <LockIcon size={10} /> Weekly non-negotiable — it stays on its day. Done that day, or not done.
             </p>
           ) : (
           <Field label={ctx.scope === "day" ? "Move to day" : "Move to week"}>
@@ -2394,7 +2444,7 @@ function NonNegotiables({ templates, onAdd, onUpdate, onRemove, onReorder, onClo
       >
         <div style={{ padding: "16px 20px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>↻ Weekly Non-Negotiables</p>
+            <p style={{ fontSize: 15, fontWeight: 800, color: "#111111", display: "flex", alignItems: "center", gap: 7 }}><LockIcon size={14} /> Weekly Non-Negotiables</p>
             <p style={{ fontSize: 11, color: "#949494", lineHeight: 1.5 }}>
               Set these once. Every week they appear in their own checklist above the board, on the days
               you choose. Drag by the grip to set the order — the top one shows first each day. Calling
@@ -2519,7 +2569,7 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
 
   const weekDone = copies.filter(t => t.done).length;
   // Day view shows only what is scheduled for that day. "Any day" ones live in Week view.
-  const todays = copies.filter(t => t.scope === "day" && t.task_date === day);
+  const todays = copies.filter(t => t.scope === "day" && nnDay(t) === day);
   const dayDone = todays.filter(t => t.done).length;
 
   // A live count only means something for today or later.
@@ -2555,7 +2605,7 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
   const header = (label: string, done: number, total: number) => (
     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
       <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#949494", marginRight: "auto" }}>
-        ↻ {label}
+        <LockIcon size={10} /> {label}
       </p>
       {total > 0 && (
         <span style={{ fontSize: 10.5, fontWeight: 800, color: done === total ? "#111111" : "#767676" }}>
@@ -2573,7 +2623,7 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
       {view === "day" ? (
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: "#949494", whiteSpace: "nowrap", marginRight: 2 }}>
-            ↻ {day === today ? "TODAY" : "THIS DAY"}
+            <LockIcon size={10} /> NON-NEGOTIABLES
           </span>
           {todays.length > 0 && (
             <span style={{ fontSize: 10, fontWeight: 800, color: dayDone === todays.length ? "#111111" : "#767676", whiteSpace: "nowrap", marginRight: 4 }}>
@@ -2609,6 +2659,11 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
                 >
                   {t.title}
                 </button>
+                {t.origin === "calendar" && t.starts_at && (
+                  <span style={{ fontSize: 9.5, fontWeight: 700, color: "#949494", whiteSpace: "nowrap" }}>
+                    {new Date(t.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase().replace(" ", "")} · call
+                  </span>
+                )}
                 {live && (
                   <button
                     onClick={() => setOpenList(openList === t.id ? null : t.id)}
@@ -2673,9 +2728,9 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
                   </tr>
                 </thead>
                 <tbody>
-                  {[...new Set(copies.map(t => t.template_id!))].map(tid => {
-                    const mine = copies.filter(t => t.template_id === tid);
-                    const title = templateOf(tid)?.title ?? mine[0].title;
+                  {[...new Set(copies.map(t => t.template_id ?? t.id))].map(tid => {
+                    const mine = copies.filter(t => (t.template_id ?? t.id) === tid);
+                    const title = templateOf(mine[0].template_id)?.title ?? mine[0].title;
                     const live = mine.map(liveFor).find(Boolean);
                     const cell = (t: Task | undefined, key: string) => (
                       <td key={key} style={{ padding: "5px 4px", textAlign: "center", borderTop: BORDER }}>
@@ -2687,13 +2742,16 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
                       <tr key={tid}>
                         <td style={{ padding: "5px 10px 5px 0", borderTop: BORDER, whiteSpace: "nowrap" }}>
                           <span style={{ fontSize: 12, fontWeight: 600, color: "#111111" }}>{title}</span>
+                          {mine[0].origin === "calendar" && (
+                            <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: "#949494" }}>call</span>
+                          )}
                           {live && live.list.count > 0 && (
                             <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, padding: "1px 5px", borderRadius: 4, background: "#111111", color: "#ffffff" }}>
                               {live.list.count}
                             </span>
                           )}
                         </td>
-                        {weekDays.map(d => cell(mine.find(t => t.scope === "day" && t.template_date === d), d))}
+                        {weekDays.map(d => cell(mine.find(t => t.scope === "day" && nnDay(t) === d), d))}
                         {cell(mine.find(t => t.scope === "week"), "any")}
                       </tr>
                     );

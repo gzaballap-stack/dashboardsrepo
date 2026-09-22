@@ -8,6 +8,19 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ## 2026-09-21 — Task Board: Weekly Non-Negotiables
 
+> **2026-09-22 (later):** sales calls from the connected calendar join the
+> checklist. `POST /api/task-templates/calls` reads the week's events, keeps timed
+> ones with another attendee or a meeting link (Gym, ISA Dials, SLEEP never
+> qualify — on the first run it picked 2 of 51 events), and upserts one task per
+> call with `origin = 'calendar'`, `external_key = cal:<user>:<uid>:<start>`
+> (unique) and `starts_at`. The title is the person's name — the part of
+> "Derick Garner | Custom Area Breakdown Tomsi Media" that matches an attendee.
+> Open calls from today on that vanish from the calendar are deleted on sync.
+> The browser sends each day's timezone offset so calls land on the user's own
+> day. `isNN(t)` in TaskBoard covers both kinds. Live counts now come from the
+> item's name, not a stored setting; the strip's order is the templates' order
+> (drag in the editor), with calls after them by time.
+
 > **2026-09-22:** non-negotiables no longer sit in the ABCDE columns (the user
 > found they crowded out real prioritisation, and one became the frog). They
 > render in their own checklist strip above the board — chips for the day in Day
