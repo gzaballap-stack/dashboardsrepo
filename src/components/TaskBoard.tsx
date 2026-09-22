@@ -273,7 +273,7 @@ export default function TaskBoard() {
 
   // Unfinished work left behind on earlier days/weeks.
   const stranded = useMemo(
-    () => tasks.filter(t => t.scope === scope && !t.done && !t.parked && !!t.task_date && t.task_date < anchor),
+    () => tasks.filter(t => t.scope === scope && !t.done && !t.parked && !t.template_id && !!t.task_date && t.task_date < anchor),
     [tasks, scope, anchor],
   );
 
@@ -527,6 +527,13 @@ export default function TaskBoard() {
 
   function patch(id: string, changes: Partial<Task>) {
     const t = tasks.find(x => x.id === id);
+    // A weekly non-negotiable is done on its day or not at all — it never moves.
+    if (t?.template_id && "task_date" in changes && changes.task_date !== t.task_date) {
+      const { task_date: _drop, ...rest } = changes;
+      void _drop;
+      changes = rest;
+      if (Object.keys(changes).length === 0) return Promise.resolve();
+    }
     // Pushing a task forward leaves a trace on the day it left. Pulling it back
     // does the opposite: it means the work really happened then, so any trace
     // from that day onwards is cleared and it reads as if it was always there.
@@ -698,6 +705,7 @@ export default function TaskBoard() {
   // Dropping onto a date in the day strip or the month grid schedules it there.
   function dropOnDate(dragged: string, dateISO: string) {
     const dragId = dragged;
+    if (tasks.find(t => t.id === dragId)?.template_id) return;
     const max = tasks
       .filter(t => t.scope === "day" && t.task_date === dateISO && t.id !== dragId)
       .reduce((m, t) => Math.max(m, t.position), 0);
@@ -1787,6 +1795,11 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
               style={{ ...fieldStyle, resize: "vertical" }}
             />
           </Field>
+          {task.template_id ? (
+            <p style={{ fontSize: 10.5, color: "#949494", lineHeight: 1.5 }}>
+              ↻ Weekly non-negotiable — it stays on its day. Done that day, or not done.
+            </p>
+          ) : (
           <Field label={ctx.scope === "day" ? "Move to day" : "Move to week"}>
             <input
               type="date"
@@ -1799,6 +1812,7 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
               style={fieldStyle}
             />
           </Field>
+          )}
           <Field label="Deadline (optional)">
             <input
               type="date"
@@ -1840,6 +1854,7 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
               >{l.label}</button>
             ))}
           </div>
+          {!task.template_id && (
           <button
             onClick={() => ctx.unschedule(task)}
             style={{ alignSelf: "flex-start", fontSize: 10, fontWeight: 700, color: "#767676", cursor: "pointer" }}
@@ -1848,6 +1863,7 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
           >
             ← Back to big projects
           </button>
+          )}
         </div>
       )}
     </div>
