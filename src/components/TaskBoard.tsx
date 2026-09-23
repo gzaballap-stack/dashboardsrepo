@@ -334,7 +334,20 @@ export default function TaskBoard() {
   );
 
   const doneCount = visible.filter(t => t.done).length;
-  const pct = visible.length ? Math.round((doneCount / visible.length) * 100) : 0;
+
+  // A ticked non-negotiable is work done that day, so it counts in the tally
+  // even though it lives outside the columns.
+  const nnCounted = useMemo(() => {
+    const end = iso(addDays(parseISO(viewedWeek), 6));
+    return tasks.filter(t => isNN(t) && t.scope !== "skipped" && !!nnDay(t) && (
+      view === "week"
+        ? nnDay(t)! >= viewedWeek && nnDay(t)! <= end
+        : t.scope === "day" && nnDay(t) === dayDate));
+  }, [tasks, view, viewedWeek, dayDate]);
+
+  const allDone = doneCount + nnCounted.filter(t => t.done).length;
+  const allTotal = visible.length + nnCounted.length;
+  const pct = allTotal ? Math.round((allDone / allTotal) * 100) : 0;
 
   // Unfinished work left behind on earlier days/weeks.
   const stranded = useMemo(
@@ -348,7 +361,7 @@ export default function TaskBoard() {
     return Array.from({ length: 7 }, (_, i) => {
       const d = addDays(s, i);
       const key = iso(d);
-      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key && !isNN(t));
+      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key);
       return {
         key,
         letter: d.toLocaleDateString("en-US", { weekday: "narrow" }),
@@ -501,7 +514,7 @@ export default function TaskBoard() {
     const cells = Array.from({ length: weeks * 7 }, (_, i) => {
       const d = addDays(gridStart, i);
       const key = iso(d);
-      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key && !isNN(t));
+      const dayTasks = tasks.filter(t => t.scope === "day" && t.task_date === key);
       return {
         key,
         num: d.getDate(),
@@ -1118,7 +1131,7 @@ export default function TaskBoard() {
             <div style={{ width: `${pct}%`, height: "100%", background: pct === 100 ? "#5a5a5a" : "#000000", transition: "width 200ms" }} />
           </div>
           <span style={{ fontSize: 10.5, fontWeight: 700, color: "#767676", whiteSpace: "nowrap" }}>
-            {doneCount} of {visible.length} done
+            {allDone} of {allTotal} done
           </span>
         </div>
         )}
