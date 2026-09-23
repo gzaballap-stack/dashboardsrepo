@@ -12,6 +12,7 @@ const VALID_EVENT_TYPES = [
   'sales_call_booked', 'sales_call_shown',
   'close',
   'call',
+  'funnel_visit', 'vsl_watch', 'precall_watch',
 ] as const;
 
 export async function POST(req: Request) {
@@ -69,6 +70,7 @@ export async function POST(req: Request) {
       call_summary:     payload.call_summary   ?? null,
       is_pickup:        payload.is_pickup       ?? null,
       is_conversation:  payload.is_conversation ?? null,
+      progress_pct:     payload.progress_pct != null ? Number(payload.progress_pct) : null,
       // 'self' = the lead booked through the calendar link; 'team' = we booked it.
       booked_by:        ['self','team'].includes(String(payload.booked_by||'').toLowerCase()) ? String(payload.booked_by).toLowerCase() : null,
 
@@ -99,6 +101,7 @@ export async function POST(req: Request) {
       const tomsiId = await getTomsiClientId(service);
       const MIRROR: Record<string, string> = {
         lead: 'lead', sales_call_booked: 'appointment_booked', sales_call_shown: 'show', close: 'closed', call: 'dial',
+        funnel_visit: 'funnel_visit', vsl_watch: 'vsl_watch', precall_watch: 'precall_watch',
       };
       const mirrored = MIRROR[payload.event_type];
       if (tomsiId && mirrored) {
@@ -109,7 +112,7 @@ export async function POST(req: Request) {
           lead_name: eventData.lead_name, lead_phone: eventData.lead_phone, lead_email: eventData.lead_email,
           agent_name: eventData.agent_name, duration_seconds: eventData.duration_seconds,
           is_pickup: eventData.is_pickup, is_conversation: eventData.is_conversation,
-          call_status: eventData.call_status, revenue, ...attribution, raw: payload,
+          call_status: eventData.call_status, progress_pct: eventData.progress_pct, revenue, ...attribution, raw: payload,
         };
         if (mirrored === 'show' && extId) {
           // A demo that showed is the booked appointment changing state, as on the client side.

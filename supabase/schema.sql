@@ -71,6 +71,7 @@ create table if not exists events (
   direction          text,       -- inbound | outbound
   call_status        text,       -- completed | voicemail | canceled | no_answer
   recording_url      text,
+  progress_pct       int,           -- funnel engagement: % of the VSL/pre-call watched
   call_summary       text,
   phone_number_used  text,
 
@@ -112,7 +113,7 @@ create table if not exists events (
   revenue         numeric not null default 0,
 
   constraint events_event_type_check check (
-    event_type in ('dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked', 'closed')
+    event_type in ('dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked', 'closed', 'funnel_visit', 'vsl_watch', 'precall_watch')
   )
 );
 
@@ -352,7 +353,7 @@ create table if not exists b2b_events (
   booked_by        text,   -- 'self' (lead booked via the calendar link) | 'team' (booked by us)
 
   constraint b2b_events_event_type_check check (
-    event_type in ('lead', 'intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close', 'call')
+    event_type in ('lead', 'intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close', 'call', 'funnel_visit', 'vsl_watch', 'precall_watch')
   )
 );
 
