@@ -1,3 +1,20 @@
+## 2026-09-23 — Funnel engagement tracking (visits + VSL/pre-call watch)
+
+- New event types `funnel_visit`, `vsl_watch`, `precall_watch` + `progress_pct`
+  column on `events` and `b2b_events` (migrated V1; V2 events-only, no b2b there).
+  Both webhooks accept them; the B2B intake mirrors them into the Tomsi client.
+- Video host is **YouTube** (not Wistia). Watch % comes from the YouTube IFrame
+  API in a page snippet, fired to a public Make webhook that forwards to
+  `/api/webhooks/b2b` with the auth header (secret stays server-side).
+- Make scenario **7570422 "CCM - Funnel Engagement → Supabase"**, hook
+  `https://hook.eu1.make.com/23vinkmkc69vaypunak8b7dykqd4qiik`. Snippet saved in
+  the session scratchpad as `tomsi-funnel-tracking.html`.
+- **User to-do in GHL:** paste the snippet into the funnel page; embed the YT
+  videos with `id="vsl"` / `id="precall"` and `enablejsapi=1`; make the funnel
+  link carry `?cid={{contact.id}}`.
+- Not built yet: dashboard KPIs/correlation (show/close by watch depth) — deferred
+  until real data flows.
+
 # Project Notes — running log
 
 Append-only log of decisions and state that isn't obvious from the code or git

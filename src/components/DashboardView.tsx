@@ -24,7 +24,6 @@ import { pathForRoute, routeForSlug, type DashRoute } from "@/lib/dashboard-rout
 import CampaignOverview from "./CampaignOverview";
 import CreativeLeaderboard from "./CreativeLeaderboard";
 import CSMDashboard from "./CSMDashboard";
-import B2BTracking from "./B2BTracking";
 
 type Client = { id: string; name: string; is_live?: boolean; is_internal?: boolean };
 
@@ -96,8 +95,6 @@ type TomsiView =
 const TOMSI_NAV: { group: string; items: { id: TomsiView; label: string; icon: string }[] }[] = [
   { group: "Overview", items: [
     { id: "dashboard",            label: "Dashboard",            icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-    { id: "b2b_tracking",         label: "B2B Tracking",         icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" },
-    { id: "campaign_overview",    label: "Campaign Overview",    icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" },
     { id: "creative_leaderboard", label: "Creative Leaderboard", icon: "M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" },
     { id: "goals",                label: "Goal Tracker",         icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
   ]},
@@ -292,11 +289,11 @@ type ClientsView = "client_roster" | "csm_dashboard" | "share_reports";
 
 const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: string }[] = [
   {
-    id: "clients_dashboard", label: "Clients Dashboard",
+    id: "clients_dashboard", label: "B2C Dashboard",
     icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
   },
   {
-    id: "tomsi_media", label: "TM Dashboard",
+    id: "tomsi_media", label: "B2B Dashboard",
     icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
   },
   {
@@ -358,7 +355,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const [showPresetMenu, setShowPresetMenu] = useState(false);
   const [heatmapDays, setHeatmapDays] = useState(0);
   const [heatmapClientId, setHeatmapClientId] = useState("");
-  const [b2bKpis, setB2bKpis] = useState<{ cash_collected: number; self_booked: number; team_booked: number } | null>(null);
+  const [b2bKpis, setB2bKpis] = useState<{ cash_collected: number; self_booked: number; team_booked: number; booking_leads: number; non_booking_leads: number } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   // Who is signed in and what they're allowed to open. `allowed_views: null`
@@ -393,7 +390,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       if (saved.view && !(TOOLS_VIEWS.includes(saved.view) && savedTop !== "tools"))
         setView(saved.view as View);
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
-      if (saved.topSection === "tomsi_media" && saved.tomsiView && saved.tomsiView !== "b2b_tracking") setView(saved.tomsiView as View);
+      if (saved.topSection === "tomsi_media" && saved.tomsiView && !["b2b_tracking","campaign_overview"].includes(saved.tomsiView)) setView(saved.tomsiView as View);
       if (saved.clientsView) setClientsView(saved.clientsView as ClientsView);
     } catch {}
   }, [initialRoute]);
@@ -620,7 +617,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   // Section + page, e.g. ["Clients", "Client Roster"]. Drives the header crumb
   // and the browser tab so they can't drift apart.
   const crumb: [string | null, string] =
-    topSection === "tomsi_media" ? ["Tomsi Media", TOMSI_LABEL[tomsiView] ?? "B2B Tracking"]
+    topSection === "tomsi_media" ? ["B2B", TOMSI_LABEL[tomsiView] ?? "Dashboard"]
     : topSection === "payments"  ? [null, "Payments"]
     : topSection === "clients"   ? ["Clients", CLIENTS_NAV.find(c => c.id === clientsView)?.label ?? "Clients"]
     : topSection === "settings"  ? ["Settings", "Users"]
@@ -1068,13 +1065,6 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
         <main className={`flex-1 overflow-auto ${view === "zip_tool" && topSection === "tools" ? "p-0 flex flex-col" : "p-4 sm:p-6 md:p-8"}`} style={{ background: "transparent" }}>
 
           {/* ── Tomsi Media Dashboard ── */}
-          {topSection === "tomsi_media" && (
-            <>
-              {tomsiView === "b2b_tracking" && (
-                <B2BTracking startDate={tomsiDateRange.start} endDate={tomsiDateRange.end} />
-              )}
-            </>
-          )}
 
           {topSection === "clients" && clientsView === "client_roster" && <ClientRoster />}
           {topSection === "clients" && clientsView === "csm_dashboard" && <CSMDashboard />}
@@ -1125,27 +1115,29 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
               // Leads we had to call to book, as a share of leads that didn't book themselves.
               const callable = Math.max(metrics.new_leads - selfBooked, 0);
               const leadBookingRate = bookedByKnown && callable > 0 ? (teamBooked / callable) * 100 : null;
+              const bookingLeads = b2bKpis?.booking_leads ?? 0;
+              const nonBookingLeads = b2bKpis ? b2bKpis.non_booking_leads : Math.max(0, metrics.new_leads - metrics.booked_appointments);
+              // Even, gap-free grid: cards flow edge to edge and the last row stretches to fill.
+              const EVEN = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 } as React.CSSProperties;
               return (
               <div className="space-y-8 max-w-7xl">
                 <section>
-                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Funnel</h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Overview</h2>
+                  <div style={EVEN}>
+                    <KpiCard label="Ad Spend" value={fmt$(metrics.ad_spend)} />
                     <KpiCard label="Leads" value={fmtInt(metrics.new_leads)} />
+                    <KpiCard label="Booking Leads" value={fmtInt(bookingLeads)} />
+                    <KpiCard label="Non-Booking Leads" value={fmtInt(nonBookingLeads)} />
                     <KpiCard label="Demos Booked" value={fmtInt(metrics.booked_appointments)} />
                     <KpiCard label="Demo Booking Rate" value={fmtPct(metrics.appt_booking_rate)} accent />
                     <KpiCard label="Appointments To Take Place" value={fmtInt(metrics.appts_to_take_place)} />
                     <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
                     <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
                     <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
-                    <KpiCard label="Ad Spend" value={fmt$(metrics.ad_spend)} />
                     <KpiCard label="CPL" value={metrics.new_leads > 0 ? fmt$(metrics.cpl) : "—"} />
                     <KpiCard label="CP Demo Booked" value={metrics.booked_appointments > 0 ? fmt$(metrics.cp_appt) : "—"} />
                     <KpiCard label="CP Demo Shown" value={metrics.shows > 0 ? fmt$(metrics.cps) : "—"} />
                     <KpiCard label="CAC" value={metrics.closes > 0 ? fmt$(metrics.cost_per_close) : "—"} />
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
                     <KpiCard label="Close Rate" value={metrics.shows > 0 ? fmtPct(metrics.close_rate) : "—"} accent />
                     <KpiCard label="Cash Collected" value={cash > 0 ? fmt$(cash) : "—"} accent />
                     <KpiCard label="ROAS" value={metrics.ad_spend > 0 && cash > 0 ? `${(cash / metrics.ad_spend).toFixed(2)}x` : "—"} accent />
@@ -1158,20 +1150,25 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
 
                 <section>
                   <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Calling Stats</h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                  <div style={EVEN}>
                     <KpiCard label="Speed To Lead (Min)" value={fmtDec(metrics.speed_to_lead_min)} />
                     <KpiCard label="Outbound Dials" value={fmtInt(metrics.outbound_dials)} />
                     <KpiCard label="Dials Per Lead" value={fmtDec(metrics.dials_per_lead)} />
                     <KpiCard label="Pickups (40s+)" value={fmtInt(metrics.pickups)} />
                     <KpiCard label="Pick Up Rate" value={fmtPct(metrics.pickup_pct)} accent />
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3">
                     <KpiCard label="Conversations (2m+)" value={fmtInt(metrics.conversations)} />
                     <KpiCard label="Conversation Rate" value={fmtPct(metrics.conversation_pct)} />
                     <KpiCard label="Callback Requests" value={fmtInt(metrics.callbacks)} />
                     <KpiCard label="Callback Rate" value={fmtPct(metrics.cb_pct)} />
                     <KpiCard label="Lead Booking Rate" value={leadBookingRate != null ? fmtPct(leadBookingRate) : "—"} accent />
                   </div>
+                </section>
+
+                <div style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }} />
+
+                <section>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Campaigns</h2>
+                  <CampaignOverview key="tomsi-dash" startDate={viewStart} endDate={viewEnd} clientId={lockClientId} />
                 </section>
               </div>
               );

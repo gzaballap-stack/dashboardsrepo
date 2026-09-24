@@ -137,6 +137,7 @@ export async function GET(req: Request) {
   const direct_sales_calls = journeys.filter(s => s.has('sales_call_booked') && !s.has('intro_booked')).length;
   const sales_calls_via_intro = journeys.filter(s => s.has('sales_call_booked') && s.has('intro_booked')).length;
   const leads_no_intro     = journeys.filter(s => s.has('lead') && !s.has('intro_booked')).length;
+  const booking_leads      = journeys.filter(s => s.has('lead') && s.has('sales_call_booked')).length;
 
   const demosBooked = (events ?? []).filter(e => e.event_type === 'sales_call_booked');
   const self_booked = demosBooked.filter(e => (e as { booked_by?: string|null }).booked_by === 'self').length;
@@ -171,6 +172,9 @@ export async function GET(req: Request) {
     self_booked, team_booked,
     self_booked_pct: leads > 0 ? (self_booked / leads) * 100 : 0,
     team_booked_pct: leads > 0 ? (team_booked / leads) * 100 : 0,
+    // Leads that booked a demo vs leads that didn't.
+    booking_leads,
+    non_booking_leads: Math.max(0, leads - booking_leads),
     // Per-contact splits — only meaningful once ghl_contact_id is being sent.
     direct_sales_calls,
     sales_calls_via_intro,
