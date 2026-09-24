@@ -19,6 +19,20 @@ function parseZipList(raw: string): string[] {
     .filter(z => /^\d{5}$/.test(z));
 }
 
+// The last few onboarding payloads, shape only — readable via GET with the admin
+// secret, so "why did it pick 35 miles?" has an answer without guessing.
+const recentOnboards: Array<{
+  at: string; keys: string[]; customDataKeys: string[];
+  radiusCandidates: string[]; radius: number; radius_source: string;
+}> = [];
+
+export async function GET(req: Request) {
+  if (!validateWebhookSecret(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  return NextResponse.json({ recent: recentOnboards });
+}
+
 // Fired from GHL workflow when a sales call is booked.
 // Detects which territory scenario applies:
 //   1. Single zip + radius  → postal_code + targeting_radius
@@ -74,12 +88,28 @@ export async function POST(req: Request) {
     ['customData.radius_miles',    customData.radius_miles],
     ['contact.customField',        extractCustomField(customFields, 'targeting_radius')],
   ];
+  // Whatever the GHL workflow labelled it, a key mentioning "radius" is the radius.
+  for (const [k, v] of Object.entries(body)) {
+    if (/radius/i.test(k) && !radiusCandidates.some(([n]) => n === k)) radiusCandidates.push([k, v]);
+  }
+  for (const [k, v] of Object.entries(customData)) {
+    if (/radius/i.test(k)) radiusCandidates.push([`customData.${k}`, v]);
+  }
   const radiusHit = radiusCandidates.find(([, v]) => Number.isFinite(parseFloat(String(v ?? ''))));
   const radius_source = radiusHit ? radiusHit[0] : 'default';
   const radius = Math.min(
     Math.max(radiusHit ? parseFloat(String(radiusHit[1])) : 35, 5),
     75
   );
+
+  recentOnboards.unshift({
+    at: new Date().toISOString(),
+    keys: Object.keys(body),
+    customDataKeys: Object.keys(customData),
+    radiusCandidates: radiusCandidates.map(([k, v]) => `${k}=${JSON.stringify(v ?? null)}`),
+    radius, radius_source,
+  });
+  recentOnboards.splice(10);
 
   if (!radiusHit) {
     console.warn('[onboard] no usable radius on payload, defaulting to 35', JSON.stringify({
