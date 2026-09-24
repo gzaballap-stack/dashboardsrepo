@@ -774,7 +774,10 @@ export default function HealthTracker() {
   }
 
   return (
-    <div style={{ maxWidth: 1080 }}>
+    // Full width, like the Task Board and the Zip tool. The old 1080 cap left a
+    // third of a wide screen empty, and every grid in here already reflows to
+    // whatever room it is given.
+    <div>
       {/* Header. Pinned to the top of the scroll area: a year of weeks is
           thousands of pixels long, and scrolling into it used to carry the tabs
           away with no way back except scrolling all the way up. */}
