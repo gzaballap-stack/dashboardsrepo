@@ -13,6 +13,7 @@ const VALID_EVENT_TYPES = [
   'close',
   'call',
   'funnel_visit', 'vsl_watch', 'precall_watch',
+  'visit_landing', 'visit_calendar', 'visit_thankyou',
 ] as const;
 
 export async function POST(req: Request) {
@@ -102,6 +103,7 @@ export async function POST(req: Request) {
       const MIRROR: Record<string, string> = {
         lead: 'lead', sales_call_booked: 'appointment_booked', sales_call_shown: 'show', close: 'closed', call: 'dial',
         funnel_visit: 'funnel_visit', vsl_watch: 'vsl_watch', precall_watch: 'precall_watch',
+        visit_landing: 'visit_landing', visit_calendar: 'visit_calendar', visit_thankyou: 'visit_thankyou',
       };
       const mirrored = MIRROR[payload.event_type];
       if (tomsiId && mirrored) {

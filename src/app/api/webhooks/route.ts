@@ -6,7 +6,7 @@ import { ensureLeadForContact, removeSyntheticLead } from '@/lib/funnel-integrit
 import { normalizeZip } from '@/lib/zip-rollup';
 import { resolveClientId } from '@/lib/client-lookup';
 
-const VALID_EVENT_TYPES = ['dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked', 'closed', 'funnel_visit', 'vsl_watch', 'precall_watch'] as const;
+const VALID_EVENT_TYPES = ['dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked', 'closed', 'funnel_visit', 'vsl_watch', 'precall_watch', 'visit_landing', 'visit_calendar', 'visit_thankyou'] as const;
 
 export async function POST(req: Request) {
   try {

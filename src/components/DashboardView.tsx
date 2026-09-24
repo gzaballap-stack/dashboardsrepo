@@ -57,6 +57,19 @@ type Metrics = {
   roi: number;
 };
 
+type Cohort = { booked: number; show_rate: number; close_rate: number };
+type B2bKpis = {
+  cash_collected: number; self_booked: number; team_booked: number;
+  booking_leads: number; non_booking_leads: number;
+  landing_visits: number; calendar_visits: number; bookings: number;
+  lead_page_conversion: number; lead_booking_rate_funnel: number; landing_to_booking: number;
+  precall_views: number; precall_view_rate: number; precall_25_rate: number; precall_50_rate: number; precall_75_rate: number; precall_100_rate: number;
+  vsl_views: number; vsl_view_rate: number; vsl_25_rate: number; vsl_50_rate: number; vsl_75_rate: number; vsl_100_rate: number;
+  correlation?: { precall_watched: Cohort; precall_not: Cohort; vsl_watched: Cohort; vsl_not: Cohort;
+    precall_depth: { d25: Cohort; d50: Cohort; d75: Cohort; d100: Cohort };
+    vsl_depth: { d25: Cohort; d50: Cohort; d75: Cohort; d100: Cohort }; };
+};
+
 type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "week_before" | "all_time" | "custom";
 
 type View =
@@ -361,7 +374,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const [showPresetMenu, setShowPresetMenu] = useState(false);
   const [heatmapDays, setHeatmapDays] = useState(0);
   const [heatmapClientId, setHeatmapClientId] = useState("");
-  const [b2bKpis, setB2bKpis] = useState<{ cash_collected: number; self_booked: number; team_booked: number; booking_leads: number; non_booking_leads: number } | null>(null);
+  const [b2bKpis, setB2bKpis] = useState<B2bKpis | null>(null);
   const [showWeekly, setShowWeekly] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -1182,6 +1195,63 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     <KpiCard label="Non-Booking Leads" value={fmtInt(Math.max(0, metrics.new_leads - selfBooked))} />
                     <KpiCard label="Hand-Booked Appointments" value={bookedByKnown ? fmtInt(teamBooked) : "—"} />
                     <KpiCard label="Lead Appt Booking Rate" value={leadBookingRate != null ? fmtPct(leadBookingRate) : "—"} accent />
+                  </div>
+                </section>
+
+                <div style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }} />
+
+                <section>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Funnel Stats</h2>
+                  <div style={EVEN}>
+                    <KpiCard label="Landing Page Visits" value={fmtInt(b2bKpis?.landing_visits ?? 0)} />
+                    <KpiCard label="Calendar Page Visits" value={fmtInt(b2bKpis?.calendar_visits ?? 0)} />
+                    <KpiCard label="Lead Page Conversion" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.lead_page_conversion) : "—"} accent />
+                    <KpiCard label="Bookings" value={fmtInt(b2bKpis?.bookings ?? 0)} />
+                    <KpiCard label="Lead Booking Rate" value={metrics.new_leads ? fmtPct(b2bKpis?.lead_booking_rate_funnel ?? 0) : "—"} accent />
+                    <KpiCard label="Landing → Booking Rate" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.landing_to_booking) : "—"} accent />
+                    <KpiCard label="Pre-Call Views" value={fmtInt(b2bKpis?.precall_views ?? 0)} />
+                    <KpiCard label="Pre-Call View Rate" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_view_rate) : "—"} accent />
+                    <KpiCard label="Pre-Call 25%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_25_rate) : "—"} />
+                    <KpiCard label="Pre-Call 50%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_50_rate) : "—"} />
+                    <KpiCard label="Pre-Call 75%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_75_rate) : "—"} />
+                    <KpiCard label="Pre-Call 100%" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_100_rate) : "—"} />
+                    <KpiCard label="VSL Views" value={fmtInt(b2bKpis?.vsl_views ?? 0)} />
+                    <KpiCard label="VSL View Rate" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_view_rate) : "—"} accent />
+                    <KpiCard label="VSL 25%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_25_rate) : "—"} />
+                    <KpiCard label="VSL 50%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_50_rate) : "—"} />
+                    <KpiCard label="VSL 75%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_75_rate) : "—"} />
+                    <KpiCard label="VSL 100%" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_100_rate) : "—"} />
+                  </div>
+                </section>
+
+                <div style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }} />
+
+                <section>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Show &amp; Close by Watch Behaviour</h2>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {([["Pre-Call", b2bKpis?.correlation?.precall_watched, b2bKpis?.correlation?.precall_not, b2bKpis?.correlation?.precall_depth],
+                       ["VSL", b2bKpis?.correlation?.vsl_watched, b2bKpis?.correlation?.vsl_not, b2bKpis?.correlation?.vsl_depth]] as const).map(([title, watched, not, depth]) => (
+                      <div key={title} className="rounded-2xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.07)", background: "#fff" }}>
+                        <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
+                          <thead><tr style={{ background: "#fafafa" }}>
+                            <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: "#6b6b6b" }}>{title}</th>
+                            <th className="text-right px-3 py-2 text-[10px] font-bold uppercase" style={{ color: "#6b6b6b" }}>Demos</th>
+                            <th className="text-right px-3 py-2 text-[10px] font-bold uppercase" style={{ color: "#6b6b6b" }}>Show Rate</th>
+                            <th className="text-right px-3 py-2 text-[10px] font-bold uppercase" style={{ color: "#6b6b6b" }}>Close Rate</th>
+                          </tr></thead>
+                          <tbody>
+                            {([["Watched", watched],["Didn't watch", not],["25%+", depth?.d25],["50%+", depth?.d50],["75%+", depth?.d75],["100%", depth?.d100]] as const).map(([lbl, c]) => (
+                              <tr key={lbl} style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
+                                <td className="px-3 py-2" style={{ color: "#111" }}>{lbl}</td>
+                                <td className="text-right px-3 py-2" style={{ color: "#4a4a4a" }}>{c ? fmtInt(c.booked) : "—"}</td>
+                                <td className="text-right px-3 py-2" style={{ color: "#111" }}>{c && c.booked ? fmtPct(c.show_rate) : "—"}</td>
+                                <td className="text-right px-3 py-2" style={{ color: "#111" }}>{c && c.booked ? fmtPct(c.close_rate) : "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
                   </div>
                 </section>
 

@@ -11,7 +11,7 @@ export async function GET(req: Request) {
 
   let eventsQ = ctx.service
     .from('b2b_events')
-    .select('event_type, revenue, occurred_at, ghl_contact_id, booked_by');
+    .select('event_type, revenue, occurred_at, ghl_contact_id, booked_by, progress_pct');
 
   if (start_date) eventsQ = eventsQ.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsQ = eventsQ.lte('occurred_at', `${end_date}T23:59:59.999Z`);
@@ -143,6 +143,63 @@ export async function GET(req: Request) {
   const self_booked = demosBooked.filter(e => (e as { booked_by?: string|null }).booked_by === 'self').length;
   const team_booked = demosBooked.filter(e => (e as { booked_by?: string|null }).booked_by === 'team').length;
 
+  // ── Funnel engagement (page visits + video watch) ──
+  const ev = events ?? [];
+  const cnt = (t: string) => ev.filter(e => e.event_type === t).length;
+  const landing_visits  = cnt('visit_landing');
+  const calendar_visits = cnt('visit_calendar');
+  const bookings        = cnt('visit_thankyou');
+  // Per-contact furthest watch %, for view + milestone rates.
+  const watchers = (type: string) => {
+    const m = new Map<string, number>();
+    for (const e of ev) {
+      if (e.event_type !== type) continue;
+      const id = (e as { ghl_contact_id?: string | null }).ghl_contact_id;
+      if (!id) continue;
+      const p = Number((e as { progress_pct?: number | null }).progress_pct) || 0;
+      m.set(id, Math.max(m.get(id) ?? 0, p));
+    }
+    return m;
+  };
+  const pc = watchers('precall_watch'), vsl = watchers('vsl_watch');
+
+  // Per-contact watch depth + outcome, for show/close rates by watch behaviour.
+  type C = { precall: number; vsl: number; booked: boolean; shown: boolean; closed: boolean };
+  const byContact = new Map<string, C>();
+  for (const e of ev) {
+    const id = (e as { ghl_contact_id?: string | null }).ghl_contact_id;
+    if (!id) continue;
+    const c = byContact.get(id) ?? { precall: 0, vsl: 0, booked: false, shown: false, closed: false };
+    const p = Number((e as { progress_pct?: number | null }).progress_pct) || 0;
+    if (e.event_type === 'precall_watch') c.precall = Math.max(c.precall, p);
+    if (e.event_type === 'vsl_watch')     c.vsl = Math.max(c.vsl, p);
+    if (e.event_type === 'sales_call_booked') c.booked = true;
+    if (e.event_type === 'sales_call_shown')  c.shown = true;
+    if (e.event_type === 'close')             c.closed = true;
+    byContact.set(id, c);
+  }
+  const contacts = [...byContact.values()];
+  const cohort = (f: (c: C) => boolean) => {
+    const booked = contacts.filter(c => c.booked && f(c));
+    const shown = booked.filter(c => c.shown);
+    const closed = shown.filter(c => c.closed);
+    return {
+      booked: booked.length,
+      show_rate: booked.length ? (shown.length / booked.length) * 100 : 0,
+      close_rate: shown.length ? (closed.length / shown.length) * 100 : 0,
+    };
+  };
+  const correlation = {
+    precall_watched: cohort(c => c.precall >= 25),
+    precall_not:     cohort(c => c.precall < 25),
+    vsl_watched:     cohort(c => c.vsl >= 25),
+    vsl_not:         cohort(c => c.vsl < 25),
+    precall_depth: { d25: cohort(c => c.precall >= 25), d50: cohort(c => c.precall >= 50), d75: cohort(c => c.precall >= 75), d100: cohort(c => c.precall >= 100) },
+    vsl_depth:     { d25: cohort(c => c.vsl >= 25),     d50: cohort(c => c.vsl >= 50),     d75: cohort(c => c.vsl >= 75),     d100: cohort(c => c.vsl >= 100) },
+  };
+  const atLeast = (m: Map<string, number>, th: number) => [...m.values()].filter(v => v >= th).length;
+  const pct = (num: number, den: number) => den > 0 ? (num / den) * 100 : 0;
+
   const closes       = count('close');
   const cash         = totalRevenue('close');
   const leads        = count('lead');
@@ -168,6 +225,25 @@ export async function GET(req: Request) {
     // Lead -> sales call, regardless of whether an intro happened in between.
     lead_to_sales_call_rate: leads > 0 ? (count('sales_call_booked') / leads) * 100 : 0,
     lead_to_intro_rate:      leads > 0 ? (introsBooked / leads) * 100 : 0,
+
+    // Funnel engagement
+    landing_visits, calendar_visits, bookings,
+    lead_page_conversion: pct(leads, landing_visits),
+    lead_booking_rate_funnel: pct(bookings, leads),
+    landing_to_booking: pct(bookings, landing_visits),
+    precall_views: pc.size,
+    precall_view_rate: pct(pc.size, bookings),
+    precall_25_rate: pct(atLeast(pc, 25), bookings),
+    precall_50_rate: pct(atLeast(pc, 50), bookings),
+    precall_75_rate: pct(atLeast(pc, 75), bookings),
+    precall_100_rate: pct(atLeast(pc, 100), bookings),
+    vsl_views: vsl.size,
+    vsl_view_rate: pct(vsl.size, bookings),
+    vsl_25_rate: pct(atLeast(vsl, 25), bookings),
+    vsl_50_rate: pct(atLeast(vsl, 50), bookings),
+    vsl_75_rate: pct(atLeast(vsl, 75), bookings),
+    vsl_100_rate: pct(atLeast(vsl, 100), bookings),
+    correlation,
     // Who booked the demo — share of leads, as requested.
     self_booked, team_booked,
     self_booked_pct: leads > 0 ? (self_booked / leads) * 100 : 0,
