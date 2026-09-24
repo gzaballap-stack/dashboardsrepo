@@ -569,6 +569,36 @@ export default function HealthTracker() {
 
   const [openWeek, setOpenWeek] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+
+  // The pinned header's height, so the calendar's own controls can pin directly
+  // beneath it. Measured rather than assumed — it wraps to two lines on a phone.
+  // A callback ref, not an effect: the header only exists once loading is done,
+  // by which time a mount effect has already run and found nothing.
+  const [headerH, setHeaderH] = useState(0);
+  const headerNode = useRef<HTMLDivElement | null>(null);
+  const observer = useRef<ResizeObserver | null>(null);
+  const headerRef = useCallback((el: HTMLDivElement | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
+    headerNode.current = el;
+    if (!el) return;
+    // Measured here and now rather than waiting on an observer — the height is
+    // known the moment the node exists, and this is the only measurement some
+    // browsers will give us.
+    setHeaderH(el.offsetHeight);
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setHeaderH(el.offsetHeight));
+    ro.observe(el);
+    observer.current = ro;
+  }, []);
+
+  // The header wraps to two lines on a narrow screen, so its height moves with
+  // the window even where ResizeObserver is unavailable.
+  useEffect(() => {
+    const onResize = () => { if (headerNode.current) setHeaderH(headerNode.current.offsetHeight); };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const [planSaving, setPlanSaving] = useState(false);
   const planSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Plan changes not yet sent. On unmount they are sent, not cancelled — this
@@ -733,8 +763,11 @@ export default function HealthTracker() {
 
   return (
     <div style={{ maxWidth: 1080 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
+      {/* Header. Pinned to the top of the scroll area: a year of weeks is
+          thousands of pixels long, and scrolling into it used to carry the tabs
+          away with no way back except scrolling all the way up. */}
+      <div ref={headerRef} style={{ ...STICKY_BAR, top: 0, zIndex: 20, paddingBottom: 12, marginBottom: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 180 }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>Health Tracker</h2>
           <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
@@ -772,13 +805,14 @@ export default function HealthTracker() {
           </svg>
         </button>
       </div>
+      </div>
 
       {tab === "calendar" && (
         <Calendar
           year={year} setYear={setYear} month={month} setMonth={setMonth}
           weeks={weeks} byWeek={byWeek}
           thisMonday={iso(thisMonday)} unit={unit} lengthUnit={lengthUnit}
-          onOpen={setOpenWeek}
+          onOpen={setOpenWeek} stickyTop={headerH}
         />
       )}
 
@@ -834,6 +868,15 @@ export default function HealthTracker() {
 /* ── calendar ─────────────────────────────────────────────────────────────── */
 
 type CalendarScope = "month" | "year";
+
+// Pinned bars sit over the page background, so they need one of their own.
+const STICKY_BAR: React.CSSProperties = {
+  position: "sticky",
+  background: "rgba(255,255,255,0.92)",
+  backdropFilter: "saturate(180%) blur(16px)",
+  WebkitBackdropFilter: "saturate(180%) blur(16px)",
+  paddingTop: 8,
+};
 
 function WeekCard({ monday, entry, isNow, big, unit, lengthUnit, onOpen, cardRef }: {
   monday: Date;
@@ -939,7 +982,7 @@ function WeekCard({ monday, entry, isNow, big, unit, lengthUnit, onOpen, cardRef
   );
 }
 
-function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, unit, lengthUnit, onOpen }: {
+function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, unit, lengthUnit, onOpen, stickyTop }: {
   year: number;
   setYear: (y: number) => void;
   month: number;
@@ -950,6 +993,7 @@ function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, u
   unit: string;
   lengthUnit: string;
   onOpen: (weekStart: string) => void;
+  stickyTop: number;
 }) {
   // A month at a time by default — four or five boxes is the whole screen on a
   // phone. Yearly is there for looking back, not for logging.
@@ -987,7 +1031,9 @@ function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, u
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+      {/* Pinned under the header: in the year view you are thousands of pixels
+          from the top, and these are how you get back. */}
+      <div style={{ ...STICKY_BAR, top: stickyTop, zIndex: 15, display: "flex", alignItems: "center", gap: 8, paddingBottom: 10, marginBottom: 6, flexWrap: "wrap" }}>
         <div style={{ display: "flex", background: "rgba(0,0,0,0.05)", borderRadius: 10, padding: 3 }}>
           {(["month", "year"] as CalendarScope[]).map(s => (
             <button key={s} onClick={() => setScope(s)}
