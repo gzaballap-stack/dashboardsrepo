@@ -315,4 +315,9 @@ await runSQL(`
   ALTER TABLE b2b_events ADD CONSTRAINT b2b_events_event_type_check CHECK (event_type IN ('lead','intro_booked','intro_shown','sales_call_booked','sales_call_shown','close','call','funnel_visit','vsl_watch','precall_watch','visit_landing','visit_calendar','visit_thankyou'));
 `, 'Funnel page visits (landing/calendar/thankyou)');
 
+await runSQL(`
+  ALTER TABLE clients ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'live';
+  UPDATE clients SET status = CASE WHEN is_live THEN 'live' ELSE 'offline' END;
+`, 'Client status (live/paused/offline)');
+
 console.log('\nAll migrations complete.');

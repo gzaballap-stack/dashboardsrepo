@@ -340,7 +340,7 @@ const CLOSED_BANNERS_KEY = "closed-banner-alerts";
 // booking timestamp) and day count, so dismissing "3 days" today doesn't also suppress
 // "4 days" tomorrow, but a fresh episode after a new booking starts undismissed again.
 function alertKey(a: Alert) {
-  return `${a.client_id}:${a.last_booked_at ?? "never"}:${a.days_since_booking ?? "never"}`;
+  return a.id;
 }
 
 export default function DashboardView({ initialRoute }: { initialRoute?: DashRoute | null }) {
@@ -1125,8 +1125,13 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
 
           {(topSection === "clients_dashboard" || topSection === "tools" || (topSection === "tomsi_media" && tomsiView !== "b2b_tracking")) && (<>
 
-          {/* Stale-booking alerts belong to the dashboard, not the Tools views */}
-          {topSection === "clients_dashboard" && <AlertBanner alerts={bannerAlerts} onDismiss={closeBanner} />}
+          {/* Each section only shows its own alerts; the bell shows all. */}
+          {(topSection === "clients_dashboard" || topSection === "tomsi_media" || topSection === "tools") && (
+            <AlertBanner
+              alerts={bannerAlerts.filter(a => a.section === topSection)}
+              onDismiss={closeBanner}
+            />
+          )}
 
           {/* ── Dashboard KPIs ── */}
           {view === "dashboard" && (

@@ -54,17 +54,13 @@ export default function NotificationBell({ alerts, onDismiss }: {
           ) : (
             <div className="max-h-80 overflow-y-auto">
               {alerts.map(a => (
-                <div key={a.client_id} className="flex items-start gap-2 px-4 py-3"
+                <div key={a.id} className="flex items-start gap-2 px-4 py-3"
                   style={{ borderBottom: "1px solid rgba(0,0,0,0.068)" }}>
                   <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="#c0392b" strokeWidth={2} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                   </svg>
                   <p className="text-sm flex-1" style={{ color: "#333333" }}>
-                    <span className="font-semibold">{a.client_name}</span>
-                    {" "}hasn&apos;t had a booked appointment in{" "}
-                    <span className="font-semibold">
-                      {a.days_since_booking === null ? "an unknown number of" : a.days_since_booking} days
-                    </span>
+                    <span className="font-semibold">{a.title}</span>{" "}{a.message}
                   </p>
                   <button onClick={() => onDismiss(a)}
                     className="text-xs px-2 py-1 rounded flex-shrink-0"

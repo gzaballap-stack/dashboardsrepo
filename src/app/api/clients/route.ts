@@ -7,7 +7,7 @@ export async function GET() {
 
   const { data, error } = await ctx.service
     .from('clients')
-    .select('id, name, is_live, is_internal, share_token, created_at')
+    .select('id, name, is_live, is_internal, status, share_token, created_at')
     .order('name');
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

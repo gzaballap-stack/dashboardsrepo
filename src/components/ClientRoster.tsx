@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from "react";
 
-type Client = { id: string; name: string; is_live?: boolean };
+type Client = { id: string; name: string; is_live?: boolean; status?: "live" | "paused" | "offline" };
+
+const STATUS_ORDER: ("live"|"paused"|"offline")[] = ["live", "paused", "offline"];
+const STATUS_STYLE = {
+  live:    { label: "Live",    color: "#15803d", bg: "rgba(21,128,61,0.10)", dot: "#15803d" },
+  paused:  { label: "Paused",  color: "#b45309", bg: "rgba(180,83,9,0.10)",  dot: "#f59e0b" },
+  offline: { label: "Offline", color: "#b91c1c", bg: "rgba(185,28,28,0.10)", dot: "#94a3b8" },
+} as const;
+const statusOf = (c: Client): "live"|"paused"|"offline" => c.status ?? (c.is_live ? "live" : "offline");
 
 function Input({ value, onChange, placeholder = "", className = "" }: {
   value: string; onChange: (v: string) => void; placeholder?: string; className?: string;
@@ -44,7 +52,7 @@ export default function ClientRoster() {
     });
     const d = await res.json();
     if (d.client) {
-      setClients(prev => [...prev, { ...d.client, is_live: true }].sort((a, b) => a.name.localeCompare(b.name)));
+      setClients(prev => [...prev, { ...d.client, is_live: true, status: "live" }].sort((a, b) => a.name.localeCompare(b.name)));
       setNewName("");
       setLinkedNote(d.linked_session
         ? `Territory session “${d.linked_session.name}” moved into ${d.client.name} in the Zip Tool.`
@@ -53,15 +61,16 @@ export default function ClientRoster() {
     setSaving(false);
   }
 
-  async function toggleLive(c: Client) {
+  async function cycleStatus(c: Client) {
+    const next = STATUS_ORDER[(STATUS_ORDER.indexOf(statusOf(c)) + 1) % STATUS_ORDER.length];
     setToggling(c.id);
     const res = await fetch(`/api/clients/${c.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_live: !c.is_live }),
+      body: JSON.stringify({ status: next }),
     });
     const d = await res.json();
-    if (d.client) setClients(prev => prev.map(x => x.id === c.id ? { ...x, is_live: d.client.is_live } : x));
+    if (d.client) setClients(prev => prev.map(x => x.id === c.id ? { ...x, is_live: d.client.is_live, status: d.client.status } : x));
     setToggling(null);
   }
 
@@ -75,8 +84,9 @@ export default function ClientRoster() {
     setConfirmDelete(null);
   }
 
-  const live = clients.filter(c => c.is_live);
-  const offline = clients.filter(c => !c.is_live);
+  const live = clients.filter(c => statusOf(c) === "live");
+  const paused = clients.filter(c => statusOf(c) === "paused");
+  const offline = clients.filter(c => statusOf(c) === "offline");
 
   if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#949494" }}>Loading…</p>;
 
@@ -112,6 +122,10 @@ export default function ClientRoster() {
           <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Live</p>
         </div>
         <div className="text-center">
+          <p className="text-2xl font-bold" style={{ color: "#b45309" }}>{paused.length}</p>
+          <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Paused</p>
+        </div>
+        <div className="text-center">
           <p className="text-2xl font-bold" style={{ color: "#b91c1c" }}>{offline.length}</p>
           <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Offline</p>
         </div>
@@ -138,19 +152,18 @@ export default function ClientRoster() {
               <tr key={c.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#fafafa", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: c.is_live ? "#15803d" : "#94a3b8" }} />
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STATUS_STYLE[statusOf(c)].dot }} />
                     <span className="font-medium" style={{ color: "#111111" }}>{c.name}</span>
                   </div>
                 </td>
                 <td className="px-4 py-3">
                   <button
-                    onClick={() => toggleLive(c)}
+                    onClick={() => cycleStatus(c)}
                     disabled={toggling === c.id}
+                    title="Click to change status"
                     className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
-                    style={c.is_live
-                      ? { color: "#15803d", background: "rgba(21,128,61,0.10)", opacity: toggling === c.id ? 0.5 : 1 }
-                      : { color: "#b91c1c", background: "rgba(185,28,28,0.10)", opacity: toggling === c.id ? 0.5 : 1 }}>
-                    {c.is_live ? "Live" : "Offline"}
+                    style={{ color: STATUS_STYLE[statusOf(c)].color, background: STATUS_STYLE[statusOf(c)].bg, opacity: toggling === c.id ? 0.5 : 1 }}>
+                    {STATUS_STYLE[statusOf(c)].label}
                   </button>
                 </td>
                 <td className="px-4 py-3 text-right">

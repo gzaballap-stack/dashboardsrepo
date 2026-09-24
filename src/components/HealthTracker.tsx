@@ -599,6 +599,18 @@ export default function HealthTracker() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  // Pinning is a phone fix: there, a year of weeks runs thousands of pixels and
+  // carries the controls away. On a wider screen the year fits seven columns
+  // and the bars only ever showed as a pale slab across the page.
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
   const [planSaving, setPlanSaving] = useState(false);
   const planSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Plan changes not yet sent. On unmount they are sent, not cancelled — this
@@ -766,7 +778,9 @@ export default function HealthTracker() {
       {/* Header. Pinned to the top of the scroll area: a year of weeks is
           thousands of pixels long, and scrolling into it used to carry the tabs
           away with no way back except scrolling all the way up. */}
-      <div ref={headerRef} style={{ ...STICKY_BAR, top: 0, zIndex: 20, paddingBottom: 12, marginBottom: 6 }}>
+      <div ref={headerRef} style={narrow
+        ? { ...STICKY_BAR, top: 0, zIndex: 20, paddingBottom: 12, marginBottom: 6 }
+        : { marginBottom: 18 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 180 }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>Health Tracker</h2>
@@ -812,7 +826,7 @@ export default function HealthTracker() {
           year={year} setYear={setYear} month={month} setMonth={setMonth}
           weeks={weeks} byWeek={byWeek}
           thisMonday={iso(thisMonday)} unit={unit} lengthUnit={lengthUnit}
-          onOpen={setOpenWeek} stickyTop={headerH}
+          onOpen={setOpenWeek} stickyTop={narrow ? headerH : null}
         />
       )}
 
@@ -993,7 +1007,8 @@ function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, u
   unit: string;
   lengthUnit: string;
   onOpen: (weekStart: string) => void;
-  stickyTop: number;
+  // Where to pin the controls, or null to leave them in the flow.
+  stickyTop: number | null;
 }) {
   // A month at a time by default — four or five boxes is the whole screen on a
   // phone. Yearly is there for looking back, not for logging.
@@ -1031,9 +1046,14 @@ function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, u
 
   return (
     <div>
-      {/* Pinned under the header: in the year view you are thousands of pixels
-          from the top, and these are how you get back. */}
-      <div style={{ ...STICKY_BAR, top: stickyTop, zIndex: 15, display: "flex", alignItems: "center", gap: 8, paddingBottom: 10, marginBottom: 6, flexWrap: "wrap" }}>
+      {/* On a phone these are pinned under the header: in the year view you are
+          thousands of pixels from the top, and these are how you get back. */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+        ...(stickyTop === null
+          ? { marginBottom: 16 }
+          : { ...STICKY_BAR, top: stickyTop, zIndex: 15, paddingBottom: 10, marginBottom: 6 }),
+      }}>
         <div style={{ display: "flex", background: "rgba(0,0,0,0.05)", borderRadius: 10, padding: 3 }}>
           {(["month", "year"] as CalendarScope[]).map(s => (
             <button key={s} onClick={() => setScope(s)}

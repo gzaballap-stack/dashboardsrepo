@@ -37,6 +37,7 @@ create table if not exists clients (
   id           uuid    primary key default gen_random_uuid(),
   name         text    not null unique,
   is_live      boolean not null default true,
+  status       text    not null default 'live',  -- live | paused | offline (paused = kept, no stale alerts)
   -- Internal client (Tomsi Media itself): its B2B funnel is mirrored into events/ad_spend so
   -- the client dashboard views work for it, but it is hidden from client-facing lists.
   is_internal  boolean not null default false,

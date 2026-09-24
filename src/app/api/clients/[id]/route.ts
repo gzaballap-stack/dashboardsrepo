@@ -7,15 +7,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { id } = await params;
   const body = await req.json();
-  const allowed = ['name', 'is_live'];
+  const allowed = ['name', 'is_live', 'status'];
   const updates: Record<string, unknown> = {};
   for (const k of allowed) if (k in body) updates[k] = body[k];
+  // status is the source of truth; only 'live' counts as live.
+  if ('status' in updates) updates.is_live = updates.status === 'live';
 
   const { data, error } = await ctx.service
     .from('clients')
     .update(updates)
     .eq('id', id)
-    .select('id, name, is_live, share_token, created_at')
+    .select('id, name, is_live, status, share_token, created_at')
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
