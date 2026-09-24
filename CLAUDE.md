@@ -162,6 +162,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `ai-campaign-chat` | Claude-powered chat over a campaign/client's data — see below |
 | `admin/*` | One-off ops: seeds, backfills, schema/migration runners (bypass auth via secret) |
 | `cron/seed-daily` | V2 demo-data daily seed (driven by the V2 data session) |
+| `cron/meta-b2b-report` | Meta B2B prospecting report → Slack, Mon/Wed/Fri 08:00 ET via Make scenario 7581936. Needs `META_ACCESS_TOKEN`, `SLACK_BOT_TOKEN`, `SLACK_CHANNEL_ID`. See `NOTES.md` 2026-09-24. |
 
 ---
 
@@ -289,6 +290,7 @@ Census fetching in `src/lib/census.ts` (needs `CENSUS_API_KEY`).
 | `CENSUS_API_KEY` | Census data for zip features |
 | `ANTHROPIC_API_KEY` | AI Campaign Chat (unset by default) |
 | `GHL_API_KEY` | GoHighLevel Private Integration token — reads per-contact ad attribution |
+| `META_ACCESS_TOKEN` / `SLACK_BOT_TOKEN` / `SLACK_CHANNEL_ID` | Meta B2B report → Slack (`cron/meta-b2b-report`). Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_INTRO_EVENT`, `META_FLAG_WINDOW` |
 
 Never commit `.env*` — they're gitignored. Production values live in Railway.
 

@@ -23,6 +23,43 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
+## 2026-09-24 — Meta B2B prospecting report → Slack (Mon/Wed/Fri 08:00 ET)
+
+`POST /api/cron/meta-b2b-report` (bearer `ADMIN_WEBHOOK_SECRET`) pulls ad-level
+insights for the Tomsi Media ad account (`act_1080664784142903`) over three
+windows — 30 / 7 / 3 days **including today** (America/New_York) — plus the
+previous 7 days for the "what changed" bullets, and posts to Slack: a summary
+message (bullets + flagged ads), then `report.md` (all tables) and `report.json`
+(machine-readable, same data) in the thread. `GET ?format=json|md` returns the
+report without posting; `POST {"dry_run":true}` builds it and returns the Slack
+text. Logic lives in `src/lib/meta-report.ts`, Slack calls in `src/lib/slack.ts`.
+
+- Scheduled by Make scenario **7581936** "CCM - Meta B2B Report → Slack"
+  (team 875675, folder 356178): days Mon/Wed/Fri, 08:00 in the org timezone,
+  which is America/New_York. It calls V1 only.
+- **Env (V1 Railway service, not yet set as of 2026-09-24):** `META_ACCESS_TOKEN`
+  (the same long-lived token the Make spend scenarios use), `SLACK_BOT_TOKEN`
+  (bot with `chat:write` + `files:write`, invited to the channel) and
+  `SLACK_CHANNEL_ID`. Optional: `META_REPORT_CAMPAIGNS` (comma-separated exact
+  campaign names; unset = every campaign that served in 30d), `META_B2B_ACCOUNT_ID`,
+  `META_KEPT_INTRO_EVENT` (custom-conversion name or full action_type; default
+  finds a custom conversion named "Schedule Kept"), `META_FLAG_WINDOW` (30/7/3,
+  default 7), `REPORT_TIMEZONE`. `SLACK_WEBHOOK_URL` works as a summary-only
+  fallback (webhooks cannot attach files). Until the env is set the route
+  answers 503 and the Make run shows an error — nothing else is affected.
+- Leads = Meta's `lead` action (falls back to pixel + on-site lead parts).
+  Kept intros = the "Schedule Kept" custom conversion's action_type. "First
+  served" is the ad's `created_time`. Creative type is parsed from the ad name
+  (UGC / VO / Static / Carousel / Video / AI).
+- Flags follow the spec (eval floor $90 or 1,000 impr; zero-intro kill $135 and
+  0 kept; CTR < 50% / < 25% of best 7d CTR with ≥ 250 impr; cost per kept ≥ 1.3×
+  best 7d cost per kept with ≥ $180 spend). **Assumption:** an ad's own numbers
+  are taken from the 7-day window, matching the "best ad in last 7 days"
+  control; `META_FLAG_WINDOW=30` switches to cumulative 30-day numbers. Best-CTR
+  control only considers ads with ≥ 250 impressions in 7d.
+
+---
+
 ## 2026-09-21 — Task Board: Weekly Non-Negotiables
 
 > **2026-09-22 (later):** sales calls from the connected calendar join the
