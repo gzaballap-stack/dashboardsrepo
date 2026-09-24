@@ -22,6 +22,7 @@ import HealthTracker from "./HealthTracker";
 import { hasFeature, type FeatureId } from "@/lib/feature-access";
 import { pathForRoute, routeForSlug, type DashRoute } from "@/lib/dashboard-routes";
 import CampaignOverview from "./CampaignOverview";
+import WeeklyBreakdown from "./WeeklyBreakdown";
 import CreativeLeaderboard from "./CreativeLeaderboard";
 import CSMDashboard from "./CSMDashboard";
 
@@ -56,7 +57,7 @@ type Metrics = {
   roi: number;
 };
 
-type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "all_time" | "custom";
+type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "week_before" | "all_time" | "custom";
 
 type View =
   | "dashboard"
@@ -117,6 +118,7 @@ const PRESET_LABELS: Record<Preset, string> = {
   last_month: "Last Month",
   last_30: "Last 30 Days",
   last_7: "Last 7 Days",
+  week_before: "Week Before",
   all_time: "All Time",
   custom: "Custom Range",
 };
@@ -185,6 +187,10 @@ function getDateRange(p: Preset): { start: string; end: string } {
   };
   if (p === "last_30") return { start: new Date(now.getTime() - 30 * 86400000).toISOString().split("T")[0], end: today };
   if (p === "last_7")  return { start: new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0], end: today };
+  if (p === "week_before") return {
+    start: new Date(now.getTime() - 14 * 86400000).toISOString().split("T")[0],
+    end:   new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0],
+  };
   return { start: "", end: "" };
 }
 
@@ -356,6 +362,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const [heatmapDays, setHeatmapDays] = useState(0);
   const [heatmapClientId, setHeatmapClientId] = useState("");
   const [b2bKpis, setB2bKpis] = useState<{ cash_collected: number; self_booked: number; team_booked: number; booking_leads: number; non_booking_leads: number } | null>(null);
+  const [showWeekly, setShowWeekly] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   // Who is signed in and what they're allowed to open. `allowed_views: null`
@@ -940,6 +947,18 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
             {crumb[1]}
           </h1>
 
+          {/* Weekly breakdown (B2B only) */}
+          {topSection === "tomsi_media" && tomsiView === "dashboard" && (
+            <button onClick={() => setShowWeekly(true)} title="Weekly breakdown"
+              className="flex items-center justify-center rounded-lg flex-shrink-0"
+              style={{ width: 38, height: 38, background: "#fff", border: "1px solid rgba(0,0,0,0.162)", color: "#111" }}>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 6h18M3 14h18M3 18h18" />
+              </svg>
+            </button>
+          )}
+          {showWeekly && <WeeklyBreakdown onClose={() => setShowWeekly(false)} />}
+
           {/* Tomsi Media date range selector */}
           {topSection === "tomsi_media" && (
             <div className="relative" ref={presetRef}>
@@ -1160,7 +1179,9 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     <KpiCard label="Conversation Rate" value={fmtPct(metrics.conversation_pct)} />
                     <KpiCard label="Callback Requests" value={fmtInt(metrics.callbacks)} />
                     <KpiCard label="Callback Rate" value={fmtPct(metrics.cb_pct)} />
-                    <KpiCard label="Lead Booking Rate" value={leadBookingRate != null ? fmtPct(leadBookingRate) : "—"} accent />
+                    <KpiCard label="Non-Booking Leads" value={fmtInt(Math.max(0, metrics.new_leads - selfBooked))} />
+                    <KpiCard label="Hand-Booked Appointments" value={bookedByKnown ? fmtInt(teamBooked) : "—"} />
+                    <KpiCard label="Lead Appt Booking Rate" value={leadBookingRate != null ? fmtPct(leadBookingRate) : "—"} accent />
                   </div>
                 </section>
 
