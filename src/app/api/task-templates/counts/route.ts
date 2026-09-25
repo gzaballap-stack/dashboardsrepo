@@ -59,7 +59,7 @@ export async function GET() {
     let bucket: Source | null = null;
     if (e.event_type === 'lead') bucket = age <= 30 * 24 * HOUR ? 'leads' : null;
     else if (e.event_type === 'intro_booked') bucket = age < 48 * HOUR ? 'triage' : 'no_shows';
-    else if (e.event_type === 'sales_call_booked') bucket = age >= 48 * HOUR ? 'no_shows' : null;
+    else if (e.event_type === 'sales_call_booked') bucket = age < 48 * HOUR ? 'triage' : 'no_shows';
     else if (e.event_type === 'sales_call_shown') bucket = 'no_closes';
     if (!bucket) continue;
 

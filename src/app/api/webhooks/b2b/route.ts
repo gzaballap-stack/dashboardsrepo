@@ -25,6 +25,11 @@ export async function POST(req: Request) {
     const payload = await req.json();
     const service = createServiceClient();
 
+    // B2B is a one-call process: the old "intro" stage is gone. Any booking that
+    // still arrives tagged as an intro is treated as the demo (sales call).
+    if (payload.event_type === 'intro_booked') payload.event_type = 'sales_call_booked';
+    if (payload.event_type === 'intro_shown')  payload.event_type = 'sales_call_shown';
+
     if (!VALID_EVENT_TYPES.includes(payload.event_type)) {
       return NextResponse.json(
         { error: `Invalid event_type. Must be one of: ${VALID_EVENT_TYPES.join(', ')}` },
@@ -72,8 +77,13 @@ export async function POST(req: Request) {
       is_pickup:        payload.is_pickup       ?? null,
       is_conversation:  payload.is_conversation ?? null,
       progress_pct:     payload.progress_pct != null ? Number(payload.progress_pct) : null,
-      // 'self' = the lead booked through the calendar link; 'team' = we booked it.
-      booked_by:        ['self','team'].includes(String(payload.booked_by||'').toLowerCase()) ? String(payload.booked_by).toLowerCase() : null,
+      // 'self'/'client' = the lead booked through the calendar link; 'team' = we booked it.
+      booked_by:        (() => {
+        const v = String(payload.booked_by||'').toLowerCase();
+        if (v === 'client' || v === 'self') return 'self';
+        if (v === 'team') return 'team';
+        return null;
+      })(),
 
       ...attribution,
 
