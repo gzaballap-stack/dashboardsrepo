@@ -59,32 +59,52 @@ export async function POST(req: Request) {
 
   // ---- op 2: remove exact-duplicate bookings that predate ID-based dedupe ----
   if (op === 'dedupe_bookings') {
-    // Only un-keyed booking/show rows can duplicate; rows with an external_id
-    // already dedupe on insert. Never touch closes or anything carrying revenue.
+    // A double-fire leaves two near-simultaneous rows for the same person: one
+    // carrying the appointment id, one blank. The id row is canonical; the blank
+    // copy is the duplicate. Rule: a row is a duplicate only when another row for
+    // the same person + type sits within the window. Never delete a row that
+    // carries an appointment id, and never a row with revenue.
     const TYPES = ['sales_call_booked', 'sales_call_shown', 'lead'];
     const { data: rows, error } = await service
       .from('b2b_events')
       .select('id, event_type, occurred_at, lead_name, lead_email, ghl_contact_id, external_id, revenue')
       .in('event_type', TYPES)
-      .is('external_id', null)
       .order('occurred_at', { ascending: true });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     const idOf = (r: { ghl_contact_id: string | null; lead_email: string | null; lead_name: string | null }) =>
       r.ghl_contact_id || r.lead_email || (r.lead_name || '').trim().toLowerCase();
 
-    const kept: Record<string, { id: string; t: number }> = {};
-    const dupes: { id: string; who: string; event_type: string; occurred_at: string }[] = [];
+    type Row = NonNullable<typeof rows>[number];
+    const groups = new Map<string, Row[]>();
     for (const r of rows ?? []) {
       const who = idOf(r);
       if (!who || Number(r.revenue) > 0) continue;          // need an identity; never money rows
       const key = r.event_type + '|' + who;
-      const t = new Date(r.occurred_at).getTime();
-      const prior = kept[key];
-      if (prior && Math.abs(t - prior.t) <= DEDUPE_WINDOW_MS) {
-        dupes.push({ id: r.id, who, event_type: r.event_type, occurred_at: r.occurred_at });
-      } else {
-        kept[key] = { id: r.id, t };
+      (groups.get(key) ?? groups.set(key, []).get(key)!).push(r);
+    }
+
+    const dupes: { id: string; who: string; event_type: string; occurred_at: string }[] = [];
+    for (const [, list] of groups) {
+      // cluster rows that fall within the window of the cluster anchor
+      let i = 0;
+      while (i < list.length) {
+        const anchor = new Date(list[i].occurred_at).getTime();
+        const cluster = [list[i]];
+        let j = i + 1;
+        while (j < list.length && new Date(list[j].occurred_at).getTime() - anchor <= DEDUPE_WINDOW_MS) {
+          cluster.push(list[j]); j++;
+        }
+        if (cluster.length > 1) {
+          // keep one: prefer the earliest row that carries an appointment id
+          const keeper = cluster.find(r => r.external_id) ?? cluster[0];
+          for (const r of cluster) {
+            if (r.id !== keeper.id && !r.external_id) {
+              dupes.push({ id: r.id, who: idOf(r), event_type: r.event_type, occurred_at: r.occurred_at });
+            }
+          }
+        }
+        i = j;
       }
     }
 
