@@ -26,6 +26,7 @@ const BYPASS_ROUTES = [
   '/api/admin/seed-client-sessions',
   '/api/admin/rename-sessions',
   '/api/cron/seed-daily',
+  '/api/meta-b2b-report',   // authenticates itself: session or admin secret
   // Read-only lifting-log export — the share token in the query string is the
   // credential, so it must be reachable without a session.
   '/api/lift-log/export',
