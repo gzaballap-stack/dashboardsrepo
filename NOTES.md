@@ -31,8 +31,20 @@ when you make a call that a future session would otherwise have to re-derive.
 > button next to the date picker on the TM Dashboard. `src/lib/slack.ts`, the
 > cron route and its bypass entry are gone; Make scenario 7581936 is **stopped**
 > (not deleted) in case a schedule is wanted again. Only `META_ACCESS_TOKEN` is
-> needed now — it is **not** in any local env file; the only copy is inside the
-> Make Meta-spend scenarios' query strings.
+> needed now. On 2026-09-25 (with the user's go-ahead) it was copied from Make
+> scenario 7112516's query string into `.env.local` and the Railway **dashboard
+> v1** variables. The route is in `BYPASS_ROUTES` because it checks session or
+> secret itself.
+>
+> **Per-ad kept intros are N/A on V1 today** (`kept_intro_source = none`): the ad
+> account has **no custom conversions** at all (so no "Schedule Kept"; the pixel
+> does fire 28 unnamed `fb_pixel_custom` events/30d), and `b2b_events` has no ad
+> attribution — `admin/backfill-ghl-attribution` on `b2b_events` fails with 403
+> "token does not have access to this location" because `GHL_API_KEY` is not for
+> the Tomsi Media sub-account. Zero_intro_kill and Perf_vs_control_bad render
+> **N/A** until one of: a "Schedule Kept" custom conversion in Events Manager,
+> a GHL token for the Tomsi location (then run the backfill), or attribution
+> custom data on the Tomsi New Lead workflow.
 
 The report (see 2026-09-24) now has four fixed sections: **1. account / funnel
 summary** per window (L30 / L7 / L3) in a paste-ready text block — spend, leads,
