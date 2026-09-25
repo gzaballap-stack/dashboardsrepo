@@ -42,12 +42,15 @@ export type Metrics = {
   cpm: number | null;
 };
 
+// The two intro-based flags are null when no per-ad kept-intro source exists
+// (no GHL ad attribution and no Meta "Schedule Kept" conversion) — a 0 there
+// would read as a kill verdict when it is really missing data.
 export type Flags = {
   over_eval_floor: boolean;
-  zero_intro_kill: boolean;
+  zero_intro_kill: boolean | null;
   ctr_half_control: boolean;
   early_ctr_trash: boolean;
-  perf_vs_control_bad: boolean;
+  perf_vs_control_bad: boolean | null;
 };
 
 export type Creative = {
@@ -377,10 +380,10 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
     const bestK = control.best_cost_per_kept_intro_7d;
     a.flags = {
       over_eval_floor: m.spend >= RULES.evalFloorSpend || m.impressions >= RULES.evalFloorImpressions,
-      zero_intro_kill: m.spend >= RULES.zeroIntroKillSpend && m.kept_intros === 0,
+      zero_intro_kill: keptSource === 'none' ? null : m.spend >= RULES.zeroIntroKillSpend && m.kept_intros === 0,
       ctr_half_control: bestC != null && m.impressions > 0 && ctr < bestC * RULES.ctrHalfControl,
       early_ctr_trash: bestC != null && m.impressions >= RULES.earlyCtrTrashImpressions && ctr < bestC * RULES.earlyCtrTrash,
-      perf_vs_control_bad: bestK != null && m.spend >= RULES.perfVsControlSpend
+      perf_vs_control_bad: keptSource === 'none' ? null : bestK != null && m.spend >= RULES.perfVsControlSpend
         && (m.cost_per_kept_intro == null || m.cost_per_kept_intro >= bestK * RULES.perfVsControlMultiple),
     };
   }
@@ -456,7 +459,7 @@ export function summarise(r: MetaReport): string[] {
   }
   out.push(`Link CTR ${pct(t.ctr_link, 2)}${delta(t.ctr_link, p.ctr_link)} · CPC ${money(t.cpc_link)} · CPM ${money(t.cpm)}.`);
 
-  const kills = r.ads.filter(a => a.flags.zero_intro_kill || a.flags.early_ctr_trash || a.flags.perf_vs_control_bad);
+  const kills = r.ads.filter(a => a.flags.zero_intro_kill === true || a.flags.early_ctr_trash || a.flags.perf_vs_control_bad === true);
   const best = r.ads.find(a => a.ad_id === r.control.best_cpki_ad_id) ?? r.ads.find(a => a.ad_id === r.control.best_ctr_ad_id);
   if (best) out.push(`Control: "${best.ad_name}" — ${pct(best.windows[7].ctr_link, 2)} link CTR, ${money(best.windows[7].cost_per_kept_intro)} per kept intro (7d).`);
   out.push(kills.length
@@ -488,7 +491,7 @@ export function accountSummary(r: MetaReport, w: WindowDays): string {
   return lines.join('\n');
 }
 
-const yn = (b: boolean) => (b ? 'TRUE' : 'FALSE');
+const yn = (b: boolean | null) => (b == null ? 'N/A' : b ? 'TRUE' : 'FALSE');
 
 function table(head: string[], rows: string[][]): string {
   const esc = (s: string) => s.replace(/\|/g, '\\|');
@@ -526,7 +529,8 @@ export function renderMarkdown(r: MetaReport): string {
   ));
   parts.push('\nFlag rules: Over_eval_floor = spend ≥ $90 OR impressions ≥ 1,000 · Zero_intro_kill = spend ≥ $135 AND kept intros = 0 · ' +
     'CTR_half_control = link CTR < 50% of best ad in L7 · Early_CTR_trash = impressions ≥ 250 AND link CTR < 25% of best ad · ' +
-    'Perf_vs_control_bad = spend ≥ $180 AND cost per kept intro ≥ 1.3× best ad. All on L7 numbers.');
+    'Perf_vs_control_bad = spend ≥ $180 AND cost per kept intro ≥ 1.3× best ad. All on L7 numbers.' +
+    (r.kept_intro_source === 'none' ? ' **Zero_intro_kill and Perf_vs_control_bad are N/A this run: no per-ad kept-intro data (see header).**' : ''));
 
   parts.push('\n## 4. Creative map');
   parts.push(r.ads.map(a => `- ${a.ad_name} (${a.ad_id}, ${a.status ?? 'status —'}) = ${a.creative_type !== '—' ? a.creative_type + ' · ' : ''}${a.creative.description}`).join('\n'));
