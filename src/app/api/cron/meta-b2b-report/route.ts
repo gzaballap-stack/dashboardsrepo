@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { validateWebhookSecret } from '@/lib/api-auth';
-import { buildMetaReport, renderMarkdown, renderSlackText, WINDOWS, type WindowDays } from '@/lib/meta-report';
+import { buildMetaReport, renderMarkdown, renderSlackText } from '@/lib/meta-report';
+import { getFunnelStats } from '@/lib/b2b-funnel';
+import { createServiceClient } from '@/lib/supabase';
 import { postMessage, postWebhook, uploadFiles } from '@/lib/slack';
 
 // Meta B2B prospecting report.
@@ -11,7 +13,7 @@ import { postMessage, postWebhook, uploadFiles } from '@/lib/slack';
 //
 // Env: META_ACCESS_TOKEN (required), SLACK_BOT_TOKEN + SLACK_CHANNEL_ID (or SLACK_WEBHOOK_URL),
 //      optional META_B2B_ACCOUNT_ID, META_REPORT_CAMPAIGNS (comma-separated exact names),
-//      META_KEPT_INTRO_EVENT, REPORT_TIMEZONE.
+//      META_KEPT_INTRO_EVENT, REPORT_TIMEZONE. Funnel numbers come from Supabase (b2b_events + Tomsi dials).
 
 export const maxDuration = 120;
 
@@ -21,9 +23,14 @@ function config(url: URL) {
 
   const campaignsParam = url.searchParams.get('campaigns') ?? process.env.META_REPORT_CAMPAIGNS ?? '';
   const campaigns = campaignsParam.split(',').map(s => s.trim()).filter(Boolean);
-  const fw = Number(url.searchParams.get('flag_window') ?? process.env.META_FLAG_WINDOW ?? 7);
-  const flagWindow = (WINDOWS as readonly number[]).includes(fw) ? (fw as WindowDays) : 7;
-  return { token, campaigns, flagWindow };
+  return { token, campaigns };
+}
+
+// GHL / dashboard side of the report. If Supabase is unreachable the report
+// still goes out Meta-only rather than failing the run.
+function funnelFetcher() {
+  const service = createServiceClient();
+  return (since: string, until: string, tz: string) => getFunnelStats(service, since, until, tz);
 }
 
 export async function GET(req: Request) {
@@ -33,7 +40,7 @@ export async function GET(req: Request) {
   if ('error' in cfg) return NextResponse.json({ error: cfg.error }, { status: 503 });
 
   try {
-    const report = await buildMetaReport({ token: cfg.token, campaigns: cfg.campaigns, flagWindow: cfg.flagWindow });
+    const report = await buildMetaReport({ token: cfg.token, campaigns: cfg.campaigns, funnelFor: funnelFetcher() });
     if (url.searchParams.get('format') === 'md') {
       return new NextResponse(renderMarkdown(report), { headers: { 'Content-Type': 'text/markdown; charset=utf-8' } });
     }
@@ -58,7 +65,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const report = await buildMetaReport({ token: cfg.token, campaigns: cfg.campaigns, flagWindow: cfg.flagWindow });
+    const report = await buildMetaReport({ token: cfg.token, campaigns: cfg.campaigns, funnelFor: funnelFetcher() });
     const text = renderSlackText(report);
     const markdown = renderMarkdown(report);
 

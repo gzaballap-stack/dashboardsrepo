@@ -1,15 +1,21 @@
 // Meta B2B prospecting report — pulls ad-level insights for three date windows
 // (30 / 7 / 3 days including today), rolls them up to ad set and campaign,
-// evaluates the kill/eval flags, and renders the result as JSON + Markdown.
+// evaluates the kill/eval flags on the 7-day window, and renders JSON + Markdown.
 //
-// Everything comes from the Meta Marketing API; nothing here touches Supabase.
-// Consumed by /api/cron/meta-b2b-report, which posts the output to Slack.
+// Meta supplies spend/impressions/clicks/leads per ad; the dashboard's own data
+// (see b2b-funnel.ts) supplies the GHL side — bookings, kept intros, closes,
+// cash, calling stats — for the account summary. Per-ad kept intros come from
+// GHL attribution when it exists, otherwise from the "Schedule Kept" custom
+// conversion in Meta. Consumed by /api/cron/meta-b2b-report.
+
+import type { FunnelStats } from './b2b-funnel';
 
 const GRAPH = 'https://graph.facebook.com/v19.0';
 export const DEFAULT_ACCOUNT = 'act_1080664784142903';
 
 export const WINDOWS = [30, 7, 3] as const;
 export type WindowDays = (typeof WINDOWS)[number];
+export const FLAG_WINDOW: WindowDays = 7;
 
 // ── Thresholds (per the report spec) ─────────────────────────────────────
 export const RULES = {
@@ -28,7 +34,7 @@ export type Metrics = {
   impressions: number;
   link_clicks: number;
   ctr_link: number | null;          // link clicks / impressions, as a percentage
-  cpc_link: number | null;          // spend / link clicks
+  cpc_link: number | null;
   leads: number;
   cost_per_lead: number | null;
   kept_intros: number;
@@ -44,6 +50,13 @@ export type Flags = {
   perf_vs_control_bad: boolean;
 };
 
+export type Creative = {
+  format: string | null;        // Video / Image / Carousel / …
+  headline: string | null;
+  primary_text: string | null;
+  description: string;          // one-line "format + angle" for the creative map
+};
+
 export type AdRow = {
   campaign_id: string;
   campaign_name: string;
@@ -51,7 +64,8 @@ export type AdRow = {
   adset_name: string;
   ad_id: string;
   ad_name: string;
-  creative_type: string;
+  creative_type: string;        // tag parsed from the ad name (UGC / VO / Static / …)
+  creative: Creative;
   status: string | null;
   first_served: string | null;
   windows: Record<WindowDays, Metrics>;
@@ -71,6 +85,7 @@ export type MetaReport = {
   timezone: string;
   account_id: string;
   campaign_filter: string[] | null;
+  kept_intro_source: 'ghl' | 'meta' | 'none';
   kept_intro_action_type: string | null;
   flag_window_days: WindowDays;
   control: {
@@ -81,7 +96,8 @@ export type MetaReport = {
   };
   windows: Record<WindowDays, { since: string; until: string }>;
   previous_7d: { since: string; until: string; totals: Metrics };
-  totals: Record<WindowDays, Metrics>;
+  totals: Record<WindowDays, Metrics>;          // Meta totals
+  funnel: Record<WindowDays, FunnelStats> | null; // GHL / dashboard side
   summary: string[];
   ads: AdRow[];
   adsets: RollupRow[];
@@ -200,14 +216,61 @@ async function findKeptIntroType(acct: string, token: string): Promise<string | 
   }
 }
 
-type AdEntity = { id: string; created_time?: string; effective_status?: string };
+type RawCreative = {
+  object_type?: string;
+  title?: string;
+  body?: string;
+  object_story_spec?: {
+    video_data?: { message?: string; title?: string; link_description?: string };
+    link_data?: { message?: string; name?: string; description?: string; child_attachments?: unknown[] };
+    photo_data?: { caption?: string };
+  };
+  asset_feed_spec?: {
+    bodies?: { text?: string }[];
+    titles?: { text?: string }[];
+    videos?: unknown[];
+    images?: unknown[];
+  };
+};
+type AdEntity = { id: string; created_time?: string; effective_status?: string; creative?: RawCreative };
+
+const clip = (s: string | null | undefined, n: number) => {
+  if (!s) return null;
+  const t = s.replace(/\s+/g, ' ').trim();
+  return t.length > n ? t.slice(0, n - 1) + '…' : t;
+};
+
+export function describeCreative(c: RawCreative | undefined): Creative {
+  if (!c) return { format: null, headline: null, primary_text: null, description: 'No creative details available from Meta.' };
+  const oss = c.object_story_spec;
+  const afs = c.asset_feed_spec;
+  let format: string | null = null;
+  if (oss?.link_data?.child_attachments?.length) format = 'Carousel';
+  else if (oss?.video_data || afs?.videos?.length || c.object_type === 'VIDEO') format = 'Video';
+  else if (oss?.photo_data || afs?.images?.length || c.object_type === 'PHOTO') format = 'Image';
+  else if (oss?.link_data) format = 'Image/link';
+  else if (c.object_type) format = c.object_type.charAt(0) + c.object_type.slice(1).toLowerCase();
+  if (afs && ((afs.bodies?.length ?? 0) > 1 || (afs.titles?.length ?? 0) > 1)) format = `${format ?? 'Dynamic'} (dynamic, ${afs.bodies?.length ?? 1} texts / ${afs.titles?.length ?? 1} headlines)`;
+
+  const headline = clip(c.title ?? oss?.link_data?.name ?? oss?.video_data?.title ?? afs?.titles?.[0]?.text, 120);
+  const primary = clip(c.body ?? oss?.link_data?.message ?? oss?.video_data?.message ?? oss?.photo_data?.caption ?? afs?.bodies?.[0]?.text, 220);
+  const bits = [format, headline ? `headline: "${headline}"` : null, primary ? `text: "${primary}"` : null].filter(Boolean);
+  return { format, headline, primary_text: primary, description: bits.length ? bits.join(' · ') : 'No creative details available from Meta.' };
+}
 
 async function fetchAdEntities(acct: string, token: string): Promise<Map<string, AdEntity>> {
   const map = new Map<string, AdEntity>();
+  const fields = 'id,created_time,effective_status,creative{object_type,title,body,object_story_spec,asset_feed_spec}';
   try {
-    const list = await graphGet<AdEntity>(`/${acct}/ads`, { fields: 'id,created_time,effective_status' }, token);
+    const list = await graphGet<AdEntity>(`/${acct}/ads`, { fields }, token);
     for (const a of list) map.set(a.id, a);
-  } catch { /* first_served / status stay null */ }
+  } catch {
+    // Creative fields can be refused on some ad types — retry without them.
+    try {
+      const list = await graphGet<AdEntity>(`/${acct}/ads`, { fields: 'id,created_time,effective_status' }, token);
+      for (const a of list) map.set(a.id, a);
+    } catch { /* first_served / status / creative stay null */ }
+  }
   return map;
 }
 
@@ -217,15 +280,15 @@ export type BuildOptions = {
   token: string;
   accountId?: string;
   campaigns?: string[] | null;     // exact campaign names; null/empty = all
-  flagWindow?: WindowDays;
   timezone?: string;
   now?: Date;
+  // Dashboard-side numbers for a window; omitted = Meta-only report.
+  funnelFor?: (since: string, until: string, tz: string) => Promise<FunnelStats>;
 };
 
 export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
   const tz = opts.timezone ?? process.env.REPORT_TIMEZONE ?? 'America/New_York';
   const acct = opts.accountId ?? process.env.META_B2B_ACCOUNT_ID ?? DEFAULT_ACCOUNT;
-  const flagWindow: WindowDays = opts.flagWindow ?? 7;
   const today = ymd(opts.now ?? new Date(), tz);
 
   const filterNames = (opts.campaigns ?? []).map(s => s.trim()).filter(Boolean);
@@ -236,22 +299,34 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
   ) as Record<WindowDays, { since: string; until: string }>;
   const prev7 = { since: shiftDays(today, -13), until: shiftDays(today, -7) };
 
-  const [keptType, entities, raw30, raw7, raw3, rawPrev] = await Promise.all([
+  const funnelPromise = opts.funnelFor
+    ? Promise.all(WINDOWS.map(w => opts.funnelFor!(windows[w].since, windows[w].until, tz)))
+        .then(list => Object.fromEntries(WINDOWS.map((w, i) => [w, list[i]])) as Record<WindowDays, FunnelStats>)
+    : Promise.resolve(null);
+
+  const [keptType, entities, raw30, raw7, raw3, rawPrev, funnel] = await Promise.all([
     findKeptIntroType(acct, opts.token),
     fetchAdEntities(acct, opts.token),
     fetchInsights(acct, opts.token, windows[30].since, windows[30].until),
     fetchInsights(acct, opts.token, windows[7].since, windows[7].until),
     fetchInsights(acct, opts.token, windows[3].since, windows[3].until),
     fetchInsights(acct, opts.token, prev7.since, prev7.until),
+    funnelPromise,
   ]);
 
-  const toMetrics = (r: RawInsight): Metrics => finalize({
+  // Kept intros per ad: GHL attribution when any exists in the 30-day window, else Meta's custom conversion.
+  const ghlHasAttribution = !!funnel && Object.keys(funnel[30].kept_intros_by_ad).length > 0;
+  const keptSource: MetaReport['kept_intro_source'] = ghlHasAttribution ? 'ghl' : keptType ? 'meta' : 'none';
+
+  const toMetrics = (r: RawInsight, w?: WindowDays): Metrics => finalize({
     ...emptyMetrics(),
     spend: parseFloat(r.spend ?? '0') || 0,
     impressions: parseInt(r.impressions ?? '0', 10) || 0,
     link_clicks: parseInt(r.inline_link_clicks ?? '0', 10) || 0,
     leads: leadsFrom(r.actions),
-    kept_intros: keptFrom(r.actions, keptType),
+    kept_intros: ghlHasAttribution && w && r.ad_id
+      ? (funnel![w].kept_intros_by_ad[r.ad_id] ?? 0)
+      : keptFrom(r.actions, keptType),
   });
 
   const inFilter = (r: RawInsight) => !filter || filter.has((r.campaign_name ?? '').toLowerCase());
@@ -266,14 +341,15 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
       adset_id: r.adset_id ?? '', adset_name: r.adset_name ?? '',
       ad_id: r.ad_id, ad_name: r.ad_name ?? '',
       creative_type: creativeType(r.ad_name ?? ''),
+      creative: describeCreative(ent?.creative),
       status: ent?.effective_status ?? null,
       first_served: ent?.created_time ? ent.created_time.slice(0, 10) : null,
-      windows: { 30: toMetrics(r), 7: emptyMetrics(), 3: emptyMetrics() },
+      windows: { 30: toMetrics(r, 30), 7: emptyMetrics(), 3: emptyMetrics() },
       flags: { over_eval_floor: false, zero_intro_kill: false, ctr_half_control: false, early_ctr_trash: false, perf_vs_control_bad: false },
     });
   }
-  for (const r of raw7) { const a = r.ad_id && ads.get(r.ad_id); if (a) a.windows[7] = toMetrics(r); }
-  for (const r of raw3) { const a = r.ad_id && ads.get(r.ad_id); if (a) a.windows[3] = toMetrics(r); }
+  for (const r of raw7) { const a = r.ad_id && ads.get(r.ad_id); if (a) a.windows[7] = toMetrics(r, 7); }
+  for (const r of raw3) { const a = r.ad_id && ads.get(r.ad_id); if (a) a.windows[3] = toMetrics(r, 3); }
 
   const adList = [...ads.values()].sort((a, b) =>
     a.campaign_name.localeCompare(b.campaign_name) || a.adset_name.localeCompare(b.adset_name) || b.windows[7].spend - a.windows[7].spend);
@@ -293,9 +369,9 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
     best_cpki_ad_id: bestCpki?.ad_id ?? null,
   };
 
-  // ── Flags ──
+  // ── Flags (7-day window) ──
   for (const a of adList) {
-    const m = a.windows[flagWindow];
+    const m = a.windows[FLAG_WINDOW];
     const ctr = m.ctr_link ?? 0;
     const bestC = control.best_ctr_link_7d;
     const bestK = control.best_cost_per_kept_intro_7d;
@@ -336,12 +412,14 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
     generated_at: new Date().toISOString(),
     today, timezone: tz, account_id: acct,
     campaign_filter: filter ? filterNames : null,
+    kept_intro_source: keptSource,
     kept_intro_action_type: keptType,
-    flag_window_days: flagWindow,
+    flag_window_days: FLAG_WINDOW,
     control,
     windows,
     previous_7d: { ...prev7, totals: prevTotals },
     totals,
+    funnel,
     summary: [],
     ads: adList, adsets, campaigns,
     rules: RULES,
@@ -350,11 +428,13 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
   return report;
 }
 
-// ── Summary bullets (deterministic — same inputs, same words) ─────────────
+// ── Formatting ────────────────────────────────────────────────────────────
 
-const money = (n: number | null | undefined) => n == null ? '—' : `$${n.toFixed(2)}`;
-const pct = (n: number | null | undefined) => n == null ? '—' : `${n.toFixed(2)}%`;
+const money = (n: number | null | undefined, dp = 2) => n == null ? '—' : `$${n.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
+const money0 = (n: number | null | undefined) => money(n, 0);
+const pct = (n: number | null | undefined, dp = 1) => n == null ? '—' : `${n.toFixed(dp)}%`;
 const int = (n: number) => n.toLocaleString('en-US');
+const x = (n: number | null | undefined) => n == null ? '—' : `${n.toFixed(1)}x`;
 const delta = (now: number | null, prev: number | null, invert = false) => {
   if (now == null || prev == null || prev === 0) return '';
   const ch = ((now - prev) / prev) * 100;
@@ -362,94 +442,112 @@ const delta = (now: number | null, prev: number | null, invert = false) => {
   return ` (${ch >= 0 ? '+' : ''}${ch.toFixed(0)}% vs prior 7d${Math.abs(ch) >= 10 ? (good ? ' ✅' : ' ⚠️') : ''})`;
 };
 
+// Summary bullets for the Slack message (deterministic — same inputs, same words).
 export function summarise(r: MetaReport): string[] {
   const t = r.totals[7], p = r.previous_7d.totals;
+  const f = r.funnel?.[7];
   const out: string[] = [];
   out.push(`Spend last 7d: ${money(t.spend)}${delta(t.spend, p.spend)} across ${r.ads.filter(a => a.windows[7].impressions > 0).length} ads.`);
-  out.push(`Leads: ${int(t.leads)} at ${money(t.cost_per_lead)} CPL${delta(t.cost_per_lead, p.cost_per_lead, true)} · prior 7d: ${int(p.leads)} at ${money(p.cost_per_lead)}.`);
-  out.push(`Kept intros: ${int(t.kept_intros)} at ${money(t.cost_per_kept_intro)} each${delta(t.cost_per_kept_intro, p.cost_per_kept_intro, true)} · prior 7d: ${int(p.kept_intros)} at ${money(p.cost_per_kept_intro)}.`);
-  out.push(`Link CTR ${pct(t.ctr_link)}${delta(t.ctr_link, p.ctr_link)} · CPC ${money(t.cpc_link)} · CPM ${money(t.cpm)}.`);
+  if (f) {
+    out.push(`GHL: ${int(f.leads)} leads (CPL ${money(div(t.spend, f.leads))}) → ${int(f.intros_booked)} booked → ${int(f.intros_shown)} kept (${money(div(t.spend, f.intros_shown))} each) → ${int(f.closes)} closed · cash ${money0(f.cash_collected)} (ROAS ${x(div(f.cash_collected, t.spend))}).`);
+    out.push(`Calling: speed to lead ${f.speed_to_lead_min == null ? '—' : f.speed_to_lead_min.toFixed(1) + ' min'} · ${f.dials_per_lead == null ? '—' : f.dials_per_lead.toFixed(1)} dials/lead · pickup ${pct(f.pickup_pct, 0)} · show ${pct(f.show_pct, 0)} · close ${pct(f.close_pct, 0)}.`);
+  } else {
+    out.push(`Meta leads: ${int(t.leads)} at ${money(t.cost_per_lead)} CPL${delta(t.cost_per_lead, p.cost_per_lead, true)}.`);
+  }
+  out.push(`Link CTR ${pct(t.ctr_link, 2)}${delta(t.ctr_link, p.ctr_link)} · CPC ${money(t.cpc_link)} · CPM ${money(t.cpm)}.`);
 
   const kills = r.ads.filter(a => a.flags.zero_intro_kill || a.flags.early_ctr_trash || a.flags.perf_vs_control_bad);
   const best = r.ads.find(a => a.ad_id === r.control.best_cpki_ad_id) ?? r.ads.find(a => a.ad_id === r.control.best_ctr_ad_id);
-  if (best) {
-    out.push(`Control: "${best.ad_name}" — ${pct(best.windows[7].ctr_link)} link CTR, ${money(best.windows[7].cost_per_kept_intro)} per kept intro (7d).`);
-  }
+  if (best) out.push(`Control: "${best.ad_name}" — ${pct(best.windows[7].ctr_link, 2)} link CTR, ${money(best.windows[7].cost_per_kept_intro)} per kept intro (7d).`);
   out.push(kills.length
     ? `${kills.length} ad${kills.length === 1 ? '' : 's'} hit a kill flag: ${kills.slice(0, 5).map(a => `"${a.ad_name}"`).join(', ')}${kills.length > 5 ? '…' : ''}.`
     : 'No ads hit a kill flag this run.');
-  if (!r.kept_intro_action_type) out.push('⚠️ No "Schedule Kept" custom conversion found on the ad account — kept intros show 0.');
+  if (r.kept_intro_source === 'none') out.push('⚠️ No per-ad kept-intro source: no GHL ad attribution yet and no "Schedule Kept" custom conversion on the ad account — per-ad kept intros show 0.');
   return out;
 }
 
-// ── Markdown ──────────────────────────────────────────────────────────────
-
-const yn = (b: boolean) => (b ? 'TRUE' : 'false');
-
-function metricCells(m: Metrics) {
-  return [money(m.spend), int(m.impressions), int(m.link_clicks), pct(m.ctr_link), money(m.cpc_link),
-    int(m.leads), money(m.cost_per_lead), int(m.kept_intros), money(m.cost_per_kept_intro), money(m.cpm)];
+// Account / funnel summary block for one window, in the paste-ready format.
+export function accountSummary(r: MetaReport, w: WindowDays): string {
+  const t = r.totals[w];
+  const f = r.funnel?.[w];
+  const lines = [`ACCOUNT SUMMARY — Window: Last ${w} days (${r.windows[w].since} → ${r.windows[w].until})`];
+  if (!f) {
+    lines.push(`Ad spend: ${money0(t.spend)}`, `Leads (Meta): ${int(t.leads)} (CPL ${money(t.cost_per_lead)})`,
+      `Kept intros (Meta): ${int(t.kept_intros)} (Cost per kept intro ${money(t.cost_per_kept_intro)})`,
+      'GHL funnel data not connected for this run.');
+    return lines.join('\n');
+  }
+  lines.push(`Ad spend: ${money0(t.spend)}`);
+  lines.push(`Leads: ${int(f.leads)} (CPL ${money(div(t.spend, f.leads))})${t.leads !== f.leads ? ` · Meta-reported leads: ${int(t.leads)}` : ''}`);
+  lines.push(`Bookings: ${int(f.intros_booked)} (Lead→Booking ${pct(f.lead_to_booking_pct, 0)})`);
+  lines.push(`Kept intros: ${int(f.intros_shown)} (Cost per kept intro ${money(div(t.spend, f.intros_shown))})`);
+  lines.push(`Sales calls: ${int(f.sales_calls_booked)} booked / ${int(f.sales_calls_shown)} shown`);
+  lines.push(`Closes: ${int(f.closes)} (CAC ${money(div(t.spend, f.closes))})`);
+  lines.push(`Cash collected: ${money0(f.cash_collected)} (ROAS ${x(div(f.cash_collected, t.spend))})`);
+  lines.push(`Speed to lead: ${f.speed_to_lead_min == null ? '—' : f.speed_to_lead_min.toFixed(1) + ' min'} | Dials/lead: ${f.dials_per_lead == null ? '—' : f.dials_per_lead.toFixed(1)} | Pickup: ${pct(f.pickup_pct, 0)} | Show: ${pct(f.show_pct, 0)} | Close: ${pct(f.close_pct, 0)}`);
+  return lines.join('\n');
 }
-const METRIC_HEAD = ['Spend', 'Impr', 'Link clicks', 'CTR (link)', 'CPC', 'Leads', 'CPL', 'Kept intros', 'Cost/kept', 'CPM'];
+
+const yn = (b: boolean) => (b ? 'TRUE' : 'FALSE');
 
 function table(head: string[], rows: string[][]): string {
-  return [`| ${head.join(' | ')} |`, `| ${head.map(() => '---').join(' | ')} |`, ...rows.map(r => `| ${r.join(' | ')} |`)].join('\n');
+  const esc = (s: string) => s.replace(/\|/g, '\\|');
+  return [`| ${head.join(' | ')} |`, `| ${head.map(() => '---').join(' | ')} |`, ...rows.map(r => `| ${r.map(esc).join(' | ')} |`)].join('\n');
 }
 
 export function renderMarkdown(r: MetaReport): string {
   const parts: string[] = [];
   parts.push(`# Meta B2B prospecting report — ${r.today}`);
-  parts.push(`Account ${r.account_id} · windows end ${r.today} (${r.timezone}) · flags evaluated on the ${r.flag_window_days}-day window` +
-    (r.campaign_filter ? ` · campaigns: ${r.campaign_filter.join(', ')}` : ' · all campaigns'));
-  parts.push('\n## Summary (vs previous 7 days)\n' + r.summary.map(s => `- ${s}`).join('\n'));
+  parts.push(`Account ${r.account_id} · windows end ${r.today} (${r.timezone}) · ` +
+    (r.campaign_filter ? `campaigns: ${r.campaign_filter.join(', ')}` : 'all campaigns') +
+    ` · per-ad kept intros from ${r.kept_intro_source === 'ghl' ? 'GHL attribution' : r.kept_intro_source === 'meta' ? 'Meta "Schedule Kept" conversion' : 'no source (0)'}`);
 
-  parts.push('\n## Ads');
-  parts.push(table(
-    ['Campaign', 'Ad set', 'Ad', 'Ad ID', 'Type', 'First served', 'Status'],
-    r.ads.map(a => [a.campaign_name, a.adset_name, a.ad_name, a.ad_id, a.creative_type, a.first_served ?? '—', a.status ?? '—']),
-  ));
+  parts.push('\n## 1. Account / funnel summary');
+  for (const w of WINDOWS) parts.push('```\n' + accountSummary(r, w) + '\n```');
 
+  parts.push('\n## 2. Ad set level');
   for (const w of WINDOWS) {
-    parts.push(`\n### Per ad — last ${w} days (${r.windows[w].since} → ${r.windows[w].until})`);
-    parts.push(table(['Ad', 'Ad ID', ...METRIC_HEAD], [
-      ...r.ads.map(a => [a.ad_name, a.ad_id, ...metricCells(a.windows[w])]),
-      ['**Total**', '', ...metricCells(r.totals[w])],
+    parts.push(`\n### Last ${w} days (${r.windows[w].since} → ${r.windows[w].until})`);
+    parts.push(table(['Ad set', 'Spend', 'Impressions', 'Leads', 'CPL', 'Kept intros', 'Cost per kept intro', 'CTR (link)', 'CPC'], [
+      ...r.adsets.map(s => { const m = s.windows[w]; return [s.name, money(m.spend), int(m.impressions), int(m.leads), money(m.cost_per_lead), int(m.kept_intros), money(m.cost_per_kept_intro), pct(m.ctr_link, 2), money(m.cpc_link)]; }),
+      (() => { const m = r.totals[w]; return ['**Total**', money(m.spend), int(m.impressions), int(m.leads), money(m.cost_per_lead), int(m.kept_intros), money(m.cost_per_kept_intro), pct(m.ctr_link, 2), money(m.cpc_link)]; })(),
     ]));
   }
 
-  for (const w of WINDOWS) {
-    parts.push(`\n### Ad set totals — last ${w} days`);
-    parts.push(table(['Campaign', 'Ad set', ...METRIC_HEAD], r.adsets.map(s => [s.campaign_name ?? '', s.name, ...metricCells(s.windows[w])])));
-    parts.push(`\n### Campaign totals — last ${w} days`);
-    parts.push(table(['Campaign', ...METRIC_HEAD], r.campaigns.map(c => [c.name, ...metricCells(c.windows[w])])));
-  }
-
-  parts.push(`\n## Flags (${r.flag_window_days}-day window; control = best ad in last 7 days: CTR ${pct(r.control.best_ctr_link_7d)}, cost/kept ${money(r.control.best_cost_per_kept_intro_7d)})`);
+  parts.push(`\n## 3. Ad level — last 7 days (${r.windows[7].since} → ${r.windows[7].until})`);
+  parts.push(`Control = best ad in L7: link CTR ${pct(r.control.best_ctr_link_7d, 2)}, cost per kept intro ${money(r.control.best_cost_per_kept_intro_7d)}.`);
   parts.push(table(
-    ['Ad', 'Ad ID', 'Over eval floor', 'Zero-intro kill', 'CTR_half_control', 'Early_CTR_trash', 'Perf_vs_control_bad'],
-    r.ads.map(a => [a.ad_name, a.ad_id, yn(a.flags.over_eval_floor), yn(a.flags.zero_intro_kill), yn(a.flags.ctr_half_control), yn(a.flags.early_ctr_trash), yn(a.flags.perf_vs_control_bad)]),
+    ['Campaign', 'Ad set', 'Ad name', 'Ad ID', 'First served', 'Spend', 'Impressions', 'Link clicks', 'CTR (link)', 'CPC', 'Leads', 'CPL', 'Kept intros', 'Cost per kept intro',
+      'Over_eval_floor', 'Zero_intro_kill', 'CTR_half_control', 'Early_CTR_trash', 'Perf_vs_control_bad'],
+    r.ads.map(a => { const m = a.windows[7]; const f = a.flags; return [
+      a.campaign_name, a.adset_name, a.ad_name, a.ad_id, a.first_served ?? '—',
+      money(m.spend), int(m.impressions), int(m.link_clicks), pct(m.ctr_link, 2), money(m.cpc_link), int(m.leads), money(m.cost_per_lead), int(m.kept_intros), money(m.cost_per_kept_intro),
+      yn(f.over_eval_floor), yn(f.zero_intro_kill), yn(f.ctr_half_control), yn(f.early_ctr_trash), yn(f.perf_vs_control_bad)]; }),
   ));
-  parts.push('\nRules: over eval floor = spend ≥ $90 OR impressions ≥ 1,000 · zero-intro kill = spend ≥ $135 AND kept intros = 0 · ' +
-    'CTR_half_control = link CTR < 50% of best ad (7d) · Early_CTR_trash = impressions ≥ 250 AND link CTR < 25% of best ad (7d) · ' +
-    'Perf_vs_control_bad = spend ≥ $180 AND cost per kept intro ≥ 1.3× best ad (7d).');
+  parts.push('\nFlag rules: Over_eval_floor = spend ≥ $90 OR impressions ≥ 1,000 · Zero_intro_kill = spend ≥ $135 AND kept intros = 0 · ' +
+    'CTR_half_control = link CTR < 50% of best ad in L7 · Early_CTR_trash = impressions ≥ 250 AND link CTR < 25% of best ad · ' +
+    'Perf_vs_control_bad = spend ≥ $180 AND cost per kept intro ≥ 1.3× best ad. All on L7 numbers.');
+
+  parts.push('\n## 4. Creative map');
+  parts.push(r.ads.map(a => `- ${a.ad_name} (${a.ad_id}, ${a.status ?? 'status —'}) = ${a.creative_type !== '—' ? a.creative_type + ' · ' : ''}${a.creative.description}`).join('\n'));
   return parts.join('\n');
 }
 
-// Compact Slack text: summary + flagged ads. The full tables go as file attachments.
+// Compact Slack text: L7 account summary + flagged ads. The full tables go as file attachments.
 export function renderSlackText(r: MetaReport): string {
   const lines = [`*Meta B2B prospecting report — ${r.today}*`, ...r.summary.map(s => `• ${s}`)];
+  lines.push('', '```\n' + accountSummary(r, 7) + '\n```');
   const flagged = r.ads.filter(a => a.flags.zero_intro_kill || a.flags.early_ctr_trash || a.flags.perf_vs_control_bad || a.flags.ctr_half_control);
   if (flagged.length) {
-    lines.push('', `*Flagged ads (${r.flag_window_days}d):*`);
+    lines.push(`*Flagged ads (L7):*`);
     for (const a of flagged.slice(0, 15)) {
       const f = a.flags;
       const tags = [f.zero_intro_kill && 'zero-intro kill', f.early_ctr_trash && 'early CTR trash', f.perf_vs_control_bad && 'perf vs control bad', f.ctr_half_control && 'CTR < ½ control'].filter(Boolean).join(', ');
-      const m = a.windows[r.flag_window_days];
-      lines.push(`• ${a.ad_name} (${a.adset_name}) — ${money(m.spend)}, ${pct(m.ctr_link)} CTR, ${int(m.kept_intros)} kept → _${tags}_`);
+      const m = a.windows[7];
+      lines.push(`• ${a.ad_name} (${a.adset_name}) — ${money(m.spend)}, ${pct(m.ctr_link, 2)} CTR, ${int(m.kept_intros)} kept → _${tags}_`);
     }
     if (flagged.length > 15) lines.push(`…and ${flagged.length - 15} more in the attached table.`);
   }
-  lines.push('', `7d totals: ${money(r.totals[7].spend)} · ${int(r.totals[7].leads)} leads (${money(r.totals[7].cost_per_lead)}) · ${int(r.totals[7].kept_intros)} kept intros (${money(r.totals[7].cost_per_kept_intro)})`);
-  lines.push(`30d totals: ${money(r.totals[30].spend)} · ${int(r.totals[30].leads)} leads (${money(r.totals[30].cost_per_lead)}) · ${int(r.totals[30].kept_intros)} kept intros (${money(r.totals[30].cost_per_kept_intro)})`);
+  lines.push('', 'Full report (account summary L30/L7/L3, ad set tables, L7 ad table with flags, creative map) attached as Markdown + JSON — paste the .md straight into Hormozi AI.');
   return lines.join('\n');
 }

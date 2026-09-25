@@ -23,6 +23,33 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
+## 2026-09-25 — Meta B2B report reshaped to the Hormozi-AI paste spec
+
+The report (see 2026-09-24) now has four fixed sections: **1. account / funnel
+summary** per window (L30 / L7 / L3) in a paste-ready text block — spend, leads,
+CPL, bookings, kept intros, closes, CAC, cash, ROAS, speed to lead, dials/lead,
+pickup, show, close; **2. ad set table** per window; **3. ad-level table for L7
+only** with the five flag columns; **4. creative map** — one line per ad with
+format + headline + primary text pulled from the ad's creative in Meta.
+
+- The GHL side comes from the dashboard: `src/lib/b2b-funnel.ts` reads
+  `b2b_events` (leads, intro_booked = bookings, intro_shown = kept intros,
+  sales calls, close + revenue = cash) and the Tomsi client's mirrored `dial`
+  rows in `events` (dials, pickups, speed_to_lead_seconds). Window bounds are
+  local days in America/New_York. Read-only; no schema change.
+- Per-ad kept intros: GHL attribution (`b2b_events.ad_id` on intro_shown) when
+  any exists in the 30-day window, else the Meta "Schedule Kept" custom
+  conversion. `kept_intro_source` in the JSON says which. On V1 as of today
+  there is **no ad attribution on b2b_events**, so it falls back to Meta.
+- Real V1 numbers on 2026-09-25 (L30): 21 leads, 13 intros booked, 2 shown,
+  1 close, $0 cash, 28 dials / 5 pickups. `speed_to_lead_seconds` is null on
+  every Tomsi dial, so speed to lead prints "—" until GHL sends it; cash is
+  $0 because no close row carries revenue.
+- Flags are always on L7 (`META_FLAG_WINDOW` removed). Meta-reported leads are
+  shown alongside GHL leads when they differ.
+
+---
+
 ## 2026-09-24 — Meta B2B prospecting report → Slack (Mon/Wed/Fri 08:00 ET)
 
 `POST /api/cron/meta-b2b-report` (bearer `ADMIN_WEBHOOK_SECRET`) pulls ad-level

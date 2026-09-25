@@ -290,7 +290,7 @@ Census fetching in `src/lib/census.ts` (needs `CENSUS_API_KEY`).
 | `CENSUS_API_KEY` | Census data for zip features |
 | `ANTHROPIC_API_KEY` | AI Campaign Chat (unset by default) |
 | `GHL_API_KEY` | GoHighLevel Private Integration token — reads per-contact ad attribution |
-| `META_ACCESS_TOKEN` / `SLACK_BOT_TOKEN` / `SLACK_CHANNEL_ID` | Meta B2B report → Slack (`cron/meta-b2b-report`). Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_INTRO_EVENT`, `META_FLAG_WINDOW` |
+| `META_ACCESS_TOKEN` / `SLACK_BOT_TOKEN` / `SLACK_CHANNEL_ID` | Meta B2B report → Slack (`cron/meta-b2b-report`). Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_INTRO_EVENT` |
 
 Never commit `.env*` — they're gitignored. Production values live in Railway.
 
