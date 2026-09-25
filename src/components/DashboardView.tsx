@@ -972,6 +972,18 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           )}
           {showWeekly && <WeeklyBreakdown onClose={() => setShowWeekly(false)} />}
 
+          {/* Tomsi Media: Meta B2B report download (L30 / L7 / L3, ad set + ad tables, flags, creative map) */}
+          {topSection === "tomsi_media" && (
+            <a href="/api/meta-b2b-report?download=1" title="Download the Meta B2B prospecting report (Markdown)"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0"
+              style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.162)", color: "#111" }}>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16" />
+              </svg>
+              Meta report
+            </a>
+          )}
+
           {/* Tomsi Media date range selector */}
           {topSection === "tomsi_media" && (
             <div className="relative" ref={presetRef}>

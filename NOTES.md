@@ -25,6 +25,15 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ## 2026-09-25 — Meta B2B report reshaped to the Hormozi-AI paste spec
 
+> **Later the same day: Slack dropped.** The user decided against a Slack bot,
+> so the report is now **on demand**: `GET /api/meta-b2b-report` (session auth
+> or bearer secret; `?format=json`, `?download=1`) behind a **"Meta report"**
+> button next to the date picker on the TM Dashboard. `src/lib/slack.ts`, the
+> cron route and its bypass entry are gone; Make scenario 7581936 is **stopped**
+> (not deleted) in case a schedule is wanted again. Only `META_ACCESS_TOKEN` is
+> needed now — it is **not** in any local env file; the only copy is inside the
+> Make Meta-spend scenarios' query strings.
+
 The report (see 2026-09-24) now has four fixed sections: **1. account / funnel
 summary** per window (L30 / L7 / L3) in a paste-ready text block — spend, leads,
 CPL, bookings, kept intros, closes, CAC, cash, ROAS, speed to lead, dials/lead,

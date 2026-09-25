@@ -6,7 +6,7 @@
 // (see b2b-funnel.ts) supplies the GHL side — bookings, kept intros, closes,
 // cash, calling stats — for the account summary. Per-ad kept intros come from
 // GHL attribution when it exists, otherwise from the "Schedule Kept" custom
-// conversion in Meta. Consumed by /api/cron/meta-b2b-report.
+// conversion in Meta. Consumed by /api/meta-b2b-report (the TM Dashboard's download button).
 
 import type { FunnelStats } from './b2b-funnel';
 
@@ -531,23 +531,4 @@ export function renderMarkdown(r: MetaReport): string {
   parts.push('\n## 4. Creative map');
   parts.push(r.ads.map(a => `- ${a.ad_name} (${a.ad_id}, ${a.status ?? 'status —'}) = ${a.creative_type !== '—' ? a.creative_type + ' · ' : ''}${a.creative.description}`).join('\n'));
   return parts.join('\n');
-}
-
-// Compact Slack text: L7 account summary + flagged ads. The full tables go as file attachments.
-export function renderSlackText(r: MetaReport): string {
-  const lines = [`*Meta B2B prospecting report — ${r.today}*`, ...r.summary.map(s => `• ${s}`)];
-  lines.push('', '```\n' + accountSummary(r, 7) + '\n```');
-  const flagged = r.ads.filter(a => a.flags.zero_intro_kill || a.flags.early_ctr_trash || a.flags.perf_vs_control_bad || a.flags.ctr_half_control);
-  if (flagged.length) {
-    lines.push(`*Flagged ads (L7):*`);
-    for (const a of flagged.slice(0, 15)) {
-      const f = a.flags;
-      const tags = [f.zero_intro_kill && 'zero-intro kill', f.early_ctr_trash && 'early CTR trash', f.perf_vs_control_bad && 'perf vs control bad', f.ctr_half_control && 'CTR < ½ control'].filter(Boolean).join(', ');
-      const m = a.windows[7];
-      lines.push(`• ${a.ad_name} (${a.adset_name}) — ${money(m.spend)}, ${pct(m.ctr_link, 2)} CTR, ${int(m.kept_intros)} kept → _${tags}_`);
-    }
-    if (flagged.length > 15) lines.push(`…and ${flagged.length - 15} more in the attached table.`);
-  }
-  lines.push('', 'Full report (account summary L30/L7/L3, ad set tables, L7 ad table with flags, creative map) attached as Markdown + JSON — paste the .md straight into Hormozi AI.');
-  return lines.join('\n');
 }
