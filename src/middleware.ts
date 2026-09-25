@@ -23,6 +23,7 @@ const BYPASS_ROUTES = [
   '/api/admin/seed-b2b-events',
   '/api/admin/backfill-ghl-attribution',
   '/api/admin/backfill-zips',
+  '/api/admin/data-cleanup',
   '/api/admin/seed-client-sessions',
   '/api/admin/rename-sessions',
   '/api/cron/seed-daily',
