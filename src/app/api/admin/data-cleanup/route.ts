@@ -211,11 +211,12 @@ export async function POST(req: Request) {
     }
 
     // Demos the tracking missed (owner-confirmed). occurred_at at noon UTC.
+    // revenue is NOT NULL on b2b_events, so every row must carry it (0 unless a close).
     const NEW = [
-      { external_id: 'recon:alexi-booked',   event_type: 'sales_call_booked', occurred_at: '2026-09-12T12:00:00Z', lead_name: 'Alexi Moncada',           lead_email: 'info@usaredwoodrenovation.com', ghl_contact_id: '1zLVGTRWtE3vc3yJwIrr' },
-      { external_id: 'recon:zahra-booked',   event_type: 'sales_call_booked', occurred_at: '2026-09-14T12:00:00Z', lead_name: 'Zahra Cleaning Services' },
-      { external_id: 'recon:thomas-shown',   event_type: 'sales_call_shown',  occurred_at: '2026-09-21T00:06:00Z', lead_name: 'Thomas Cairo',            lead_email: 'tcairo1949@gmail.com',          ghl_contact_id: 'YUktl1kM3oPYAxC2mWVG' },
-      { external_id: 'recon:cathleen-shown', event_type: 'sales_call_shown',  occurred_at: '2026-09-22T19:56:00Z', lead_name: 'Cathleen Miller',         lead_email: 'cathleen@superfloorstoreandremodeling.com', ghl_contact_id: 'zEE8tEmtCRlDJVqcvq8R' },
+      { external_id: 'recon:alexi-booked',   event_type: 'sales_call_booked', occurred_at: '2026-09-12T12:00:00Z', lead_name: 'Alexi Moncada',           lead_email: 'info@usaredwoodrenovation.com', ghl_contact_id: '1zLVGTRWtE3vc3yJwIrr', revenue: 0 },
+      { external_id: 'recon:zahra-booked',   event_type: 'sales_call_booked', occurred_at: '2026-09-14T12:00:00Z', lead_name: 'Zahra Cleaning Services', revenue: 0 },
+      { external_id: 'recon:thomas-shown',   event_type: 'sales_call_shown',  occurred_at: '2026-09-21T00:06:00Z', lead_name: 'Thomas Cairo',            lead_email: 'tcairo1949@gmail.com',          ghl_contact_id: 'YUktl1kM3oPYAxC2mWVG', revenue: 0 },
+      { external_id: 'recon:cathleen-shown', event_type: 'sales_call_shown',  occurred_at: '2026-09-22T19:56:00Z', lead_name: 'Cathleen Miller',         lead_email: 'cathleen@superfloorstoreandremodeling.com', ghl_contact_id: 'zEE8tEmtCRlDJVqcvq8R', revenue: 0 },
       { external_id: 'recon:cathleen-close', event_type: 'close',             occurred_at: '2026-09-22T20:00:00Z', lead_name: 'Cathleen Miller',         lead_email: 'cathleen@superfloorstoreandremodeling.com', ghl_contact_id: 'zEE8tEmtCRlDJVqcvq8R', revenue: 1000 },
     ];
     if (!dryRun) {
