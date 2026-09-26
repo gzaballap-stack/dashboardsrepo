@@ -180,5 +180,50 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: false, restored });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros` }, { status: 400 });
+  // ---- op 4: one-time reconciliation of the real Sep demo history ----
+  // Restores the August intro era to intros (by target counts, so it is safe to
+  // re-run) and fills in the demos the tracking missed, from the owner's own
+  // record of what happened. Idempotent: new rows key on external_id.
+  if (op === 'reconcile_b2b') {
+    const AUG = [
+      { date: '2026-08-03', to: 'intro_booked', from: 'sales_call_booked', target: 3 },
+      { date: '2026-08-03', to: 'intro_shown',  from: 'sales_call_shown',  target: 2 },
+      { date: '2026-08-10', to: 'intro_booked', from: 'sales_call_booked', target: 6 },
+      { date: '2026-08-10', to: 'intro_shown',  from: 'sales_call_shown',  target: 3 },
+      { date: '2026-08-17', to: 'intro_booked', from: 'sales_call_booked', target: 4 },
+      { date: '2026-08-17', to: 'intro_shown',  from: 'sales_call_shown',  target: 3 },
+    ];
+    const reverted: string[] = [];
+    for (const a of AUG) {
+      const lo = a.date + 'T00:00:00', hi = a.date + 'T23:59:59';
+      const { data: have } = await service.from('b2b_events').select('id')
+        .eq('event_type', a.to).is('lead_name', null).gte('occurred_at', lo).lt('occurred_at', hi);
+      const need = a.target - (have?.length ?? 0);
+      if (need > 0) {
+        const { data: cand } = await service.from('b2b_events').select('id')
+          .eq('event_type', a.from).is('lead_name', null).is('external_id', null)
+          .gte('occurred_at', lo).lt('occurred_at', hi).limit(need);
+        for (const r of cand ?? []) {
+          if (!dryRun) await service.from('b2b_events').update({ event_type: a.to }).eq('id', r.id);
+          reverted.push(`${a.date} ${a.to}`);
+        }
+      }
+    }
+
+    // Demos the tracking missed (owner-confirmed). occurred_at at noon UTC.
+    const NEW = [
+      { external_id: 'recon:alexi-booked',   event_type: 'sales_call_booked', occurred_at: '2026-09-12T12:00:00Z', lead_name: 'Alexi Moncada',           lead_email: 'info@usaredwoodrenovation.com', ghl_contact_id: '1zLVGTRWtE3vc3yJwIrr' },
+      { external_id: 'recon:zahra-booked',   event_type: 'sales_call_booked', occurred_at: '2026-09-14T12:00:00Z', lead_name: 'Zahra Cleaning Services' },
+      { external_id: 'recon:thomas-shown',   event_type: 'sales_call_shown',  occurred_at: '2026-09-21T00:06:00Z', lead_name: 'Thomas Cairo',            lead_email: 'tcairo1949@gmail.com',          ghl_contact_id: 'YUktl1kM3oPYAxC2mWVG' },
+      { external_id: 'recon:cathleen-shown', event_type: 'sales_call_shown',  occurred_at: '2026-09-22T19:56:00Z', lead_name: 'Cathleen Miller',         lead_email: 'cathleen@superfloorstoreandremodeling.com', ghl_contact_id: 'zEE8tEmtCRlDJVqcvq8R' },
+      { external_id: 'recon:cathleen-close', event_type: 'close',             occurred_at: '2026-09-22T20:00:00Z', lead_name: 'Cathleen Miller',         lead_email: 'cathleen@superfloorstoreandremodeling.com', ghl_contact_id: 'zEE8tEmtCRlDJVqcvq8R', revenue: 1000 },
+    ];
+    if (!dryRun) {
+      const { error } = await service.from('b2b_events').upsert(NEW, { onConflict: 'external_id' });
+      if (error) return NextResponse.json({ error: error.message, reverted }, { status: 500 });
+    }
+    return NextResponse.json({ op, dry_run: dryRun, reverted_count: reverted.length, reverted, added: NEW.map(n => `${n.lead_name}: ${n.event_type}`) });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b` }, { status: 400 });
 }

@@ -14,7 +14,7 @@
 
 import fs from 'fs';
 
-const OPS = ['relabel_intros_to_demos', 'dedupe_bookings'];
+const OPS = ['relabel_intros_to_demos', 'dedupe_bookings', 'restore_early_intros', 'reconcile_b2b'];
 const op = process.argv[2];
 const apply = process.argv.includes('--apply');
 const v2 = process.argv.includes('--v2');
