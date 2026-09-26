@@ -123,5 +123,62 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: false, deleted: del?.length ?? 0, rows: dupes });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings` }, { status: 400 });
+  // ---- op 3: undo the over-broad relabel for the genuine pre-cutoff intro era ----
+  // The one-call switch happened mid-September; bookings before it were real intros
+  // and must not read as demos. Named rows keep their original type in raw; the
+  // early seeded aggregate rows (no name/contact/appointment id) are restored by an
+  // explicit per-day plan supplied in the request.
+  if (op === 'restore_early_intros') {
+    const DEFAULT_BEFORE = '2026-09-11';
+    const DEFAULT_PLAN = [
+      { date: '2026-08-03', from: 'sales_call_booked', to: 'intro_booked', count: 3 },
+      { date: '2026-08-03', from: 'sales_call_shown',  to: 'intro_shown',  count: 2 },
+      { date: '2026-08-10', from: 'sales_call_booked', to: 'intro_booked', count: 6 },
+      { date: '2026-08-10', from: 'sales_call_shown',  to: 'intro_shown',  count: 3 },
+      { date: '2026-08-17', from: 'sales_call_booked', to: 'intro_booked', count: 4 },
+      { date: '2026-08-17', from: 'sales_call_shown',  to: 'intro_shown',  count: 3 },
+    ];
+    const before = String((body as { before?: string }).before || DEFAULT_BEFORE);
+    const plan = ((body as { seed_plan?: { date: string; from: string; to: string; count: number }[] }).seed_plan) || DEFAULT_PLAN;
+    const INTRO = ['intro_booked', 'intro_shown'];
+    const DEMO = ['sales_call_booked', 'sales_call_shown'];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(before)) {
+      return NextResponse.json({ error: 'before (YYYY-MM-DD) required' }, { status: 400 });
+    }
+
+    const { data: named } = await service
+      .from('b2b_events').select('id, occurred_at, lead_name, raw')
+      .in('event_type', DEMO).lt('occurred_at', before);
+    const namedFix = (named ?? [])
+      .map(r => ({ id: r.id, to: (r.raw as { event_type?: string } | null)?.event_type || '', occurred_at: r.occurred_at, lead_name: r.lead_name }))
+      .filter(f => INTRO.includes(f.to));
+
+    const seedFix: { id: string; to: string; date: string }[] = [];
+    for (const p of plan) {
+      if (!DEMO.includes(p.from) || !INTRO.includes(p.to) || p.date >= before) continue;
+      const { data: rows } = await service
+        .from('b2b_events').select('id').eq('event_type', p.from)
+        .is('lead_name', null).is('ghl_contact_id', null).is('external_id', null)
+        .gte('occurred_at', p.date + 'T00:00:00').lt('occurred_at', p.date + 'T23:59:59')
+        .order('occurred_at', { ascending: true }).limit(Math.max(0, p.count));
+      for (const r of rows ?? []) seedFix.push({ id: r.id, to: p.to, date: p.date });
+    }
+
+    const all = [...namedFix.map(f => ({ id: f.id, to: f.to })), ...seedFix];
+    if (all.length > MAX_CHANGES) {
+      return NextResponse.json({ error: `Too many rows (${all.length} > ${MAX_CHANGES}); aborting.` }, { status: 400 });
+    }
+    if (dryRun) {
+      return NextResponse.json({ op, dry_run: true, would_restore: all.length, named: namedFix, seed: seedFix.length });
+    }
+    let restored = 0;
+    for (const f of all) {
+      const { error } = await service.from('b2b_events').update({ event_type: f.to }).eq('id', f.id);
+      if (error) return NextResponse.json({ error: error.message, restored }, { status: 500 });
+      restored++;
+    }
+    return NextResponse.json({ op, dry_run: false, restored });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros` }, { status: 400 });
 }
