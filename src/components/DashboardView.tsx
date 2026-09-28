@@ -1207,7 +1207,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     <KpiCard label="Cash Collected" value={cash > 0 ? fmt$(cash) : "—"} accent />
                     <KpiCard label="ROAS" value={metrics.ad_spend > 0 && cash > 0 ? `${(cash / metrics.ad_spend).toFixed(2)}x` : "—"} accent />
                     {/* ROI needs revenue generated — arrives with the payment tracker. */}
-                    <KpiCard label="ROI" value="—" />
+                    <KpiCard label="ROI" value={metrics.ad_spend > 0 && cash > 0 ? `${(metrics.roi * 100).toFixed(0)}%` : "—"} />
                   </div>
                 </section>
 
