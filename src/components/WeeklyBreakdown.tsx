@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 // Raw per-week counts; every rate and cost below is derived from these.
-type Raw = { spend: number; introsBooked: number; intros: number; demosBooked: number; demos: number; closes: number; cash: number };
-const EMPTY: Raw = { spend: 0, introsBooked: 0, intros: 0, demosBooked: 0, demos: 0, closes: 0, cash: 0 };
+type Raw = { spend: number; demosBooked: number; demos: number; closes: number; cash: number };
+const EMPTY: Raw = { spend: 0, demosBooked: 0, demos: 0, closes: 0, cash: 0 };
 
 type Kind = "count" | "money" | "pct";
 type Col = { key: string; label: string; kind: Kind; lowerBetter?: boolean; value: (r: Raw) => number };
@@ -13,15 +13,11 @@ const safe = (n: number, d: number) => (d > 0 ? n / d : 0);
 
 const COLS: Col[] = [
   { key: "spend",        label: "Ad Spend",        kind: "money", lowerBetter: true, value: r => r.spend },
-  { key: "introsBooked", label: "Booked Intros",   kind: "count", value: r => r.introsBooked },
-  { key: "intros",       label: "Intros",          kind: "count", value: r => r.intros },
-  { key: "introRate",    label: "Intro Show Rate", kind: "pct",   value: r => safe(r.intros, r.introsBooked) * 100 },
   { key: "demosBooked",  label: "Booked Demos",    kind: "count", value: r => r.demosBooked },
   { key: "demos",        label: "Demos",           kind: "count", value: r => r.demos },
   { key: "demoRate",     label: "Demo Show Rate",  kind: "pct",   value: r => safe(r.demos, r.demosBooked) * 100 },
   { key: "closes",       label: "Closes",          kind: "count", value: r => r.closes },
   { key: "closeRate",    label: "Closing Rate",    kind: "pct",   value: r => safe(r.closes, r.demos) * 100 },
-  { key: "cpIntro",      label: "Cost / Intro",    kind: "money", lowerBetter: true, value: r => safe(r.spend, r.intros) },
   { key: "cpDemo",       label: "Cost / Demo",     kind: "money", lowerBetter: true, value: r => safe(r.spend, r.demos) },
   { key: "cpa",          label: "Cost / Acq.",     kind: "money", lowerBetter: true, value: r => safe(r.spend, r.closes) },
   { key: "cash",         label: "Cash Collected",  kind: "money", value: r => r.cash },
@@ -77,8 +73,6 @@ export default function WeeklyBreakdown({ onClose }: { onClose: () => void }) {
           label: w.label,
           data: {
             spend:        d.ad_spend ?? 0,
-            introsBooked: d.intros_booked ?? 0,
-            intros:       d.intros_shown ?? 0,
             demosBooked:  d.sales_calls_booked ?? 0,
             demos:        d.sales_calls_shown ?? 0,
             closes:       d.closes ?? 0,
@@ -95,14 +89,14 @@ export default function WeeklyBreakdown({ onClose }: { onClose: () => void }) {
     if (!rows.length) return EMPTY;
     const n = rows.length;
     const sum = rows.reduce((a, r) => ({
-      spend: a.spend + r.data.spend, introsBooked: a.introsBooked + r.data.introsBooked, intros: a.intros + r.data.intros,
+      spend: a.spend + r.data.spend,
       demosBooked: a.demosBooked + r.data.demosBooked, demos: a.demos + r.data.demos, closes: a.closes + r.data.closes, cash: a.cash + r.data.cash,
     }), { ...EMPTY });
-    return { spend: sum.spend / n, introsBooked: sum.introsBooked / n, intros: sum.intros / n, demosBooked: sum.demosBooked / n, demos: sum.demos / n, closes: sum.closes / n, cash: sum.cash / n };
+    return { spend: sum.spend / n, demosBooked: sum.demosBooked / n, demos: sum.demos / n, closes: sum.closes / n, cash: sum.cash / n };
   }, [rows]);
   // Ratios for the month row come from totals (which equal averages here, ratio-wise).
   const totals: Raw = useMemo(() => rows.reduce((a, r) => ({
-    spend: a.spend + r.data.spend, introsBooked: a.introsBooked + r.data.introsBooked, intros: a.intros + r.data.intros,
+    spend: a.spend + r.data.spend,
     demosBooked: a.demosBooked + r.data.demosBooked, demos: a.demos + r.data.demos, closes: a.closes + r.data.closes, cash: a.cash + r.data.cash,
   }), { ...EMPTY }), [rows]);
   const monthValue = (c: Col) => (c.kind === "pct" || c.key.startsWith("cp")) ? c.value(totals) : c.value(avg);
