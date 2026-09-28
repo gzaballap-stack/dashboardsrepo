@@ -482,7 +482,7 @@ export function accountSummary(r: MetaReport, w: WindowDays): string {
   }
   lines.push(`Ad spend: ${money0(t.spend)}`);
   lines.push(`Leads: ${int(f.leads)} (CPL ${money(div(t.spend, f.leads))})${t.leads !== f.leads ? ` · Meta-reported leads: ${int(t.leads)}` : ''}`);
-  lines.push(`Bookings: ${int(f.demos_booked)} (Lead→Booking ${pct(f.lead_to_booking_pct, 0)})`);
+  lines.push(`Bookings: ${int(f.demos_booked)} (Lead→Booking ${pct(f.lead_to_booking_pct, 0)} · Cost per booked demo ${money(div(t.spend, f.demos_booked))})`);
   lines.push(`Kept demos: ${int(f.demos_shown)} (Cost per kept demo ${money(div(t.spend, f.demos_shown))})`);
   lines.push(`Sales calls: ${int(f.sales_calls_booked)} booked / ${int(f.sales_calls_shown)} shown`);
   lines.push(`Closes: ${int(f.closes)} (CAC ${money(div(t.spend, f.closes))})`);
@@ -504,6 +504,31 @@ export function renderMarkdown(r: MetaReport): string {
   parts.push(`Account ${r.account_id} · windows end ${r.today} (${r.timezone}) · ` +
     (r.campaign_filter ? `campaigns: ${r.campaign_filter.join(', ')}` : 'all campaigns') +
     ` · per-ad kept demos from ${r.kept_demo_source === 'ghl' ? 'GHL attribution' : r.kept_demo_source === 'meta' ? 'Meta "Schedule Kept" conversion' : 'no source (0)'}`);
+
+  // Standing instructions for whichever AI is handed this report. Embedded here,
+  // at the top, so every analysis follows the same shape and compares against
+  // the same KPI targets, and so missing per-ad data is never read as zero.
+  parts.push([
+    '',
+    '> ## REPORTING STYLE INSTRUCTIONS (NON-NEGOTIABLE)',
+    '> When you analyze this Meta/GHL performance data, you MUST format your answer exactly like this.',
+    '>',
+    `> **Definitions.** L30 / L7 / L3 = last 30 / 7 / 3 days ending ${r.today}. A *kept demo* is a booked demo that showed. *Control* = the best ad in L7 (named in section 3). Ad-level numbers are L7.`,
+    '>',
+    '> **KPI targets (compare every number to these):** cost per booked demo ≤ $90 · cost per lead ≤ $70 · link CTR > 1.0% · CPC < $2.50. Priority order: cost per kept demo → cost per booked demo → cost per lead → CTR/CPC. Account-level cost per booked demo is in section 1; per-ad kept-demo cost is in section 3.',
+    '>',
+    '> **Missing data rule.** If kept-demo data is N/A, or the header says there is no per-ad kept-demo source, treat it as MISSING, not zero. Never pause or rank an ad on kept demos in that case — fall back to CPL, CTR and CPC and say explicitly that kept-demo data is unavailable.',
+    '>',
+    '> **Use the report\'s flags.** The flag columns in section 3 (Over_eval_floor, Zero_demo_kill, CTR_half_control, Early_CTR_trash, Perf_vs_control_bad) are the primary pause/keep signal — do not re-derive them. Always quote the exact ad name AND ad ID (names repeat across variants).',
+    '>',
+    '> **1) EXECUTIVE SNAPSHOT** (2–4 sentences): what is happening at a 50,000-foot level (profitable? bleeding? lead vs show vs close problem?); the #1 constraint right now; whether this is mainly a MEDIA issue (ads / targeting / creative) or a FUNNEL/SALES issue (booking, show, close). End with one line listing any data gaps.',
+    '>',
+    '> **2) ACTION ITEMS** (3–7 bullets, very concrete) — start with "Do this next:". Each bullet is a direct instruction executable today or this week: which ads to PAUSE (exact ad name + ID) and why; which ads to KEEP (exact ad name + ID) and why; how many NEW ads to create, in what formats (UGC / VO / static) and which existing ad to model; any funnel/sales changes required if those are the real bottleneck.',
+    '>',
+    '> **3) DETAILS & REASONING** — only after the snapshot and actions: key metrics by window (L30, L7, L3) and what changed; ad-level commentary (CTR, CPC, CPL, cost per kept demo) against the KPI targets; patterns in hooks, formats or angles that are working or failing. Justification and nuance only — no new action items here.',
+    '>',
+    '> **General rules:** tie every recommendation back to the KPIs in priority order. Be decisive — no "it depends" without a recommendation; if something is unclear, name the test you want next. Brevity over fluff: a battlefield brief, not a novel.',
+  ].join('\n'));
 
   parts.push('\n## 1. Account / funnel summary');
   for (const w of WINDOWS) parts.push('```\n' + accountSummary(r, w) + '\n```');
