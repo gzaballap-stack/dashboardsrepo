@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { getTomsiClientId } from '@/lib/tomsi';
+import { fetchGhlAttribution } from '@/lib/ghl-attribution';
+import { hasAttribution, type Attribution } from '@/lib/attribution';
 
 /**
  * Guarded data-cleanup endpoint.
@@ -276,5 +278,40 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: false, flipped_michael: michaelFlip, demos_written: FINAL.length, closes_written: CLOSES.length });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos` }, { status: 400 });
+  // ---- op 6: pull ad attribution for B2B contacts from the Tomsi GHL sub-account ----
+  // One GHL lookup per unattributed contact, stamped onto that contact's rows in
+  // b2b_events and in the Tomsi client mirror (which the campaign table reads).
+  // Uses the Tomsi sub-account token; dry-run by default; only fills blanks.
+  if (op === 'pull_b2b_attribution') {
+    const apiKey = process.env.GHL_API_KEY_B2B;
+    if (!apiKey) return NextResponse.json({ error: 'GHL_API_KEY_B2B is not set' }, { status: 503 });
+    const tomsiId = await getTomsiClientId(service);
+    const limit = Math.min(Number((body as { limit?: number }).limit) || 500, 2000);
+    const { data: b2b } = await service.from('b2b_events').select('id, ghl_contact_id')
+      .is('campaign_id', null).not('ghl_contact_id', 'is', null).limit(limit);
+    const { data: mir } = tomsiId
+      ? await service.from('events').select('id, ghl_contact_id').eq('client_id', tomsiId)
+          .is('campaign_id', null).not('ghl_contact_id', 'is', null).limit(limit)
+      : { data: [] as { id: string; ghl_contact_id: string | null }[] };
+    const contacts = [...new Set([...(b2b ?? []), ...(mir ?? [])].map(r => r.ghl_contact_id as string))];
+    const attrByContact = new Map<string, Attribution>(); const failed: string[] = [];
+    for (const cid of contacts) {
+      const res = await fetchGhlAttribution(cid, apiKey);
+      if (res.ok && hasAttribution(res.attribution)) attrByContact.set(cid, res.attribution);
+      else if (!res.ok) failed.push(`${cid}:${res.status}`);
+    }
+    const stampable = (rows: { id: string; ghl_contact_id: string | null }[] | null) =>
+      (rows ?? []).filter(r => attrByContact.has(r.ghl_contact_id as string));
+    const sB2b = stampable(b2b), sMir = stampable(mir);
+    if (dryRun) {
+      return NextResponse.json({ op, dry_run: true, contacts_checked: contacts.length, contacts_with_attribution: attrByContact.size,
+        would_update: { b2b_events: sB2b.length, tomsi_events: sMir.length }, failed });
+    }
+    let updated = 0;
+    for (const r of sB2b) { const { error } = await service.from('b2b_events').update(attrByContact.get(r.ghl_contact_id as string)!).eq('id', r.id); if (!error) updated++; }
+    for (const r of sMir) { const { error } = await service.from('events').update(attrByContact.get(r.ghl_contact_id as string)!).eq('id', r.id); if (!error) updated++; }
+    return NextResponse.json({ op, dry_run: false, contacts_checked: contacts.length, contacts_with_attribution: attrByContact.size, updated, failed });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution` }, { status: 400 });
 }

@@ -26,9 +26,9 @@ function pick(src: GhlAttribution, ...names: string[]): string | null {
 
 /** meta / google / tiktok, from whichever field the sub-account happens to fill. */
 function normalisePlatform(src: GhlAttribution): string | null {
-  const raw = (pick(src, 'adSource', 'medium', 'utmSource', 'source') ?? '').toLowerCase();
+  const raw = (pick(src, 'adSource', 'utmSource', 'source', 'medium') ?? '').toLowerCase();
   if (!raw) return null;
-  if (raw.includes('facebook') || raw.includes('instagram') || raw.includes('meta')) return 'meta';
+  if (raw === 'fb' || raw === 'ig' || raw.includes('facebook') || raw.includes('instagram') || raw.includes('meta')) return 'meta';
   if (raw.includes('google') || raw.includes('adwords')) return 'google';
   if (raw.includes('tiktok')) return 'tiktok';
   return raw;
@@ -60,6 +60,15 @@ export function mapGhlAttribution(src: GhlAttribution | null | undefined): Attri
   out.utm_content   = pick(src, 'utmContent', 'utm_content');
   out.utm_term      = pick(src, 'keyword', 'utmTerm', 'utm_term', 'utmKeyword');
   out.referrer_url  = pick(src, 'referrer', 'referrer_url', 'referrerUrl');
+
+  // Some funnels pass Meta's numeric ids through the UTM slots instead of the
+  // dedicated id fields (utm_campaign = campaign id, utm_term = ad set id,
+  // utm_content = ad id). When the dedicated field is empty and the UTM value is
+  // a Meta-style numeric id, use it — the ids are what the spend tables join on.
+  const metaId = (v: string | null) => (v && /^\d{12,}$/.test(v) ? v : null);
+  out.campaign_id = out.campaign_id ?? metaId(out.utm_campaign);
+  out.adset_id    = out.adset_id    ?? metaId(out.utm_term);
+  out.ad_id       = out.ad_id       ?? metaId(out.utm_content);
 
   return out;
 }
