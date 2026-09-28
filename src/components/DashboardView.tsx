@@ -70,7 +70,7 @@ type B2bKpis = {
     vsl_depth: { d25: Cohort; d50: Cohort; d75: Cohort; d100: Cohort }; };
 };
 
-type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "week_before" | "all_time" | "custom";
+type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "all_time" | "custom";
 
 type View =
   | "dashboard"
@@ -131,7 +131,6 @@ const PRESET_LABELS: Record<Preset, string> = {
   last_month: "Last Month",
   last_30: "Last 30 Days",
   last_7: "Last 7 Days",
-  week_before: "Week Before",
   all_time: "All Time",
   custom: "Custom Range",
 };
@@ -200,10 +199,6 @@ function getDateRange(p: Preset): { start: string; end: string } {
   };
   if (p === "last_30") return { start: new Date(now.getTime() - 30 * 86400000).toISOString().split("T")[0], end: today };
   if (p === "last_7")  return { start: new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0], end: today };
-  if (p === "week_before") return {
-    start: new Date(now.getTime() - 14 * 86400000).toISOString().split("T")[0],
-    end:   new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0],
-  };
   return { start: "", end: "" };
 }
 
@@ -353,7 +348,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   // Tomsi landing view. A refresh of /dashboard/tm-dashboard carries no sub-view
   // and used to sit on the removed "b2b_tracking" default, rendering nothing.
   const [tomsiView, setTomsiView] = useState<TomsiView>("dashboard");
-  const [tomsiPreset, setTomsiPreset] = useState<Preset>("last_7");
+  const [tomsiPreset, setTomsiPreset] = useState<Preset>("this_month");
   const [clientsView, setClientsView] = useState<ClientsView>(() => (initialRoute?.clientsView as ClientsView) ?? "client_roster");
   // Collapsed sidebar buys ~176px, which is what wide drawer tables need to
   // fit without a horizontal scroll.
