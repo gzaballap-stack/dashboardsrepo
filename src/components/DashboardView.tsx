@@ -349,7 +349,10 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   // fired a request for every client's combined numbers — and when that slower
   // response landed after the correct Tomsi one, it overwrote it.
   const [topSection, setTopSection] = useState<TopSection>(() => (initialRoute?.section as TopSection) ?? "clients_dashboard");
-  const [tomsiView, setTomsiView] = useState<TomsiView>("b2b_tracking");
+  // B2B Tracking was folded into the merged B2B Dashboard, so that page is the
+  // Tomsi landing view. A refresh of /dashboard/tm-dashboard carries no sub-view
+  // and used to sit on the removed "b2b_tracking" default, rendering nothing.
+  const [tomsiView, setTomsiView] = useState<TomsiView>("dashboard");
   const [tomsiPreset, setTomsiPreset] = useState<Preset>("last_7");
   const [clientsView, setClientsView] = useState<ClientsView>(() => (initialRoute?.clientsView as ClientsView) ?? "client_roster");
   // Collapsed sidebar buys ~176px, which is what wide drawer tables need to
