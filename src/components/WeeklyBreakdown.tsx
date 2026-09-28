@@ -38,8 +38,10 @@ const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.ge
 const short = (d: Date) => d.toLocaleString("en-US", { month: "short", day: "numeric" });
 
 // Calendar weeks run Monday → Sunday. A week belongs to the month its Monday
-// falls in, so a month lists every week that starts inside it (4 or 5), and
-// a week that spills into the next month still counts here. Clamped to today.
+// falls in, so a month lists every week that starts inside it (4 or 5), and a
+// week that spills into the next month still counts here — labelled with its
+// real Sunday (e.g. "Sep 28 – Oct 4"), never cut off at today or month end. A
+// week is listed once it has started.
 function weeksOf(year: number, month: number) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const last = new Date(year, month + 1, 0);
@@ -49,8 +51,7 @@ function weeksOf(year: number, month: number) {
   while (d <= last && d <= today) {
     const s = new Date(d);
     const e = new Date(d); e.setDate(e.getDate() + 6);
-    const end = e > today ? today : e;
-    out.push({ label: `${short(s)} – ${short(end)}`, start: iso(s), end: iso(end) });
+    out.push({ label: `${short(s)} – ${short(e)}`, start: iso(s), end: iso(e) });
     d.setDate(d.getDate() + 7);
   }
   return out;
@@ -115,7 +116,7 @@ export default function WeeklyBreakdown({ onClose }: { onClose: () => void }) {
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "6vh 16px" }}>
-      <div onClick={e => e.stopPropagation()} className="rounded-2xl" style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 20px 60px -20px rgba(0,0,0,0.35)", width: "100%", maxWidth: 1240, overflow: "hidden" }}>
+      <div onClick={e => e.stopPropagation()} className="rounded-2xl" style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 20px 60px -20px rgba(0,0,0,0.35)", width: "96vw", maxWidth: 1480, overflow: "hidden" }}>
         <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
           <div className="flex items-center gap-2">
             <button onClick={() => setOffset(o => o - 1)} className="px-2 py-1 rounded-md" style={{ color: "#4a4a4a" }}>‹</button>
@@ -126,11 +127,11 @@ export default function WeeklyBreakdown({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm" style={{ borderCollapse: "collapse", minWidth: 1180 }}>
+          <table className="w-full text-xs" style={{ borderCollapse: "collapse", tableLayout: "fixed" }}>
             <thead>
               <tr style={{ background: "#fafafa" }}>
-                <th className="text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: "#6b6b6b" }}>Week</th>
-                {COLS.map(c => <th key={c.key} className="text-right px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: "#6b6b6b" }}>{c.label}</th>)}
+                <th className="text-left px-2 py-2 text-[10px] leading-tight font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: "#6b6b6b", width: 118 }}>Week</th>
+                {COLS.map(c => <th key={c.key} className="text-right px-2 py-2 text-[10px] leading-tight font-bold uppercase tracking-wide" style={{ color: "#6b6b6b" }}>{c.label}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -140,12 +141,12 @@ export default function WeeklyBreakdown({ onClose }: { onClose: () => void }) {
                 <tr><td colSpan={COLS.length + 1} className="px-4 py-8 text-center text-sm" style={{ color: "#949494" }}>No weeks yet</td></tr>
               ) : rows.map((r, i) => (
                 <tr key={r.label} style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
-                  <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "#111" }}>{r.label}</td>
+                  <td className="px-2 py-2 font-medium whitespace-nowrap" style={{ color: "#111" }}>{r.label}</td>
                   {COLS.map(c => {
                     const cur = c.value(r.data);
                     const prev = i > 0 ? c.value(rows[i - 1].data) : null;
                     return (
-                      <td key={c.key} className="text-right px-3 py-2.5 whitespace-nowrap" style={{ color: "#111" }}>
+                      <td key={c.key} className="text-right px-2 py-2 whitespace-nowrap" style={{ color: "#111" }}>
                         {fmt(cur, c.kind)}
                         <Delta cur={cur} prev={prev} lowerBetter={c.lowerBetter} />
                       </td>
@@ -155,8 +156,8 @@ export default function WeeklyBreakdown({ onClose }: { onClose: () => void }) {
               ))}
               {!loading && rows.length > 0 && (
                 <tr style={{ borderTop: "2px solid rgba(0,0,0,0.12)", background: "#fafafa" }}>
-                  <td className="px-3 py-2.5 font-bold whitespace-nowrap" style={{ color: "#111" }}>Month Avg</td>
-                  {COLS.map(c => <td key={c.key} className="text-right px-3 py-2.5 font-semibold whitespace-nowrap" style={{ color: "#111" }}>{fmt(monthValue(c), c.kind)}</td>)}
+                  <td className="px-2 py-2 font-bold whitespace-nowrap" style={{ color: "#111" }}>Month Avg</td>
+                  {COLS.map(c => <td key={c.key} className="text-right px-2 py-2 font-semibold whitespace-nowrap" style={{ color: "#111" }}>{fmt(monthValue(c), c.kind)}</td>)}
                 </tr>
               )}
             </tbody>
