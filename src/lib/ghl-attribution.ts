@@ -28,7 +28,8 @@ function pick(src: GhlAttribution, ...names: string[]): string | null {
 function normalisePlatform(src: GhlAttribution): string | null {
   const raw = (pick(src, 'adSource', 'utmSource', 'source', 'medium') ?? '').toLowerCase();
   if (!raw) return null;
-  if (raw === 'fb' || raw === 'ig' || raw.includes('facebook') || raw.includes('instagram') || raw.includes('meta')) return 'meta';
+  // Meta placement codes seen in utmSource: fb, ig, an (Audience Network), th (Threads), msg (Messenger).
+  if (['fb','ig','an','th','msg'].includes(raw) || raw.includes('facebook') || raw.includes('instagram') || raw.includes('meta')) return 'meta';
   if (raw.includes('google') || raw.includes('adwords')) return 'google';
   if (raw.includes('tiktok')) return 'tiktok';
   return raw;
