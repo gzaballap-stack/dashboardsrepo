@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
-import { pickAttribution, inheritAttribution } from '@/lib/attribution';
+import { pickAttribution, inheritAttribution, hasAttribution } from '@/lib/attribution';
+import { fetchGhlAttribution } from '@/lib/ghl-attribution';
 import { getTomsiClientId } from '@/lib/tomsi';
 import { ensureLeadForContact, removeSyntheticLead } from '@/lib/funnel-integrity';
 import { resolveClientId } from '@/lib/client-lookup';
@@ -52,11 +53,26 @@ export async function POST(req: Request) {
       ? Number(payload.duration_seconds)
       : null;
 
-    const attribution = await inheritAttribution(service, {
+    let attribution = await inheritAttribution(service, {
       table: 'b2b_events',
       ghl_contact_id: payload.ghl_contact_id ?? null,
       attr: pickAttribution(payload),
     });
+    // Live attribution: when nothing is known for this contact yet (first touch,
+    // or a lead the webhook never saw), read it from the Tomsi GHL sub-account
+    // right now instead of waiting for a batch pull. Best-effort and bounded —
+    // a slow or failing GHL must never delay or fail the booking itself; the
+    // row simply lands unattributed and the next pull fills it.
+    const b2bKey = process.env.GHL_API_KEY_B2B;
+    if (b2bKey && payload.ghl_contact_id && !hasAttribution(attribution)) {
+      try {
+        const live = await Promise.race([
+          fetchGhlAttribution(String(payload.ghl_contact_id), b2bKey),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), 4000)),
+        ]);
+        if (live && live.ok && hasAttribution(live.attribution)) attribution = live.attribution;
+      } catch { /* attribution is secondary */ }
+    }
 
     const eventData = {
       event_type:     payload.event_type,
