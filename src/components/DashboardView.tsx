@@ -344,10 +344,14 @@ function alertKey(a: Alert) {
 }
 
 export default function DashboardView({ initialRoute }: { initialRoute?: DashRoute | null }) {
-  const [topSection, setTopSection] = useState<TopSection>("clients_dashboard");
+  // Start on the section the URL names, from the very first render. Defaulting
+  // to the clients dashboard and switching a beat later meant a Tomsi URL first
+  // fired a request for every client's combined numbers — and when that slower
+  // response landed after the correct Tomsi one, it overwrote it.
+  const [topSection, setTopSection] = useState<TopSection>(() => (initialRoute?.section as TopSection) ?? "clients_dashboard");
   const [tomsiView, setTomsiView] = useState<TomsiView>("b2b_tracking");
   const [tomsiPreset, setTomsiPreset] = useState<Preset>("last_7");
-  const [clientsView, setClientsView] = useState<ClientsView>("client_roster");
+  const [clientsView, setClientsView] = useState<ClientsView>(() => (initialRoute?.clientsView as ClientsView) ?? "client_roster");
   // Collapsed sidebar buys ~176px, which is what wide drawer tables need to
   // fit without a horizontal scroll.
   // The menu is a rail that opens on hover and closes when the pointer leaves,
@@ -363,7 +367,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   }, []);
   const navCollapsed = isDesktop && !navHovered;
   const [expandedSections, setExpandedSections] = useState<Set<TopSection>>(new Set(["clients_dashboard"]));
-  const [view, setView] = useState<View>("dashboard");
+  const [view, setView] = useState<View>(() => (initialRoute?.view as View) ?? "dashboard");
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [preset, setPreset] = useState<Preset>("this_month");
@@ -517,6 +521,9 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
     // combined numbers.
     const internalId = tomsi ? clients.find(c => c.is_internal)?.id : undefined;
     if (tomsi && !internalId) return;
+    // Only the latest request may land. Without this, a slower earlier response
+    // (a broader query) can arrive after a newer one and overwrite it.
+    let alive = true;
     setMetricsLoading(true);
     const params = new URLSearchParams();
     if (internalId) params.set("client_id", internalId);
@@ -526,18 +533,21 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
     if (end) params.set("end_date", end);
     fetch(`/api/metrics?${params}`)
       .then(r => r.json())
-      .then(d => { setMetrics(d); setMetricsLoading(false); })
-      .catch(() => setMetricsLoading(false));
+      .then(d => { if (alive) { setMetrics(d); setMetricsLoading(false); } })
+      .catch(() => { if (alive) setMetricsLoading(false); });
+    return () => { alive = false; };
   }, [view, selectedClientId, preset, customStart, customEnd, topSection, tomsiPreset, clients]);
 
   // Tomsi dashboard extras: cash collected and self/team-booked demos live in B2B tracking.
   useEffect(() => {
     if (view !== "dashboard" || topSection !== "tomsi_media") return;
     const { start, end } = tomsiPreset === "custom" ? { start: customStart, end: customEnd } : getDateRange(tomsiPreset);
+    let alive = true;
     const params = new URLSearchParams();
     if (start) params.set("start_date", start);
     if (end) params.set("end_date", end);
-    fetch(`/api/b2b-metrics?${params}`).then(r => r.json()).then(d => setB2bKpis(d)).catch(() => setB2bKpis(null));
+    fetch(`/api/b2b-metrics?${params}`).then(r => r.json()).then(d => { if (alive) setB2bKpis(d); }).catch(() => { if (alive) setB2bKpis(null); });
+    return () => { alive = false; };
   }, [view, topSection, tomsiPreset, customStart, customEnd]);
 
   async function handleSignOut() {
@@ -1276,7 +1286,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
 
                 <section>
                   <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Campaigns</h2>
-                  <CampaignOverview key="tomsi-dash" startDate={viewStart} endDate={viewEnd} clientId={lockClientId} />
+                  {lockClientId && <CampaignOverview key="tomsi-dash" startDate={viewStart} endDate={viewEnd} clientId={lockClientId} />}
                 </section>
               </div>
               );
@@ -1376,11 +1386,11 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           )}
 
           {/* ── Campaign Overview (all clients) ── */}
-          {view === "campaign_overview" && (
+          {view === "campaign_overview" && (!inTomsi || lockClientId) && (
             <CampaignOverview key={inTomsi ? "tomsi" : "clients"} startDate={viewStart} endDate={viewEnd} clientId={lockClientId} />
           )}
 
-          {view === "creative_leaderboard" && (
+          {view === "creative_leaderboard" && (!inTomsi || lockClientId) && (
             <CreativeLeaderboard key={inTomsi ? "tomsi" : "clients"} startDate={viewStart} endDate={viewEnd} clientId={lockClientId} />
           )}
           {/* ── Admin ── */}

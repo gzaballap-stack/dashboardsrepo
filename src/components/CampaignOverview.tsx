@@ -211,7 +211,14 @@ export default function CampaignOverview({ startDate, endDate, clientId }: {
     ? { start: customStart, end: customEnd }
     : resolvePreset(datePreset);
 
+  // Each load gets a sequence number; only the newest request may apply its
+  // result. Otherwise a slower earlier response (e.g. the unlocked all-clients
+  // query fired before the Tomsi lock resolved) lands late and overwrites the
+  // correct data.
+  const reqSeq = useRef(0);
   const loadData = () => {
+    const seq = ++reqSeq.current;
+    const current = () => seq === reqSeq.current;
     setLoading(true);
     setError("");
     const params = new URLSearchParams();
@@ -221,19 +228,22 @@ export default function CampaignOverview({ startDate, endDate, clientId }: {
     fetch(`/api/campaign-overview?${params}`)
       .then(r => r.json())
       .then(d => {
+        if (!current()) return;
         if (d.error) { setError(d.error); setRows([]); setConnected(false); }
         else { setRows(d.clients ?? []); setConnected(true); setLastUpdated(new Date()); }
       })
-      .catch(() => { setError("Failed to load campaign data"); setConnected(false); })
-      .finally(() => setLoading(false));
+      .catch(() => { if (current()) { setError("Failed to load campaign data"); setConnected(false); } })
+      .finally(() => { if (current()) setLoading(false); });
   };
 
   const loadDataRef = useRef(loadData);
   loadDataRef.current = loadData;
 
+  // Reload on date change AND when the client lock resolves (clientId arrives
+  // a beat after mount once the clients list loads).
   useEffect(() => {
     loadDataRef.current();
-  }, [rangeStart, rangeEnd]);
+  }, [rangeStart, rangeEnd, clientId]);
 
   // Re-render every 15s just to keep the "X minutes ago" label fresh
   useEffect(() => {
