@@ -3,8 +3,8 @@
 // evaluates the kill/eval flags on the 7-day window, and renders JSON + Markdown.
 //
 // Meta supplies spend/impressions/clicks/leads per ad; the dashboard's own data
-// (see b2b-funnel.ts) supplies the GHL side — bookings, kept intros, closes,
-// cash, calling stats — for the account summary. Per-ad kept intros come from
+// (see b2b-funnel.ts) supplies the GHL side — bookings, kept demos, closes,
+// cash, calling stats — for the account summary. Per-ad kept demos come from
 // GHL attribution when it exists, otherwise from the "Schedule Kept" custom
 // conversion in Meta. Consumed by /api/meta-b2b-report (the TM Dashboard's download button).
 
@@ -21,7 +21,7 @@ export const FLAG_WINDOW: WindowDays = 7;
 export const RULES = {
   evalFloorSpend: 90,
   evalFloorImpressions: 1000,
-  zeroIntroKillSpend: 135,
+  zeroDemoKillSpend: 135,
   ctrHalfControl: 0.5,
   earlyCtrTrashImpressions: 250,
   earlyCtrTrash: 0.25,
@@ -37,17 +37,17 @@ export type Metrics = {
   cpc_link: number | null;
   leads: number;
   cost_per_lead: number | null;
-  kept_intros: number;
-  cost_per_kept_intro: number | null;
+  kept_demos: number;
+  cost_per_kept_demo: number | null;
   cpm: number | null;
 };
 
-// The two intro-based flags are null when no per-ad kept-intro source exists
+// The two demo-based flags are null when no per-ad kept-demo source exists
 // (no GHL ad attribution and no Meta "Schedule Kept" conversion) — a 0 there
 // would read as a kill verdict when it is really missing data.
 export type Flags = {
   over_eval_floor: boolean;
-  zero_intro_kill: boolean | null;
+  zero_demo_kill: boolean | null;
   ctr_half_control: boolean;
   early_ctr_trash: boolean;
   perf_vs_control_bad: boolean | null;
@@ -88,13 +88,13 @@ export type MetaReport = {
   timezone: string;
   account_id: string;
   campaign_filter: string[] | null;
-  kept_intro_source: 'ghl' | 'meta' | 'none';
-  kept_intro_action_type: string | null;
+  kept_demo_source: 'ghl' | 'meta' | 'none';
+  kept_demo_action_type: string | null;
   flag_window_days: WindowDays;
   control: {
     best_ctr_link_7d: number | null;
     best_ctr_ad_id: string | null;
-    best_cost_per_kept_intro_7d: number | null;
+    best_cost_per_kept_demo_7d: number | null;
     best_cpki_ad_id: string | null;
   };
   windows: Record<WindowDays, { since: string; until: string }>;
@@ -132,7 +132,7 @@ const div = (a: number, b: number) => (b > 0 ? a / b : null);
 export function emptyMetrics(): Metrics {
   return {
     spend: 0, impressions: 0, link_clicks: 0, ctr_link: null, cpc_link: null,
-    leads: 0, cost_per_lead: null, kept_intros: 0, cost_per_kept_intro: null, cpm: null,
+    leads: 0, cost_per_lead: null, kept_demos: 0, cost_per_kept_demo: null, cpm: null,
   };
 }
 
@@ -140,7 +140,7 @@ function finalize(m: Metrics): Metrics {
   m.ctr_link = m.impressions > 0 ? (m.link_clicks / m.impressions) * 100 : null;
   m.cpc_link = div(m.spend, m.link_clicks);
   m.cost_per_lead = div(m.spend, m.leads);
-  m.cost_per_kept_intro = div(m.spend, m.kept_intros);
+  m.cost_per_kept_demo = div(m.spend, m.kept_demos);
   m.cpm = m.impressions > 0 ? (m.spend / m.impressions) * 1000 : null;
   return m;
 }
@@ -150,7 +150,7 @@ function add(into: Metrics, m: Metrics) {
   into.impressions += m.impressions;
   into.link_clicks += m.link_clicks;
   into.leads += m.leads;
-  into.kept_intros += m.kept_intros;
+  into.kept_demos += m.kept_demos;
 }
 
 const LEAD_TOTAL = 'lead';
@@ -206,8 +206,8 @@ async function fetchInsights(acct: string, token: string, since: string, until: 
   }, token);
 }
 
-async function findKeptIntroType(acct: string, token: string): Promise<string | null> {
-  const override = process.env.META_KEPT_INTRO_EVENT?.trim();
+async function findKeptDemoType(acct: string, token: string): Promise<string | null> {
+  const override = (process.env.META_KEPT_DEMO_EVENT ?? process.env.META_KEPT_INTRO_EVENT)?.trim();
   if (override && override.includes('.')) return override; // full action_type given
   const wanted = (override || 'schedule kept').toLowerCase();
   try {
@@ -308,7 +308,7 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
     : Promise.resolve(null);
 
   const [keptType, entities, raw30, raw7, raw3, rawPrev, funnel] = await Promise.all([
-    findKeptIntroType(acct, opts.token),
+    findKeptDemoType(acct, opts.token),
     fetchAdEntities(acct, opts.token),
     fetchInsights(acct, opts.token, windows[30].since, windows[30].until),
     fetchInsights(acct, opts.token, windows[7].since, windows[7].until),
@@ -317,9 +317,9 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
     funnelPromise,
   ]);
 
-  // Kept intros per ad: GHL attribution when any exists in the 30-day window, else Meta's custom conversion.
-  const ghlHasAttribution = !!funnel && Object.keys(funnel[30].kept_intros_by_ad).length > 0;
-  const keptSource: MetaReport['kept_intro_source'] = ghlHasAttribution ? 'ghl' : keptType ? 'meta' : 'none';
+  // Kept demos per ad: GHL attribution when any exists in the 30-day window, else Meta's custom conversion.
+  const ghlHasAttribution = !!funnel && Object.keys(funnel[30].kept_demos_by_ad).length > 0;
+  const keptSource: MetaReport['kept_demo_source'] = ghlHasAttribution ? 'ghl' : keptType ? 'meta' : 'none';
 
   const toMetrics = (r: RawInsight, w?: WindowDays): Metrics => finalize({
     ...emptyMetrics(),
@@ -327,8 +327,8 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
     impressions: parseInt(r.impressions ?? '0', 10) || 0,
     link_clicks: parseInt(r.inline_link_clicks ?? '0', 10) || 0,
     leads: leadsFrom(r.actions),
-    kept_intros: ghlHasAttribution && w && r.ad_id
-      ? (funnel![w].kept_intros_by_ad[r.ad_id] ?? 0)
+    kept_demos: ghlHasAttribution && w && r.ad_id
+      ? (funnel![w].kept_demos_by_ad[r.ad_id] ?? 0)
       : keptFrom(r.actions, keptType),
   });
 
@@ -348,7 +348,7 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
       status: ent?.effective_status ?? null,
       first_served: ent?.created_time ? ent.created_time.slice(0, 10) : null,
       windows: { 30: toMetrics(r, 30), 7: emptyMetrics(), 3: emptyMetrics() },
-      flags: { over_eval_floor: false, zero_intro_kill: false, ctr_half_control: false, early_ctr_trash: false, perf_vs_control_bad: false },
+      flags: { over_eval_floor: false, zero_demo_kill: false, ctr_half_control: false, early_ctr_trash: false, perf_vs_control_bad: false },
     });
   }
   for (const r of raw7) { const a = r.ad_id && ads.get(r.ad_id); if (a) a.windows[7] = toMetrics(r, 7); }
@@ -361,14 +361,14 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
   const eligible7 = adList.filter(a => a.windows[7].impressions >= RULES.earlyCtrTrashImpressions);
   const bestCtr = eligible7.reduce<AdRow | null>((best, a) =>
     (a.windows[7].ctr_link ?? -1) > (best?.windows[7].ctr_link ?? -1) ? a : best, null);
-  const withIntros7 = adList.filter(a => a.windows[7].kept_intros > 0);
-  const bestCpki = withIntros7.reduce<AdRow | null>((best, a) =>
-    (a.windows[7].cost_per_kept_intro ?? Infinity) < (best?.windows[7].cost_per_kept_intro ?? Infinity) ? a : best, null);
+  const withDemos7 = adList.filter(a => a.windows[7].kept_demos > 0);
+  const bestCpki = withDemos7.reduce<AdRow | null>((best, a) =>
+    (a.windows[7].cost_per_kept_demo ?? Infinity) < (best?.windows[7].cost_per_kept_demo ?? Infinity) ? a : best, null);
 
   const control = {
     best_ctr_link_7d: bestCtr?.windows[7].ctr_link ?? null,
     best_ctr_ad_id: bestCtr?.ad_id ?? null,
-    best_cost_per_kept_intro_7d: bestCpki?.windows[7].cost_per_kept_intro ?? null,
+    best_cost_per_kept_demo_7d: bestCpki?.windows[7].cost_per_kept_demo ?? null,
     best_cpki_ad_id: bestCpki?.ad_id ?? null,
   };
 
@@ -377,14 +377,14 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
     const m = a.windows[FLAG_WINDOW];
     const ctr = m.ctr_link ?? 0;
     const bestC = control.best_ctr_link_7d;
-    const bestK = control.best_cost_per_kept_intro_7d;
+    const bestK = control.best_cost_per_kept_demo_7d;
     a.flags = {
       over_eval_floor: m.spend >= RULES.evalFloorSpend || m.impressions >= RULES.evalFloorImpressions,
-      zero_intro_kill: keptSource === 'none' ? null : m.spend >= RULES.zeroIntroKillSpend && m.kept_intros === 0,
+      zero_demo_kill: keptSource === 'none' ? null : m.spend >= RULES.zeroDemoKillSpend && m.kept_demos === 0,
       ctr_half_control: bestC != null && m.impressions > 0 && ctr < bestC * RULES.ctrHalfControl,
       early_ctr_trash: bestC != null && m.impressions >= RULES.earlyCtrTrashImpressions && ctr < bestC * RULES.earlyCtrTrash,
       perf_vs_control_bad: keptSource === 'none' ? null : bestK != null && m.spend >= RULES.perfVsControlSpend
-        && (m.cost_per_kept_intro == null || m.cost_per_kept_intro >= bestK * RULES.perfVsControlMultiple),
+        && (m.cost_per_kept_demo == null || m.cost_per_kept_demo >= bestK * RULES.perfVsControlMultiple),
     };
   }
 
@@ -415,8 +415,8 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
     generated_at: new Date().toISOString(),
     today, timezone: tz, account_id: acct,
     campaign_filter: filter ? filterNames : null,
-    kept_intro_source: keptSource,
-    kept_intro_action_type: keptType,
+    kept_demo_source: keptSource,
+    kept_demo_action_type: keptType,
     flag_window_days: FLAG_WINDOW,
     control,
     windows,
@@ -452,20 +452,20 @@ export function summarise(r: MetaReport): string[] {
   const out: string[] = [];
   out.push(`Spend last 7d: ${money(t.spend)}${delta(t.spend, p.spend)} across ${r.ads.filter(a => a.windows[7].impressions > 0).length} ads.`);
   if (f) {
-    out.push(`GHL: ${int(f.leads)} leads (CPL ${money(div(t.spend, f.leads))}) → ${int(f.intros_booked)} booked → ${int(f.intros_shown)} kept (${money(div(t.spend, f.intros_shown))} each) → ${int(f.closes)} closed · cash ${money0(f.cash_collected)} (ROAS ${x(div(f.cash_collected, t.spend))}).`);
+    out.push(`GHL: ${int(f.leads)} leads (CPL ${money(div(t.spend, f.leads))}) → ${int(f.demos_booked)} booked → ${int(f.demos_shown)} kept (${money(div(t.spend, f.demos_shown))} each) → ${int(f.closes)} closed · cash ${money0(f.cash_collected)} (ROAS ${x(div(f.cash_collected, t.spend))}).`);
     out.push(`Calling: speed to lead ${f.speed_to_lead_min == null ? '—' : f.speed_to_lead_min.toFixed(1) + ' min'} · ${f.dials_per_lead == null ? '—' : f.dials_per_lead.toFixed(1)} dials/lead · pickup ${pct(f.pickup_pct, 0)} · show ${pct(f.show_pct, 0)} · close ${pct(f.close_pct, 0)}.`);
   } else {
     out.push(`Meta leads: ${int(t.leads)} at ${money(t.cost_per_lead)} CPL${delta(t.cost_per_lead, p.cost_per_lead, true)}.`);
   }
   out.push(`Link CTR ${pct(t.ctr_link, 2)}${delta(t.ctr_link, p.ctr_link)} · CPC ${money(t.cpc_link)} · CPM ${money(t.cpm)}.`);
 
-  const kills = r.ads.filter(a => a.flags.zero_intro_kill === true || a.flags.early_ctr_trash || a.flags.perf_vs_control_bad === true);
+  const kills = r.ads.filter(a => a.flags.zero_demo_kill === true || a.flags.early_ctr_trash || a.flags.perf_vs_control_bad === true);
   const best = r.ads.find(a => a.ad_id === r.control.best_cpki_ad_id) ?? r.ads.find(a => a.ad_id === r.control.best_ctr_ad_id);
-  if (best) out.push(`Control: "${best.ad_name}" — ${pct(best.windows[7].ctr_link, 2)} link CTR, ${money(best.windows[7].cost_per_kept_intro)} per kept intro (7d).`);
+  if (best) out.push(`Control: "${best.ad_name}" — ${pct(best.windows[7].ctr_link, 2)} link CTR, ${money(best.windows[7].cost_per_kept_demo)} per kept demo (7d).`);
   out.push(kills.length
     ? `${kills.length} ad${kills.length === 1 ? '' : 's'} hit a kill flag: ${kills.slice(0, 5).map(a => `"${a.ad_name}"`).join(', ')}${kills.length > 5 ? '…' : ''}.`
     : 'No ads hit a kill flag this run.');
-  if (r.kept_intro_source === 'none') out.push('⚠️ No per-ad kept-intro source: no GHL ad attribution yet and no "Schedule Kept" custom conversion on the ad account — per-ad kept intros show 0.');
+  if (r.kept_demo_source === 'none') out.push('⚠️ No per-ad kept-demo source: no GHL ad attribution yet and no "Schedule Kept" custom conversion on the ad account — per-ad kept demos show 0.');
   return out;
 }
 
@@ -476,14 +476,14 @@ export function accountSummary(r: MetaReport, w: WindowDays): string {
   const lines = [`ACCOUNT SUMMARY — Window: Last ${w} days (${r.windows[w].since} → ${r.windows[w].until})`];
   if (!f) {
     lines.push(`Ad spend: ${money0(t.spend)}`, `Leads (Meta): ${int(t.leads)} (CPL ${money(t.cost_per_lead)})`,
-      `Kept intros (Meta): ${int(t.kept_intros)} (Cost per kept intro ${money(t.cost_per_kept_intro)})`,
+      `Kept demos (Meta): ${int(t.kept_demos)} (Cost per kept demo ${money(t.cost_per_kept_demo)})`,
       'GHL funnel data not connected for this run.');
     return lines.join('\n');
   }
   lines.push(`Ad spend: ${money0(t.spend)}`);
   lines.push(`Leads: ${int(f.leads)} (CPL ${money(div(t.spend, f.leads))})${t.leads !== f.leads ? ` · Meta-reported leads: ${int(t.leads)}` : ''}`);
-  lines.push(`Bookings: ${int(f.intros_booked)} (Lead→Booking ${pct(f.lead_to_booking_pct, 0)})`);
-  lines.push(`Kept intros: ${int(f.intros_shown)} (Cost per kept intro ${money(div(t.spend, f.intros_shown))})`);
+  lines.push(`Bookings: ${int(f.demos_booked)} (Lead→Booking ${pct(f.lead_to_booking_pct, 0)})`);
+  lines.push(`Kept demos: ${int(f.demos_shown)} (Cost per kept demo ${money(div(t.spend, f.demos_shown))})`);
   lines.push(`Sales calls: ${int(f.sales_calls_booked)} booked / ${int(f.sales_calls_shown)} shown`);
   lines.push(`Closes: ${int(f.closes)} (CAC ${money(div(t.spend, f.closes))})`);
   lines.push(`Cash collected: ${money0(f.cash_collected)} (ROAS ${x(div(f.cash_collected, t.spend))})`);
@@ -503,7 +503,7 @@ export function renderMarkdown(r: MetaReport): string {
   parts.push(`# Meta B2B prospecting report — ${r.today}`);
   parts.push(`Account ${r.account_id} · windows end ${r.today} (${r.timezone}) · ` +
     (r.campaign_filter ? `campaigns: ${r.campaign_filter.join(', ')}` : 'all campaigns') +
-    ` · per-ad kept intros from ${r.kept_intro_source === 'ghl' ? 'GHL attribution' : r.kept_intro_source === 'meta' ? 'Meta "Schedule Kept" conversion' : 'no source (0)'}`);
+    ` · per-ad kept demos from ${r.kept_demo_source === 'ghl' ? 'GHL attribution' : r.kept_demo_source === 'meta' ? 'Meta "Schedule Kept" conversion' : 'no source (0)'}`);
 
   parts.push('\n## 1. Account / funnel summary');
   for (const w of WINDOWS) parts.push('```\n' + accountSummary(r, w) + '\n```');
@@ -511,26 +511,26 @@ export function renderMarkdown(r: MetaReport): string {
   parts.push('\n## 2. Ad set level');
   for (const w of WINDOWS) {
     parts.push(`\n### Last ${w} days (${r.windows[w].since} → ${r.windows[w].until})`);
-    parts.push(table(['Ad set', 'Spend', 'Impressions', 'Leads', 'CPL', 'Kept intros', 'Cost per kept intro', 'CTR (link)', 'CPC'], [
-      ...r.adsets.map(s => { const m = s.windows[w]; return [s.name, money(m.spend), int(m.impressions), int(m.leads), money(m.cost_per_lead), int(m.kept_intros), money(m.cost_per_kept_intro), pct(m.ctr_link, 2), money(m.cpc_link)]; }),
-      (() => { const m = r.totals[w]; return ['**Total**', money(m.spend), int(m.impressions), int(m.leads), money(m.cost_per_lead), int(m.kept_intros), money(m.cost_per_kept_intro), pct(m.ctr_link, 2), money(m.cpc_link)]; })(),
+    parts.push(table(['Ad set', 'Spend', 'Impressions', 'Leads', 'CPL', 'Kept demos', 'Cost per kept demo', 'CTR (link)', 'CPC'], [
+      ...r.adsets.map(s => { const m = s.windows[w]; return [s.name, money(m.spend), int(m.impressions), int(m.leads), money(m.cost_per_lead), int(m.kept_demos), money(m.cost_per_kept_demo), pct(m.ctr_link, 2), money(m.cpc_link)]; }),
+      (() => { const m = r.totals[w]; return ['**Total**', money(m.spend), int(m.impressions), int(m.leads), money(m.cost_per_lead), int(m.kept_demos), money(m.cost_per_kept_demo), pct(m.ctr_link, 2), money(m.cpc_link)]; })(),
     ]));
   }
 
   parts.push(`\n## 3. Ad level — last 7 days (${r.windows[7].since} → ${r.windows[7].until})`);
-  parts.push(`Control = best ad in L7: link CTR ${pct(r.control.best_ctr_link_7d, 2)}, cost per kept intro ${money(r.control.best_cost_per_kept_intro_7d)}.`);
+  parts.push(`Control = best ad in L7: link CTR ${pct(r.control.best_ctr_link_7d, 2)}, cost per kept demo ${money(r.control.best_cost_per_kept_demo_7d)}.`);
   parts.push(table(
-    ['Campaign', 'Ad set', 'Ad name', 'Ad ID', 'First served', 'Spend', 'Impressions', 'Link clicks', 'CTR (link)', 'CPC', 'Leads', 'CPL', 'Kept intros', 'Cost per kept intro',
-      'Over_eval_floor', 'Zero_intro_kill', 'CTR_half_control', 'Early_CTR_trash', 'Perf_vs_control_bad'],
+    ['Campaign', 'Ad set', 'Ad name', 'Ad ID', 'First served', 'Spend', 'Impressions', 'Link clicks', 'CTR (link)', 'CPC', 'Leads', 'CPL', 'Kept demos', 'Cost per kept demo',
+      'Over_eval_floor', 'Zero_demo_kill', 'CTR_half_control', 'Early_CTR_trash', 'Perf_vs_control_bad'],
     r.ads.map(a => { const m = a.windows[7]; const f = a.flags; return [
       a.campaign_name, a.adset_name, a.ad_name, a.ad_id, a.first_served ?? '—',
-      money(m.spend), int(m.impressions), int(m.link_clicks), pct(m.ctr_link, 2), money(m.cpc_link), int(m.leads), money(m.cost_per_lead), int(m.kept_intros), money(m.cost_per_kept_intro),
-      yn(f.over_eval_floor), yn(f.zero_intro_kill), yn(f.ctr_half_control), yn(f.early_ctr_trash), yn(f.perf_vs_control_bad)]; }),
+      money(m.spend), int(m.impressions), int(m.link_clicks), pct(m.ctr_link, 2), money(m.cpc_link), int(m.leads), money(m.cost_per_lead), int(m.kept_demos), money(m.cost_per_kept_demo),
+      yn(f.over_eval_floor), yn(f.zero_demo_kill), yn(f.ctr_half_control), yn(f.early_ctr_trash), yn(f.perf_vs_control_bad)]; }),
   ));
-  parts.push('\nFlag rules: Over_eval_floor = spend ≥ $90 OR impressions ≥ 1,000 · Zero_intro_kill = spend ≥ $135 AND kept intros = 0 · ' +
+  parts.push('\nFlag rules: Over_eval_floor = spend ≥ $90 OR impressions ≥ 1,000 · Zero_demo_kill = spend ≥ $135 AND kept demos = 0 · ' +
     'CTR_half_control = link CTR < 50% of best ad in L7 · Early_CTR_trash = impressions ≥ 250 AND link CTR < 25% of best ad · ' +
-    'Perf_vs_control_bad = spend ≥ $180 AND cost per kept intro ≥ 1.3× best ad. All on L7 numbers.' +
-    (r.kept_intro_source === 'none' ? ' **Zero_intro_kill and Perf_vs_control_bad are N/A this run: no per-ad kept-intro data (see header).**' : ''));
+    'Perf_vs_control_bad = spend ≥ $180 AND cost per kept demo ≥ 1.3× best ad. All on L7 numbers.' +
+    (r.kept_demo_source === 'none' ? ' **Zero_demo_kill and Perf_vs_control_bad are N/A this run: no per-ad kept-demo data (see header).**' : ''));
 
   parts.push('\n## 4. Creative map');
   parts.push(r.ads.map(a => `- ${a.ad_name} (${a.ad_id}, ${a.status ?? 'status —'}) = ${a.creative_type !== '—' ? a.creative_type + ' · ' : ''}${a.creative.description}`).join('\n'));

@@ -1,5 +1,5 @@
 // Tomsi Media (B2B) funnel numbers for a date window, read from the dashboard's
-// own data: `b2b_events` (leads, intros, sales calls, closes, cash) and the
+// own data: `b2b_events` (leads, demos, closes, cash — the one-call model; intro rows are history only) and the
 // mirrored `events` rows under the internal client (dials, pickups, speed to
 // lead). Used by the Meta B2B report to sit GHL results next to Meta spend.
 
@@ -10,8 +10,8 @@ type Service = ReturnType<typeof createServiceClient>;
 
 export type FunnelStats = {
   leads: number;
-  intros_booked: number;
-  intros_shown: number;            // "kept intros"
+  demos_booked: number;
+  demos_shown: number;             // "kept demos" (demo that showed)
   sales_calls_booked: number;
   sales_calls_shown: number;
   closes: number;
@@ -21,10 +21,10 @@ export type FunnelStats = {
   speed_to_lead_min: number | null;
   dials_per_lead: number | null;
   pickup_pct: number | null;
-  lead_to_booking_pct: number | null;   // intros booked / leads
-  show_pct: number | null;              // intros shown / intros booked
-  close_pct: number | null;             // closes / intros shown
-  kept_intros_by_ad: Record<string, number>;   // ad_id → intros shown (GHL attribution)
+  lead_to_booking_pct: number | null;   // demos booked / leads
+  show_pct: number | null;              // demos shown / demos booked
+  close_pct: number | null;             // closes / demos shown
+  kept_demos_by_ad: Record<string, number>;    // ad_id → demos shown (GHL attribution)
 };
 
 // Local-day bounds → UTC ISO strings, for a given IANA timezone.
@@ -66,14 +66,14 @@ export async function getFunnelStats(service: Service, since: string, until: str
 
   const count = (t: string) => rows.filter(r => r.event_type === t).length;
   const leads = count('lead');
-  const introsBooked = count('intro_booked');
-  const introsShown = count('intro_shown');
+  const demosBooked = count('sales_call_booked');
+  const demosShown = count('sales_call_shown');
   const closes = count('close');
   const cash = rows.filter(r => r.event_type === 'close').reduce((s, r) => s + (Number(r.revenue) || 0), 0);
 
   const keptByAd: Record<string, number> = {};
   for (const r of rows) {
-    if (r.event_type === 'intro_shown' && r.ad_id) keptByAd[r.ad_id] = (keptByAd[r.ad_id] ?? 0) + 1;
+    if (r.event_type === 'sales_call_shown' && r.ad_id) keptByAd[r.ad_id] = (keptByAd[r.ad_id] ?? 0) + 1;
   }
 
   const pickups = dials.filter(d => d.is_pickup).length;
@@ -82,8 +82,8 @@ export async function getFunnelStats(service: Service, since: string, until: str
 
   return {
     leads,
-    intros_booked: introsBooked,
-    intros_shown: introsShown,
+    demos_booked: demosBooked,
+    demos_shown: demosShown,
     sales_calls_booked: count('sales_call_booked'),
     sales_calls_shown: count('sales_call_shown'),
     closes,
@@ -93,9 +93,9 @@ export async function getFunnelStats(service: Service, since: string, until: str
     speed_to_lead_min: speeds.length ? speeds.reduce((a, b) => a + b, 0) / speeds.length / 60 : null,
     dials_per_lead: leads > 0 ? dials.length / leads : null,
     pickup_pct: rate(pickups, dials.length),
-    lead_to_booking_pct: rate(introsBooked, leads),
-    show_pct: rate(introsShown, introsBooked),
-    close_pct: rate(closes, introsShown),
-    kept_intros_by_ad: keptByAd,
+    lead_to_booking_pct: rate(demosBooked, leads),
+    show_pct: rate(demosShown, demosBooked),
+    close_pct: rate(closes, demosShown),
+    kept_demos_by_ad: keptByAd,
   };
 }

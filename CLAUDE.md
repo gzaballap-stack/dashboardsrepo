@@ -289,8 +289,9 @@ Census fetching in `src/lib/census.ts` (needs `CENSUS_API_KEY`).
 | `RAILWAY_TOKEN` | Railway API |
 | `CENSUS_API_KEY` | Census data for zip features |
 | `ANTHROPIC_API_KEY` | AI Campaign Chat (unset by default) |
-| `GHL_API_KEY` | GoHighLevel Private Integration token — reads per-contact ad attribution |
-| `META_ACCESS_TOKEN` | Meta B2B report (`meta-b2b-report`) — the long-lived token the Make spend scenarios use. Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_INTRO_EVENT` |
+| `GHL_API_KEY` | GoHighLevel Private Integration token for the **client** account — reads per-contact ad attribution |
+| `GHL_API_KEY_B2B` | Private Integration token for the **Tomsi Media** sub-account (`jdBERcRjjBJ8dkPT9AOu`). B2B attribution — live in the B2B webhook and via `pull_b2b_attribution`. See `NOTES.md` 2026-09-28 |
+| `META_ACCESS_TOKEN` | Meta B2B report (`meta-b2b-report`) — the long-lived token the Make spend scenarios use. Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_DEMO_EVENT` (legacy `META_KEPT_INTRO_EVENT` still works) |
 
 Never commit `.env*` — they're gitignored. Production values live in Railway.
 

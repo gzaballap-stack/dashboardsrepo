@@ -12,7 +12,7 @@ import { createServiceClient } from '@/lib/supabase';
 // into Hormozi AI (or a chat here) for the media-buying read.
 //
 // Env: META_ACCESS_TOKEN (required); optional META_B2B_ACCOUNT_ID,
-//      META_REPORT_CAMPAIGNS (comma-separated exact names), META_KEPT_INTRO_EVENT, REPORT_TIMEZONE.
+//      META_REPORT_CAMPAIGNS (comma-separated exact names), META_KEPT_DEMO_EVENT (legacy META_KEPT_INTRO_EVENT), REPORT_TIMEZONE.
 
 export const maxDuration = 120;
 

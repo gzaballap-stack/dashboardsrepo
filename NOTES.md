@@ -1,3 +1,47 @@
+## 2026-09-28 — B2B: one-call demo model, reconciled Sep history, live attribution
+
+- **Cutoff.** The two-call (intro → sales call) process ended in early September.
+  Michael Fischer's demo on **2026-09-09 is the first demo**; everything from
+  there on is a demo (`sales_call_booked` / `sales_call_shown`). The August rows
+  (13 `intro_booked`, 8 `intro_shown`, seeded weekly totals with no names) are
+  genuine intro-era records: keep them, but they are **not demos** and reports
+  should ignore intros going forward. Do not re-derive this cutoff from the data.
+- The B2B webhook now remaps any incoming `intro_booked`/`intro_shown` to the
+  demo types (GHL was still tagging some bookings "intro"); `booked_by` accepts
+  `client` as an alias of `self`.
+- **Guarded data-cleanup tool** (`/api/admin/data-cleanup`, run via
+  `node scripts/run-cleanup.mjs <op> [--apply]`, dry-run by default, capped, only
+  named ops; a Bash allow rule in `.claude/settings.json` covers that command).
+  Ops used today: `relabel_intros_to_demos`, `dedupe_bookings` (blank-ID copies
+  of ID-carrying bookings), `reconcile_b2b` (Aug back to intros + the Sep demos
+  the tracking missed: Alexi, Zahra, Thomas/Cathleen shows, Cathleen close
+  $1,000), `mirror_tomsi_demos` (same demos into the Tomsi client `events`
+  mirror, final state, keyed on the appointment ids), `pull_b2b_attribution`.
+  The auto-mode guard blocks the `--apply` step for the assistant; the user runs it.
+- Sep ledger (owner-confirmed): 9 demos, 4 showed (Michael, Alexi, Thomas,
+  Cathleen), 5 no-shows (Zahra, Robin, Derick, Monica, Bryan), 2 closes (Alexi $0,
+  Cathleen $1,000).
+- **"Demos Booked" = every demo booked in range** (pending + shown + no-showed),
+  since a show/no-show flips the booked row in place. Applies to every client
+  dashboard; also fixed CP Demo Booked and Appts To Take Place.
+- **B2B attribution.** `GHL_API_KEY_B2B` = Private Integration token for the
+  Tomsi Media sub-account (location `jdBERcRjjBJ8dkPT9AOu`); `GHL_API_KEY` only
+  reaches the client account. This funnel passes Meta's numeric ids through the
+  UTM slots (`campaign` = campaign id, `utmTerm` = ad set id, `utmContent` = ad
+  id; `adId`/`adSetId` are null) — `mapGhlAttribution` now reads them from there.
+  Attribution is pulled **live** in the B2B webhook (4 s cap, best-effort) and
+  also flows into the Tomsi mirror; `pull_b2b_attribution` backfills blanks.
+- B2B dashboard refresh bugs fixed: section now initialised from the URL on
+  first render; stale metric/campaign responses cancelled; Tomsi tables wait for
+  the client lock; `tomsiView` defaults to the merged dashboard. Default window
+  This Month; "Week Before" preset removed. ROI tile was a hardcoded placeholder.
+- Weekly breakdown: calendar weeks Mon–Sun attributed to the month of their
+  Monday; full funnel columns; month row recomputes rates from totals.
+- Report wording: "kept intro" → "kept demo" everywhere (report + JSON keys);
+  `META_KEPT_INTRO_EVENT` still honoured, `META_KEPT_DEMO_EVENT` preferred.
+- Pending: the AI "reporting style" block for the Meta report (needs the owner's
+  KPI targets: cost per kept demo, CPL, CTR/CPC).
+
 ## 2026-09-23 — Funnel engagement tracking (visits + VSL/pre-call watch)
 
 - New event types `funnel_visit`, `vsl_watch`, `precall_watch` + `progress_pct`
