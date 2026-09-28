@@ -732,14 +732,20 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     });
                   }}
                   title={navCollapsed ? sec.label : undefined}
-                  className="w-full text-left py-2.5 rounded-lg flex items-center gap-3 overflow-hidden whitespace-nowrap"
+                  className="w-full text-left py-2.5 rounded-lg flex items-center overflow-hidden whitespace-nowrap"
                   style={{
-                    paddingLeft: navCollapsed ? 22 : 12,
-                    paddingRight: navCollapsed ? 22 : 12,
-                    transition: `padding 320ms cubic-bezier(0.22, 1, 0.36, 1), background 150ms ease, color 150ms ease`,
+                    // Collapsed, the button is just the icon: no padding, no gap and
+                    // no left rule, so it sits dead centre in the rail.
+                    paddingLeft: navCollapsed ? 0 : 12,
+                    paddingRight: navCollapsed ? 0 : 12,
+                    gap: navCollapsed ? 0 : 12,
+                    justifyContent: navCollapsed ? "center" : "flex-start",
+                    transition: `padding 320ms cubic-bezier(0.22, 1, 0.36, 1), gap 320ms cubic-bezier(0.22, 1, 0.36, 1), background 150ms ease, color 150ms ease`,
                     ...(isActive
-                      ? { background: "rgba(0,0,0,0.06)", color: "#000000", borderLeft: "2px solid #000000" }
-                      : { color: "#6b6b6b", borderLeft: "2px solid transparent" }),
+                      ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
+                      : { color: "#6b6b6b" }),
+                    borderLeft: `2px solid ${isActive && !navCollapsed ? "#000000" : "transparent"}`,
+                    borderRight: navCollapsed ? "2px solid transparent" : "none",
                   }}
                   onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
                   onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#6b6b6b"; }}
@@ -747,16 +753,16 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                   <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d={sec.icon} />
                   </svg>
-                  <span className="text-sm font-semibold flex-1"
-                    style={{ opacity: navCollapsed ? 0 : 1, transition: `opacity 200ms ease 80ms` }}>{sec.label}</span>
-                  {sec.badge && (
+                  <span className="text-sm font-semibold"
+                    style={{ flex: navCollapsed ? "0 0 0px" : "1 1 auto", width: navCollapsed ? 0 : undefined, overflow: "hidden", opacity: navCollapsed ? 0 : 1, transition: `opacity 200ms ease 80ms` }}>{sec.label}</span>
+                  {sec.badge && !navCollapsed && (
                     <span style={{ fontSize: 9, padding: "2px 5px", borderRadius: 4, background: "rgba(0,0,0,0.081)", color: "#949494", fontWeight: 600, letterSpacing: "0.04em" }}>
                       SOON
                     </span>
                   )}
                   <svg
-                    className="w-3 h-3 flex-shrink-0"
-                    style={{ transform: expandedSections.has(sec.id) ? "rotate(90deg)" : "rotate(0deg)", opacity: navCollapsed ? 0 : 0.5, transition: `transform 200ms ease, opacity 200ms ease 80ms` }}
+                    className="h-3 flex-shrink-0"
+                    style={{ width: navCollapsed ? 0 : 12, transform: expandedSections.has(sec.id) ? "rotate(90deg)" : "rotate(0deg)", opacity: navCollapsed ? 0 : 0.5, transition: `transform 200ms ease, opacity 200ms ease 80ms` }}
                     fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -899,10 +905,12 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
               setSidebarOpen(false);
             }}
             title={navCollapsed ? "Settings" : undefined}
-            className="w-full text-left py-2.5 rounded-lg text-sm font-medium flex items-center gap-3 overflow-hidden whitespace-nowrap"
+            className="w-full text-left py-2.5 rounded-lg text-sm font-medium flex items-center overflow-hidden whitespace-nowrap"
             style={{
-              paddingLeft: navCollapsed ? 22 : 12,
-              paddingRight: navCollapsed ? 22 : 12,
+              paddingLeft: navCollapsed ? 0 : 12,
+              paddingRight: navCollapsed ? 0 : 12,
+              gap: navCollapsed ? 0 : 12,
+              justifyContent: navCollapsed ? "center" : "flex-start",
               transition: `padding 320ms cubic-bezier(0.22, 1, 0.36, 1), color 150ms ease`,
               ...(topSection === "settings"
                 ? { background: "rgba(0,0,0,0.048)", color: "#000000" }
@@ -914,7 +922,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
             <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d={SETTINGS_ICON} />
             </svg>
-            <span style={{ opacity: navCollapsed ? 0 : 1, transition: "opacity 200ms ease 80ms" }}>Settings</span>
+            <span style={{ width: navCollapsed ? 0 : undefined, overflow: "hidden", opacity: navCollapsed ? 0 : 1, transition: "opacity 200ms ease 80ms" }}>Settings</span>
           </button>
 
           {!navCollapsed && expandedSections.has("settings") && (
