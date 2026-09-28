@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
+import { getTomsiClientId } from '@/lib/tomsi';
 
 /**
  * Guarded data-cleanup endpoint.
@@ -226,5 +227,54 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: dryRun, reverted_count: reverted.length, reverted, added: NEW.map(n => `${n.lead_name}: ${n.event_type}`) });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b` }, { status: 400 });
+  // ---- op 5: mirror the reconciled Sep demos into the Tomsi client events ----
+  // The Overview tiles (Demos Booked / Shows / No Shows / Close Rate / Cash) read
+  // the client-side `events` mirror, which the B2B webhook fills as bookings
+  // arrive. Rows written straight into b2b_events never reached it. This writes
+  // each demo in its final state — one row per appointment, as the client-side
+  // status flow does — keyed to the same appointment ids so both tables agree.
+  // Scoped to the internal Tomsi client only. Idempotent (upsert on external_id).
+  if (op === 'mirror_tomsi_demos') {
+    const tomsiId = await getTomsiClientId(service);
+    if (!tomsiId) return NextResponse.json({ error: 'Internal Tomsi client not found' }, { status: 500 });
+
+    const base = { client_id: tomsiId, revenue: 0 };
+    const FINAL = [
+      { ...base, event_type: 'show',    external_id: 'recon:alexi-booked',      occurred_at: '2026-09-12T12:00:00Z', lead_name: 'Alexi Moncada',           lead_email: 'info@usaredwoodrenovation.com',            ghl_contact_id: '1zLVGTRWtE3vc3yJwIrr' },
+      { ...base, event_type: 'no_show', external_id: 'recon:zahra-booked',      occurred_at: '2026-09-14T12:00:00Z', lead_name: 'Zahra Cleaning Services' },
+      { ...base, event_type: 'show',    external_id: 'y1JUtyPEFFRYSaMtdzih',    occurred_at: '2026-09-21T00:05:52Z', lead_name: 'Thomas Cairo',            lead_email: 'tcairo1949@gmail.com',                     ghl_contact_id: 'YUktl1kM3oPYAxC2mWVG' },
+      { ...base, event_type: 'no_show', external_id: 'pNM8k9xm7OtshlbEyIoe',    occurred_at: '2026-09-21T04:31:08Z', lead_name: 'Robin Stanley',           lead_email: 'ardscontracting1@gmail.com',               ghl_contact_id: 'zABvHPaaMAZgTVhEVdRs' },
+      { ...base, event_type: 'no_show', external_id: '8jSiVJs9fFIYCPbxZzzx',    occurred_at: '2026-09-22T15:15:49Z', lead_name: 'Derick garner',           lead_email: 'derickgarner50@gmail.com',                 ghl_contact_id: 'izf9UeaWw4QkJ2C2YcbQ' },
+      { ...base, event_type: 'show',    external_id: 'ESdzczC3ss99FjfMzcQ8',    occurred_at: '2026-09-22T19:55:55Z', lead_name: 'Cathleen Miller',         lead_email: 'cathleen@superfloorstoreandremodeling.com', ghl_contact_id: 'zEE8tEmtCRlDJVqcvq8R' },
+      { ...base, event_type: 'no_show', external_id: 'wxJQg5LX0CdlstoEEORQ',    occurred_at: '2026-09-23T10:26:19Z', lead_name: 'Monica',                  lead_email: 'monica@calbayremodeling.com',              ghl_contact_id: 'tWwZ2olVDWVg9JssWbvm' },
+      { ...base, event_type: 'no_show', external_id: 'u1E5uJvSmzWcCJicGrsX',    occurred_at: '2026-09-24T18:10:47Z', lead_name: 'Bryan Moore',             lead_email: 'bemoore63@gmail.com',                      ghl_contact_id: 'U2YP3KKUcIYG4OYWFY8Q' },
+    ];
+    const CLOSES = [
+      { ...base, event_type: 'closed', external_id: 'recon:alexi-closed',    occurred_at: '2026-09-14T12:00:00Z', lead_name: 'Alexi Moncada',   lead_email: 'info@usaredwoodrenovation.com',            ghl_contact_id: '1zLVGTRWtE3vc3yJwIrr', revenue: 0 },
+      { ...base, event_type: 'closed', external_id: 'recon:cathleen-close',  occurred_at: '2026-09-22T20:00:00Z', lead_name: 'Cathleen Miller', lead_email: 'cathleen@superfloorstoreandremodeling.com', ghl_contact_id: 'zEE8tEmtCRlDJVqcvq8R', revenue: 1000 },
+    ];
+
+    // Michael Fischer's booked row already exists in the mirror (no appointment
+    // id on it); he showed, so it changes state in place like the status flow.
+    const { data: michael } = await service.from('events').select('id')
+      .eq('client_id', tomsiId).eq('ghl_contact_id', 'TfZUzBF0WT7RT1L236wP').eq('event_type', 'appointment_booked');
+    const michaelFlip = michael?.length ?? 0;
+
+    if (dryRun) {
+      return NextResponse.json({ op, dry_run: true, would_flip_michael_to_show: michaelFlip,
+        would_write: FINAL.map(r => `${r.lead_name}: ${r.event_type}`), would_write_closes: CLOSES.map(r => `${r.lead_name}: closed $${r.revenue}`) });
+    }
+    if (michaelFlip) {
+      const { error } = await service.from('events').update({ event_type: 'show' })
+        .eq('client_id', tomsiId).eq('ghl_contact_id', 'TfZUzBF0WT7RT1L236wP').eq('event_type', 'appointment_booked');
+      if (error) return NextResponse.json({ error: error.message, step: 'flip michael' }, { status: 500 });
+    }
+    const { error: e1 } = await service.from('events').upsert(FINAL, { onConflict: 'external_id' });
+    if (e1) return NextResponse.json({ error: e1.message, step: 'demos' }, { status: 500 });
+    const { error: e2 } = await service.from('events').upsert(CLOSES, { onConflict: 'external_id' });
+    if (e2) return NextResponse.json({ error: e2.message, step: 'closes' }, { status: 500 });
+    return NextResponse.json({ op, dry_run: false, flipped_michael: michaelFlip, demos_written: FINAL.length, closes_written: CLOSES.length });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos` }, { status: 400 });
 }

@@ -13,9 +13,13 @@ type SpendRow = { amount: number | string };
 // It is subtracted from the stored ad_spend totals, which have no campaign dimension.
 export function calculateMetrics(events: EventRow[], spendRows: SpendRow[], excludedSpend = 0) {
   const leads    = events.filter(e => e.event_type === 'lead').length;
+  // A show or no-show changes the booked row's state in place, so `booked` is
+  // only what is still pending. "Demos Booked" means every demo booked in the
+  // range whatever happened to it since — pending, shown, or no-showed.
   const booked   = events.filter(e => e.event_type === 'appointment_booked').length;
   const shows    = events.filter(e => e.event_type === 'show').length;
   const no_shows = events.filter(e => e.event_type === 'no_show').length;
+  const total_booked = booked + shows + no_shows;
   const dials    = events.filter(e => e.event_type === 'dial');
   const dial_count = dials.length;
   const pickups      = dials.filter(e => e.is_pickup).length;
@@ -51,7 +55,7 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[], excl
   // and since every rate is <=1, cpl <= cp_appt <= cps <= cost_per_close is guaranteed
   // by construction. With no pending backlog each still reduces to the naive
   // ad_spend / count for that stage.
-  const cp_appt = booked > 0 ? ad_spend / booked : 0;
+  const cp_appt = total_booked > 0 ? ad_spend / total_booked : 0;
   const show_rate = shows + no_shows > 0 ? shows / (shows + no_shows) : 0;
   const cps = cp_appt > 0 && show_rate > 0 ? cp_appt / show_rate : 0;
   const close_rate_ratio = shows > 0 ? close_count / shows : 0;
@@ -59,9 +63,10 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[], excl
 
   return {
     new_leads: leads,
-    booked_appointments: booked,
-    appt_booking_rate: leads > 0 ? (booked / leads) * 100 : 0,
-    appts_to_take_place: Math.max(0, booked - shows - no_shows),
+    booked_appointments: total_booked,
+    appt_booking_rate: leads > 0 ? (total_booked / leads) * 100 : 0,
+    // Still pending: everything booked minus what has already resolved.
+    appts_to_take_place: Math.max(0, total_booked - shows - no_shows),
     shows,
     no_shows,
     show_pct: shows + no_shows > 0 ? (shows / (shows + no_shows)) * 100 : 0,
