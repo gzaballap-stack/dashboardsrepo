@@ -23,6 +23,7 @@ import { hasFeature, type FeatureId } from "@/lib/feature-access";
 import { pathForRoute, routeForSlug, type DashRoute } from "@/lib/dashboard-routes";
 import CampaignOverview from "./CampaignOverview";
 import WeeklyBreakdown from "./WeeklyBreakdown";
+import DateRangePicker, { fmtRange } from "./DateRangePicker";
 import CreativeLeaderboard from "./CreativeLeaderboard";
 import CSMDashboard from "./CSMDashboard";
 
@@ -374,6 +375,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [showPresetMenu, setShowPresetMenu] = useState(false);
+  const [showRangePicker, setShowRangePicker] = useState(false); // the custom-range calendar
   const [heatmapDays, setHeatmapDays] = useState(0);
   const [heatmapClientId, setHeatmapClientId] = useState("");
   const [b2bKpis, setB2bKpis] = useState<B2bKpis | null>(null);
@@ -1017,7 +1019,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                 <div className="absolute top-full right-0 mt-1.5 rounded-2xl overflow-hidden z-20 w-48"
                   style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18)" }}>
                   {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
-                    <button key={p} onClick={() => { setTomsiPreset(p); setShowPresetMenu(false); }}
+                    <button key={p} onClick={() => { setTomsiPreset(p); setShowPresetMenu(false); if (p === "custom") setShowRangePicker(true); }}
                       className="block w-full text-left px-4 py-2.5 text-sm transition-colors"
                       style={tomsiPreset === p
                         ? { background: "rgba(0,0,0,0.09)", color: "#000000", fontWeight: 600 }
@@ -1033,15 +1035,16 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
             </div>
           )}
           {topSection === "tomsi_media" && tomsiPreset === "custom" && (
-            <>
-              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
-                className="px-3 py-2 rounded-lg text-sm outline-none"
-                style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
-              <span className="text-sm" style={{ color: "#949494" }}>to</span>
-              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
-                className="px-3 py-2 rounded-lg text-sm outline-none"
-                style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
-            </>
+            <div className="relative">
+              <button onClick={() => setShowRangePicker(true)} className="px-3 py-2 rounded-lg text-sm" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
+                {fmtRange(customStart, customEnd)}<span className="ml-2 text-xs" style={{ color: "#949494" }}>Change</span>
+              </button>
+              {showRangePicker && (
+                <DateRangePicker start={customStart} end={customEnd}
+                  onChange={(s, e) => { setCustomStart(s); setCustomEnd(e); }}
+                  onClose={() => setShowRangePicker(false)} />
+              )}
+            </div>
           )}
 
           {/* Dashboard, raw data, and agent/recording views filters */}
@@ -1070,7 +1073,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                   <div className="absolute top-full right-0 mt-1.5 rounded-2xl overflow-hidden z-20 w-48"
                     style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18)" }}>
                     {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
-                      <button key={p} onClick={() => { setPreset(p); setShowPresetMenu(false); }}
+                      <button key={p} onClick={() => { setPreset(p); setShowPresetMenu(false); if (p === "custom") setShowRangePicker(true); }}
                         className="block w-full text-left px-4 py-2.5 text-sm transition-colors"
                         style={preset === p
                           ? { background: "rgba(0,0,0,0.09)", color: "#000000", fontWeight: 600 }
@@ -1086,15 +1089,16 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
               </div>
 
               {preset === "custom" && (
-                <>
-                  <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
-                    className="px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
-                  <span className="text-sm" style={{ color: "#949494" }}>to</span>
-                  <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
-                    className="px-3 py-2 rounded-lg text-sm outline-none"
-                    style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
-                </>
+                <div className="relative">
+                  <button onClick={() => setShowRangePicker(true)} className="px-3 py-2 rounded-lg text-sm" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
+                    {fmtRange(customStart, customEnd)}<span className="ml-2 text-xs" style={{ color: "#949494" }}>Change</span>
+                  </button>
+                  {showRangePicker && (
+                    <DateRangePicker start={customStart} end={customEnd}
+                      onChange={(s, e) => { setCustomStart(s); setCustomEnd(e); }}
+                      onClose={() => setShowRangePicker(false)} />
+                  )}
+                </div>
               )}
             </>
           )}
