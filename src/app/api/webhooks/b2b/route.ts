@@ -15,7 +15,37 @@ const VALID_EVENT_TYPES = [
   'call',
   'funnel_visit', 'vsl_watch', 'precall_watch',
   'visit_landing', 'visit_calendar', 'visit_thankyou',
+  'spam', 'spam_lead', 'spam_appointment',
 ] as const;
+
+// A fake / funnel-hacker contact: flip everything it produced to the spam
+// states in both tables. Nothing is deleted, nothing counts. If the contact has
+// no rows yet, record one spam lead so the fake still shows in the spam tally.
+async function markSpam(service: ReturnType<typeof createServiceClient>, payload: Record<string, unknown>) {
+  const cid = (payload.ghl_contact_id as string | undefined) || null;
+  if (!cid) return NextResponse.json({ error: 'ghl_contact_id is required to mark spam' }, { status: 400 });
+  const tomsiId = await getTomsiClientId(service);
+  const flip = async (table: 'events' | 'b2b_events', from: string[], to: string, clientId?: string | null) => {
+    let q = service.from(table).update({ event_type: to }).eq('ghl_contact_id', cid).in('event_type', from);
+    if (clientId) q = q.eq('client_id', clientId);
+    const { data } = await q.select('id');
+    return data?.length ?? 0;
+  };
+  const b2bLeads = await flip('b2b_events', ['lead'], 'spam_lead');
+  const b2bAppts = await flip('b2b_events', ['sales_call_booked', 'sales_call_shown'], 'spam_appointment');
+  let mirLeads = 0, mirAppts = 0;
+  if (tomsiId) {
+    mirLeads = await flip('events', ['lead'], 'spam_lead', tomsiId);
+    mirAppts = await flip('events', ['appointment_booked', 'show', 'no_show'], 'spam_appointment', tomsiId);
+  }
+  if (b2bLeads + b2bAppts === 0) {
+    const row = { event_type: 'spam_lead', occurred_at: new Date().toISOString(), ghl_contact_id: cid,
+      lead_name: (payload.lead_name as string) ?? null, lead_email: (payload.lead_email as string) ?? null, revenue: 0, raw: payload };
+    await service.from('b2b_events').insert(row);
+    if (tomsiId) await service.from('events').insert({ ...row, client_id: tomsiId });
+  }
+  return NextResponse.json({ success: true, spam: { b2b_leads: b2bLeads, b2b_appointments: b2bAppts, mirror_leads: mirLeads, mirror_appointments: mirAppts } });
+}
 
 export async function POST(req: Request) {
   try {
@@ -25,6 +55,15 @@ export async function POST(req: Request) {
 
     const payload = await req.json();
     const service = createServiceClient();
+
+    // A direct GHL webhook nests its custom fields under customData; lift them
+    // to the top level when the top-level key is absent.
+    if (payload.customData && typeof payload.customData === 'object') {
+      for (const [k, v] of Object.entries(payload.customData as Record<string, unknown>)) {
+        if (payload[k] === undefined || payload[k] === '') payload[k] = v;
+      }
+    }
+    if (payload.event_type === 'spam') return markSpam(service, payload);
 
     // B2B is a one-call process: the old "intro" stage is gone. Any booking that
     // still arrives tagged as an intro is treated as the demo (sales call).
@@ -72,6 +111,13 @@ export async function POST(req: Request) {
         ]);
         if (live && live.ok && hasAttribution(live.attribution)) attribution = live.attribution;
       } catch { /* attribution is secondary */ }
+    }
+
+    // A contact already flagged as fake stays fake: anything new it produces is
+    // stored straight into the spam states rather than the real funnel.
+    if (payload.ghl_contact_id && ['lead', 'sales_call_booked', 'sales_call_shown'].includes(payload.event_type)) {
+      const { data: flagged } = await service.from('b2b_events').select('id').eq('ghl_contact_id', payload.ghl_contact_id).in('event_type', ['spam_lead', 'spam_appointment']).limit(1);
+      if (flagged?.length) payload.event_type = payload.event_type === 'lead' ? 'spam_lead' : 'spam_appointment';
     }
 
     const eventData = {
@@ -130,6 +176,7 @@ export async function POST(req: Request) {
         lead: 'lead', sales_call_booked: 'appointment_booked', sales_call_shown: 'show', close: 'closed', call: 'dial',
         funnel_visit: 'funnel_visit', vsl_watch: 'vsl_watch', precall_watch: 'precall_watch',
         visit_landing: 'visit_landing', visit_calendar: 'visit_calendar', visit_thankyou: 'visit_thankyou',
+        spam_lead: 'spam_lead', spam_appointment: 'spam_appointment',
       };
       const mirrored = MIRROR[payload.event_type];
       if (tomsiId && mirrored) {
@@ -153,7 +200,7 @@ export async function POST(req: Request) {
           await service.from('events').insert(row);
         }
         if (mirrored === 'lead') await removeSyntheticLead(service, tomsiId, eventData.ghl_contact_id);
-        else await ensureLeadForContact(service, {
+        else if (!mirrored.startsWith('spam_')) await ensureLeadForContact(service, {
           client_id: tomsiId, ghl_contact_id: eventData.ghl_contact_id, event_type: mirrored,
           occurred_at: eventData.occurred_at, lead_name: eventData.lead_name,
           lead_phone: eventData.lead_phone, lead_email: eventData.lead_email, attribution,

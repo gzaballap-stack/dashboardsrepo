@@ -19,6 +19,9 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[], excl
   const booked   = events.filter(e => e.event_type === 'appointment_booked').length;
   const shows    = events.filter(e => e.event_type === 'show').length;
   const no_shows = events.filter(e => e.event_type === 'no_show').length;
+  // Fake submissions: tallied, never inside leads / booked / shows / no-shows.
+  const spam_leads = events.filter(e => e.event_type === 'spam_lead').length;
+  const spam_appointments = events.filter(e => e.event_type === 'spam_appointment').length;
   const total_booked = booked + shows + no_shows;
   const dials    = events.filter(e => e.event_type === 'dial');
   const dial_count = dials.length;
@@ -69,6 +72,8 @@ export function calculateMetrics(events: EventRow[], spendRows: SpendRow[], excl
     appts_to_take_place: Math.max(0, total_booked - shows - no_shows),
     shows,
     no_shows,
+    spam_leads,
+    spam_appointments,
     show_pct: shows + no_shows > 0 ? (shows / (shows + no_shows)) * 100 : 0,
     ad_spend,
     cpl: leads > 0 ? ad_spend / leads : 0,

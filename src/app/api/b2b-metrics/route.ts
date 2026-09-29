@@ -214,6 +214,8 @@ export async function GET(req: Request) {
     sales_calls_shown:  count('sales_call_shown'),
     closes,
     cash_collected:     cash,
+    spam_leads:         count('spam_lead'),
+    spam_appointments:  count('spam_appointment'),
     impressions:        totalImpressions,
     reach:              totalReach,
     link_clicks:        totalLinkClicks,

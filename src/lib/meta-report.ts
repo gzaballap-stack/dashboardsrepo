@@ -484,6 +484,7 @@ export function accountSummary(r: MetaReport, w: WindowDays): string {
   lines.push(`Leads: ${int(f.leads)} (CPL ${money(div(t.spend, f.leads))})${t.leads !== f.leads ? ` · Meta-reported leads: ${int(t.leads)}` : ''}`);
   lines.push(`Bookings: ${int(f.demos_booked)} (Lead→Booking ${pct(f.lead_to_booking_pct, 0)} · Cost per booked demo ${money(div(t.spend, f.demos_booked))})`);
   lines.push(`Kept demos: ${int(f.demos_shown)} (Cost per kept demo ${money(div(t.spend, f.demos_shown))})`);
+  if (f.spam_leads || f.spam_appointments) lines.push(`Fake submissions excluded: ${int(f.spam_leads)} leads, ${int(f.spam_appointments)} demos (Meta still counts these)`);
   lines.push(`Sales calls: ${int(f.sales_calls_booked)} booked / ${int(f.sales_calls_shown)} shown`);
   lines.push(`Closes: ${int(f.closes)} (CAC ${money(div(t.spend, f.closes))})`);
   lines.push(`Cash collected: ${money0(f.cash_collected)} (ROAS ${x(div(f.cash_collected, t.spend))})`);

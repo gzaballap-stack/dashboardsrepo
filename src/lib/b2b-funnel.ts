@@ -16,6 +16,8 @@ export type FunnelStats = {
   sales_calls_shown: number;
   closes: number;
   cash_collected: number;
+  spam_leads: number;              // fake submissions, excluded from everything above
+  spam_appointments: number;
   dials: number;
   pickups: number;
   speed_to_lead_min: number | null;
@@ -51,7 +53,7 @@ export async function getFunnelStats(service: Service, since: string, until: str
     service.from('b2b_events')
       .select('event_type, revenue, ghl_contact_id, ad_id')
       .gte('occurred_at', from).lte('occurred_at', to)
-      .in('event_type', ['lead', 'intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close']),
+      .in('event_type', ['lead', 'intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close', 'spam_lead', 'spam_appointment']),
     tomsiId
       ? service.from('events').select('is_pickup, speed_to_lead_seconds')
           .eq('client_id', tomsiId).eq('event_type', 'dial')
@@ -88,6 +90,8 @@ export async function getFunnelStats(service: Service, since: string, until: str
     sales_calls_shown: count('sales_call_shown'),
     closes,
     cash_collected: cash,
+    spam_leads: count('spam_lead'),
+    spam_appointments: count('spam_appointment'),
     dials: dials.length,
     pickups,
     speed_to_lead_min: speeds.length ? speeds.reduce((a, b) => a + b, 0) / speeds.length / 60 : null,

@@ -56,6 +56,8 @@ type Metrics = {
   cost_per_close: number;
   close_rate: number;
   roi: number;
+  spam_leads?: number;
+  spam_appointments?: number;
 };
 
 type Cohort = { booked: number; show_rate: number; close_rate: number };
@@ -1212,6 +1214,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     <KpiCard label="ROAS" value={metrics.ad_spend > 0 && cash > 0 ? `${(cash / metrics.ad_spend).toFixed(2)}x` : "—"} accent />
                     {/* ROI needs revenue generated — arrives with the payment tracker. */}
                     <KpiCard label="ROI" value={metrics.ad_spend > 0 && cash > 0 ? `${(metrics.roi * 100).toFixed(0)}%` : "—"} />
+                    <KpiCard label="Fake Leads" value={fmtInt(metrics.spam_leads ?? 0)} />
+                    <KpiCard label="Fake Demos" value={fmtInt(metrics.spam_appointments ?? 0)} />
                   </div>
                 </section>
 
