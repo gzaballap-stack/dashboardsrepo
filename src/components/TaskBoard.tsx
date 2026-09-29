@@ -221,6 +221,7 @@ export default function TaskBoard() {
   const [monthTab, setMonthTab] = useState<ListTab>("daily");
   const [editingListId, setEditingListId] = useState<string | null>(null);
   const [pickLetterId, setPickLetterId] = useState<string | null>(null);
+  const [showProjectBoard, setShowProjectBoard] = useState(false);
   const [dragFromList, setDragFromList] = useState(false);
   const addRef = useRef<HTMLInputElement>(null);
 
@@ -862,6 +863,10 @@ export default function TaskBoard() {
         if (target) dropBefore(d.id, target);
       } else if (zone.startsWith("date:")) {
         dropOnDate(d.id, zone.slice(5));
+      } else if (zone.startsWith("proj:")) {
+        const bucket = zone.slice(5) as Bucket;
+        const t = tasks.find(x => x.id === d.id);
+        if (t && t.bucket !== bucket) patch(d.id, { bucket });
       }
     }
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") stop(); };
@@ -1135,6 +1140,18 @@ export default function TaskBoard() {
           </span>
         </div>
         )}
+
+      {showProjectBoard && (
+        <ProjectBoard
+          projects={backlog}
+          onToggle={t => patch(t.id, { done: true, scope: "day", task_date: iso(new Date()) })}
+          onLetter={(t, b) => patch(t.id, { bucket: b })}
+          onDragStart={(e, id) => startDrag(e, id, true)}
+          dragId={dragId}
+          dropZone={dropZone}
+          onClose={() => setShowProjectBoard(false)}
+        />
+      )}
 
       {showNN && (
         <NonNegotiables
@@ -1551,6 +1568,22 @@ export default function TaskBoard() {
                   </button>
                 ))}
               </div>
+              {listTab === "long" && (
+                <button
+                  onClick={() => setShowProjectBoard(true)}
+                  title="See the projects laid out A to E"
+                  style={{
+                    marginTop: 8, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    padding: "6px 10px", borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 700,
+                    background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
+                  }}
+                >
+                  <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h4v12H4zM10 6h4v12h-4zM16 6h4v12h-4z" />
+                  </svg>
+                  Board view
+                </button>
+              )}
             </div>
 
             <div style={{ padding: "12px 14px", borderBottom: BORDER, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2796,6 +2829,128 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Big Projects, laid out A to E like the daily board ── */
+
+function ProjectBoard({ projects, onToggle, onLetter, onDragStart, dragId, dropZone, onClose }: {
+  projects: Task[];
+  onToggle: (t: Task) => void;
+  onLetter: (t: Task, b: Bucket) => void;
+  onDragStart: (e: React.PointerEvent, id: string) => void;
+  dragId: string | null;
+  dropZone: string | null;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, zIndex: 65, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: "#ffffff", borderRadius: 14, width: "100%", maxWidth: 1040, maxHeight: "86vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 60px rgba(0,0,0,0.28)" }}
+      >
+        <div style={{ padding: "16px 20px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>Big Projects</p>
+            <p style={{ fontSize: 11, color: "#949494" }}>
+              {projects.length} on the go. Drag one between letters to re-rank it — this is the list, not a day.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#949494", cursor: "pointer", background: "rgba(0,0,0,0.045)" }}
+          >
+            <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10, minWidth: 900, alignItems: "start" }}>
+            {BUCKETS.map(b => {
+              const mine = projects.filter(t => t.bucket === b.id).sort((x, y) => x.position - y.position);
+              const zone = `proj:${b.id}`;
+              const over = dropZone === zone;
+              return (
+                <div
+                  key={b.id}
+                  data-drop={zone}
+                  style={{
+                    background: PANEL_BG, borderRadius: 11, display: "flex", flexDirection: "column", minHeight: 220,
+                    border: `1px ${over ? "dashed" : "solid"} ${over ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.07)"}`,
+                  }}
+                >
+                  <div style={{ padding: "10px 10px 8px", borderBottom: BORDER }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+                      <span style={{
+                        width: 20, height: 20, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+                        background: hexA(b.color, 0.14), color: b.color, fontSize: 11.5, fontWeight: 900, flexShrink: 0,
+                      }}>{b.letter}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#111111", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#949494" }}>{mine.length}</span>
+                    </div>
+                    <p style={{ fontSize: 9.5, color: "#949494", lineHeight: 1.45 }}>{b.blurb}</p>
+                  </div>
+
+                  <div style={{ padding: 7, flex: 1 }}>
+                    {mine.length === 0 && (
+                      <p style={{ fontSize: 10, color: "#c2c2c2", textAlign: "center", padding: "16px 4px" }}>Drop here</p>
+                    )}
+                    {mine.map(t => (
+                      <div
+                        key={t.id}
+                        onPointerDown={e => onDragStart(e, t.id)}
+                        style={{
+                          display: "flex", alignItems: "flex-start", gap: 7, padding: "7px 8px", marginBottom: 5,
+                          background: "#ffffff", borderRadius: 7, cursor: "grab", touchAction: "none",
+                          opacity: dragId === t.id ? 0.4 : 1,
+                          borderTop: "1px solid rgba(0,0,0,0.09)", borderRight: "1px solid rgba(0,0,0,0.09)",
+                          borderBottom: "1px solid rgba(0,0,0,0.09)", borderLeft: `2px solid ${hexA(b.color, 0.75)}`,
+                        }}
+                      >
+                        <button
+                          onClick={() => onToggle(t)}
+                          title="Mark done"
+                          style={{
+                            flexShrink: 0, width: 14, height: 14, marginTop: 1, borderRadius: 4, cursor: "pointer",
+                            border: "1.5px solid rgba(0,0,0,0.22)", background: "transparent",
+                          }}
+                        />
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#111111", wordBreak: "break-word" }}>{t.title}</span>
+                        <span style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                          {BUCKETS.filter(x => x.id !== b.id).map(x => (
+                            <button
+                              key={x.id}
+                              onClick={() => onLetter(t, x.id)}
+                              title={`Move to ${x.letter} — ${x.name}`}
+                              style={{ width: 13, height: 13, borderRadius: 3, fontSize: 8, fontWeight: 800, color: "#c2c2c2", cursor: "pointer" }}
+                              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
+                              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#c2c2c2"}
+                            >
+                              {x.letter}
+                            </button>
+                          ))}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
