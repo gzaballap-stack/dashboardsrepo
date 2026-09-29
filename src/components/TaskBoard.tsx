@@ -1618,7 +1618,8 @@ export default function TaskBoard() {
                     onClick={() => setShowProjectBoard(true)}
                     title="See the projects laid out A to E"
                     style={{
-                      display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 7, cursor: "pointer",
+                      flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                      padding: "7px 11px", borderRadius: 7, cursor: "pointer",
                       fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
                       background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
                     }}
@@ -2895,19 +2896,20 @@ function ProjectBoard({ projects, onToggle, onLetter, onAdd, onDragStart, dragId
   dropZone: string | null;
   onClose: () => void;
 }) {
-  const [addingIn, setAddingIn] = useState<Bucket | null>(null);
   const [draft, setDraft] = useState("");
+  const [addTo, setAddTo] = useState<Bucket>("A");
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { if (addingIn) setAddingIn(null); else onClose(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, addingIn]);
+  }, [onClose]);
 
-  const commit = (bucket: Bucket) => {
+  const commit = () => {
     const title = draft.trim();
+    if (!title) return;
     setDraft("");
-    if (title) onAdd(title, bucket);
+    onAdd(title, addTo);
   };
 
   return (
@@ -2933,6 +2935,37 @@ function ProjectBoard({ projects, onToggle, onLetter, onAdd, onDragStart, dragId
             <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
+          </button>
+        </div>
+
+        <div style={{ padding: "12px 16px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <input
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") commit(); }}
+            placeholder="Add a project…"
+            style={{ ...fieldStyle, flex: 1, minWidth: 220, fontSize: 12.5, padding: "8px 11px" }}
+          />
+          <div style={{ display: "flex", gap: 3 }}>
+            {BUCKETS.map(b => (
+              <button
+                key={b.id}
+                onClick={() => setAddTo(b.id)}
+                title={`${b.name} — ${b.blurb}`}
+                style={{
+                  width: 28, height: 32, borderRadius: 7, fontSize: 12, fontWeight: 800, cursor: "pointer",
+                  background: addTo === b.id ? hexA(b.color, 0.16) : "rgba(0,0,0,0.041)",
+                  border: `1px solid ${addTo === b.id ? hexA(b.color, 0.4) : "rgba(0,0,0,0.081)"}`,
+                  color: addTo === b.id ? b.color : "#767676",
+                }}
+              >{b.letter}</button>
+            ))}
+          </div>
+          <button
+            onClick={commit}
+            style={{ background: "#000000", color: "#fff", fontSize: 12.5, fontWeight: 700, padding: "8px 16px", borderRadius: 8, cursor: "pointer" }}
+          >
+            Add
           </button>
         </div>
 
@@ -2964,37 +2997,9 @@ function ProjectBoard({ projects, onToggle, onLetter, onAdd, onDragStart, dragId
                   </div>
 
                   <div style={{ padding: 7, flex: 1 }}>
-                    {mine.length === 0 && addingIn !== b.id && (
-                      <p style={{ fontSize: 10, color: "#c2c2c2", textAlign: "center", padding: "10px 4px" }}>Drop here</p>
+                    {mine.length === 0 && (
+                      <p style={{ fontSize: 10, color: "#c2c2c2", textAlign: "center", padding: "16px 4px" }}>Drop here</p>
                     )}
-                    {addingIn === b.id ? (
-                      <input
-                        autoFocus
-                        value={draft}
-                        onChange={e => setDraft(e.target.value)}
-                        onBlur={() => { commit(b.id); setAddingIn(null); }}
-                        onKeyDown={e => {
-                          if (e.key === "Enter") { commit(b.id); (e.target as HTMLInputElement).focus(); }
-                          if (e.key === "Escape") { setDraft(""); setAddingIn(null); }
-                        }}
-                        placeholder={`New ${b.letter} project…`}
-                        style={{ ...fieldStyle, fontSize: 11.5, padding: "6px 8px", marginBottom: 5 }}
-                      />
-                    ) : (
-                      <button
-                        onClick={() => { setDraft(""); setAddingIn(b.id); }}
-                        style={{
-                          width: "100%", textAlign: "left", padding: "6px 8px", marginBottom: 5, borderRadius: 7,
-                          fontSize: 11.5, fontWeight: 600, color: "#a8a8a8", cursor: "pointer",
-                          border: "1px dashed rgba(0,0,0,0.14)", background: "transparent",
-                        }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#a8a8a8"}
-                      >
-                        + Add
-                      </button>
-                    )}
-
                     {mine.map(t => (
                       <div
                         key={t.id}
