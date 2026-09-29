@@ -313,5 +313,41 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: false, contacts_checked: contacts.length, contacts_with_attribution: attrByContact.size, updated, failed });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution` }, { status: 400 });
+  // ---- op 7: tag who booked each Sep demo (owner-confirmed; predates the booked_by field) ----
+  // 'team' = we booked it by hand, 'self' = the lead booked through the calendar.
+  // Drives Hand-Booked Appointments and Lead Appt Booking Rate. Idempotent.
+  if (op === 'set_booked_by') {
+    const byExternal: { external_id: string; booked_by: 'team' | 'self'; who: string }[] = [
+      { external_id: 'recon:alexi-booked',   booked_by: 'team', who: 'Alexi Moncada' },
+      { external_id: 'recon:zahra-booked',   booked_by: 'team', who: 'Zahra Cleaning Services' },
+      { external_id: 'y1JUtyPEFFRYSaMtdzih', booked_by: 'team', who: 'Thomas Cairo' },
+      { external_id: 'pNM8k9xm7OtshlbEyIoe', booked_by: 'team', who: 'Robin Stanley' },
+      { external_id: '8jSiVJs9fFIYCPbxZzzx', booked_by: 'self', who: 'Derick garner' },
+      { external_id: 'ESdzczC3ss99FjfMzcQ8', booked_by: 'team', who: 'Cathleen Miller' },
+      { external_id: 'wxJQg5LX0CdlstoEEORQ', booked_by: 'team', who: 'Monica' },
+      { external_id: 'u1E5uJvSmzWcCJicGrsX', booked_by: 'self', who: 'Bryan Moore' },
+    ];
+    // Michael Fischer's booking carries no appointment id — match on his contact.
+    const michael = { ghl_contact_id: 'TfZUzBF0WT7RT1L236wP', booked_by: 'team' as const, who: 'Michael Fischer' };
+
+    const plan: { who: string; booked_by: string }[] = [];
+    for (const r of byExternal) {
+      const { data } = await service.from('b2b_events').select('id, booked_by').eq('external_id', r.external_id).eq('event_type', 'sales_call_booked');
+      for (const row of data ?? []) if (row.booked_by !== r.booked_by) plan.push({ who: r.who, booked_by: r.booked_by });
+    }
+    const { data: m } = await service.from('b2b_events').select('id, booked_by').eq('ghl_contact_id', michael.ghl_contact_id).eq('event_type', 'sales_call_booked');
+    for (const row of m ?? []) if (row.booked_by !== michael.booked_by) plan.push({ who: michael.who, booked_by: michael.booked_by });
+
+    if (dryRun) return NextResponse.json({ op, dry_run: true, would_tag: plan.length, plan });
+    let tagged = 0;
+    for (const r of byExternal) {
+      const { data } = await service.from('b2b_events').update({ booked_by: r.booked_by }).eq('external_id', r.external_id).eq('event_type', 'sales_call_booked').select('id');
+      tagged += data?.length ?? 0;
+    }
+    const { data: mm } = await service.from('b2b_events').update({ booked_by: michael.booked_by }).eq('ghl_contact_id', michael.ghl_contact_id).eq('event_type', 'sales_call_booked').select('id');
+    tagged += mm?.length ?? 0;
+    return NextResponse.json({ op, dry_run: false, tagged });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by` }, { status: 400 });
 }
