@@ -1171,6 +1171,9 @@ export default function TaskBoard() {
           projects={backlog}
           onToggle={t => patch(t.id, { done: true, scope: "day", task_date: iso(new Date()) })}
           onLetter={(t, b) => patch(t.id, { bucket: b })}
+          onAdd={(title, bucket) => create({
+            title, bucket, priority: 1, position: nextPos(backlog), scope: "backlog", task_date: null,
+          })}
           onDragStart={(e, id) => startDrag(e, id, true)}
           dragId={dragId}
           dropZone={dropZone}
@@ -1593,22 +1596,6 @@ export default function TaskBoard() {
                   </button>
                 ))}
               </div>
-              {listTab === "long" && (
-                <button
-                  onClick={() => setShowProjectBoard(true)}
-                  title="See the projects laid out A to E"
-                  style={{
-                    marginTop: 8, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    padding: "6px 10px", borderRadius: 7, cursor: "pointer", fontSize: 11, fontWeight: 700,
-                    background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
-                  }}
-                >
-                  <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h4v12H4zM10 6h4v12h-4zM16 6h4v12h-4z" />
-                  </svg>
-                  Board view
-                </button>
-              )}
             </div>
 
             <div style={{ padding: "12px 14px", borderBottom: BORDER, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1619,12 +1606,30 @@ export default function TaskBoard() {
                 placeholder={listTab === "daily" ? "A small task to get to…" : "A big project you\u2019re working on…"}
                 style={{ ...fieldStyle, fontSize: 12.5, padding: "8px 11px" }}
               />
-              <button
-                onClick={addToList}
-                style={{ alignSelf: "flex-start", background: "#000000", color: "#fff", fontSize: 12, fontWeight: 700, padding: "7px 15px", borderRadius: 7, cursor: "pointer" }}
-              >
-                Add
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button
+                  onClick={addToList}
+                  style={{ background: "#000000", color: "#fff", fontSize: 12, fontWeight: 700, padding: "7px 15px", borderRadius: 7, cursor: "pointer" }}
+                >
+                  Add
+                </button>
+                {listTab === "long" && (
+                  <button
+                    onClick={() => setShowProjectBoard(true)}
+                    title="See the projects laid out A to E"
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5, padding: "7px 11px", borderRadius: 7, cursor: "pointer",
+                      fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
+                      background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
+                    }}
+                  >
+                    <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h4v12H4zM10 6h4v12h-4zM16 6h4v12h-4z" />
+                    </svg>
+                    Board view
+                  </button>
+                )}
+              </div>
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
@@ -2878,20 +2883,30 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
 
 /* ── Big Projects, laid out A to E like the daily board ── */
 
-function ProjectBoard({ projects, onToggle, onLetter, onDragStart, dragId, dropZone, onClose }: {
+function ProjectBoard({ projects, onToggle, onLetter, onAdd, onDragStart, dragId, dropZone, onClose }: {
   projects: Task[];
   onToggle: (t: Task) => void;
   onLetter: (t: Task, b: Bucket) => void;
+  onAdd: (title: string, bucket: Bucket) => void;
   onDragStart: (e: React.PointerEvent, id: string) => void;
   dragId: string | null;
   dropZone: string | null;
   onClose: () => void;
 }) {
+  const [addingIn, setAddingIn] = useState<Bucket | null>(null);
+  const [draft, setDraft] = useState("");
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { if (addingIn) setAddingIn(null); else onClose(); } };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, addingIn]);
+
+  const commit = (bucket: Bucket) => {
+    const title = draft.trim();
+    setDraft("");
+    if (title) onAdd(title, bucket);
+  };
 
   return (
     <div
@@ -2906,7 +2921,7 @@ function ProjectBoard({ projects, onToggle, onLetter, onDragStart, dragId, dropZ
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>Big Projects</p>
             <p style={{ fontSize: 11, color: "#949494" }}>
-              {projects.length} on the go. Drag one between letters to re-rank it — this is the list, not a day.
+              {projects.length} on the go. Drag one between letters to re-rank it, or add a new one to any letter.
             </p>
           </div>
           <button
@@ -2947,9 +2962,37 @@ function ProjectBoard({ projects, onToggle, onLetter, onDragStart, dragId, dropZ
                   </div>
 
                   <div style={{ padding: 7, flex: 1 }}>
-                    {mine.length === 0 && (
-                      <p style={{ fontSize: 10, color: "#c2c2c2", textAlign: "center", padding: "16px 4px" }}>Drop here</p>
+                    {mine.length === 0 && addingIn !== b.id && (
+                      <p style={{ fontSize: 10, color: "#c2c2c2", textAlign: "center", padding: "10px 4px" }}>Drop here</p>
                     )}
+                    {addingIn === b.id ? (
+                      <input
+                        autoFocus
+                        value={draft}
+                        onChange={e => setDraft(e.target.value)}
+                        onBlur={() => { commit(b.id); setAddingIn(null); }}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") { commit(b.id); (e.target as HTMLInputElement).focus(); }
+                          if (e.key === "Escape") { setDraft(""); setAddingIn(null); }
+                        }}
+                        placeholder={`New ${b.letter} project…`}
+                        style={{ ...fieldStyle, fontSize: 11.5, padding: "6px 8px", marginBottom: 5 }}
+                      />
+                    ) : (
+                      <button
+                        onClick={() => { setDraft(""); setAddingIn(b.id); }}
+                        style={{
+                          width: "100%", textAlign: "left", padding: "6px 8px", marginBottom: 5, borderRadius: 7,
+                          fontSize: 11.5, fontWeight: 600, color: "#a8a8a8", cursor: "pointer",
+                          border: "1px dashed rgba(0,0,0,0.14)", background: "transparent",
+                        }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#a8a8a8"}
+                      >
+                        + Add
+                      </button>
+                    )}
+
                     {mine.map(t => (
                       <div
                         key={t.id}
