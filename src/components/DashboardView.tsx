@@ -56,6 +56,10 @@ type Metrics = {
   cost_per_close: number;
   close_rate: number;
   roi: number;
+  total_booked_appointments?: number;
+  total_appt_booking_rate?: number;
+  total_appts_to_take_place?: number;
+  total_cp_appt?: number;
   spam_leads?: number;
   spam_appointments?: number;
 };
@@ -73,7 +77,7 @@ type B2bKpis = {
     vsl_depth: { d25: Cohort; d50: Cohort; d75: Cohort; d100: Cohort }; };
 };
 
-type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "all_time" | "custom";
+type Preset = "this_month" | "last_month" | "last_30" | "last_7" | "week_before" | "all_time" | "custom";
 
 type View =
   | "dashboard"
@@ -134,6 +138,7 @@ const PRESET_LABELS: Record<Preset, string> = {
   last_month: "Last Month",
   last_30: "Last 30 Days",
   last_7: "Last 7 Days",
+  week_before: "Week Before",
   all_time: "All Time",
   custom: "Custom Range",
 };
@@ -202,6 +207,10 @@ function getDateRange(p: Preset): { start: string; end: string } {
   };
   if (p === "last_30") return { start: new Date(now.getTime() - 30 * 86400000).toISOString().split("T")[0], end: today };
   if (p === "last_7")  return { start: new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0], end: today };
+  if (p === "week_before") return {
+    start: new Date(now.getTime() - 14 * 86400000).toISOString().split("T")[0],
+    end:   new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0],
+  };
   return { start: "", end: "" };
 }
 
@@ -1020,7 +1029,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
               {showPresetMenu && (
                 <div className="absolute top-full right-0 mt-1.5 rounded-2xl overflow-hidden z-20 w-48"
                   style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18)" }}>
-                  {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
+                  {(Object.keys(PRESET_LABELS) as Preset[]).filter(p => p !== "week_before").map(p => (
                     <button key={p} onClick={() => { setTomsiPreset(p); setShowPresetMenu(false); if (p === "custom") setShowRangePicker(true); }}
                       className="block w-full text-left px-4 py-2.5 text-sm transition-colors"
                       style={tomsiPreset === p
@@ -1075,7 +1084,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                   <div className="absolute top-full right-0 mt-1.5 rounded-2xl overflow-hidden z-20 w-48"
                     style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.08)", boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18)" }}>
                     {(Object.keys(PRESET_LABELS) as Preset[]).map(p => (
-                      <button key={p} onClick={() => { setPreset(p); setShowPresetMenu(false); if (p === "custom") setShowRangePicker(true); }}
+                      <button key={p} onClick={() => { setPreset(p); setShowPresetMenu(false); }}
                         className="block w-full text-left px-4 py-2.5 text-sm transition-colors"
                         style={preset === p
                           ? { background: "rgba(0,0,0,0.09)", color: "#000000", fontWeight: 600 }
@@ -1091,16 +1100,15 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
               </div>
 
               {preset === "custom" && (
-                <div className="relative">
-                  <button onClick={() => setShowRangePicker(true)} className="px-3 py-2 rounded-lg text-sm" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
-                    {fmtRange(customStart, customEnd)}<span className="ml-2 text-xs" style={{ color: "#949494" }}>Change</span>
-                  </button>
-                  {showRangePicker && (
-                    <DateRangePicker start={customStart} end={customEnd}
-                      onChange={(s, e) => { setCustomStart(s); setCustomEnd(e); }}
-                      onClose={() => setShowRangePicker(false)} />
-                  )}
-                </div>
+                <>
+                  <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)}
+                    className="px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
+                  <span className="text-sm" style={{ color: "#949494" }}>to</span>
+                  <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)}
+                    className="px-3 py-2 rounded-lg text-sm outline-none"
+                    style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }} />
+                </>
               )}
             </>
           )}
@@ -1199,14 +1207,14 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     <KpiCard label="Leads" value={fmtInt(metrics.new_leads)} />
                     <KpiCard label="Booking Leads" value={fmtInt(bookingLeads)} />
                     <KpiCard label="Non-Booking Leads" value={fmtInt(nonBookingLeads)} />
-                    <KpiCard label="Demos Booked" value={fmtInt(metrics.booked_appointments)} />
-                    <KpiCard label="Demo Booking Rate" value={fmtPct(metrics.appt_booking_rate)} accent />
-                    <KpiCard label="Appointments To Take Place" value={fmtInt(metrics.appts_to_take_place)} />
+                    <KpiCard label="Demos Booked" value={fmtInt(metrics.total_booked_appointments ?? metrics.booked_appointments)} />
+                    <KpiCard label="Demo Booking Rate" value={fmtPct(metrics.total_appt_booking_rate ?? metrics.appt_booking_rate)} accent />
+                    <KpiCard label="Appointments To Take Place" value={fmtInt(metrics.total_appts_to_take_place ?? metrics.appts_to_take_place)} />
                     <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
                     <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
                     <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
                     <KpiCard label="CPL" value={metrics.new_leads > 0 ? fmt$(metrics.cpl) : "—"} />
-                    <KpiCard label="CP Demo Booked" value={metrics.booked_appointments > 0 ? fmt$(metrics.cp_appt) : "—"} />
+                    <KpiCard label="CP Demo Booked" value={(metrics.total_booked_appointments ?? 0) > 0 ? fmt$(metrics.total_cp_appt ?? 0) : "—"} />
                     <KpiCard label="CP Demo Shown" value={metrics.shows > 0 ? fmt$(metrics.cps) : "—"} />
                     <KpiCard label="CAC" value={metrics.closes > 0 ? fmt$(metrics.cost_per_close) : "—"} />
                     <KpiCard label="Close Rate" value={metrics.shows > 0 ? fmtPct(metrics.close_rate) : "—"} accent />
