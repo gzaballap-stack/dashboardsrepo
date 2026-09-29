@@ -88,26 +88,33 @@ type Task = {
 };
 
 const BUCKETS: { id: Bucket; letter: string; name: string; blurb: string; color: string }[] = [
-  { id: "A", letter: "A", name: "Must Do",    blurb: "Serious consequences if left undone. The frog.", color: "#000000" },
-  { id: "B", letter: "B", name: "Should Do",  blurb: "Mild consequences if delayed. Not critical.",     color: "#333333" },
-  { id: "C", letter: "C", name: "Nice to Do", blurb: "No consequences. Casual or social.",              color: "#5a5a5a" },
-  { id: "D", letter: "D", name: "Delegate",   blurb: "Important, but someone else can do it.",          color: "#8c8c8c" },
-  { id: "E", letter: "E", name: "Eliminate",  blurb: "Unnecessary and wasteful. Cut it.",               color: "#b0b0b0" },
+  { id: "A", letter: "A", name: "Must Do",    blurb: "Serious consequences if left undone. The frog.", color: "#d92d20" },
+  { id: "B", letter: "B", name: "Should Do",  blurb: "Mild consequences if delayed. Not critical.",     color: "#1570ef" },
+  { id: "C", letter: "C", name: "Nice to Do", blurb: "No consequences. Casual or social.",              color: "#12b76a" },
+  { id: "D", letter: "D", name: "Delegate",   blurb: "Important, but someone else can do it.",          color: "#7a5af8" },
+  { id: "E", letter: "E", name: "Eliminate",  blurb: "Unnecessary and wasteful. Cut it.",               color: "#8b93a1" },
 ];
 
-// A carries three levels (A1-A3). Weight, not hue, signals urgency: darkest
-// first.
-const LEVEL_SHADES = ["#111111", "#5a5a5a", "#8c8c8c"];
-const LEVEL_HINTS  = ["do first", "next", "last"];
+// A carries three levels (A1-A3), shown as the letter's own colour fading out.
+const LEVEL_FADE  = [0, 0.38, 0.62];
+const LEVEL_HINTS = ["do first", "next", "last"];
 
 // Only A is ranked — everything below the must-do bucket is a flat list.
 const HAS_LEVELS = new Set<Bucket>(["A"]);
 
+/** Mixes a colour towards white. */
+function lighten(hex: string, amount: number) {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (c: number) => Math.round(c + (255 - c) * amount);
+  return `#${[(n >> 16) & 255, (n >> 8) & 255, n & 255].map(c => mix(c).toString(16).padStart(2, "0")).join("")}`;
+}
+
 function levelsFor(bucket: Bucket) {
-  return LEVEL_SHADES.map((color, i) => ({
+  const base = BUCKETS.find(b => b.id === bucket)?.color ?? "#111111";
+  return LEVEL_FADE.map((fade, i) => ({
     priority: i + 1,
     label: `${bucket}${i + 1}`,
-    color,
+    color: lighten(base, fade),
     hint: LEVEL_HINTS[i],
   }));
 }
@@ -749,6 +756,31 @@ export default function TaskBoard() {
     else patch(t.id, { from_list: false, origin: null });
   }
 
+  /**
+   * Closes the day's work on something that is not finished: today's copy is
+   * ticked, and a fresh copy appears on the next day to carry on with. Used for
+   * work that is blocked or simply done for now.
+   */
+  async function carryOn(task: Task) {
+    const from = task.task_date ?? anchor;
+    const next = iso(addDays(parseISO(from), task.scope === "week" ? 7 : 1));
+    patch(task.id, { done: true });
+    await create({
+      title: task.title,
+      notes: task.notes,
+      bucket: task.bucket,
+      priority: task.priority,
+      position: task.position,
+      task_date: next,
+      scope: task.scope,
+      due_date: task.due_date,
+      delegate_to: task.delegate_to,
+      from_list: task.from_list,
+      origin: task.origin,
+    });
+    setExpandedId(null);
+  }
+
   // Put a planned task back on the long-term list.
   function unschedule(task: Task) {
     patch(task.id, { scope: "backlog", task_date: null, from_list: false });
@@ -901,7 +933,7 @@ export default function TaskBoard() {
 
   const ctx: BoardCtx = {
     expandedId, setExpandedId, frog, dragId, dropZone, startDrag,
-    patch, clearFromBoard, unschedule, scope, phone, listFor,
+    patch, clearFromBoard, unschedule, carryOn, scope, phone, listFor,
     ghostsFor, goToDate,
     templateOf, callLists, today: iso(new Date()),
   };
@@ -1753,6 +1785,7 @@ type BoardCtx = {
   patch: (id: string, changes: Partial<Task>) => void;
   clearFromBoard: (t: Task) => void;
   unschedule: (t: Task) => void;
+  carryOn: (t: Task) => void;
   scope: Scope;
   phone: boolean;
   listFor: (b: Bucket, p?: number) => Task[];
@@ -1937,6 +1970,23 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
             />
           </Field>
           )}
+          {!isNN(task) && !task.done && (
+            <button
+              onClick={() => ctx.carryOn(task)}
+              title="Counts as done today, and comes back tomorrow to carry on with"
+              style={{
+                alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6,
+                fontSize: 10.5, fontWeight: 700, padding: "6px 10px", borderRadius: 7, cursor: "pointer",
+                background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
+              }}
+            >
+              <svg style={{ width: 11, height: 11 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Done for {ctx.scope === "week" ? "this week" : "today"} · continue {ctx.scope === "week" ? "next week" : "tomorrow"}
+            </button>
+          )}
+
           <Field label="Deadline (optional)">
             <input
               type="date"
