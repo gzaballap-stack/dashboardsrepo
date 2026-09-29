@@ -321,7 +321,7 @@ export async function POST(req: Request) {
       { external_id: 'recon:alexi-booked',   booked_by: 'team', who: 'Alexi Moncada' },
       { external_id: 'recon:zahra-booked',   booked_by: 'team', who: 'Zahra Cleaning Services' },
       { external_id: 'y1JUtyPEFFRYSaMtdzih', booked_by: 'team', who: 'Thomas Cairo' },
-      { external_id: 'pNM8k9xm7OtshlbEyIoe', booked_by: 'team', who: 'Robin Stanley' },
+      { external_id: 'pNM8k9xm7OtshlbEyIoe', booked_by: 'self', who: 'Robin Stanley' },
       { external_id: '8jSiVJs9fFIYCPbxZzzx', booked_by: 'self', who: 'Derick garner' },
       { external_id: 'ESdzczC3ss99FjfMzcQ8', booked_by: 'team', who: 'Cathleen Miller' },
       { external_id: 'wxJQg5LX0CdlstoEEORQ', booked_by: 'team', who: 'Monica' },
