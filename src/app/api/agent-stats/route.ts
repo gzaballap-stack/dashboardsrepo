@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getInternalClientIds } from '@/lib/db-helpers';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 
 export async function GET(req: Request) {
@@ -15,6 +16,12 @@ export async function GET(req: Request) {
     .select('agent_name, event_type, is_pickup, is_conversation, speed_to_lead_seconds, occurred_at');
 
   if (clientId)  baseQuery = baseQuery.eq('client_id', clientId);
+  else {
+    // "All clients" never includes the internal Tomsi Media row (its B2B funnel is
+    // mirrored here so its own dashboard can reuse these views; it is not a client).
+    const internalIds = await getInternalClientIds(ctx.service);
+    if (internalIds.length) baseQuery = baseQuery.or(`client_id.is.null,client_id.not.in.(${internalIds.join(',')})`);
+  }
   if (startDate) baseQuery = baseQuery.gte('occurred_at', `${startDate}T00:00:00.000Z`);
   if (endDate)   baseQuery = baseQuery.lte('occurred_at', `${endDate}T23:59:59.999Z`);
 

@@ -16,3 +16,11 @@ export async function getLiveClientIds(
 export function liveClientFilter(ids: string[]): string[] {
   return ids.length > 0 ? ids : [NO_MATCH];
 }
+
+/** Internal rows (e.g. Tomsi Media's own B2B funnel) are stored as clients so
+ *  their dashboard can reuse the client views — they are never real clients.
+ *  Every "all clients" aggregate must leave them out. */
+export async function getInternalClientIds(service: ReturnType<typeof import('./supabase').createServiceClient>): Promise<string[]> {
+  const { data } = await service.from('clients').select('id').eq('is_internal', true);
+  return (data ?? []).map(c => c.id as string);
+}

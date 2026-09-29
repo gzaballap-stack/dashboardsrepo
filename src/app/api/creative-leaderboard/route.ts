@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getInternalClientIds } from '@/lib/db-helpers';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL, type AdFunnel, type TouchModel } from '@/lib/ad-funnel';
 
@@ -94,6 +95,12 @@ export async function GET(req: Request) {
     .eq('level', level)
     .not(idCol, 'is', null);
   if (client_id)  q = q.eq('client_id', client_id);
+  else {
+    // "All clients" never includes the internal Tomsi Media row (its B2B funnel is
+    // mirrored here so its own dashboard can reuse these views; it is not a client).
+    const internalIds = await getInternalClientIds(ctx.service);
+    if (internalIds.length) q = q.or(`client_id.is.null,client_id.not.in.(${internalIds.join(',')})`);
+  }
   if (start_date) q = q.gte('report_date', start_date);
   if (end_date)   q = q.lte('report_date', end_date);
 

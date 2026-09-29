@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { calculateMetrics } from '@/lib/metrics';
-import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
+import { getLiveClientIds, liveClientFilter, getInternalClientIds } from '@/lib/db-helpers';
 import { getExcludedSpend } from '@/lib/exclusions';
 
 type EventRow = { event_type: string; is_pickup: boolean | null; is_conversation: boolean | null; speed_to_lead_seconds: number | null; revenue: number | null };
@@ -25,8 +25,15 @@ export async function GET(req: Request) {
   let eventsBase = ctx.service
     .from('events')
     .select('event_type, is_pickup, is_conversation, speed_to_lead_seconds, duration_seconds, revenue');
+  // "All clients" must never include the internal Tomsi Media row: its B2B
+  // funnel is mirrored into these tables so its own dashboard can reuse the
+  // client views, but it is not a client. (Live-only already excludes it.)
+  const internalIds = !client_id && !liveClientIds ? await getInternalClientIds(ctx.service) : [];
+  const notInternal = internalIds.length ? `client_id.is.null,client_id.not.in.(${internalIds.join(',')})` : null;
+
   if (client_id) eventsBase = eventsBase.eq('client_id', client_id);
   else if (liveClientIds) eventsBase = eventsBase.in('client_id', liveClientFilter(liveClientIds));
+  else if (notInternal) eventsBase = eventsBase.or(notInternal);
   if (start_date) eventsBase = eventsBase.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsBase = eventsBase.lte('occurred_at', `${end_date}T23:59:59.999Z`);
 
@@ -46,6 +53,7 @@ export async function GET(req: Request) {
   let spendQuery = ctx.service.from('ad_spend').select('client_id, spend_date, amount');
   if (client_id) spendQuery = spendQuery.eq('client_id', client_id);
   else if (liveClientIds) spendQuery = spendQuery.in('client_id', liveClientFilter(liveClientIds));
+  else if (notInternal) spendQuery = spendQuery.or(notInternal);
   if (start_date) spendQuery = spendQuery.gte('spend_date', start_date);
   if (end_date)   spendQuery = spendQuery.lte('spend_date', end_date);
 

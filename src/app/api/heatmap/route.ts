@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
-import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
+import { getLiveClientIds, liveClientFilter, getInternalClientIds } from '@/lib/db-helpers';
 
 // Returns a 24×7 grid (hour-of-day × day-of-week) for heat map display.
 // type: new_leads | pickup_rate | show_rate
@@ -24,9 +24,15 @@ export async function GET(req: Request) {
     liveClientIds = await getLiveClientIds(ctx.service);
   }
 
+  // "All clients" never includes the internal Tomsi Media row (its B2B funnel is
+  // mirrored here so its own dashboard can reuse these views; it is not a client).
+  const internalIds = !client_id && !liveClientIds ? await getInternalClientIds(ctx.service) : [];
+  const notInternal = internalIds.length ? `client_id.is.null,client_id.not.in.(${internalIds.join(',')})` : null;
+
   function applyClientFilter<T extends object>(q: T): T {
     if (client_id) return (q as any).eq('client_id', client_id);
     if (liveClientIds) return (q as any).in('client_id', liveClientFilter(liveClientIds));
+    if (notInternal) return (q as any).or(notInternal);
     return q;
   }
 
