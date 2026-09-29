@@ -1971,17 +1971,19 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
           {!isNN(task) && !task.done && (
             <button
               onClick={() => ctx.carryOn(task)}
-              title="Counts as done today, and comes back tomorrow to carry on with"
+              title={`Counts as done ${ctx.scope === "week" ? "this week" : "today"}, and comes back ${ctx.scope === "week" ? "next week" : "tomorrow"} to carry on with`}
               style={{
-                alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 6,
-                fontSize: 10.5, fontWeight: 700, padding: "6px 10px", borderRadius: 7, cursor: "pointer",
-                background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
+                alignSelf: "flex-start", display: "flex", alignItems: "center", gap: 5,
+                fontSize: 10, fontWeight: 600, color: "#767676", cursor: "pointer", padding: 0,
               }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
             >
-              <svg style={{ width: 11, height: 11 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-              Done for {ctx.scope === "week" ? "this week" : "today"} · continue {ctx.scope === "week" ? "next week" : "tomorrow"}
+              <span style={{
+                width: 11, height: 11, borderRadius: 3, flexShrink: 0,
+                border: "1.5px solid currentColor",
+              }} />
+              Done for the {ctx.scope === "week" ? "week" : "day"}
             </button>
           )}
 
