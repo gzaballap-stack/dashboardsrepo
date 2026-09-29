@@ -88,33 +88,26 @@ type Task = {
 };
 
 const BUCKETS: { id: Bucket; letter: string; name: string; blurb: string; color: string }[] = [
-  { id: "A", letter: "A", name: "Must Do",    blurb: "Serious consequences if left undone. The frog.", color: "#d92d20" },
-  { id: "B", letter: "B", name: "Should Do",  blurb: "Mild consequences if delayed. Not critical.",     color: "#1570ef" },
-  { id: "C", letter: "C", name: "Nice to Do", blurb: "No consequences. Casual or social.",              color: "#12b76a" },
-  { id: "D", letter: "D", name: "Delegate",   blurb: "Important, but someone else can do it.",          color: "#7a5af8" },
-  { id: "E", letter: "E", name: "Eliminate",  blurb: "Unnecessary and wasteful. Cut it.",               color: "#8b93a1" },
+  { id: "A", letter: "A", name: "Must Do",    blurb: "Serious consequences if left undone. The frog.", color: "#000000" },
+  { id: "B", letter: "B", name: "Should Do",  blurb: "Mild consequences if delayed. Not critical.",     color: "#333333" },
+  { id: "C", letter: "C", name: "Nice to Do", blurb: "No consequences. Casual or social.",              color: "#5a5a5a" },
+  { id: "D", letter: "D", name: "Delegate",   blurb: "Important, but someone else can do it.",          color: "#8c8c8c" },
+  { id: "E", letter: "E", name: "Eliminate",  blurb: "Unnecessary and wasteful. Cut it.",               color: "#b0b0b0" },
 ];
 
-// A carries three levels (A1-A3), shown as the letter's own colour fading out.
-const LEVEL_FADE  = [0, 0.38, 0.62];
-const LEVEL_HINTS = ["do first", "next", "last"];
+// A carries three levels (A1-A3). Weight, not hue, signals urgency: darkest
+// first.
+const LEVEL_SHADES = ["#111111", "#5a5a5a", "#8c8c8c"];
+const LEVEL_HINTS  = ["do first", "next", "last"];
 
 // Only A is ranked — everything below the must-do bucket is a flat list.
 const HAS_LEVELS = new Set<Bucket>(["A"]);
 
-/** Mixes a colour towards white. */
-function lighten(hex: string, amount: number) {
-  const n = parseInt(hex.slice(1), 16);
-  const mix = (c: number) => Math.round(c + (255 - c) * amount);
-  return `#${[(n >> 16) & 255, (n >> 8) & 255, n & 255].map(c => mix(c).toString(16).padStart(2, "0")).join("")}`;
-}
-
 function levelsFor(bucket: Bucket) {
-  const base = BUCKETS.find(b => b.id === bucket)?.color ?? "#111111";
-  return LEVEL_FADE.map((fade, i) => ({
+  return LEVEL_SHADES.map((color, i) => ({
     priority: i + 1,
     label: `${bucket}${i + 1}`,
-    color: lighten(base, fade),
+    color,
     hint: LEVEL_HINTS[i],
   }));
 }
