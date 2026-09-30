@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
-import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
+import { getLiveClientIds, liveClientFilter, getInternalClientIds } from '@/lib/db-helpers';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -22,6 +22,10 @@ export async function GET(req: Request) {
   if (live_only && !client_id) {
     liveClientIds = await getLiveClientIds(ctx.service);
   }
+  // "All clients" never includes the internal Tomsi Media row — its mirrored
+  // B2B funnel belongs to the B2B dashboard only.
+  const internalIds = !client_id && !liveClientIds ? await getInternalClientIds(ctx.service) : [];
+  const notInternal = internalIds.length ? `client_id.is.null,client_id.not.in.(${internalIds.join(',')})` : null;
 
   if (type === 'ad_spend') {
     let q = ctx.service
@@ -32,6 +36,7 @@ export async function GET(req: Request) {
 
     if (client_id) q = q.eq('client_id', client_id);
     else if (liveClientIds) q = q.in('client_id', liveClientFilter(liveClientIds));
+    else if (notInternal) q = q.or(notInternal);
     if (start_date) q = q.gte('spend_date', start_date);
     if (end_date)   q = q.lte('spend_date', end_date);
 
@@ -59,6 +64,7 @@ export async function GET(req: Request) {
 
   if (client_id) q = q.eq('client_id', client_id);
   else if (liveClientIds) q = q.in('client_id', liveClientFilter(liveClientIds));
+  else if (notInternal) q = q.or(notInternal);
   if (start_date) q = q.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   q = q.lte('occurred_at', `${end_date}T23:59:59.999Z`);
 
