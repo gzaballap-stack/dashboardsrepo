@@ -470,5 +470,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: false, deleted_b2b: b2bIds.length, deleted_mirror: mirIds.length });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close` }, { status: 400 });
+  // ---- op 12: nameless $0 closes with no contact are placeholders, not sales ----
+  if (op === 'remove_stray_closes') {
+    const { data } = await service.from('b2b_events').select('id, occurred_at')
+      .eq('event_type', 'close').is('lead_name', null).is('ghl_contact_id', null).is('external_id', null);
+    const ids = (data ?? []).map(r => r.id);
+    // Safety: revenue must be zero.
+    const { data: rev } = ids.length ? await service.from('b2b_events').select('id, revenue').in('id', ids) : { data: [] as { id: string; revenue: number | null }[] };
+    const zero = (rev ?? []).filter(r => Number(r.revenue) === 0).map(r => r.id);
+    if (zero.length > MAX_CHANGES) return NextResponse.json({ error: `Too many rows (${zero.length} > ${MAX_CHANGES}); aborting for safety.` }, { status: 400 });
+    if (dryRun) return NextResponse.json({ op, dry_run: true, would_delete: zero.length, rows: data });
+    if (zero.length) await service.from('b2b_events').delete().in('id', zero);
+    return NextResponse.json({ op, dry_run: false, deleted: zero.length });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close, remove_stray_closes` }, { status: 400 });
 }
