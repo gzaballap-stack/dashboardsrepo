@@ -161,6 +161,16 @@ export async function POST(req: Request) {
       if (dupe && dupe.length) return NextResponse.json({ success: true, deduped: true });
     }
 
+    // A demo shows once. GHL re-fires "shown" (bulk status edits, re-runs), and
+    // the shown event carries no appointment id — so a repeat is recognised by
+    // the contact: it already has a shown demo and no newer booking since.
+    if (payload.event_type === 'sales_call_shown' && payload.ghl_contact_id) {
+      const { data: hist } = await service.from('b2b_events').select('event_type, occurred_at')
+        .eq('ghl_contact_id', payload.ghl_contact_id).in('event_type', ['sales_call_booked', 'sales_call_shown'])
+        .order('occurred_at', { ascending: false }).limit(1);
+      if (hist?.[0]?.event_type === 'sales_call_shown') return NextResponse.json({ success: true, deduped: true });
+    }
+
     const { error } = (payload.external_id || null)
       ? await service.from('b2b_events').upsert(eventData, { onConflict: 'external_id' })
       : await service.from('b2b_events').insert(eventData);
@@ -189,11 +199,31 @@ export async function POST(req: Request) {
           is_pickup: eventData.is_pickup, is_conversation: eventData.is_conversation,
           call_status: eventData.call_status, progress_pct: eventData.progress_pct, revenue, ...attribution, raw: payload,
         };
-        if (mirrored === 'show' && extId) {
-          // A demo that showed is the booked appointment changing state, as on the client side.
-          const { data: flipped } = await service.from('events').update({ event_type: 'show' })
-            .eq('external_id', extId).eq('client_id', tomsiId).select('id');
-          if (!flipped?.length) await service.from('events').insert(row);
+        if (mirrored === 'show') {
+          // A demo that showed is the booked appointment changing state, as on
+          // the client side. Match the appointment id when GHL sends one; the
+          // shown workflow usually doesn't, so fall back to the contact's latest
+          // booking (a no-show corrected to a show flips too). Already a show →
+          // nothing to do, never a second row.
+          let flipped = 0;
+          if (extId) {
+            const { data } = await service.from('events').update({ event_type: 'show' })
+              .eq('external_id', extId).eq('client_id', tomsiId).select('id');
+            flipped = data?.length ?? 0;
+          }
+          if (!flipped && eventData.ghl_contact_id) {
+            const { data: latest } = await service.from('events').select('id, event_type')
+              .eq('client_id', tomsiId).eq('ghl_contact_id', eventData.ghl_contact_id)
+              .in('event_type', ['appointment_booked', 'no_show', 'show'])
+              .order('occurred_at', { ascending: false }).limit(1);
+            const cur = latest?.[0];
+            if (cur?.event_type === 'show') flipped = 1;
+            else if (cur) {
+              const { data } = await service.from('events').update({ event_type: 'show' }).eq('id', cur.id).select('id');
+              flipped = data?.length ?? 0;
+            }
+          }
+          if (!flipped) await service.from('events').insert(row);
         } else if (extId) {
           await service.from('events').upsert(row, { onConflict: 'external_id' });
         } else {

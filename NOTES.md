@@ -876,3 +876,21 @@ ingestion for real clients, and per the V1 rule it needs explicit approval rathe
 than my judgement. It would have to be strictly fire-and-forget so a GHL timeout
 can never block or fail an event insert.
 
+
+## 2026-09-30 — B2B Overview numbers (shows overcounted, CP Demo Shown / CAC, Leads To Call)
+
+- GHL re-fired "Demo Shown" on 29 Sep for four demos already resolved (Michael
+  Fischer, Thomas Cairo, Cathleen Miller, Bryan Moore) and each landed as a new
+  show; the shown workflow sends no appointment id, so the mirror flip by
+  `external_id` never matched (Bruce Sherritt kept a pending booking next to his
+  show). Webhook now: a repeat "shown" for a contact with no newer booking is
+  ignored; the mirror flips the contact's latest booking / no-show to `show`.
+- Cleanup ops added: `dedupe_shows`, `dedupe_mirror_leads` (Cathleen and a
+  "Test" lead were mirrored twice), `mark_test_leads` (leads named "Test" →
+  spam). Run via `scripts/run-cleanup.mjs`, user applies with `--apply`.
+- B2B tiles: CP Demo Shown = spend ÷ shows, CAC = spend ÷ closes (plain, not the
+  chained client formula, which divided by *pending* bookings). Calling Stats
+  "Non-Booking Leads" renamed "Leads To Call" (= leads − self-booked); Overview
+  "Non-Booking Leads" stays leads that never booked.
+- Open: new bookings (Bruce, Pablo) arrive without `booked_by` — the GHL
+  self-booked workflow is missing the field.

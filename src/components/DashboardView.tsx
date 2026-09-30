@@ -1215,8 +1215,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
                     <KpiCard label="CPL" value={metrics.new_leads > 0 ? fmt$(metrics.cpl) : "—"} />
                     <KpiCard label="CP Demo Booked" value={(metrics.total_booked_appointments ?? 0) > 0 ? fmt$(metrics.total_cp_appt ?? 0) : "—"} />
-                    <KpiCard label="CP Demo Shown" value={metrics.shows > 0 ? fmt$(metrics.cps) : "—"} />
-                    <KpiCard label="CAC" value={metrics.closes > 0 ? fmt$(metrics.cost_per_close) : "—"} />
+                    <KpiCard label="CP Demo Shown" value={metrics.shows > 0 ? fmt$(metrics.ad_spend / metrics.shows) : "—"} />
+                    <KpiCard label="CAC" value={metrics.closes > 0 ? fmt$(metrics.ad_spend / metrics.closes) : "—"} />
                     <KpiCard label="Close Rate" value={metrics.shows > 0 ? fmtPct(metrics.close_rate) : "—"} accent />
                     <KpiCard label="Cash Collected" value={cash > 0 ? fmt$(cash) : "—"} accent />
                     <KpiCard label="ROAS" value={metrics.ad_spend > 0 && cash > 0 ? `${(cash / metrics.ad_spend).toFixed(2)}x` : "—"} accent />
@@ -1241,7 +1241,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     <KpiCard label="Conversation Rate" value={fmtPct(metrics.conversation_pct)} />
                     <KpiCard label="Callback Requests" value={fmtInt(metrics.callbacks)} />
                     <KpiCard label="Callback Rate" value={fmtPct(metrics.cb_pct)} />
-                    <KpiCard label="Non-Booking Leads" value={fmtInt(Math.max(0, metrics.new_leads - selfBooked))} />
+                    <KpiCard label="Leads To Call" value={fmtInt(Math.max(0, metrics.new_leads - selfBooked))} />
                     <KpiCard label="Hand-Booked Appointments" value={bookedByKnown ? fmtInt(teamBooked) : "—"} />
                     <KpiCard label="Lead Appt Booking Rate" value={leadBookingRate != null ? fmtPct(leadBookingRate) : "—"} accent />
                   </div>

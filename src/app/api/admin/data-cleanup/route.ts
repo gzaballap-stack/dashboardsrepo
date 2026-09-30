@@ -349,5 +349,99 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: false, tagged });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by` }, { status: 400 });
+  // ---- op 8: a demo shows once — drop repeated "shown" rows ----
+  // GHL re-fired "shown" for demos that were already resolved (show or no-show).
+  // b2b_events: a shown row is a repeat when the contact's previous demo row is
+  // already shown / had no newer booking. Mirror: a show row is a repeat when the
+  // contact already had a show or no-show before it; a show row sitting next to
+  // the still-pending booking it belongs to is folded into that booking (flip).
+  if (op === 'dedupe_shows') {
+    const tomsiId = await getTomsiClientId(service);
+    if (!tomsiId) return NextResponse.json({ error: 'Tomsi Media client not found' }, { status: 500 });
+
+    type R = { id: string; event_type: string; ghl_contact_id: string | null; occurred_at: string; lead_name: string | null };
+    const byContact = (rows: R[]) => {
+      const m = new Map<string, R[]>();
+      for (const r of rows) { if (!r.ghl_contact_id) continue; const a = m.get(r.ghl_contact_id) ?? []; a.push(r); m.set(r.ghl_contact_id, a); }
+      for (const a of m.values()) a.sort((x, y) => x.occurred_at.localeCompare(y.occurred_at));
+      return m;
+    };
+
+    const { data: b2b } = await service.from('b2b_events').select('id, event_type, ghl_contact_id, occurred_at, lead_name')
+      .in('event_type', ['sales_call_booked', 'sales_call_shown']);
+    const b2bDel: { id: string; who: string; at: string }[] = [];
+    for (const rows of byContact((b2b ?? []) as R[]).values()) {
+      let lastShown = false;
+      for (const r of rows) {
+        if (r.event_type === 'sales_call_booked') lastShown = false;
+        else if (lastShown) b2bDel.push({ id: r.id, who: r.lead_name ?? '?', at: r.occurred_at });
+        else lastShown = true;
+      }
+    }
+
+    const { data: mir } = await service.from('events').select('id, event_type, ghl_contact_id, occurred_at, lead_name')
+      .eq('client_id', tomsiId).in('event_type', ['appointment_booked', 'show', 'no_show']);
+    const mirDel: { id: string; who: string; at: string }[] = [];
+    const mirFlip: { id: string; dropId: string; who: string }[] = [];
+    for (const rows of byContact((mir ?? []) as R[]).values()) {
+      let resolved = false; let pending: R | null = null;
+      for (const r of rows) {
+        if (r.event_type === 'appointment_booked') { pending = r; resolved = false; }
+        else if (r.event_type === 'show' && pending) { mirFlip.push({ id: pending.id, dropId: r.id, who: r.lead_name ?? '?' }); pending = null; resolved = true; }
+        else if (resolved) mirDel.push({ id: r.id, who: r.lead_name ?? '?', at: r.occurred_at });
+        else resolved = true;
+      }
+    }
+
+    const total = b2bDel.length + mirDel.length + mirFlip.length * 2;
+    if (total > MAX_CHANGES) return NextResponse.json({ error: `Too many rows (${total} > ${MAX_CHANGES}); aborting for safety.` }, { status: 400 });
+    if (dryRun) return NextResponse.json({ op, dry_run: true, would_delete_b2b: b2bDel, would_delete_mirror: mirDel, would_fold_into_booking: mirFlip.map(f => f.who), total });
+
+    for (const f of mirFlip) {
+      await service.from('events').update({ event_type: 'show' }).eq('id', f.id);
+      await service.from('events').delete().eq('id', f.dropId);
+    }
+    if (mirDel.length) await service.from('events').delete().in('id', mirDel.map(r => r.id));
+    if (b2bDel.length) await service.from('b2b_events').delete().in('id', b2bDel.map(r => r.id));
+    return NextResponse.json({ op, dry_run: false, deleted_b2b: b2bDel.length, deleted_mirror: mirDel.length, folded: mirFlip.length });
+  }
+
+  // ---- op 9: one mirrored lead per contact ----
+  if (op === 'dedupe_mirror_leads') {
+    const tomsiId = await getTomsiClientId(service);
+    if (!tomsiId) return NextResponse.json({ error: 'Tomsi Media client not found' }, { status: 500 });
+    const { data } = await service.from('events').select('id, ghl_contact_id, occurred_at, lead_name')
+      .eq('client_id', tomsiId).eq('event_type', 'lead').order('occurred_at', { ascending: true });
+    const seen = new Set<string>();
+    const del: { id: string; who: string }[] = [];
+    for (const r of data ?? []) {
+      if (!r.ghl_contact_id) continue;
+      if (seen.has(r.ghl_contact_id)) del.push({ id: r.id, who: r.lead_name ?? '?' });
+      else seen.add(r.ghl_contact_id);
+    }
+    if (del.length > MAX_CHANGES) return NextResponse.json({ error: `Too many rows (${del.length} > ${MAX_CHANGES}); aborting for safety.` }, { status: 400 });
+    if (dryRun) return NextResponse.json({ op, dry_run: true, would_delete: del });
+    if (del.length) await service.from('events').delete().in('id', del.map(r => r.id));
+    return NextResponse.json({ op, dry_run: false, deleted: del.length });
+  }
+
+  // ---- op 10: leads literally named "test" are fake submissions ----
+  if (op === 'mark_test_leads') {
+    const tomsiId = await getTomsiClientId(service);
+    const isTest = (n: string | null) => /^test\s*$/i.test(String(n ?? '').trim());
+    const { data: b2b } = await service.from('b2b_events').select('id, lead_name').eq('event_type', 'lead');
+    const b2bIds = (b2b ?? []).filter(r => isTest(r.lead_name)).map(r => r.id);
+    const { data: mir } = tomsiId
+      ? await service.from('events').select('id, lead_name').eq('client_id', tomsiId).eq('event_type', 'lead')
+      : { data: [] as { id: string; lead_name: string | null }[] };
+    const mirIds = (mir ?? []).filter(r => isTest(r.lead_name)).map(r => r.id);
+    const total = b2bIds.length + mirIds.length;
+    if (total > MAX_CHANGES) return NextResponse.json({ error: `Too many rows (${total} > ${MAX_CHANGES}); aborting for safety.` }, { status: 400 });
+    if (dryRun) return NextResponse.json({ op, dry_run: true, would_flag_b2b: b2bIds.length, would_flag_mirror: mirIds.length });
+    if (b2bIds.length) await service.from('b2b_events').update({ event_type: 'spam_lead' }).in('id', b2bIds);
+    if (mirIds.length) await service.from('events').update({ event_type: 'spam_lead' }).in('id', mirIds);
+    return NextResponse.json({ op, dry_run: false, flagged_b2b: b2bIds.length, flagged_mirror: mirIds.length });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads` }, { status: 400 });
 }
