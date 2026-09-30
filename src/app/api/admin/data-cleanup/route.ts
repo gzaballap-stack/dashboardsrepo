@@ -318,17 +318,19 @@ export async function POST(req: Request) {
   // Drives Hand-Booked Appointments and Lead Appt Booking Rate. Idempotent.
   if (op === 'set_booked_by') {
     const byExternal: { external_id: string; booked_by: 'team' | 'self'; who: string }[] = [
-      { external_id: 'recon:alexi-booked',   booked_by: 'team', who: 'Alexi Moncada' },
-      { external_id: 'recon:zahra-booked',   booked_by: 'team', who: 'Zahra Cleaning Services' },
-      { external_id: 'y1JUtyPEFFRYSaMtdzih', booked_by: 'team', who: 'Thomas Cairo' },
+      { external_id: 'recon:alexi-booked',   booked_by: 'self', who: 'Alexi Moncada' },
+      { external_id: 'recon:zahra-booked',   booked_by: 'self', who: 'Zahra Cleaning Services' },
+      { external_id: 'y1JUtyPEFFRYSaMtdzih', booked_by: 'self', who: 'Thomas Cairo' },
       { external_id: 'pNM8k9xm7OtshlbEyIoe', booked_by: 'self', who: 'Robin Stanley' },
       { external_id: '8jSiVJs9fFIYCPbxZzzx', booked_by: 'self', who: 'Derick garner' },
-      { external_id: 'ESdzczC3ss99FjfMzcQ8', booked_by: 'team', who: 'Cathleen Miller' },
-      { external_id: 'wxJQg5LX0CdlstoEEORQ', booked_by: 'team', who: 'Monica' },
+      { external_id: 'ESdzczC3ss99FjfMzcQ8', booked_by: 'team', who: 'Cathleen Miller' },   // the only hand-booked demo in Sept (user, 30 Sep)
+      { external_id: 'wxJQg5LX0CdlstoEEORQ', booked_by: 'self', who: 'Monica' },
       { external_id: 'u1E5uJvSmzWcCJicGrsX', booked_by: 'self', who: 'Bryan Moore' },
+      { external_id: '9rFSYJoFLpJ0Zk1vzwpv', booked_by: 'self', who: 'Bruce Sherritt' },    // booked via the funnel a minute after opting in
+      { external_id: 'K01VrpBNYjk5Z5Y7QjVE', booked_by: 'self', who: 'Pablo Garcia' },
     ];
     // Michael Fischer's booking carries no appointment id — match on his contact.
-    const michael = { ghl_contact_id: 'TfZUzBF0WT7RT1L236wP', booked_by: 'team' as const, who: 'Michael Fischer' };
+    const michael = { ghl_contact_id: 'TfZUzBF0WT7RT1L236wP', booked_by: 'self' as const, who: 'Michael Fischer' };
 
     const plan: { who: string; booked_by: string }[] = [];
     for (const r of byExternal) {
@@ -451,5 +453,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: false, flagged_b2b: b2bIds.length, flagged_mirror: mirIds.length });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads` }, { status: 400 });
+  // ---- op 11: Alexi Moncada is not a close (user, 30 Sep) — remove the $0 close rows ----
+  if (op === 'remove_alexi_close') {
+    const tomsiId = await getTomsiClientId(service);
+    const { data: b2b } = await service.from('b2b_events').select('id, lead_name, revenue')
+      .eq('event_type', 'close').eq('ghl_contact_id', '1zLVGTRWtE3vc3yJwIrr');
+    const { data: mir } = tomsiId
+      ? await service.from('events').select('id, lead_name, revenue').eq('client_id', tomsiId).eq('event_type', 'closed').eq('external_id', 'recon:alexi-closed')
+      : { data: [] as { id: string; lead_name: string | null; revenue: number | null }[] };
+    // Safety: only ever $0 closes.
+    const b2bIds = (b2b ?? []).filter(r => Number(r.revenue) === 0).map(r => r.id);
+    const mirIds = (mir ?? []).filter(r => Number(r.revenue) === 0).map(r => r.id);
+    if (dryRun) return NextResponse.json({ op, dry_run: true, would_delete_b2b: b2bIds.length, would_delete_mirror: mirIds.length });
+    if (b2bIds.length) await service.from('b2b_events').delete().in('id', b2bIds);
+    if (mirIds.length) await service.from('events').delete().in('id', mirIds);
+    return NextResponse.json({ op, dry_run: false, deleted_b2b: b2bIds.length, deleted_mirror: mirIds.length });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close` }, { status: 400 });
 }
