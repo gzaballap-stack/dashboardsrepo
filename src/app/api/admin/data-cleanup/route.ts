@@ -322,10 +322,10 @@ export async function POST(req: Request) {
       { external_id: 'recon:zahra-booked',   booked_by: 'self', who: 'Zahra Cleaning Services' },
       { external_id: 'y1JUtyPEFFRYSaMtdzih', booked_by: 'self', who: 'Thomas Cairo' },
       { external_id: 'pNM8k9xm7OtshlbEyIoe', booked_by: 'self', who: 'Robin Stanley' },
-      { external_id: '8jSiVJs9fFIYCPbxZzzx', booked_by: 'self', who: 'Derick garner' },
-      { external_id: 'ESdzczC3ss99FjfMzcQ8', booked_by: 'team', who: 'Cathleen Miller' },   // the only hand-booked demo in Sept (user, 30 Sep)
+      { external_id: '8jSiVJs9fFIYCPbxZzzx', booked_by: 'team', who: 'Derick garner' },
+      { external_id: 'ESdzczC3ss99FjfMzcQ8', booked_by: 'team', who: 'Cathleen Miller' },   // hand-booked in Sept: Cathleen, Derick, Bryan (user, 30 Sep)
       { external_id: 'wxJQg5LX0CdlstoEEORQ', booked_by: 'self', who: 'Monica' },
-      { external_id: 'u1E5uJvSmzWcCJicGrsX', booked_by: 'self', who: 'Bryan Moore' },
+      { external_id: 'u1E5uJvSmzWcCJicGrsX', booked_by: 'team', who: 'Bryan Moore' },
       { external_id: '9rFSYJoFLpJ0Zk1vzwpv', booked_by: 'self', who: 'Bruce Sherritt' },    // booked via the funnel a minute after opting in
       { external_id: 'K01VrpBNYjk5Z5Y7QjVE', booked_by: 'self', who: 'Pablo Garcia' },
     ];
