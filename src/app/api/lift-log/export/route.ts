@@ -10,6 +10,24 @@ import { mergeExerciseNames, activeProgrammeExercises } from '@/lib/health-track
 //   /api/lift-log/export?token=…            → CSV
 //   /api/lift-log/export?token=…&format=json → JSON
 
+// Marks every plan in a collection with `active: true | false` and pulls out the
+// active one's name. `activeId` is left in place — nothing reading the old shape
+// breaks, the flag is simply easier to be right about.
+function withActiveFlags(raw: unknown, key: 'plans' | 'programmes') {
+  const doc = (raw ?? {}) as Record<string, unknown>;
+  const list = Array.isArray(doc[key]) ? (doc[key] as Record<string, unknown>[]) : [];
+  const activeId = doc.activeId;
+
+  let activeName: string | null = null;
+  const flagged = list.map(item => {
+    const active = item?.id !== undefined && item.id === activeId;
+    if (active && typeof item.name === 'string') activeName = item.name;
+    return { ...item, active };
+  });
+
+  return { doc: { ...doc, [key]: flagged }, activeName };
+}
+
 function csvCell(v: unknown): string {
   if (v === null || v === undefined) return '';
   const s = String(v);
@@ -60,11 +78,21 @@ export async function GET(req: Request) {
   if (searchParams.get('format') === 'json') {
     // JSON carries the plans too — the CSV is the weekly log only, since a diet
     // and a split don't flatten into the same table.
+    const diet = withActiveFlags(settings.diet_plan, 'plans');
+    const split = withActiveFlags(settings.split_plan, 'programmes');
+
     return NextResponse.json({
       unit, length_unit: lengthUnit, exercises,
       goal: settings.goal_note ?? null,
-      diet_plan: settings.diet_plan ?? {},
-      split_plan: settings.split_plan ?? {},
+      // Named up front. Which plan is being run was only knowable by matching
+      // `activeId` against a list of ids, which is a step a reader can get
+      // wrong — and getting it wrong means coaching the wrong plan.
+      active: {
+        diet_plan: diet.activeName,
+        programme: split.activeName,
+      },
+      diet_plan: diet.doc,
+      split_plan: split.doc,
       weeks: rows,
     });
   }
