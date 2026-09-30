@@ -219,7 +219,6 @@ export default function TaskBoard() {
   const [listTitle, setListTitle] = useState("");
   const [listTab, setListTab] = useState<ListTab>("daily");
   const [monthTab, setMonthTab] = useState<ListTab>("daily");
-  const [editingListId, setEditingListId] = useState<string | null>(null);
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [pickLetterId, setPickLetterId] = useState<string | null>(null);
   const [showProjectBoard, setShowProjectBoard] = useState(false);
@@ -1583,7 +1582,7 @@ export default function TaskBoard() {
                 {([["daily", "Small Tasks"], ["long", "Big Projects"]] as [ListTab, string][]).map(([id, label]) => (
                   <button
                     key={id}
-                    onClick={() => { setListTab(id); setEditingListId(null); }}
+                    onClick={() => { setListTab(id); setNoteFor(null); }}
                     style={{
                       flex: 1, padding: "6px 10px", borderRadius: 6, fontSize: 11.5, fontWeight: 700, cursor: "pointer",
                       background: listTab === id ? "#000000" : "transparent",
@@ -1702,49 +1701,39 @@ export default function TaskBoard() {
                             {t.bucket}
                           </button>
                         )}
-                        {editingListId === t.id ? (
-                          <input
-                            autoFocus
-                            defaultValue={t.title}
-                            onBlur={e => {
-                              const v = e.target.value.trim();
-                              if (v && v !== t.title) patch(t.id, { title: v });
-                              setEditingListId(null);
-                            }}
-                            onKeyDown={e => { if (e.key === "Enter" || e.key === "Escape") (e.target as HTMLInputElement).blur(); }}
-                            style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#111111", background: "transparent", outline: "none", border: "none" }}
-                          />
-                        ) : (
-                          // A span, not an input — an input would swallow the drag when grabbed.
-                          <span
-                            onClick={() => setEditingListId(t.id)}
-                            style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#111111", wordBreak: "break-word" }}
-                          >
-                            {t.title}
-                          </span>
-                        )}
-                        {noteFor === t.id ? (
-                          <textarea
-                            autoFocus
-                            defaultValue={t.notes ?? ""}
-                            rows={2}
-                            placeholder="Note…"
+                        {/* A span, not an input — an input would swallow the drag when grabbed.
+                            Clicking it opens the item, where the note lives. */}
+                        <span
+                          onClick={() => setNoteFor(noteFor === t.id ? null : t.id)}
+                          style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#111111", wordBreak: "break-word", cursor: "pointer" }}
+                        >
+                          {t.title}
+                          {t.notes && noteFor !== t.id && (
+                            <span title="Has a note" style={{ marginLeft: 5, color: "#c2c2c2", fontSize: 10 }}>•</span>
+                          )}
+                        </span>
+                        {noteFor === t.id && (
+                          <div
                             onPointerDown={e => e.stopPropagation()}
-                            onBlur={e => {
-                              if (e.target.value !== (t.notes ?? "")) patch(t.id, { notes: e.target.value });
-                              setNoteFor(null);
-                            }}
-                            onKeyDown={e => { if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur(); }}
-                            style={{ ...fieldStyle, width: "100%", marginTop: 6, fontSize: 11.5, resize: "vertical" }}
-                          />
-                        ) : t.notes ? (
-                          <p
-                            onClick={() => setNoteFor(t.id)}
-                            style={{ width: "100%", marginTop: 4, fontSize: 10.5, color: "#949494", lineHeight: 1.5, cursor: "pointer", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                            style={{ width: "100%", marginTop: 7, paddingTop: 7, borderTop: "1px solid rgba(0,0,0,0.07)", display: "flex", flexDirection: "column", gap: 6 }}
                           >
-                            {t.notes}
-                          </p>
-                        ) : null}
+                            <input
+                              defaultValue={t.title}
+                              onBlur={e => { const v = e.target.value.trim(); if (v && v !== t.title) patch(t.id, { title: v }); }}
+                              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                              style={{ ...fieldStyle, fontSize: 11.5 }}
+                            />
+                            <textarea
+                              autoFocus
+                              defaultValue={t.notes ?? ""}
+                              rows={3}
+                              placeholder="Note…"
+                              onBlur={e => { if (e.target.value !== (t.notes ?? "")) patch(t.id, { notes: e.target.value }); }}
+                              onKeyDown={e => { if (e.key === "Escape") setNoteFor(null); }}
+                              style={{ ...fieldStyle, fontSize: 11.5, resize: "vertical" }}
+                            />
+                          </div>
+                        )}
 
                         {listTab === "long" && pickLetterId === t.id && (
                           <div style={{ width: "100%", display: "flex", gap: 4, paddingTop: 6, marginTop: 2, borderTop: "1px solid rgba(0,0,0,0.07)" }}>
@@ -1766,7 +1755,7 @@ export default function TaskBoard() {
                         )}
                         <button
                           onClick={() => setNoteFor(noteFor === t.id ? null : t.id)}
-                          title={t.notes ? "Edit the note" : "Add a note"}
+                          title={noteFor === t.id ? "Close" : t.notes ? "Open the note" : "Add a note"}
                           style={{
                             flexShrink: 0, cursor: "pointer", lineHeight: 0, padding: 2,
                             color: noteFor === t.id ? "#111111" : t.notes ? "#767676" : "#c2c2c2",
