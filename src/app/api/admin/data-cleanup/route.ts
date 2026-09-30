@@ -383,13 +383,21 @@ export async function POST(req: Request) {
       .eq('client_id', tomsiId).in('event_type', ['appointment_booked', 'show', 'no_show']);
     const mirDel: { id: string; who: string; at: string }[] = [];
     const mirFlip: { id: string; dropId: string; who: string }[] = [];
-    for (const rows of byContact((mir ?? []) as R[]).values()) {
-      let resolved = false; let pending: R | null = null;
+    const noShowContacts = new Set<string>();
+    for (const [contact, rows] of byContact((mir ?? []) as R[])) {
+      let resolved = false; let pending: R | null = null; let state = '';
       for (const r of rows) {
-        if (r.event_type === 'appointment_booked') { pending = r; resolved = false; }
-        else if (r.event_type === 'show' && pending) { mirFlip.push({ id: pending.id, dropId: r.id, who: r.lead_name ?? '?' }); pending = null; resolved = true; }
+        if (r.event_type === 'appointment_booked') { pending = r; resolved = false; state = 'pending'; }
+        else if (r.event_type === 'show' && pending) { mirFlip.push({ id: pending.id, dropId: r.id, who: r.lead_name ?? '?' }); pending = null; resolved = true; state = 'show'; }
         else if (resolved) mirDel.push({ id: r.id, who: r.lead_name ?? '?', at: r.occurred_at });
-        else resolved = true;
+        else { resolved = true; state = r.event_type; }
+      }
+      if (state === 'no_show') noShowContacts.add(contact);
+    }
+    // The ledger says no-show (mirror) but a stray "shown" landed in b2b_events → repeat there too.
+    for (const r of (b2b ?? []) as R[]) {
+      if (r.event_type === 'sales_call_shown' && r.ghl_contact_id && noShowContacts.has(r.ghl_contact_id) && !b2bDel.some(d => d.id === r.id)) {
+        b2bDel.push({ id: r.id, who: `${r.lead_name ?? '?'} (no-show on record)`, at: r.occurred_at });
       }
     }
 
