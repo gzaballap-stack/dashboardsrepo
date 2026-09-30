@@ -220,6 +220,7 @@ export default function TaskBoard() {
   const [listTab, setListTab] = useState<ListTab>("daily");
   const [monthTab, setMonthTab] = useState<ListTab>("daily");
   const [editingListId, setEditingListId] = useState<string | null>(null);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
   const [pickLetterId, setPickLetterId] = useState<string | null>(null);
   const [showProjectBoard, setShowProjectBoard] = useState(false);
   const [dragFromList, setDragFromList] = useState(false);
@@ -1722,6 +1723,29 @@ export default function TaskBoard() {
                             {t.title}
                           </span>
                         )}
+                        {noteFor === t.id ? (
+                          <textarea
+                            autoFocus
+                            defaultValue={t.notes ?? ""}
+                            rows={2}
+                            placeholder="Note…"
+                            onPointerDown={e => e.stopPropagation()}
+                            onBlur={e => {
+                              if (e.target.value !== (t.notes ?? "")) patch(t.id, { notes: e.target.value });
+                              setNoteFor(null);
+                            }}
+                            onKeyDown={e => { if (e.key === "Escape") (e.target as HTMLTextAreaElement).blur(); }}
+                            style={{ ...fieldStyle, width: "100%", marginTop: 6, fontSize: 11.5, resize: "vertical" }}
+                          />
+                        ) : t.notes ? (
+                          <p
+                            onClick={() => setNoteFor(t.id)}
+                            style={{ width: "100%", marginTop: 4, fontSize: 10.5, color: "#949494", lineHeight: 1.5, cursor: "pointer", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                          >
+                            {t.notes}
+                          </p>
+                        ) : null}
+
                         {listTab === "long" && pickLetterId === t.id && (
                           <div style={{ width: "100%", display: "flex", gap: 4, paddingTop: 6, marginTop: 2, borderTop: "1px solid rgba(0,0,0,0.07)" }}>
                             {BUCKETS.map(b => (
@@ -1740,6 +1764,21 @@ export default function TaskBoard() {
                             ))}
                           </div>
                         )}
+                        <button
+                          onClick={() => setNoteFor(noteFor === t.id ? null : t.id)}
+                          title={t.notes ? "Edit the note" : "Add a note"}
+                          style={{
+                            flexShrink: 0, cursor: "pointer", lineHeight: 0, padding: 2,
+                            color: noteFor === t.id ? "#111111" : t.notes ? "#767676" : "#c2c2c2",
+                          }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = noteFor === t.id ? "#111111" : t.notes ? "#767676" : "#c2c2c2"}
+                        >
+                          <svg style={{ width: 11, height: 11 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9h6m-6 3h4" />
+                          </svg>
+                        </button>
+
                         <button
                           onClick={() => removeFromList(t)}
                           title={t.scope === "backlog" || t.scope === "inbox"
