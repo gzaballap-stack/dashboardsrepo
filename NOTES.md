@@ -42,6 +42,25 @@
 - Pending: the AI "reporting style" block for the Meta report (needs the owner's
   KPI targets: cost per kept demo, CPL, CTR/CPC).
 
+## 2026-09-30 — Client onboarding script
+
+`node scripts/onboard-client.mjs --name "<Client Name>" --account act_<id> [--backfill 30] [--dry-run]`
+
+Does the two things a new client needs on V1: adds the `clients` row (live) and
+clones the live Make scenario **7137679** ("CCM - Meta Spend → D and B
+Construction", team 875675, folder 356178) as `CCM - Meta Spend → <Client
+Name>` with the new `client_name` + `account_id`, same 07:00 daily schedule,
+switched on. `--backfill N` calls V1 `ad-spend/sync-all` for the last N days.
+Idempotent: skips the row / scenario if they already exist. The Meta token
+comes from the template blueprint, so it never needs re-entering.
+
+GHL workflows are the client's own — not part of this script.
+
+Make note: `.env.local` `MAKE_TEAM_ID` (6337002) is the **organization** id;
+the team the scenarios live in is 875675.
+
+---
+
 ## 2026-09-23 — Funnel engagement tracking (visits + VSL/pre-call watch)
 
 - New event types `funnel_visit`, `vsl_watch`, `precall_watch` + `progress_pct`
