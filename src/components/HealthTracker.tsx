@@ -487,7 +487,7 @@ function Sheet({ title, onClose, children, footer, footerNote }: {
       style={{
         position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.42)",
         backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)",
-        display: "flex", alignItems: "flex-end", justifyContent: "center",
+        display: "flex", justifyContent: "center",
       }}
       className="lift-sheet-backdrop"
     >
@@ -496,7 +496,6 @@ function Sheet({ title, onClose, children, footer, footerNote }: {
         style={{
           background: "#ffffff", width: "100%", maxWidth: 560, maxHeight: "92dvh",
           display: "flex", flexDirection: "column",
-          borderRadius: "20px 20px 0 0", boxShadow: "0 -12px 60px rgba(0,0,0,0.28)",
         }}
         className="lift-sheet"
       >
@@ -526,10 +525,21 @@ function Sheet({ title, onClose, children, footer, footerNote }: {
           </div>
         )}
       </div>
+      {/* Position and corners live here rather than inline: an inline style
+          beats a stylesheet rule whatever the media query says, which is why
+          the sheet used to open against the bottom edge on a desktop too. */}
       <style>{`
+        .lift-sheet-backdrop { align-items: flex-end; }
+        .lift-sheet {
+          border-radius: 20px 20px 0 0;
+          box-shadow: 0 -12px 60px rgba(0,0,0,0.28);
+        }
         @media (min-width: 640px) {
           .lift-sheet-backdrop { align-items: center; }
-          .lift-sheet { border-radius: 20px !important; }
+          .lift-sheet {
+            border-radius: 20px;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.28);
+          }
         }
       `}</style>
     </div>
