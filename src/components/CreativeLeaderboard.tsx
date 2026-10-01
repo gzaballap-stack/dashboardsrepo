@@ -171,7 +171,7 @@ export default function CreativeLeaderboard({ startDate, endDate, clientId }: {
         </button>
 
         <div className="text-xs ml-auto" style={{ color: "#6b6b6b" }}>
-          {MODELS.find(m => m.id === model)!.hint}. Pooled across every client, sorted by cost per appointment.
+          {MODELS.find(m => m.id === model)!.hint}. {clientId ? "Sorted by cost per demo." : "Pooled across every client, sorted by cost per appointment."}
         </div>
       </div>
 
@@ -195,8 +195,9 @@ export default function CreativeLeaderboard({ startDate, endDate, clientId }: {
                 <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#6b6b6b" }}>
                   {LEVELS.find(l => l.id === level)?.label.replace(/s$/, "")}
                 </th>
-                {["Clients", "Spend", "Leads", "Appts", "Shows", "Closes",
-                  "Cost / Lead", "Cost / Appt", "Lead→Appt", "Show Rate", "ROAS"].map(c => (
+                {/* clientId = the locked Tomsi Media (B2B) view, which says "demo". */}
+                {["Clients", "Spend", "Leads", clientId ? "Demos" : "Appts", "Shows", "Closes",
+                  "Cost / Lead", clientId ? "Cost / Demo" : "Cost / Appt", clientId ? "Lead→Demo" : "Lead→Appt", "Show Rate", "ROAS"].map(c => (
                   <th key={c} className={TH} style={{ color: "#6b6b6b" }}>{c}</th>
                 ))}
               </tr>

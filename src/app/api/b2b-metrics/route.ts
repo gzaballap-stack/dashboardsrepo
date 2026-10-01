@@ -233,6 +233,8 @@ export async function GET(req: Request) {
     lead_page_conversion: pct(leads, landing_visits),
     lead_booking_rate_funnel: pct(bookings, leads),
     landing_to_booking: pct(bookings, landing_visits),
+    landing_to_calendar: pct(calendar_visits, landing_visits),
+    calendar_to_booking: pct(bookings, calendar_visits),
     precall_views: pc.size,
     precall_view_rate: pct(pc.size, bookings),
     precall_25_rate: pct(atLeast(pc, 25), bookings),

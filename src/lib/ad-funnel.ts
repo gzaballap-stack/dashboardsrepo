@@ -80,6 +80,11 @@ export async function rollupFunnelByAd(
     end_date?: string | null;
     client_id?: string | null;
     campaign_id?: string | null;
+    // B2B (internal Tomsi Media client) only. A show / no-show flips the booked
+    // row in place, so "booked" on its own is just the demos still pending.
+    // With this on, `appts` = every demo booked: pending + shown + no-showed.
+    // Off by default — the client dashboards count exactly as before.
+    bookedIncludesResolved?: boolean;
   },
 ): Promise<Map<string, AdFunnel>> {
   const col    = LEVEL_COLUMN[opts.level];
@@ -123,6 +128,7 @@ export async function rollupFunnelByAd(
 
       const f = out.get(key) ?? { ...EMPTY_AD_FUNNEL };
       (f[slot] as number) += 1;
+      if (opts.bookedIncludesResolved && (slot === 'shows' || slot === 'no_shows')) f.appts += 1;
       // Revenue rides on the close event, so only count it once, there.
       if (slot === 'closes') f.revenue += Number(row.revenue) || 0;
       out.set(key, f);

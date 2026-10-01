@@ -51,6 +51,11 @@ type ClientRollup = {
   closes: number;
   close_rate: number;
   campaigns: CampaignRollup[];
+  // Present only on the internal Tomsi Media (B2B) row.
+  is_internal?: boolean;
+  landing_visits?: number;
+  page_bookings?: number;
+  landing_to_booking?: number;
 };
 
 const STATUS_STYLE: Record<ClientRollup["status"], { label: string; color: string; bg: string }> = {
@@ -61,6 +66,13 @@ const STATUS_STYLE: Record<ClientRollup["status"], { label: string; color: strin
   hold:          { label: "Hold",          color: "#6d28d9", bg: "rgba(109,40,217,0.10)" },
   no_data:       { label: "No Data",       color: "#6b6b6b", bg: "rgba(0,0,0,0.06)"      },
 };
+
+// The Tomsi Media (B2B) view judges against fixed KPI targets, where the middle
+// band reads "Off Target". Client views keep "Above Target".
+function statusStyle(status: ClientRollup["status"], b2b: boolean) {
+  const st = STATUS_STYLE[status];
+  return b2b && status === "above_target" ? { ...st, label: "Off Target" } : st;
+}
 
 const RANK_STYLE: Record<ClientRollup["rank"], { color: string; bg: string }> = {
   Whale:   { color: "#b45309", bg: "rgba(180,83,9,0.10)"   },
@@ -92,13 +104,14 @@ function Stat({ label, value, strong = false }: { label: string; value: string; 
   );
 }
 
-function MobileClientCard({ row, isOpen, onToggle, children }: {
+function MobileClientCard({ row, isOpen, onToggle, children, b2b = false }: {
   row: ClientRollup;
   isOpen: boolean;
   onToggle: () => void;
   children?: React.ReactNode;
+  b2b?: boolean;   // Tomsi Media view: demo wording, no spend-tier rank
 }) {
-  const st = STATUS_STYLE[row.status];
+  const st = statusStyle(row.status, b2b);
   const rk = RANK_STYLE[row.rank];
   const bn = BOTTLENECK_STYLE[row.bottleneck] ?? { color: "#4a4a4a", bg: "rgba(0,0,0,0.06)" };
   return (
@@ -116,7 +129,7 @@ function MobileClientCard({ row, isOpen, onToggle, children }: {
         </div>
 
         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ color: rk.color, background: rk.bg }}>{row.rank}</span>
+          {!b2b && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ color: rk.color, background: rk.bg }}>{row.rank}</span>}
           <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold" style={{ color: bn.color, background: bn.bg }}>{row.bottleneck}</span>
         </div>
 
@@ -124,9 +137,9 @@ function MobileClientCard({ row, isOpen, onToggle, children }: {
           <Stat label="Spend"   value={fmt$(row.spend)} strong />
           <Stat label="Leads"   value={fmtInt(row.leads)} strong />
           <Stat label="CPL"     value={row.cpl > 0 ? fmt$(row.cpl) : "—"} />
-          <Stat label="Appts"   value={fmtInt(row.appts)} strong />
-          <Stat label="CP Appt" value={row.cp_appt > 0 ? fmt$(row.cp_appt) : "—"} />
-          <Stat label="L2A"     value={row.l2a_pct > 0 ? fmtPct(row.l2a_pct) : "—"} />
+          <Stat label={b2b ? "Demos" : "Appts"}     value={fmtInt(row.appts)} strong />
+          <Stat label={b2b ? "CP Demo" : "CP Appt"} value={row.cp_appt > 0 ? fmt$(row.cp_appt) : "—"} />
+          <Stat label={b2b ? "L2D" : "L2A"}         value={row.l2a_pct > 0 ? fmtPct(row.l2a_pct) : "—"} />
         </div>
 
         {row.action && (
@@ -206,6 +219,9 @@ export default function CampaignOverview({ startDate, endDate, clientId }: {
   const [connected, setConnected] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [, forceTick] = useState(0);
+  // Locked to one client = the internal Tomsi Media (B2B) view. Everything
+  // gated on this leaves the all-clients page exactly as it was.
+  const b2b = !!clientId;
 
   const { start: rangeStart, end: rangeEnd } = datePreset === "custom"
     ? { start: customStart, end: customEnd }
@@ -321,18 +337,19 @@ export default function CampaignOverview({ startDate, endDate, clientId }: {
             const active = statusFilter === s;
             const style = s === "all" ? { color: "#4a4a4a", bg: "rgba(0,0,0,0.06)" } : STATUS_STYLE[s];
             const count = s === "all" ? rows.length : (statusCounts[s] ?? 0);
+            if (b2b && s === "no_data" && count === 0) return null;
             return (
               <button key={s} onClick={() => setStatusFilter(s)}
                 className="px-2.5 py-1 rounded-full text-xs font-semibold transition-opacity whitespace-nowrap flex-shrink-0"
                 style={{ color: style.color, background: style.bg, opacity: active ? 1 : 0.55, border: active ? `1px solid ${style.color}` : "1px solid transparent" }}>
-                {s === "all" ? "All" : STATUS_STYLE[s].label} {count}
+                {s === "all" ? "All" : statusStyle(s, b2b).label} {count}
               </button>
             );
           })}
         </div>
 
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
-          <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Campaign Overview — All Clients</h2>
+          <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: "#949494" }}>{b2b ? "Campaign Overview" : "Campaign Overview — All Clients"}</h2>
           <input
             type="text"
             value={search}
@@ -370,6 +387,7 @@ export default function CampaignOverview({ startDate, endDate, clientId }: {
                 <MobileClientCard
                   key={r.client_id}
                   row={r}
+                  b2b={b2b}
                   isOpen={isOpen}
                   onToggle={() => setDrawerEntity(isOpen ? null : { kind: "client", client: r, startDate: rangeStart, endDate: rangeEnd })}
                 >
@@ -387,24 +405,24 @@ export default function CampaignOverview({ startDate, endDate, clientId }: {
                 <tr style={{ background: "#f7f7f7", color: "#6b6b6b" }}>
                   <th className="text-left font-medium px-4 py-3 w-8"></th>
                   <th className="text-left font-medium px-2 py-3">Client</th>
-                  <th className="text-center font-medium px-2 py-3">Rank</th>
+                  <th className="text-center font-medium px-2 py-3">{b2b ? "State" : "Rank"}</th>
                   <th className="text-right font-medium px-3 py-3">Spend</th>
                   <th className="text-right font-medium px-3 py-3">Leads</th>
                   <th className="text-right font-medium px-3 py-3">CPL</th>
                   <th className="text-right font-medium px-3 py-3">CTR</th>
                   <th className="text-right font-medium px-3 py-3">CPC</th>
                   <th className="text-right font-medium px-3 py-3">CVR</th>
-                  <th className="text-right font-medium px-3 py-3">Appts</th>
-                  <th className="text-right font-medium px-3 py-3">CP Appt</th>
-                  <th className="text-right font-medium px-3 py-3">L2A %</th>
+                  <th className="text-right font-medium px-3 py-3">{b2b ? "Demos" : "Appts"}</th>
+                  <th className="text-right font-medium px-3 py-3">{b2b ? "CP Demo" : "CP Appt"}</th>
+                  <th className="text-right font-medium px-3 py-3">{b2b ? "L2D %" : "L2A %"}</th>
                   <th className="text-left font-medium px-3 py-3">Bottleneck</th>
                   <th className="text-left font-medium px-3 py-3">Action</th>
-                  <th className="text-right font-medium px-4 py-3">Overall</th>
+                  {!b2b && <th className="text-right font-medium px-4 py-3">Overall</th>}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(r => {
-                  const st = STATUS_STYLE[r.status];
+                  const st = statusStyle(r.status, b2b);
                   const rk = RANK_STYLE[r.rank];
                   const bn = BOTTLENECK_STYLE[r.bottleneck] ?? { color: "#4a4a4a", bg: "rgba(0,0,0,0.06)" };
                   const isOpen = drawerEntity?.kind === "client" && drawerEntity.client.client_id === r.client_id;
@@ -427,9 +445,15 @@ export default function CampaignOverview({ startDate, endDate, clientId }: {
                           <span style={{ color: "#93c5fd" }}>{r.client_name}</span>
                         </td>
                         <td className="text-center px-2 py-3">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ color: rk.color, background: rk.bg }}>
-                            {r.rank}
-                          </span>
+                          {b2b ? (
+                            <span className="px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap" style={{ color: st.color, background: st.bg }}>
+                              {st.label}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ color: rk.color, background: rk.bg }}>
+                              {r.rank}
+                            </span>
+                          )}
                         </td>
                         <td className="text-right px-3 py-3" style={{ color: "#111111" }}>{fmt$(r.spend)}</td>
                         <td className="text-right px-3 py-3" style={{ color: "#111111" }}>{fmtInt(r.leads)}</td>
@@ -446,11 +470,13 @@ export default function CampaignOverview({ startDate, endDate, clientId }: {
                           </span>
                         </td>
                         <td className="px-3 py-3 text-xs max-w-[220px]" style={{ color: "#6b6b6b" }}>{r.action}</td>
-                        <td className="text-right px-4 py-3">
-                          <span className="px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap" style={{ color: st.color, background: st.bg }}>
-                            {st.label}
-                          </span>
-                        </td>
+                        {!b2b && (
+                          <td className="text-right px-4 py-3">
+                            <span className="px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap" style={{ color: st.color, background: st.bg }}>
+                              {st.label}
+                            </span>
+                          </td>
+                        )}
                       </tr>
                       {isOpen && drawerEntity && (
                         <tr key={r.client_id + "_detail"}>

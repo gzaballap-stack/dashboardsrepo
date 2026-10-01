@@ -70,6 +70,7 @@ type B2bKpis = {
   booking_leads: number; non_booking_leads: number;
   landing_visits: number; calendar_visits: number; bookings: number;
   lead_page_conversion: number; lead_booking_rate_funnel: number; landing_to_booking: number;
+  landing_to_calendar?: number; calendar_to_booking?: number;
   precall_views: number; precall_view_rate: number; precall_25_rate: number; precall_50_rate: number; precall_75_rate: number; precall_100_rate: number;
   vsl_views: number; vsl_view_rate: number; vsl_25_rate: number; vsl_50_rate: number; vsl_75_rate: number; vsl_100_rate: number;
   correlation?: { precall_watched: Cohort; precall_not: Cohort; vsl_watched: Cohort; vsl_not: Cohort;
@@ -122,7 +123,7 @@ const TOMSI_NAV: { group: string; items: { id: TomsiView; label: string; icon: s
   { group: "Raw Data", items: [
     { id: "leads",         label: "New Leads",     icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
     { id: "dials",         label: "All Dials",     icon: "M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" },
-    { id: "appointments",  label: "Appointments",  icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
+    { id: "appointments",  label: "Demos",         icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
     { id: "speed_to_lead", label: "Speed to Lead", icon: "M13 10V3L4 14h7v7l9-11h-7z" },
   ]},
   { group: "Heat Maps", items: [
@@ -214,13 +215,18 @@ function getDateRange(p: Preset): { start: string; end: string } {
   return { start: "", end: "" };
 }
 
-function KpiCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+function KpiCard({ label, value, accent = false, note }: {
+  label: string; value: string; accent?: boolean;
+  // Optional KPI flag under the value. Only the B2B funnel tiles pass it.
+  note?: { text: string; color: string };
+}) {
   return (
     <div className="relative overflow-hidden rounded-2xl p-5 flex flex-col gap-2 group transition-all duration-200 hover:translate-y-[-1px]"
       style={{ background: "linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
       <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: accent ? "#000000" : "#000000" }} />
       <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#6b6b6b" }}>{label}</span>
       <span className="text-3xl font-bold pl-3" style={{ color: "#000000" }}>{value}</span>
+      {note && <span className="text-[11px] font-semibold pl-3" style={{ color: note.color }}>{note.text}</span>}
     </div>
   );
 }
@@ -1209,7 +1215,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     <KpiCard label="Non-Booking Leads" value={fmtInt(nonBookingLeads)} />
                     <KpiCard label="Demos Booked" value={fmtInt(metrics.total_booked_appointments ?? metrics.booked_appointments)} />
                     <KpiCard label="Demo Booking Rate" value={fmtPct(metrics.total_appt_booking_rate ?? metrics.appt_booking_rate)} accent />
-                    <KpiCard label="Appointments To Take Place" value={fmtInt(metrics.total_appts_to_take_place ?? metrics.appts_to_take_place)} />
+                    <KpiCard label="Demos To Take Place" value={fmtInt(metrics.total_appts_to_take_place ?? metrics.appts_to_take_place)} />
                     <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
                     <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
                     <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
@@ -1242,8 +1248,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     <KpiCard label="Callback Requests" value={fmtInt(metrics.callbacks)} />
                     <KpiCard label="Callback Rate" value={fmtPct(metrics.cb_pct)} />
                     <KpiCard label="Leads To Call" value={fmtInt(Math.max(0, metrics.new_leads - selfBooked))} />
-                    <KpiCard label="Hand-Booked Appointments" value={bookedByKnown ? fmtInt(teamBooked) : "—"} />
-                    <KpiCard label="Lead Appt Booking Rate" value={leadBookingRate != null ? fmtPct(leadBookingRate) : "—"} accent />
+                    <KpiCard label="Hand-Booked Demos" value={bookedByKnown ? fmtInt(teamBooked) : "—"} />
+                    <KpiCard label="Lead Demo Booking Rate" value={leadBookingRate != null ? fmtPct(leadBookingRate) : "—"} accent />
                   </div>
                 </section>
 
@@ -1254,10 +1260,17 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                   <div style={EVEN}>
                     <KpiCard label="Landing Page Visits" value={fmtInt(b2bKpis?.landing_visits ?? 0)} />
                     <KpiCard label="Calendar Page Visits" value={fmtInt(b2bKpis?.calendar_visits ?? 0)} />
-                    <KpiCard label="Lead Page Conversion" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.lead_page_conversion) : "—"} accent />
                     <KpiCard label="Bookings" value={fmtInt(b2bKpis?.bookings ?? 0)} />
+                    <KpiCard label="Landing → Calendar Rate" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.landing_to_calendar ?? 0) : "—"} accent />
+                    <KpiCard label="Calendar → Booking Rate" value={b2bKpis?.calendar_visits ? fmtPct(b2bKpis.calendar_to_booking ?? 0) : "—"} accent />
+                    <KpiCard label="Landing → Booking Rate" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.landing_to_booking) : "—"} accent
+                      note={b2bKpis?.landing_visits
+                        ? (b2bKpis.landing_to_booking >= 5
+                            ? { text: "On target · KPI 5%+", color: "#15803d" }
+                            : { text: "Below KPI · 5% minimum", color: "#b91c1c" })
+                        : undefined} />
+                    <KpiCard label="Lead Page Conversion" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.lead_page_conversion) : "—"} accent />
                     <KpiCard label="Lead Booking Rate" value={metrics.new_leads ? fmtPct(b2bKpis?.lead_booking_rate_funnel ?? 0) : "—"} accent />
-                    <KpiCard label="Landing → Booking Rate" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.landing_to_booking) : "—"} accent />
                     <KpiCard label="Pre-Call Views" value={fmtInt(b2bKpis?.precall_views ?? 0)} />
                     <KpiCard label="Pre-Call View Rate" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_view_rate) : "—"} accent />
                     <KpiCard label="Pre-Call 25%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_25_rate) : "—"} />
@@ -1378,7 +1391,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           )}
 
           {/* ── Heat Maps ── */}
-          {view === "heatmap_show"   && <HeatMap type="show_rate"    startDate={heatmapStart} endDate={heatmapEnd} clientId={lockClientId ?? (heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined)} liveOnly={!lockClientId && heatmapClientId === "__live__"} />}
+          {view === "heatmap_show"   && <HeatMap b2b={inTomsi} type="show_rate"    startDate={heatmapStart} endDate={heatmapEnd} clientId={lockClientId ?? (heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined)} liveOnly={!lockClientId && heatmapClientId === "__live__"} />}
           {view === "heatmap_pickup" && <HeatMap type="pickup_rate"  startDate={heatmapStart} endDate={heatmapEnd} clientId={lockClientId ?? (heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined)} liveOnly={!lockClientId && heatmapClientId === "__live__"} />}
           {view === "heatmap_leads"  && <HeatMap type="new_leads"    startDate={heatmapStart} endDate={heatmapEnd} clientId={lockClientId ?? (heatmapClientId !== "__live__" ? heatmapClientId || undefined : undefined)} liveOnly={!lockClientId && heatmapClientId === "__live__"} />}
 

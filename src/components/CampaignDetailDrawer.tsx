@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { KPI_TARGETS, kpiVerdict, overallVerdict, callHealth, VERDICT_STYLE, type KpiKey } from "@/lib/kpi-targets";
+import {
+  KPI_TARGETS, kpiVerdict, overallVerdict, callHealth, VERDICT_STYLE, type KpiKey,
+  B2B_KPI_TARGETS, B2B_STATE_STYLE, b2bKpiVerdict, b2bState, b2bTargetText, type B2bKpiKey, type B2bState,
+} from "@/lib/kpi-targets";
 
 // ─── Shared types (re-declared here to keep the drawer self-contained) ────────
 export interface B2BDrawerData {
@@ -23,6 +26,9 @@ export interface ClientDrawerData {
   cvr: number; appts: number; cp_appt: number; l2a_pct: number;
   shows: number; no_shows: number; show_rate: number; closes: number;
   close_rate: number; ctr: number; cpc: number;
+  // Internal Tomsi Media (B2B) row only — switches the drawer to demo wording
+  // and the B2B KPI targets.
+  is_internal?: boolean; landing_visits?: number; page_bookings?: number; landing_to_booking?: number;
   campaigns: Array<{
     campaign_id: string; campaign_name: string; platform: string;
     status: string | null; spend: number; impressions: number; reach: number;
@@ -253,6 +259,9 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
 
   // ── Derived values ──────────────────────────────────────────────────
   const isBb = entity.kind === "b2b";
+  // The Tomsi Media row inside the client-style Campaign Overview. Distinct from
+  // `isBb` (the older B2B Tracking drawer). Client rows never set this.
+  const isTomsi = entity.kind === "client" && !!entity.client.is_internal;
   const name = isBb ? entity.name : (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client.client_name;
   const statusKey = isBb
     ? (() => {
@@ -265,7 +274,8 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         return "critical";
       })()
     : (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client.status;
-  const st = STATUS_STYLE[statusKey] ?? STATUS_STYLE.no_data;
+  const stBase = STATUS_STYLE[statusKey] ?? STATUS_STYLE.no_data;
+  const st = isTomsi && statusKey === "above_target" ? { ...stBase, label: "Off Target" } : stBase;
 
   // ── Comparison data ─────────────────────────────────────────────────
   const iso = (d: Date) => d.toISOString().split("T")[0];
@@ -298,14 +308,16 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
           };
         } else {
           const ent = entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string };
-          const r = await fetch(`/api/campaign-overview?start_date=${p.start}&end_date=${p.end}`).then(r => r.json());
+          // The internal row is hidden from the all-clients query, so ask for it by id.
+          const lock = ent.client.is_internal ? `&client_id=${ent.client.client_id}` : "";
+          const r = await fetch(`/api/campaign-overview?start_date=${p.start}&end_date=${p.end}${lock}`).then(r => r.json());
           const c = (r.clients ?? []).find((x: ClientDrawerData) => x.client_id === ent.client.client_id);
           if (c) {
             data = {
               "Spend": c.spend,
               "Leads": c.leads,
               "CPL ($)": c.cpl,
-              "Appts": c.appts,
+              [ent.client.is_internal ? "Demos" : "Appts"]: c.appts,
               "Show Rate (%)": c.show_rate,
               "Closes": c.closes,
               "CTR (%)": c.ctr,
@@ -463,7 +475,13 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         `Date Range: ${entity.startDate} → ${entity.endDate}`,
         `Ad Spend: $${c.spend.toFixed(0)} | Leads: ${c.leads} | CPL: $${c.cpl.toFixed(2)}`,
         `CTR: ${c.ctr.toFixed(2)}% | CPC: $${c.cpc.toFixed(2)} | CVR: ${c.cvr.toFixed(1)}%`,
-        `Appointments: ${c.appts} | CP Appt: $${c.cp_appt.toFixed(0)} | L2A: ${c.l2a_pct.toFixed(1)}%`,
+        c.is_internal
+          ? `Demos Booked: ${c.appts} | Cost per Demo: $${c.cp_appt.toFixed(0)} | Lead to Demo: ${c.l2a_pct.toFixed(1)}%`
+          : `Appointments: ${c.appts} | CP Appt: $${c.cp_appt.toFixed(0)} | L2A: ${c.l2a_pct.toFixed(1)}%`,
+        ...(c.is_internal ? [
+          `Landing page visits: ${c.landing_visits ?? 0} | Landing to booking: ${(c.landing_to_booking ?? 0).toFixed(1)}%`,
+          `KPI targets: CPL <= $${B2B_KPI_TARGETS.cpl.target}, cost per demo <= $${B2B_KPI_TARGETS.cp_demo.target}, CTR >= ${B2B_KPI_TARGETS.ctr.target}%, CPC <= $${B2B_KPI_TARGETS.cpc.target}, landing to booking >= ${B2B_KPI_TARGETS.landing_to_booking.target}%`,
+        ] : []),
         `Shows: ${c.shows} | No Shows: ${c.no_shows} | Show Rate: ${c.show_rate.toFixed(1)}%`,
         `Closes: ${c.closes} | Close Rate: ${c.close_rate.toFixed(1)}%`,
         `Status: ${c.status} | Bottleneck: ${c.bottleneck}`,
@@ -517,7 +535,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
         return [
           { label: "Leads",      count: c.leads,  color: "#000000", pct: 100 },
-          { label: "Appts",      count: c.appts,  color: "#6b6b6b", pct: c.leads > 0 ? (c.appts / c.leads) * 100 : 0 },
+          { label: c.is_internal ? "Demos" : "Appts", count: c.appts,  color: "#6b6b6b", pct: c.leads > 0 ? (c.appts / c.leads) * 100 : 0 },
           { label: "Shows",      count: c.shows,  color: "#000000", pct: c.appts > 0 ? (c.shows / c.appts) * 100 : 0 },
           { label: "Closes",     count: c.closes, color: "#6b6b6b", pct: c.shows > 0 ? (c.closes / c.shows) * 100 : 0 },
         ];
@@ -556,6 +574,14 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
       style={{ color: VERDICT_STYLE[v].color, background: `${VERDICT_STYLE[v].color}1f` }}>
       {VERDICT_STYLE[v].label}
+    </span>
+  );
+
+  // B2B states carry "hold" and their own colours, so they get their own pill.
+  const StatePill = ({ v }: { v: B2bState }) => (
+    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap"
+      style={{ color: B2B_STATE_STYLE[v].color, background: B2B_STATE_STYLE[v].bg }}>
+      {B2B_STATE_STYLE[v].label}
     </span>
   );
 
@@ -600,6 +626,17 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       );
     } else {
       const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+      if (isTomsi) return (
+        <SectionCard title="Demos" badge={<StatePill v={b2bKpiVerdict("cp_demo", c.cp_appt)} />}>
+          <MetricRow label="Demos Booked" value={fmtN(c.appts)} />
+          <MetricRow label="Shown" value={fmtN(c.shows)} />
+          <MetricRow label="No Show" value={fmtN(c.no_shows)} />
+          <MetricRow label="To Take Place" value={fmtN(Math.max(0, c.appts - c.shows - c.no_shows))} />
+          <MetricRow label="Show Rate" value={c.shows + c.no_shows > 0 ? fmtPct(c.show_rate) : "—"} />
+          <MetricRow label="Close Rate" value={c.close_rate > 0 ? fmtPct(c.close_rate) : "—"} />
+          <MetricRow label="CP Demo" value={c.cp_appt > 0 ? fmtDec(c.cp_appt) : "—"} />
+        </SectionCard>
+      );
       return (
         <SectionCard title="Appointments" badge={<HealthPill v={kpiVerdict("cp_appt", c.cp_appt)} />}>
           <MetricRow label="Booked" value={fmtN(c.appts)} />
@@ -674,6 +711,50 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
       Object.fromEntries(kpiRows.map(r => [r.key, r.value])) as Partial<Record<KpiKey, number>>
     );
 
+    // Tomsi Media: the owner's B2B targets, each shown next to its target.
+    if (isTomsi) {
+      const c = (entity as { kind: "client"; client: ClientDrawerData; startDate: string; endDate: string }).client;
+      const l2b = c.landing_to_booking ?? 0;
+      const rows: { key: B2bKpiKey; value: number; display: string }[] = [
+        { key: "cpl",     value: c.cpl,     display: c.cpl > 0 ? fmtDec(c.cpl) : "—" },
+        { key: "cp_demo", value: c.cp_appt, display: c.cp_appt > 0 ? fmtDec(c.cp_appt) : "—" },
+        { key: "ctr",     value: c.ctr,     display: c.ctr > 0 ? fmtPct(c.ctr, 2) : "—" },
+        { key: "cpc",     value: c.cpc,     display: c.cpc > 0 ? fmtDec(c.cpc) : "—" },
+        { key: "landing_to_booking", value: l2b, display: (c.landing_visits ?? 0) > 0 ? fmtPct(l2b) : "—" },
+      ];
+      const state = b2bState(
+        Object.fromEntries(rows.map(r => [r.key, r.value])) as Partial<Record<B2bKpiKey, number>>,
+        { leads: c.leads, spend: c.spend },
+      );
+      return (
+        <SectionCard title="Overall Summary" badge={<StatePill v={state} />}>
+          {rows.map(r => {
+            const v = b2bKpiVerdict(r.key, r.value);
+            return (
+              <div key={r.key} className="flex items-center justify-between gap-2 py-[3px] text-xs">
+                <span style={{ color: "#6b6b6b" }}>
+                  {B2B_KPI_TARGETS[r.key].label}
+                  <span style={{ color: "#949494" }}> · {b2bTargetText(r.key)}</span>
+                </span>
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span style={{ color: "#111111" }}>{r.display}</span>
+                  <span title={B2B_STATE_STYLE[v].label}
+                    style={{ width: 6, height: 6, borderRadius: "50%", background: B2B_STATE_STYLE[v].color, display: "inline-block" }} />
+                </span>
+              </div>
+            );
+          })}
+          <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-[10px] uppercase font-bold" style={{ color: "#767676" }}>Bottleneck</span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-semibold" style={{ color: bnColor, background: `${bnColor}22` }}>{bottleneck}</span>
+            </div>
+            <p className="text-xs" style={{ color: "#767676" }}>{action}</p>
+          </div>
+        </SectionCard>
+      );
+    }
+
     return (
       <SectionCard title="Overall Summary"
         badge={overall
@@ -741,7 +822,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
               <thead style={{ background: "#fafafa", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
                 <tr>
                   <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: "#767676" }}>Agent</th>
-                  {["Dials", "Pickups", "Pickup %", "Convos", "Convo %", "Appts", "Shows"].map(h => (
+                  {["Dials", "Pickups", "Pickup %", "Convos", "Convo %", isTomsi ? "Demos" : "Appts", "Shows"].map(h => (
                     <th key={h} className={COL_HEADER} style={{ color: "#767676" }}>{h}</th>
                   ))}
                 </tr>
@@ -986,9 +1067,12 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
   // then Meta's own delivery metrics. "Meta Results" is Meta's reported result
   // count and is intentionally kept separate from the CRM "Leads" column — they
   // measure different things and rarely agree.
+  // Tomsi Media adds a State column (each row judged against the B2B KPI
+  // targets) and says "demo"; client drawers keep the original columns.
   const METRIC_COLS = [
+    ...(isTomsi ? ["State"] : []),
     "Budget", "Spend",
-    "Leads", "Appts", "Shows", "Closes", "CPL", "CPA", "ROAS",
+    "Leads", isTomsi ? "Demos" : "Appts", "Shows", "Closes", "CPL", isTomsi ? "CP Demo" : "CPA", "ROAS",
     "Impr.", "Reach", "Freq.", "CPM",
     "U.Clicks", "U.CTR", "CPC",
   ];
@@ -1008,6 +1092,11 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     const dash = <span style={{ color: "#949494" }}>—</span>;
     return (
       <>
+        {isTomsi && (
+          <td className={COL_CELL}>
+            <StatePill v={b2bState({ cpl, cp_demo: cpa, ctr: m.ctr, cpc: m.cpc }, { leads: f.leads, spend: m.spend })} />
+          </td>
+        )}
         <td className={COL_CELL} style={{ color: "#4a4a4a" }}>{m.budget ? fmt$(m.budget) : dash}</td>
         <td className={COL_CELL} style={{ color: "#111111" }}>{fmt$(m.spend)}</td>
 

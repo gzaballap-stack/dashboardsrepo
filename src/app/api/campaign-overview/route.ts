@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
-import { getLiveClientIds, liveClientFilter } from '@/lib/db-helpers';
+import { getLiveClientIds, liveClientFilter, getInternalClientIds } from '@/lib/db-helpers';
+import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL, type AdFunnel } from '@/lib/ad-funnel';
+import { B2B_KPI_TARGETS, b2bState, b2bWorstKpi, type B2bKpiKey } from '@/lib/kpi-targets';
 
 type CampaignRow = {
   client_id: string;
@@ -23,10 +25,35 @@ type CampaignRow = {
 };
 
 type AdRollup = { spend: number; impressions: number; reach: number; link_clicks: number; unique_clicks: number; ad_leads: number };
-type FunnelRollup = { leads: number; appts: number; shows: number; no_shows: number; closes: number };
+type FunnelRollup = { leads: number; appts: number; shows: number; no_shows: number; closes: number; landing_visits: number; page_bookings: number };
 
 const EMPTY_AD: AdRollup = { spend: 0, impressions: 0, reach: 0, link_clicks: 0, unique_clicks: 0, ad_leads: 0 };
-const EMPTY_FUNNEL: FunnelRollup = { leads: 0, appts: 0, shows: 0, no_shows: 0, closes: 0 };
+const EMPTY_FUNNEL: FunnelRollup = { leads: 0, appts: 0, shows: 0, no_shows: 0, closes: 0, landing_visits: 0, page_bookings: 0 };
+
+// ── B2B (internal Tomsi Media client) ────────────────────────────────────────
+// Judged against the owner's absolute KPI targets, not the portfolio median —
+// with a single row the median is the row itself, which always read "Excellent".
+const B2B_FIX: Record<B2bKpiKey, { bottleneck: string; action: (v: string) => string }> = {
+  cpl:                { bottleneck: 'Funnel',    action: v => `Cost per lead is ${v} against a $${B2B_KPI_TARGETS.cpl.target} target — clicks aren't turning into leads cheaply enough` },
+  cp_demo:            { bottleneck: 'Targeting', action: v => `Cost per demo is ${v} against a $${B2B_KPI_TARGETS.cp_demo.target} target — too few leads are booking a demo` },
+  ctr:                { bottleneck: 'Creative',  action: v => `CTR is ${v} against a ${B2B_KPI_TARGETS.ctr.target}% target — refresh the ad creative` },
+  cpc:                { bottleneck: 'Creative',  action: v => `Cost per click is ${v} against a $${B2B_KPI_TARGETS.cpc.target.toFixed(2)} target — clicks are too expensive` },
+  landing_to_booking: { bottleneck: 'Funnel',    action: v => `Landing → booking is ${v} against a ${B2B_KPI_TARGETS.landing_to_booking.target}% floor — the page isn't converting visits into demos` },
+};
+const fmtKpi = (k: B2bKpiKey, v: number) => B2B_KPI_TARGETS[k].unit === '$' ? `$${v.toFixed(k === 'cpc' ? 2 : 0)}` : `${v.toFixed(1)}%`;
+const B2B_STATUS = { excellent: 'excellent', on_target: 'on_target', off_target: 'above_target', critical: 'critical', hold: 'hold', no_data: 'no_data' } as const;
+
+function diagnoseB2b(kpis: Partial<Record<B2bKpiKey, number>>, ctx: { leads: number; spend: number }) {
+  const state = b2bState(kpis, ctx);
+  if (state === 'no_data') return { status: 'no_data', bottleneck: 'No Data', action: '—' };
+  if (state === 'hold')    return { status: 'hold', bottleneck: 'Hold', action: 'Insufficient data — still gathering signal (< 5 leads)' };
+  const worst = b2bWorstKpi(kpis);
+  // Critical on spend alone (heavy spend, under 5 leads) with no KPI to point at.
+  if (!worst && state === 'critical') return { status: 'critical', bottleneck: 'Funnel', action: 'Spending without producing leads' };
+  if (!worst || worst.ratio >= 1) return { status: B2B_STATUS[state], bottleneck: 'Healthy', action: 'Every KPI is at or better than target' };
+  const fix = B2B_FIX[worst.key];
+  return { status: B2B_STATUS[state], bottleneck: fix.bottleneck, action: fix.action(fmtKpi(worst.key, kpis[worst.key] ?? 0)) };
+}
 
 function median(vals: number[]): number {
   const v = vals.filter(x => x > 0).sort((a, b) => a - b);
@@ -79,6 +106,9 @@ export async function GET(req: Request) {
   const client_id = searchParams.get('client_id');   // one client (used for the internal Tomsi Media view)
 
   const liveClientIds = await getLiveClientIds(ctx.service);
+  // True only for the internal Tomsi Media row. Everything gated on this is
+  // B2B-only; with it false the route behaves exactly as it always has.
+  const isB2b = !!client_id && (await getInternalClientIds(ctx.service)).includes(client_id);
 
   let adQuery = ctx.service
     .from('ad_campaigns')
@@ -111,7 +141,9 @@ export async function GET(req: Request) {
       .from('events')
       .select('client_id, event_type')
       .in('client_id', clientIds)
-      .in('event_type', ['lead', 'appointment_booked', 'show', 'no_show', 'closed']);
+      .in('event_type', isB2b
+        ? ['lead', 'appointment_booked', 'show', 'no_show', 'closed', 'visit_landing', 'visit_thankyou']
+        : ['lead', 'appointment_booked', 'show', 'no_show', 'closed']);
     if (start_date) evQuery = evQuery.gte('occurred_at', `${start_date}T00:00:00.000Z`);
     if (end_date)   evQuery = evQuery.lte('occurred_at', `${end_date}T23:59:59.999Z`);
 
@@ -128,6 +160,8 @@ export async function GET(req: Request) {
         else if (ev.event_type === 'show') f.shows++;
         else if (ev.event_type === 'no_show') f.no_shows++;
         else if (ev.event_type === 'closed') f.closes++;
+        else if (ev.event_type === 'visit_landing') f.landing_visits++;
+        else if (ev.event_type === 'visit_thankyou') f.page_bookings++;
         funnelByClient.set(ev.client_id, f);
       }
       if (data.length < PAGE) break;
@@ -176,9 +210,24 @@ export async function GET(req: Request) {
     camp.link_clicks += row.link_clicks || 0;
   }
 
+  // B2B only: the real funnel per campaign, so each campaign can carry its own
+  // state. Unattributed events belong to no campaign and are left out here (they
+  // still count in the account row above).
+  let campaignFunnel = new Map<string, AdFunnel>();
+  if (isB2b) {
+    try {
+      campaignFunnel = await rollupFunnelByAd(ctx.service, {
+        table: 'events', level: 'campaign', client_id, start_date, end_date, bookedIncludesResolved: true,
+      });
+    } catch { campaignFunnel = new Map(); }
+  }
+
   // Compute derived metrics per client using real funnel data
   const computed = Array.from(byClient.values()).map(c => {
-    const f = funnelByClient.get(c.client_id) ?? { ...EMPTY_FUNNEL };
+    const f = { ...(funnelByClient.get(c.client_id) ?? EMPTY_FUNNEL) };
+    // B2B: a show / no-show flips the booked row in place, so every demo booked
+    // = pending + shown + no-showed (same rule as the B2B dashboard tiles).
+    if (isB2b) f.appts = f.appts + f.shows + f.no_shows;
     const ctr = c.ad.impressions > 0 ? (c.ad.link_clicks / c.ad.impressions) * 100 : 0;
     const cpc = c.ad.link_clicks > 0 ? c.ad.spend / c.ad.link_clicks : 0;
     const cvr = c.ad.link_clicks > 0 ? (f.leads / c.ad.link_clicks) * 100 : 0;
@@ -209,13 +258,19 @@ export async function GET(req: Request) {
   const rankByClientId = new Map(bySpend.map((x, idx) => [x.c.client_id, rankFor(idx)]));
 
   const clientsOut = computed.map(({ c, f, ctr, cpc, cvr, cpl, l2a, cpAppt, showRate, closeRate }) => {
-    const diag = diagnose({ leads: f.leads, spend: c.ad.spend, ctr, cvr, l2a, closeRate }, bench);
-    const status =
-      diag.bottleneck === 'No Data' ? 'no_data' :
-      diag.bottleneck === 'Hold' ? 'hold' :
-      diag.severity === 3 ? 'critical' :
-      diag.severity === 2 ? 'above_target' :
-      diag.severity === 1 ? 'on_target' : 'excellent';
+    const landingToBooking = f.landing_visits > 0 ? (f.page_bookings / f.landing_visits) * 100 : 0;
+    const relDiag = diagnose({ leads: f.leads, spend: c.ad.spend, ctr, cvr, l2a, closeRate }, bench);
+    const relStatus =
+      relDiag.bottleneck === 'No Data' ? 'no_data' :
+      relDiag.bottleneck === 'Hold' ? 'hold' :
+      relDiag.severity === 3 ? 'critical' :
+      relDiag.severity === 2 ? 'above_target' :
+      relDiag.severity === 1 ? 'on_target' : 'excellent';
+    const b2bDiag = isB2b
+      ? diagnoseB2b({ cpl, cp_demo: cpAppt, ctr, cpc, landing_to_booking: landingToBooking }, { leads: f.leads, spend: c.ad.spend })
+      : null;
+    const diag = b2bDiag ?? relDiag;
+    const status = b2bDiag?.status ?? relStatus;
 
     return {
       client_id: c.client_id,
@@ -224,6 +279,12 @@ export async function GET(req: Request) {
       status,
       bottleneck: diag.bottleneck,
       action: diag.action,
+      ...(isB2b ? {
+        is_internal: true,
+        landing_visits: f.landing_visits,
+        page_bookings: f.page_bookings,
+        landing_to_booking: landingToBooking,
+      } : {}),
       spend: c.ad.spend,
       impressions: c.ad.impressions,
       reach: c.ad.reach,
@@ -245,6 +306,10 @@ export async function GET(req: Request) {
           unique_ctr: camp.reach         > 0 ? (camp.unique_clicks / camp.reach) * 100 : 0,
           cvr:        camp.unique_clicks > 0 ? (camp.ad_leads / camp.unique_clicks) * 100 : 0,
           cost_per_result: camp.ad_leads > 0 ? camp.spend / camp.ad_leads : 0,
+          ...(isB2b ? (() => {
+            const cf = campaignFunnel.get(camp.campaign_id) ?? EMPTY_AD_FUNNEL;
+            return { funnel: cf, ...funnelRates(camp.spend, cf) };
+          })() : {}),
         }))
         .sort((a, b) => b.spend - a.spend),
     };

@@ -110,7 +110,12 @@ export async function GET(req: Request) {
   // Funnel side: real CRM outcomes keyed on the same id, across all clients.
   let funnel: Map<string, AdFunnel>;
   try {
-    funnel = await rollupFunnelByAd(ctx.service, { table: 'events', level, model, start_date, end_date });
+    // Internal Tomsi Media view (B2B): demos = every demo booked (pending +
+    // shown + no-showed). All other callers roll up exactly as before.
+    const b2b = !!client_id && (await getInternalClientIds(ctx.service)).includes(client_id);
+    funnel = await rollupFunnelByAd(ctx.service, b2b
+      ? { table: 'events', level, model, start_date, end_date, client_id, bookedIncludesResolved: true }
+      : { table: 'events', level, model, start_date, end_date });
   } catch {
     funnel = new Map();
   }

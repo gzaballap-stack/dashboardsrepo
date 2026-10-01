@@ -76,7 +76,7 @@ function Legend({ type }: { type: string }) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function HeatMap({ type, startDate, endDate, clientId, liveOnly }: Props) {
+export default function HeatMap({ type, startDate, endDate, clientId, liveOnly, b2b = false }: Props & { b2b?: boolean }) {
   const [grid, setGrid] = useState<number[][] | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -97,7 +97,7 @@ export default function HeatMap({ type, startDate, endDate, clientId, liveOnly }
   const TYPE_LABELS: Record<string, string> = {
     new_leads:    "Lead volume by time of day",
     pickup_rate:  "Pickup rate by time of dial",
-    show_rate:    "Show rate by scheduled appointment time",
+    show_rate:    b2b ? "Show rate by scheduled demo time" : "Show rate by scheduled appointment time",
   };
 
   return (

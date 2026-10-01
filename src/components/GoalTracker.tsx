@@ -39,6 +39,9 @@ export default function GoalTracker({ clients, startDate, endDate, lockClientId 
   const [pickedClientId, setClientId] = useState("");
   // Locked for the Tomsi Media view; otherwise whatever the user picked.
   const clientId = lockClientId ?? pickedClientId;
+  // The locked Tomsi Media (B2B) view calls appointments "demos".
+  const labelFor = (key: string, label: string) =>
+    lockClientId && key === "booked_appointments" ? "Demos Booked" : label;
   const [adding, setAdding] = useState(false);
   const [newGoal, setNewGoal] = useState({ metric: "new_leads", target: "" });
   const [saving, setSaving] = useState(false);
@@ -129,7 +132,7 @@ export default function GoalTracker({ clients, startDate, endDate, lockClientId 
             <div>
               <label className="block text-xs font-medium mb-1" style={{ color: "#767676" }}>Metric</label>
               <select style={selectStyle} value={newGoal.metric} onChange={e => setNewGoal(s => ({ ...s, metric: e.target.value }))}>
-                {CLIENT_METRICS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                {CLIENT_METRICS.map(m => <option key={m.key} value={m.key}>{labelFor(m.key, m.label)}</option>)}
               </select>
             </div>
             <div>
@@ -158,9 +161,13 @@ export default function GoalTracker({ clients, startDate, endDate, lockClientId 
       {goals.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {goals.map(g => {
-            const metricLabel = CLIENT_METRICS.find(m => m.key === g.metric)?.label ?? g.metric;
+            const metricLabel = labelFor(g.metric, CLIENT_METRICS.find(m => m.key === g.metric)?.label ?? g.metric);
             const isCurrency = g.metric === "ad_spend";
-            const current = Number(metrics[g.metric] ?? 0);
+            // Tomsi Media: every demo booked (pending + shown + no-showed), the
+            // same count the B2B dashboard tiles use. Clients are unchanged.
+            const current = Number(
+              (lockClientId && g.metric === "booked_appointments" ? metrics.total_booked_appointments : undefined)
+              ?? metrics[g.metric] ?? 0);
             return (
               <div key={g.id} className="rounded-2xl p-5 relative group"
                 style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>

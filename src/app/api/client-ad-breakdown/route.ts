@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL, type TouchModel } from '@/lib/ad-funnel';
+import { getInternalClientIds } from '@/lib/db-helpers';
 
 interface Acc {
   id_field: string; id_val: string; name_val: string | null;
@@ -41,10 +42,15 @@ export async function GET(req: Request) {
   // Real CRM funnel, keyed on the same adset_id / ad_id the spend rows use. This
   // is what ties spend to leads/appts/shows/closes; ad_campaigns.leads is Meta's
   // own count and is not the same number.
+  // Internal Tomsi Media client (B2B): demos = every demo booked, not only the
+  // ones still pending. Every other client is counted exactly as before.
+  const isInternal = (await getInternalClientIds(ctx.service)).includes(client_id);
+
   let funnel: Awaited<ReturnType<typeof rollupFunnelByAd>>;
   try {
     funnel = await rollupFunnelByAd(ctx.service, {
       table: 'events', level, model, client_id, campaign_id, start_date, end_date,
+      bookedIncludesResolved: isInternal,
     });
   } catch {
     // The funnel join is an enrichment on top of spend. If it fails (e.g. an

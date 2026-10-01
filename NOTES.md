@@ -1,3 +1,41 @@
+## 2026-09-30 — B2B Campaign Overview: KPI-based State, demo counts, funnel rates
+
+Everything here is gated to the internal Tomsi Media row (`clientId` lock in the
+components, `is_internal` check in the routes). **The client (B2C) dashboards
+are untouched** — the owner asked that nothing B2C change without being asked
+first. One B2C finding left alone on purpose, see the end.
+
+- **Why "Excellent" was wrong.** `campaign-overview` scores each row against the
+  portfolio *median*. With one row the median is the row itself, so Tomsi Media
+  always read Excellent / Healthy. The B2B row is now judged against fixed
+  targets in `B2B_KPI_TARGETS` (`src/lib/kpi-targets.ts`), owner-set:
+  CPL ≤ $70 · cost per demo **booked** ≤ $90 · CTR ≥ 1% · CPC ≤ $2.50 ·
+  landing → booking ≥ 5%.
+- **State** (replaces Rank; the right-hand Overall column is dropped for B2B):
+  Excellent ≥ 25% better than target on every KPI, On Target = at target,
+  Off Target = up to 25% worse, Critical = worse than that; any Critical KPI
+  makes the row Critical. Hold = fewer than 5 leads — except an entity that has
+  spent ≥ 2× the CPL target with a critical cost per lead, which is Critical.
+  The same State shows per campaign / ad set / ad in the drawer tables.
+- **Demos were undercounted (1 instead of 11 in September).** A show / no-show
+  flips the booked row in place, so counting `appointment_booked` alone gives
+  only the demos still pending. B2B now counts pending + shown + no-showed, in
+  `campaign-overview`, `client-ad-breakdown` and `creative-leaderboard`
+  (`rollupFunnelByAd({ bookedIncludesResolved })`, default off) and the Goal
+  Tracker. Sep: $2,145 ÷ 11 = ~$195 per demo (was $2,145 ÷ 1).
+- "Appointment" → "Demo" across the Tomsi views (tables, drawer, tiles, nav,
+  leaderboard, goal tracker, heat map caption).
+- **Funnel Stats:** added Landing → Calendar and Calendar → Booking rates
+  (`b2b-metrics`), and a KPI flag on Landing → Booking (5% floor). "Bookings" is
+  the thank-you page visit count.
+- **Page-visit backfill — not done, blocked.** Tracking only began 2026-09-25.
+  Meta only has ad-driven landing page views (187 for Sep 8–24) and the token
+  cannot read pixel stats; the GHL API lists funnels but exposes no page-view
+  stats. Calendar page visits before Sep 25 exist only in the GHL funnel Stats
+  screen. If the owner reads those numbers off, they can be loaded.
+- **Left alone (B2C):** the client Campaign Overview / Ads tab has the same
+  pending-only appointment count. Not changed — needs the owner's say-so.
+
 ## 2026-09-30 — Meta report: landing→booking KPI and ad on/off history
 
 - **Landing page → booking KPI** (owner's target: never below **5%**, aim for
