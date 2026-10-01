@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getInternalClientIds } from '@/lib/db-helpers';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL, type AdFunnel, type TouchModel } from '@/lib/ad-funnel';
+import { normaliseName, creativeKey } from '@/lib/creative-key';
 
 /**
  * Cross-client creative leaderboard.
@@ -37,38 +38,6 @@ const LEVEL_NAME: Record<string, 'ad_name' | 'adset_name' | 'campaign_name'> = {
 const LEVEL_ID: Record<string, 'ad_id' | 'adset_id' | 'campaign_id'> = {
   ad: 'ad_id', adset: 'adset_id', campaign: 'campaign_id',
 };
-
-// Ad names get "– Copy", " - Copy 2", trailing whitespace and case drift as they
-// are duplicated between accounts. Fold those so one creative stays one row.
-function normaliseName(raw: string): string {
-  return raw
-    .replace(/\s*[–—-]\s*copy(\s*\d+)?\s*$/i, '')
-    .replace(/\s*\(\s*copy(\s*\d+)?\s*\)\s*$/i, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
- * Grouping key that ignores word order.
- *
- * The same creative gets typed differently between accounts — "Bathroom Script
- * 12" and "Script 12 Bathroom" are one piece of work. Sorting the tokens makes
- * both collapse to "12 bathroom script".
- *
- * This is deliberately order-insensitive but still exact on the words
- * themselves, so "Bathroom Script 10" and "Bathroom Script 12" stay apart — the
- * distinguishing token differs. Every pooled spelling is returned on the row so
- * an unintended merge is visible rather than silent.
- */
-function poolKey(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .split(' ')
-    .filter(Boolean)
-    .sort()
-    .join(' ');
-}
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -107,12 +76,14 @@ export async function GET(req: Request) {
   const { data: spendRows, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Internal Tomsi Media view (B2B).
+  const b2b = !!client_id && (await getInternalClientIds(ctx.service)).includes(client_id);
+
   // Funnel side: real CRM outcomes keyed on the same id, across all clients.
   let funnel: Map<string, AdFunnel>;
   try {
-    // Internal Tomsi Media view (B2B): demos = every demo booked (pending +
-    // shown + no-showed). All other callers roll up exactly as before.
-    const b2b = !!client_id && (await getInternalClientIds(ctx.service)).includes(client_id);
+    // B2B: demos = every demo booked (pending + shown + no-showed). All other
+    // callers roll up exactly as before.
     funnel = await rollupFunnelByAd(ctx.service, b2b
       ? { table: 'events', level, model, start_date, end_date, client_id, bookedIncludesResolved: true }
       : { table: 'events', level, model, start_date, end_date });
@@ -127,7 +98,9 @@ export async function GET(req: Request) {
     const rawName = (r[nameCol] as string | null) ?? '';
     const entityId = r[idCol] as string;
     const name = normaliseName(rawName) || `(unnamed ${level})`;
-    const key = poolKey(name) || name.toLowerCase();
+    // One account for B2B, so word order counts there ("Hook 1 Body 2" is not
+    // "Hook 2 Body 1"); the cross-client view pools regardless of order.
+    const key = creativeKey(name, b2b);
     const rowSpend = Number(r.spend) || 0;
 
     let row = byName.get(key);

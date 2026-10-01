@@ -153,6 +153,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `metrics`, `agent-stats`, `heatmap`, `report` | Core reporting reads |
 | `ad-spend/*`, `b2b-ad-spend/*` | Ad spend sync — `sync-all` fetches + stores every ad level in one call |
 | `campaign-overview`, `campaign-exclusions`, `client-ad-breakdown` | Campaign views |
+| `creative-hub`, `creative-leaderboard` | **Creative & Copy Hub** — one record per creative (same pooled name as the leaderboard): media + copy pulled live from Meta by ad id and cached in `creative_hub_meta`, run dates from `ad_campaigns`, and our own prompt / script / background notes in `creative_hub_entries`. Split B2B (Tomsi Media) / B2C (clients). Needs `META_ACCESS_TOKEN`. See `NOTES.md` 2026-10-01. |
 | `csm-dashboard`, `client-csm-status`, `client-touchpoints`, `client-windows` | CSM health tracking |
 | `zip-*` (`zip-lookup`, `zip-data`, `zip-radius`, `zip-neighborhoods`, `zip-performance`) | In-dashboard zip/territory features (uses `src/lib/census.ts` + `zip-score.ts`) |
 | `calendar` | Calendar panel — fetches each user's private Google Calendar iCal feed server-side and parses it with `src/lib/ics.ts`. Feed URLs are secrets: stored in `calendar_feeds`, never returned to the browser. |
@@ -252,8 +253,8 @@ everything into the client-side tables under that client:
 - `/api/b2b-ad-spend/sync-all` → `ad_spend` + `ad_campaigns` (all three levels).
 
 The Tomsi Media section in `DashboardView` then **reuses the client views**
-(Dashboard KPIs, Campaign Overview, Creative Leaderboard, Goal Tracker, Raw
-Data, Heat Maps) with the client locked to the internal id (`lockClientId` /
+(Dashboard KPIs, Campaign Overview, Goal Tracker, Raw Data, Heat Maps; the
+Creative Leaderboard now lives in the Creative & Copy Hub) with the client locked to the internal id (`lockClientId` /
 `clientId` props; `client_id` on `campaign-overview` and `creative-leaderboard`).
 
 Internal clients are excluded from `getLiveClientIds()`, the client selectors,
@@ -291,7 +292,7 @@ Census fetching in `src/lib/census.ts` (needs `CENSUS_API_KEY`).
 | `ANTHROPIC_API_KEY` | AI Campaign Chat (unset by default) |
 | `GHL_API_KEY` | GoHighLevel Private Integration token for the **client** account — reads per-contact ad attribution |
 | `GHL_API_KEY_B2B` | Private Integration token for the **Tomsi Media** sub-account (`jdBERcRjjBJ8dkPT9AOu`). B2B attribution — live in the B2B webhook and via `pull_b2b_attribution`. See `NOTES.md` 2026-09-28 |
-| `META_ACCESS_TOKEN` | Meta B2B report (`meta-b2b-report`) — the long-lived token the Make spend scenarios use. Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_DEMO_EVENT` (legacy `META_KEPT_INTRO_EVENT` still works) |
+| `META_ACCESS_TOKEN` | Creative & Copy Hub previews (all client accounts) and the Meta B2B report (`meta-b2b-report`) — the long-lived token the Make spend scenarios use. Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_DEMO_EVENT` (legacy `META_KEPT_INTRO_EVENT` still works) |
 
 Never commit `.env*` — they're gitignored. Production values live in Railway.
 
@@ -307,6 +308,7 @@ Never commit `.env*` — they're gitignored. Production values live in Railway.
 | Metrics calculation | `src/lib/metrics.ts` |
 | Dashboard UI (nav + all views) | `src/components/DashboardView.tsx` |
 | Database schema | `supabase/schema.sql` (+ `supabase/migrations/`) |
+| Creative & Copy Hub (library, timeline, detail drawer) | `src/components/CreativeHub.tsx`, `src/lib/creative-hub.ts`, `src/lib/creative-key.ts` |
 | Per-user feature access | `src/lib/feature-access.ts` (+ `src/middleware.ts`, Settings > Users) |
 | Health Tracker (log, diet plan, gym split) | `src/components/HealthTracker.tsx` |
 | Calendar (a panel inside the Task Board) + iCal parsing | `src/components/CalendarView.tsx`, `src/lib/ics.ts` |

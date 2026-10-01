@@ -1,3 +1,63 @@
+## 2026-10-01 — Creative & Copy Hub (new top-level menu)
+
+One place for every creative: the image/video, the copy, when it ran, and what
+only we know about it (prompt, script, what's in the background). New sidebar
+section **Creative & Copy Hub**, split **B2B** (Tomsi Media's own ads) and
+**B2C** (clients), each with **Library**, **Timeline** and the **Creative
+Leaderboard** — which moved here out of the Clients Dashboard and TM Dashboard
+(old URLs and saved nav positions follow it).
+
+- **A record is a creative name**, the same key the leaderboard pools on
+  (`src/lib/creative-key.ts`, extracted from the leaderboard route). B2C ignores
+  word order across clients as before. **B2B matches in order** — one account,
+  and "Hook 1 Body 2" / "Hook 2 Body 1" are different ads made of the same
+  words. The B2B leaderboard uses the ordered key too (no current rows change).
+- **Assembled from three places** by `GET /api/creative-hub?scope=b2b|b2c[&client_id=]`:
+  `ad_campaigns` (level `ad`: days delivered → runs, spend, where it ran) ·
+  Meta (cached in `creative_hub_meta`) · `creative_hub_entries` (ours).
+  Outcomes are first-touch, all time, via `rollupFunnelByAd` — same counting as
+  the leaderboard (B2B counts every demo booked; B2C is unchanged, pending-only).
+- **Nothing is stored — media comes straight from Meta** (owner's call, to avoid
+  storage cost). `src/lib/creative-hub.ts` asks Meta by **ad id** in batches of
+  50 (`META_ACCESS_TOKEN`; verified it reads every client account, not just
+  Tomsi's). Per ad: headline, primary text, status, shareable preview link, the
+  image, and for videos a **playable source** — so videos play inside the hub.
+  - Only the ad-account video (`object_story_spec.video_data.video_id`) is
+    readable; the page copy (`creative.video_id`) returns "(#10) no permission".
+  - `thumbnail_url` is often the **page's profile picture**, not the ad
+    (`/t39.30808-1/`). It is dropped when it is; the grid falls back to
+    `image_url` / the video poster.
+  - CDN links expire after ~4–5 days. Rows older than 20h refresh in the
+    background, older than 72h block the load (`REFRESH_HOURS` / `EXPIRED_HOURS`).
+    First ever load of B2C took ~14s; cached loads ~1.5s.
+  - The copy stays on the cache row, so it survives an ad being deleted in Meta;
+    the picture does not.
+- **"Live"** = Meta reports ACTIVE for an ad of that creative that delivered in
+  the last 3 days; with no Meta answer, delivery in the last 2 days stands in.
+- **Timeline** = delivery days from `ad_campaigns`, gaps of ≤2 days bridged.
+  By campaign (expand for its creatives) or by creative. A manual launch date
+  shows as a diamond. It does not use Meta's on/off activity log.
+- **Entries with no ad yet** show as "Not launched" (drafts). Name the ad exactly
+  the same in Meta and the preview + results attach on the next sync.
+- **Uploads were deliberately not built** — a "source file link" field instead.
+- **Access:** new features `creative_hub_b2b`, `creative_hub_b2c`
+  (Settings > Users). Restricted accounts don't see the hub until granted. The
+  leaderboards keep their old rule (`creative_leaderboard`, plus `b2b_tracking`
+  for the B2B one).
+- **Schema:** `supabase/migrations/add_creative_hub.sql` — applied to **V1 and
+  V2** on 2026-10-01 (two new tables, additive).
+- **B2B content loaded (V1 only):** 22 entries from the owner's "B2B Ad
+  Scripts" PDF — UGC 1–2, Voiceover 1–2, AI Slop 1–11, Hook 2 Body 1–3, the
+  Campaign V1 hook/body bank, and three unused UGC prompts. AI Slop 7 and 8 were
+  matched to their prompts by looking at the live images; AI Slop 5, 9, 10, 11
+  and the three UGC prompts are not launched. "Realistic Image 1/2/6" had no
+  prompt in the PDF.
+- **V2** has no ad-level rows in `ad_campaigns`, so its hub is empty apart from
+  anything typed in — a V2 data-session matter.
+- Not verified in a logged-in browser (no session available to the code
+  session): the sidebar wiring. The library, drawer, video playback and
+  timeline were checked against real V1 data; save/rename/delete against V2.
+
 ## 2026-09-30 — B2B Campaign Overview: KPI-based State, demo counts, funnel rates
 
 Everything here is gated to the internal Tomsi Media row (`clientId` lock in the

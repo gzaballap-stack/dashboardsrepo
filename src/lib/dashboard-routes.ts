@@ -11,7 +11,7 @@
 // title from the URL is what actually stops the tab reverting.
 
 export type DashSection =
-  | "clients_dashboard" | "tomsi_media" | "clients" | "tools" | "payments" | "settings";
+  | "clients_dashboard" | "tomsi_media" | "creative_hub" | "clients" | "tools" | "payments" | "settings";
 
 export type DashRoute = {
   section: DashSection;
@@ -19,11 +19,14 @@ export type DashRoute = {
   view?: string;
   /** CLIENTS_NAV id. */
   clientsView?: string;
+  /** Creative & Copy Hub page id. */
+  hubView?: string;
 };
 
 export const SECTION_SLUGS: Record<DashSection, string> = {
   clients_dashboard: "clients-dashboard",
   tomsi_media:       "tm-dashboard",
+  creative_hub:      "creative-hub",
   clients:           "clients",
   tools:             "tools",
   payments:          "payments",
@@ -33,6 +36,7 @@ export const SECTION_SLUGS: Record<DashSection, string> = {
 const SECTION_TITLES: Record<DashSection, string> = {
   clients_dashboard: "Clients Dashboard",
   tomsi_media:       "B2B Tracking",
+  creative_hub:      "Creative & Copy Hub",
   clients:           "Clients",
   tools:             "Tools",
   payments:          "Payments",
@@ -44,7 +48,6 @@ const SECTION_TITLES: Record<DashSection, string> = {
 export const VIEW_ROUTES: Record<string, { slug: string; label: string; section: DashSection }> = {
   dashboard:            { slug: "dashboard",             label: "Dashboard",             section: "clients_dashboard" },
   campaign_overview:    { slug: "campaign-overview",     label: "Campaign Overview",     section: "clients_dashboard" },
-  creative_leaderboard: { slug: "creative-leaderboard",  label: "Creative Leaderboard",  section: "clients_dashboard" },
   goals:                { slug: "goal-tracker",          label: "Goal Tracker",          section: "clients_dashboard" },
   leads:                { slug: "new-leads",             label: "New Leads",             section: "clients_dashboard" },
   dials:                { slug: "all-dials",             label: "All Dials",             section: "clients_dashboard" },
@@ -70,11 +73,25 @@ export const CLIENTS_VIEW_ROUTES: Record<string, { slug: string; label: string }
   share_reports: { slug: "share-reports", label: "Share Reports" },
 };
 
+// Creative & Copy Hub pages. The two halves are separate libraries: B2B is
+// Tomsi Media's own ads, B2C is the clients'.
+export const HUB_VIEW_ROUTES: Record<string, { slug: string; label: string }> = {
+  b2b_library:     { slug: "b2b-library",              label: "B2B Library" },
+  b2b_timeline:    { slug: "b2b-timeline",             label: "B2B Timeline" },
+  b2b_leaderboard: { slug: "b2b-creative-leaderboard", label: "B2B Creative Leaderboard" },
+  b2c_library:     { slug: "b2c-library",              label: "B2C Library" },
+  b2c_timeline:    { slug: "b2c-timeline",             label: "B2C Timeline" },
+  b2c_leaderboard: { slug: "b2c-creative-leaderboard", label: "B2C Creative Leaderboard" },
+};
+
 /** `/dashboard/<section>/<view>` for a nav position. */
 export function pathForRoute(r: DashRoute): string {
   const section = SECTION_SLUGS[r.section] ?? SECTION_SLUGS.clients_dashboard;
   if (r.section === "clients" && r.clientsView && CLIENTS_VIEW_ROUTES[r.clientsView]) {
     return `/dashboard/${section}/${CLIENTS_VIEW_ROUTES[r.clientsView].slug}`;
+  }
+  if (r.section === "creative_hub" && r.hubView && HUB_VIEW_ROUTES[r.hubView]) {
+    return `/dashboard/${section}/${HUB_VIEW_ROUTES[r.hubView].slug}`;
   }
   if ((r.section === "clients_dashboard" || r.section === "tools") && r.view && VIEW_ROUTES[r.view]) {
     return `/dashboard/${section}/${VIEW_ROUTES[r.view].slug}`;
@@ -95,6 +112,14 @@ export function routeForSlug(slug: string[] | undefined): DashRoute | null {
     const cv = Object.keys(CLIENTS_VIEW_ROUTES).find(k => CLIENTS_VIEW_ROUTES[k].slug === viewSlug);
     return { section, clientsView: cv ?? "client_roster" };
   }
+  if (section === "creative_hub") {
+    const hv = Object.keys(HUB_VIEW_ROUTES).find(k => HUB_VIEW_ROUTES[k].slug === viewSlug);
+    return { section, hubView: hv ?? "b2b_library" };
+  }
+  // The Creative Leaderboard used to live in the Clients Dashboard; old links follow it.
+  if (section === "clients_dashboard" && viewSlug === "creative-leaderboard") {
+    return { section: "creative_hub", hubView: "b2c_leaderboard" };
+  }
   if (section === "clients_dashboard" || section === "tools") {
     const v = Object.keys(VIEW_ROUTES).find(k => VIEW_ROUTES[k].slug === viewSlug && VIEW_ROUTES[k].section === section);
     if (v) return { section, view: v };
@@ -108,6 +133,7 @@ export function titleForSlug(slug: string[] | undefined): string {
   const r = routeForSlug(slug);
   if (!r) return "Dashboard";
   if (r.section === "clients" && r.clientsView) return CLIENTS_VIEW_ROUTES[r.clientsView]?.label ?? "Clients";
+  if (r.hubView && HUB_VIEW_ROUTES[r.hubView]) return HUB_VIEW_ROUTES[r.hubView].label;
   if (r.view && VIEW_ROUTES[r.view]) return VIEW_ROUTES[r.view].label;
   return SECTION_TITLES[r.section];
 }

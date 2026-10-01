@@ -11,6 +11,7 @@
 
 export type FeatureId =
   | "dashboard" | "campaign_overview" | "creative_leaderboard" | "goals"
+  | "creative_hub_b2b" | "creative_hub_b2c"
   | "leads" | "dials" | "appointments" | "speed_to_lead" | "ad_spend"
   | "heatmap_show" | "heatmap_pickup" | "heatmap_leads"
   | "agent_stats" | "agent_scorecards" | "recordings"
@@ -21,12 +22,11 @@ export type FeatureId =
   | "admin_users";
 
 export type FeatureGroup =
-  | "Clients Dashboard" | "TM Dashboard" | "Clients" | "Tools" | "Settings";
+  | "Clients Dashboard" | "TM Dashboard" | "Creative & Copy Hub" | "Clients" | "Tools" | "Settings";
 
 export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] = [
   { id: "dashboard",            label: "Dashboard",             group: "Clients Dashboard" },
   { id: "campaign_overview",    label: "Campaign Overview",     group: "Clients Dashboard" },
-  { id: "creative_leaderboard", label: "Creative Leaderboard",  group: "Clients Dashboard" },
   { id: "goals",                label: "Goal Tracker",          group: "Clients Dashboard" },
   { id: "leads",                label: "New Leads",             group: "Clients Dashboard" },
   { id: "dials",                label: "All Dials",             group: "Clients Dashboard" },
@@ -42,6 +42,9 @@ export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] =
   { id: "admin_agents",         label: "Agent Roster",          group: "Clients Dashboard" },
   { id: "schedule",             label: "Power Dialer Schedule", group: "Clients Dashboard" },
   { id: "b2b_tracking",         label: "B2B Tracking",          group: "TM Dashboard"      },
+  { id: "creative_hub_b2b",     label: "B2B Library & Timeline", group: "Creative & Copy Hub" },
+  { id: "creative_hub_b2c",     label: "B2C Library & Timeline", group: "Creative & Copy Hub" },
+  { id: "creative_leaderboard", label: "Creative Leaderboard",  group: "Creative & Copy Hub" },
   { id: "client_roster",        label: "Client Roster",         group: "Clients"           },
   { id: "csm_dashboard",        label: "CSM Dashboard",         group: "Clients"           },
   { id: "share_reports",        label: "Share Reports",         group: "Clients"           },
@@ -54,7 +57,7 @@ export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] =
 ];
 
 export const FEATURE_GROUPS: FeatureGroup[] =
-  ["Clients Dashboard", "TM Dashboard", "Clients", "Tools", "Settings"];
+  ["Clients Dashboard", "TM Dashboard", "Creative & Copy Hub", "Clients", "Tools", "Settings"];
 
 export const ALL_FEATURE_IDS: FeatureId[] = FEATURES.map(f => f.id);
 
@@ -80,6 +83,7 @@ const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/campaign-exclusions",features: ["campaign_overview"] },
   { prefix: "/api/client-ad-breakdown",features: ["campaign_overview"] },
   { prefix: "/api/creative-leaderboard", features: ["creative_leaderboard"] },
+  { prefix: "/api/creative-hub",       features: ["creative_hub_b2b", "creative_hub_b2c"] },
   { prefix: "/api/goals",              features: ["goals"] },
   { prefix: "/api/raw",                features: ["leads", "dials", "appointments", "speed_to_lead", "ad_spend"] },
   { prefix: "/api/heatmap",            features: ["heatmap_show", "heatmap_pickup", "heatmap_leads"] },

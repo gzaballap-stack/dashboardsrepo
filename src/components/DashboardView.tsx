@@ -26,6 +26,7 @@ import WeeklyBreakdown from "./WeeklyBreakdown";
 import DateRangePicker, { fmtRange } from "./DateRangePicker";
 import CreativeLeaderboard from "./CreativeLeaderboard";
 import CSMDashboard from "./CSMDashboard";
+import CreativeHub from "./CreativeHub";
 
 type Client = { id: string; name: string; is_live?: boolean; is_internal?: boolean };
 
@@ -108,7 +109,7 @@ type View =
 
 // B2B view type alias — rendered under Tomsi Media section
 type TomsiView =
-  | "b2b_tracking" | "dashboard" | "campaign_overview" | "creative_leaderboard" | "goals"
+  | "b2b_tracking" | "dashboard" | "campaign_overview" | "goals"
   | "leads" | "dials" | "appointments" | "speed_to_lead"
   | "heatmap_show" | "heatmap_pickup" | "heatmap_leads";
 
@@ -117,7 +118,6 @@ type TomsiView =
 const TOMSI_NAV: { group: string; items: { id: TomsiView; label: string; icon: string }[] }[] = [
   { group: "Overview", items: [
     { id: "dashboard",            label: "B2B Dashboard",        icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-    { id: "creative_leaderboard", label: "Creative Leaderboard", icon: "M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" },
     { id: "goals",                label: "Goal Tracker",         icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
   ]},
   { group: "Raw Data", items: [
@@ -147,7 +147,6 @@ const PRESET_LABELS: Record<Preset, string> = {
 const NAV: { view: View; label: string; group?: string }[] = [
   { view: "dashboard",      label: "B2C Dashboard", group: "Overview"  },
   { view: "campaign_overview", label: "Campaign Overview", group: "Overview" },
-  { view: "creative_leaderboard", label: "Creative Leaderboard", group: "Overview" },
   { view: "leads",          label: "New Leads",      group: "Raw Data"  },
   { view: "dials",          label: "All Dials",      group: "Raw Data"  },
   { view: "appointments",   label: "Appointments",   group: "Raw Data"  },
@@ -316,7 +315,7 @@ const CLIENTS_NAV: { id: ClientsView; label: string; icon: string }[] = [
   { id: "share_reports", label: "Share Reports", icon: NAV_ICONS.admin_share },
 ];
 
-type TopSection = "clients_dashboard" | "tomsi_media" | "clients" | "tools" | "payments" | "settings";
+type TopSection = "clients_dashboard" | "tomsi_media" | "creative_hub" | "clients" | "tools" | "payments" | "settings";
 type ClientsView = "client_roster" | "csm_dashboard" | "share_reports";
 
 const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: string }[] = [
@@ -327,6 +326,10 @@ const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: strin
   {
     id: "tomsi_media", label: "TM Dashboard",
     icon: "M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z",
+  },
+  {
+    id: "creative_hub", label: "Creative & Copy Hub",
+    icon: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z",
   },
   {
     id: "clients", label: "Clients",
@@ -344,6 +347,29 @@ const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: strin
 ];
 
 const TOOLS_VIEWS: string[] = ["zip_tool", "task_board", "lift_tracker"];
+
+// Creative & Copy Hub: two separate libraries (Tomsi Media's own ads, and the
+// clients'), each with its library, its timeline and its creative leaderboard.
+type HubView = "b2b_library" | "b2b_timeline" | "b2b_leaderboard" | "b2c_library" | "b2c_timeline" | "b2c_leaderboard";
+const HUB_ICONS = {
+  library:     "M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z",
+  timeline:    "M4 6h10M4 12h16M8 18h8",
+  leaderboard: "M7 21h10M12 3v18M5 7l7-4 7 4M5 7v6a7 7 0 0014 0V7M5 7l7 4 7-4",
+};
+const HUB_NAV: { group: string; items: { id: HubView; label: string; icon: string }[] }[] = [
+  { group: "B2B", items: [
+    { id: "b2b_library",     label: "Library",              icon: HUB_ICONS.library },
+    { id: "b2b_timeline",    label: "Timeline",             icon: HUB_ICONS.timeline },
+    { id: "b2b_leaderboard", label: "Creative Leaderboard", icon: HUB_ICONS.leaderboard },
+  ]},
+  { group: "B2C", items: [
+    { id: "b2c_library",     label: "Library",              icon: HUB_ICONS.library },
+    { id: "b2c_timeline",    label: "Timeline",             icon: HUB_ICONS.timeline },
+    { id: "b2c_leaderboard", label: "Creative Leaderboard", icon: HUB_ICONS.leaderboard },
+  ]},
+];
+const HUB_VIEWS = HUB_NAV.flatMap(g => g.items.map(i => i.id));
+const HUB_LABEL = Object.fromEntries(HUB_NAV.flatMap(g => g.items.map(i => [i.id, `${g.group} ${i.label}`]))) as Record<HubView, string>;
 
 const NAV_STATE_KEY = "dashboard-nav-state";
 const DISMISSED_ALERTS_KEY = "dismissed-alerts";
@@ -368,6 +394,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const [tomsiView, setTomsiView] = useState<TomsiView>("dashboard");
   const [tomsiPreset, setTomsiPreset] = useState<Preset>("this_month");
   const [clientsView, setClientsView] = useState<ClientsView>(() => (initialRoute?.clientsView as ClientsView) ?? "client_roster");
+  const [hubView, setHubView] = useState<HubView>(() => (initialRoute?.hubView as HubView) ?? "b2b_library");
   // Collapsed sidebar buys ~176px, which is what wide drawer tables need to
   // fit without a horizontal scroll.
   // The menu is a rail that opens on hover and closes when the pointer leaves,
@@ -419,19 +446,31 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
         setTopSection(initialRoute.section as TopSection);
         if (initialRoute.view) setView(initialRoute.view as View);
         if (initialRoute.clientsView) setClientsView(initialRoute.clientsView as ClientsView);
+        if (initialRoute.hubView) setHubView(initialRoute.hubView as HubView);
         return;
       }
 
-      const savedTop = ["clients_dashboard","tomsi_media","tools","clients","settings"].includes(saved.topSection)
+      let savedTop = ["clients_dashboard","tomsi_media","creative_hub","tools","clients","settings"].includes(saved.topSection)
         ? saved.topSection as TopSection
         : null;
+      if (HUB_VIEWS.includes(saved.hubView)) setHubView(saved.hubView as HubView);
+      // The Creative Leaderboard moved into the Creative & Copy Hub. Someone
+      // whose saved position is the old page lands on its new home.
+      if (saved.view === "creative_leaderboard" || saved.tomsiView === "creative_leaderboard") {
+        if (savedTop === "tomsi_media" || savedTop === "clients_dashboard" || !savedTop) {
+          setHubView(savedTop === "tomsi_media" ? "b2b_leaderboard" : "b2c_leaderboard");
+          savedTop = "creative_hub";
+        }
+        if (saved.view === "creative_leaderboard") saved.view = "dashboard";
+        if (saved.tomsiView === "creative_leaderboard") saved.tomsiView = "dashboard";
+      }
       if (savedTop) setTopSection(savedTop);
       // Tools views only belong to the Tools section; restoring one anywhere else
       // would render the tool inside the Clients Dashboard.
       if (saved.view && !(TOOLS_VIEWS.includes(saved.view) && savedTop !== "tools"))
         setView(saved.view as View);
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
-      if (saved.topSection === "tomsi_media" && saved.tomsiView && !["b2b_tracking","campaign_overview"].includes(saved.tomsiView)) setView(saved.tomsiView as View);
+      if (savedTop === "tomsi_media" && saved.tomsiView && !["b2b_tracking","campaign_overview"].includes(saved.tomsiView)) setView(saved.tomsiView as View);
       if (saved.clientsView) setClientsView(saved.clientsView as ClientsView);
     } catch {}
   }, [initialRoute]);
@@ -440,14 +479,14 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   // trip — a Next navigation would re-run the page's auth check on every click.
   const urlSynced = useRef(false);
   useEffect(() => {
-    const path = pathForRoute({ section: topSection, view, clientsView });
+    const path = pathForRoute({ section: topSection, view, clientsView, hubView });
     if (window.location.pathname === path) { urlSynced.current = true; return; }
     // The first correction (a bare /dashboard resolving to the saved view)
     // replaces; real navigation after that builds normal back-button history.
     if (urlSynced.current) window.history.pushState(null, "", path);
     else window.history.replaceState(null, "", path);
     urlSynced.current = true;
-  }, [topSection, view, clientsView]);
+  }, [topSection, view, clientsView, hubView]);
 
   // Back/forward between views.
   useEffect(() => {
@@ -458,6 +497,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       setTopSection(r.section as TopSection);
       if (r.view) setView(r.view as View);
       if (r.clientsView) setClientsView(r.clientsView as ClientsView);
+      if (r.hubView) setHubView(r.hubView as HubView);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -474,10 +514,10 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   useEffect(() => {
     try {
       localStorage.setItem(NAV_STATE_KEY, JSON.stringify({
-        topSection, view, tomsiView, clientsView, expandedSections: Array.from(expandedSections),
+        topSection, view, tomsiView, clientsView, hubView, expandedSections: Array.from(expandedSections),
       }));
     } catch {}
-  }, [topSection, view, tomsiView, clientsView, expandedSections]);
+  }, [topSection, view, tomsiView, clientsView, hubView, expandedSections]);
 
   // Restore dismissed alerts + closed banners, then fetch current alerts on mount
   useEffect(() => {
@@ -622,10 +662,21 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const groups = allGroups.filter(g => NAV.some(n => n.group === g && can(n.view)));
   const toolsVisible = TOOLS_VIEWS.filter(v => can(v));
   const clientsNavVisible = CLIENTS_NAV.filter(c => can(c.id));
+  // The leaderboards keep the access rule they had in their old homes.
+  const canHub = (id: HubView) =>
+    id === "b2b_leaderboard" ? can("creative_leaderboard") && can("b2b_tracking")
+    : id === "b2c_leaderboard" ? can("creative_leaderboard")
+    : can(id.startsWith("b2b") ? "creative_hub_b2b" : "creative_hub_b2c");
+  const hubNavVisible = HUB_NAV
+    .map(g => ({ ...g, items: g.items.filter(i => canHub(i.id)) }))
+    .filter(g => g.items.length > 0);
+  const inHub = topSection === "creative_hub";
+  const hubIsLeaderboard = inHub && hubView.endsWith("_leaderboard");
 
   const sectionVisible = (id: TopSection) =>
     id === "clients_dashboard" ? groups.length > 0
     : id === "tomsi_media"     ? can("b2b_tracking")
+    : id === "creative_hub"    ? hubNavVisible.length > 0
     : id === "clients"         ? clientsNavVisible.length > 0
     : id === "tools"           ? toolsVisible.length > 0
     : id === "payments"        ? unrestricted
@@ -657,7 +708,9 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       const next = (["clients_dashboard", "tools", "clients", "tomsi_media"] as TopSection[])
         .find(sectionVisible);
       if (next) setTopSection(next);
+      return;
     }
+    if (topSection === "creative_hub" && !canHub(hubView)) setHubView(hubNavVisible[0].items[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me]);
 
@@ -665,6 +718,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   // and the browser tab so they can't drift apart.
   const crumb: [string | null, string] =
     topSection === "tomsi_media" ? ["Tomsi Media", TOMSI_LABEL[tomsiView] ?? "B2B Dashboard"]
+    : topSection === "creative_hub" ? ["Creative & Copy Hub", HUB_LABEL[hubView]]
     : topSection === "payments"  ? [null, "Payments"]
     : topSection === "clients"   ? ["Clients", CLIENTS_NAV.find(c => c.id === clientsView)?.label ?? "Clients"]
     : topSection === "settings"  ? ["Settings", "Users"]
@@ -868,6 +922,35 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                   </div>
                 )}
 
+                {/* Sub-nav for the Creative & Copy Hub */}
+                {!navCollapsed && sec.id === "creative_hub" && expandedSections.has("creative_hub") && (
+                  <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
+                    {hubNavVisible.map(group => (
+                      <div key={group.group} className="mb-3">
+                        <p className="text-[9px] font-bold uppercase tracking-widest px-2 mb-1" style={{ color: "#c2c2c2" }}>{group.group}</p>
+                        {group.items.map(item => {
+                          const active = topSection === "creative_hub" && hubView === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => { setTopSection("creative_hub"); setHubView(item.id); setSidebarOpen(false); }}
+                              className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
+                              style={active ? { background: "rgba(0,0,0,0.06)", color: "#000000" } : { color: "#767676" }}
+                              onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
+                              onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#767676"; }}
+                            >
+                              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                              </svg>
+                              {item.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* Sub-nav for Tomsi Media Dashboard */}
                 {!navCollapsed && sec.id === "tomsi_media" && expandedSections.has("tomsi_media") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
@@ -1065,9 +1148,9 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           )}
 
           {/* Dashboard, raw data, and agent/recording views filters */}
-          {topSection !== "tomsi_media" && (view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "recordings") && !view.startsWith("admin_") && (
+          {topSection !== "tomsi_media" && (inHub ? hubIsLeaderboard : (view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "recordings") && !view.startsWith("admin_")) && (
             <>
-              {view === "dashboard" && (
+              {view === "dashboard" && !inHub && (
                 <Select value={selectedClientId} onChange={v => setSelectedClientId(v)}>
                   <option value="">All Clients</option>
                   <option value="__live__">Live Clients</option>
@@ -1120,7 +1203,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           )}
 
           {/* Heat map controls */}
-          {isHeatmap && (
+          {isHeatmap && !inHub && (
             <>
               {!inTomsi && <Select value={heatmapClientId} onChange={v => setHeatmapClientId(v)}>
                 <option value="">All Clients</option>
@@ -1151,6 +1234,13 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           {topSection === "clients" && clientsView === "share_reports" && <ShareReports clients={clients} />}
 
           {topSection === "settings" && isAdmin && <UserManager />}
+
+          {/* ── Creative & Copy Hub ── */}
+          {inHub && canHub(hubView) && (
+            hubView === "b2b_leaderboard" ? (tomsiClient && <CreativeLeaderboard key="hub-b2b" startDate={dateStart} endDate={dateEnd} clientId={tomsiClient.id} />)
+            : hubView === "b2c_leaderboard" ? <CreativeLeaderboard key="hub-b2c" startDate={dateStart} endDate={dateEnd} />
+            : <CreativeHub key={hubView.slice(0, 3)} scope={hubView.startsWith("b2b") ? "b2b" : "b2c"} tab={hubView.endsWith("_timeline") ? "timeline" : "library"} clients={publicClients} />
+          )}
 
           {topSection === "payments" && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 20, padding: 40 }}>
@@ -1425,9 +1515,6 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
             <CampaignOverview key={inTomsi ? "tomsi" : "clients"} startDate={viewStart} endDate={viewEnd} clientId={lockClientId} />
           )}
 
-          {view === "creative_leaderboard" && (!inTomsi || lockClientId) && (
-            <CreativeLeaderboard key={inTomsi ? "tomsi" : "clients"} startDate={viewStart} endDate={viewEnd} clientId={lockClientId} />
-          )}
           {/* ── Admin ── */}
           {view === "admin_agents"  && <AgentAdmin />}
           {view === "admin_clients" && <ClientRoster />}
