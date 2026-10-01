@@ -37,6 +37,14 @@ Leaderboard** — which moved here out of the Clients Dashboard and TM Dashboard
 - **Timeline** = delivery days from `ad_campaigns`, gaps of ≤2 days bridged.
   By campaign (expand for its creatives) or by creative. A manual launch date
   shows as a diamond. It does not use Meta's on/off activity log.
+- **Ads that are on but haven't served** (added same day, after "AI Slop 5" was
+  missing): the spend sync only sees ads with an impression, so an active ad
+  with zero delivery never reached `ad_campaigns`. The hub now lists the ads of
+  every campaign that ran in the last 30 days (`listCampaignAds`, 15-min memory
+  cache) and adds the **ACTIVE** ones it didn't know — shown as Live, "No
+  delivery yet", sorted to the top. Paused never-served ads are skipped: client
+  accounts are full of them. An ad in a brand-new campaign with no delivery at
+  all is still invisible until its first impression.
 - **Entries with no ad yet** show as "Not launched" (drafts). Name the ad exactly
   the same in Meta and the preview + results attach on the next sync.
 - **Uploads were deliberately not built** — a "source file link" field instead.

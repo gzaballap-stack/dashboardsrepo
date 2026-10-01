@@ -59,9 +59,11 @@ const fmtDay = (d: string, withYear = false) =>
 const fmt$ = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 const fmtRange = (a: string | null, b: string | null) =>
   !a || !b ? "Not launched" : a === b ? fmtDay(a) : `${fmtDay(a)} – ${fmtDay(b)}`;
+// An ad can be set up in Facebook and still not have served a single impression.
+const ranLabel = (c: Creative) => (c.first ? fmtRange(c.first, c.last) : c.ads.length ? "No delivery yet" : "Not launched");
 
 const isVideo = (c: Creative) => c.meta?.format === "Video" || /video|head|ugc|voice/i.test(c.kind ?? "");
-const statusOf = (c: Creative) => (c.live ? "live" : c.days > 0 ? "off" : "draft");
+const statusOf = (c: Creative) => (c.live ? "live" : c.ads.length > 0 ? "off" : "draft");
 const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   live:  { label: "Live",         color: "#15803d", bg: "rgba(21,128,61,0.10)" },
   off:   { label: "Off",          color: "#6b6b6b", bg: "rgba(0,0,0,0.06)" },
@@ -229,7 +231,7 @@ export default function CreativeHub({ scope, tab, clients }: {
                   <div className="p-3 space-y-1.5">
                     <div className="text-sm font-semibold truncate" style={{ color: "#111111" }} title={c.name}>{c.name}</div>
                     <div className="text-[11px] truncate" style={{ color: "#767676" }}>
-                      {[c.kind, fmtRange(c.first, c.last)].filter(Boolean).join(" · ")}
+                      {[c.kind, ranLabel(c)].filter(Boolean).join(" · ")}
                     </div>
                     {c.days > 0 && (
                       <div className="text-[11px]" style={{ color: "#4a4a4a" }}>
@@ -513,7 +515,7 @@ function Drawer({ creative, scope, apptWord, onClose, onSaved }: {
                 <Chip color={st.color} bg={st.bg}>{st.label}</Chip>
                 {creative.kind && <Chip>{creative.kind}</Chip>}
                 {entry?.campaign_label && <Chip>{entry.campaign_label}</Chip>}
-                <span className="text-[11px]" style={{ color: "#767676" }}>{fmtRange(creative.first, creative.last)}</span>
+                <span className="text-[11px]" style={{ color: "#767676" }}>{ranLabel(creative)}</span>
               </div>
             )}
           </div>
@@ -636,7 +638,7 @@ function Drawer({ creative, scope, apptWord, onClose, onSaved }: {
                             {scope === "b2c" && <td className="px-3 py-2" style={{ color: "#111111" }}>{a.client_name}</td>}
                             <td className="px-3 py-2" style={{ color: "#4a4a4a" }}>{a.campaign_name || "—"}</td>
                             <td className="px-3 py-2" style={{ color: "#4a4a4a" }}>{a.adset_name || "—"}</td>
-                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: "#4a4a4a" }}>{fmtRange(a.first, a.last)}</td>
+                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: "#4a4a4a" }}>{a.first ? fmtRange(a.first, a.last) : "No delivery yet"}</td>
                             <td className="px-3 py-2 whitespace-nowrap" style={{ color: "#111111" }}>{fmt$(a.spend)}</td>
                           </tr>
                         ))}

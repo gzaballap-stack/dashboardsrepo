@@ -182,6 +182,37 @@ export async function refreshMeta(service: Service, token: string, adIds: string
   return fresh;
 }
 
+// ── Ads that exist but have not delivered ────────────────────────────────
+// The spend sync only ever sees ads with at least one impression, so an ad that
+// is switched on but hasn't served yet would be invisible to the hub. Listing
+// the ads of the campaigns we already know about closes that gap.
+
+export type CampaignAd = { id: string; name?: string; effective_status?: string; adset?: { name?: string } };
+
+const LIST_TTL_MS = 15 * 60_000;
+const listCache = new Map<string, { at: number; ads: CampaignAd[] }>();
+
+async function fetchCampaignAds(token: string, campaignIds: string[]): Promise<void> {
+  await Promise.all(chunk(campaignIds, BATCH).map(async ids => {
+    const out = await graphBatch<{ data?: CampaignAd[]; error?: unknown }>(
+      token, ids.map(id => `${id}/ads?fields=${encodeURIComponent('id,name,effective_status,adset{name}')}&limit=200`));
+    ids.forEach((id, i) => { if (out[i]?.data) listCache.set(id, { at: Date.now(), ads: out[i]!.data! }); });
+  }));
+}
+
+/**
+ * Every (non-deleted) ad in these campaigns, by campaign id. Held in memory for
+ * 15 minutes; a stale answer is returned at once and refreshed behind it, so
+ * only the first load after a restart waits on Meta.
+ */
+export async function listCampaignAds(token: string, campaignIds: string[]): Promise<Map<string, CampaignAd[]>> {
+  const unknown = campaignIds.filter(id => !listCache.has(id));
+  const stale = campaignIds.filter(id => { const c = listCache.get(id); return c && Date.now() - c.at > LIST_TTL_MS; });
+  if (unknown.length) await fetchCampaignAds(token, unknown);
+  if (stale.length) void fetchCampaignAds(token, stale).catch(() => {});
+  return new Map(campaignIds.filter(id => listCache.has(id)).map(id => [id, listCache.get(id)!.ads]));
+}
+
 /** A readable creative type from the Meta format and the naming convention. */
 export function inferKind(name: string, format: string | null): string | null {
   const n = name.toUpperCase();

@@ -3,7 +3,7 @@ import { createServiceClient } from '@/lib/supabase';
 import { getAuthContext, isAuthError, validateWebhookSecret } from '@/lib/api-auth';
 import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL, type AdFunnel } from '@/lib/ad-funnel';
 import { normaliseName, creativeKey } from '@/lib/creative-key';
-import { loadMeta, refreshMeta, metaAgeHours, inferKind, REFRESH_HOURS, EXPIRED_HOURS, type HubMeta } from '@/lib/creative-hub';
+import { loadMeta, refreshMeta, metaAgeHours, inferKind, listCampaignAds, REFRESH_HOURS, EXPIRED_HOURS, type HubMeta } from '@/lib/creative-hub';
 
 /**
  * Creative & Copy Hub.
@@ -129,6 +129,33 @@ export async function GET(req: Request) {
     }
   }
 
+  // ── Ads that are in Meta but haven't delivered yet ──
+  // The spend sync only sees ads with an impression. Ask Meta for every ad in
+  // the campaigns that ran in the last 30 days and add the active ones it
+  // missed, with no delivery days — so a freshly launched ad shows up straight away.
+  const token = process.env.META_ACCESS_TOKEN;
+  if (token) {
+    const cut30 = new Date(Date.now() - 30 * DAY).toISOString().slice(0, 10);
+    const camps = new Map<string, { client_id: string; name: string; last: string }>();
+    for (const a of ads.values()) {
+      const c = camps.get(a.campaign_id);
+      if (!c || a.last > c.last) camps.set(a.campaign_id, { client_id: a.client_id, name: a.campaign_name, last: a.last });
+    }
+    const running = [...camps].filter(([, c]) => c.last >= cut30).map(([id]) => id);
+    try {
+      for (const [campaignId, list] of running.length ? await listCampaignAds(token, running) : []) {
+        const c = camps.get(campaignId)!;
+        for (const ad of list) {
+          // Only ads that are switched on: a paused ad that never served is old
+          // clutter (client accounts are full of them), not a launch.
+          if (ads.has(ad.id) || !ad.name || ad.effective_status !== 'ACTIVE') continue;
+          ads.set(ad.id, { ad_id: ad.id, ad_name: ad.name, client_id: c.client_id, campaign_id: campaignId, campaign_name: c.name,
+            adset_name: ad.adset?.name ?? '', days: new Set(), spend: 0, impressions: 0, link_clicks: 0, first: '', last: '' });
+        }
+      }
+    } catch { /* the hub still works from the spend data alone */ }
+  }
+
   // ── Funnel side: what each ad produced in the CRM (first touch, all time) ──
   let funnel = new Map<string, AdFunnel>();
   try {
@@ -157,11 +184,10 @@ export async function GET(req: Request) {
   const recentCut = new Date(Date.now() - 3 * DAY).toISOString().slice(0, 10);
 
   const meta = await loadMeta(service, [...ads.keys()]);
-  const token = process.env.META_ACCESS_TOKEN;
   let metaError: string | null = token ? null : 'META_ACCESS_TOKEN is not set';
   if (token) {
     const wanted = new Set([...lead.values()].map(a => a.ad_id));
-    for (const a of ads.values()) if (a.last >= recentCut) wanted.add(a.ad_id);
+    for (const a of ads.values()) if (!a.last || a.last >= recentCut) wanted.add(a.ad_id);
     const expired = [...wanted].filter(id => metaAgeHours(meta.get(id)) > EXPIRED_HOURS);
     const aging = [...wanted].filter(id => { const h = metaAgeHours(meta.get(id)); return h > REFRESH_HOURS && h <= EXPIRED_HOURS; });
     if (expired.length) {
@@ -207,11 +233,12 @@ export async function GET(req: Request) {
     const name = entry?.name ?? names[0];
     // "Live" = Meta says one of its recently-delivering ads is active. When Meta
     // gave no answer, having delivered in the last two days stands in for it.
-    const recent = list.filter(a => a.last >= recentCut);
+    // An ad with no delivery at all (`last` empty) is judged on its status alone.
+    const recent = list.filter(a => !a.last || a.last >= recentCut);
     const statuses = recent.map(a => meta.get(a.ad_id)?.status).filter(Boolean);
     const live = statuses.length
       ? statuses.includes('ACTIVE')
-      : recent.some(a => dayNum(today) - dayNum(a.last) <= 2);
+      : recent.some(a => !!a.last && dayNum(today) - dayNum(a.last) <= 2);
 
     return {
       key, name, names,
@@ -284,7 +311,10 @@ export async function GET(req: Request) {
     };
   }).sort((a, b) => (a.first ?? '').localeCompare(b.first ?? ''));
 
-  creatives.sort((a, b) => (b.last ?? '').localeCompare(a.last ?? '') || b.spend - a.spend || a.name.localeCompare(b.name));
+  // Newest delivery first. A live ad that hasn't served yet counts as today, so a
+  // fresh launch sits at the top rather than down among the drafts.
+  const recency = (c: { last: string | null; live: boolean }) => c.last ?? (c.live ? today : '');
+  creatives.sort((a, b) => recency(b).localeCompare(recency(a)) || b.spend - a.spend || a.name.localeCompare(b.name));
 
   return NextResponse.json({ scope, today, creatives, campaigns, meta_error: metaError });
 }
