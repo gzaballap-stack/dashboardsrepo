@@ -29,6 +29,9 @@ export const RULES = {
   perfVsControlMultiple: 1.3,
 } as const;
 
+// Funnel KPI: landing page → booking rate. Never below the floor; aim for the target band.
+export const LANDING_TO_BOOKING_KPI = { floorPct: 5, targetLowPct: 7, targetHighPct: 8 } as const;
+
 export type Metrics = {
   spend: number;
   impressions: number;
@@ -71,9 +74,21 @@ export type AdRow = {
   creative: Creative;
   status: string | null;
   first_served: string | null;
+  status_history: StatusEvent[];   // created / first delivery / turned on / turned off, oldest first
   windows: Record<WindowDays, Metrics>;
   flags: Flags;
 };
+
+// One entry in an ad's (or ad set's / campaign's) on-off timeline, from Meta's activity log.
+export type StatusEvent = {
+  at: string;                 // ISO timestamp (UTC)
+  local: string;              // same moment in the report timezone, human-readable
+  event: 'created' | 'first_delivery' | 'on' | 'off';
+  detail: string | null;      // e.g. "Deleted", "switched off before going live"
+  actor: string | null;
+};
+
+export type ParentStatusChange = StatusEvent & { level: 'ad set' | 'campaign'; id: string; name: string };
 
 export type RollupRow = {
   id: string;
@@ -105,6 +120,11 @@ export type MetaReport = {
   ads: AdRow[];
   adsets: RollupRow[];
   campaigns: RollupRow[];
+  // On/off changes at ad set and campaign level (these switch every ad underneath them).
+  parent_status_changes: ParentStatusChange[];
+  status_history_available: boolean;
+  status_history_since: string | null;
+  kpi_targets: { landing_to_booking: typeof LANDING_TO_BOOKING_KPI };
   rules: typeof RULES;
 };
 
@@ -277,6 +297,80 @@ async function fetchAdEntities(acct: string, token: string): Promise<Map<string,
   return map;
 }
 
+// ── On/off history (Meta activity log) ────────────────────────────────────
+
+type RawActivity = {
+  event_time?: string; event_type?: string; object_id?: string; object_name?: string;
+  extra_data?: string | Record<string, unknown>; actor_name?: string;
+};
+
+const ACTIVITY_LOOKBACK_DAYS = 180;
+
+async function fetchActivities(acct: string, token: string): Promise<RawActivity[] | null> {
+  const until = Math.floor(Date.now() / 1000);
+  const since = until - ACTIVITY_LOOKBACK_DAYS * 86400;
+  try {
+    return await graphGet<RawActivity>(`/${acct}/activities`, {
+      fields: 'event_time,event_type,object_id,object_name,extra_data,actor_name',
+      since: String(since), until: String(until),
+    }, token);
+  } catch {
+    return null; // token without activity-log access — the section says so rather than failing the report
+  }
+}
+
+const STATUS_EVENT_TYPES: Record<string, 'ad' | 'ad set' | 'campaign'> = {
+  update_ad_run_status: 'ad',
+  update_ad_set_run_status: 'ad set',
+  update_campaign_run_status: 'campaign',
+};
+
+// Meta logs a switch as several steps (Active → Pending process → Inactive). Only the
+// settled states matter: reaching Active is "on", reaching anything non-pending else is "off".
+export function buildStatusTimelines(activities: RawActivity[], tz: string) {
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  const sorted = [...activities].filter(a => a.event_time && a.object_id)
+    .sort((a, b) => new Date(a.event_time!).getTime() - new Date(b.event_time!).getTime());
+
+  const byObject = new Map<string, { level: 'ad' | 'ad set' | 'campaign'; name: string; events: StatusEvent[] }>();
+  const settled = new Map<string, 'on' | 'off'>();
+
+  for (const a of sorted) {
+    const id = a.object_id!;
+    const when = new Date(a.event_time!);
+    const base = { at: when.toISOString(), local: fmt.format(when), actor: a.actor_name && a.actor_name !== 'Meta' ? a.actor_name : null };
+    const level = STATUS_EVENT_TYPES[a.event_type ?? ''];
+    const entry = byObject.get(id) ?? { level: level ?? 'ad', name: a.object_name ?? '', events: [] };
+    if (level) entry.level = level;
+    if (a.object_name) entry.name = a.object_name;
+
+    if (a.event_type === 'create_ad') {
+      entry.events.push({ ...base, event: 'created', detail: null });
+    } else if (a.event_type === 'first_delivery_event') {
+      entry.events.push({ ...base, event: 'first_delivery', detail: null });
+    } else if (level) {
+      let extra: Record<string, unknown> = {};
+      try { extra = typeof a.extra_data === 'string' ? JSON.parse(a.extra_data) : (a.extra_data ?? {}); } catch { /* unreadable step — skip */ }
+      const next = String(extra.new_value ?? '');
+      if (!next || /pending/i.test(next)) { byObject.set(id, entry); continue; }
+      const prev = settled.get(id);
+      if (/^active$/i.test(next)) {
+        if (prev !== 'on') entry.events.push({ ...base, event: 'on', detail: null });
+        settled.set(id, 'on');
+      } else {
+        if (prev !== 'off') {
+          entry.events.push({ ...base, event: 'off', detail: /^inactive$/i.test(next) ? (prev === 'on' ? null : 'switched off before it went live') : next });
+        }
+        settled.set(id, 'off');
+      }
+    } else {
+      continue;
+    }
+    byObject.set(id, entry);
+  }
+  return byObject;
+}
+
 // ── Build ─────────────────────────────────────────────────────────────────
 
 export type BuildOptions = {
@@ -307,9 +401,10 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
         .then(list => Object.fromEntries(WINDOWS.map((w, i) => [w, list[i]])) as Record<WindowDays, FunnelStats>)
     : Promise.resolve(null);
 
-  const [keptType, entities, raw30, raw7, raw3, rawPrev, funnel] = await Promise.all([
+  const [keptType, entities, activities, raw30, raw7, raw3, rawPrev, funnel] = await Promise.all([
     findKeptDemoType(acct, opts.token),
     fetchAdEntities(acct, opts.token),
+    fetchActivities(acct, opts.token),
     fetchInsights(acct, opts.token, windows[30].since, windows[30].until),
     fetchInsights(acct, opts.token, windows[7].since, windows[7].until),
     fetchInsights(acct, opts.token, windows[3].since, windows[3].until),
@@ -334,6 +429,8 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
 
   const inFilter = (r: RawInsight) => !filter || filter.has((r.campaign_name ?? '').toLowerCase());
 
+  const timelines = buildStatusTimelines(activities ?? [], tz);
+
   // Ads = anything that served in the 30-day window.
   const ads = new Map<string, AdRow>();
   for (const r of raw30.filter(inFilter)) {
@@ -347,6 +444,7 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
       creative: describeCreative(ent?.creative),
       status: ent?.effective_status ?? null,
       first_served: ent?.created_time ? ent.created_time.slice(0, 10) : null,
+      status_history: timelines.get(r.ad_id)?.events ?? [],
       windows: { 30: toMetrics(r, 30), 7: emptyMetrics(), 3: emptyMetrics() },
       flags: { over_eval_floor: false, zero_demo_kill: false, ctr_half_control: false, early_ctr_trash: false, perf_vs_control_bad: false },
     });
@@ -411,6 +509,15 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
   for (const r of rawPrev.filter(inFilter)) add(prevTotals, toMetrics(r));
   finalize(prevTotals);
 
+  // Ad set / campaign switches for the ad sets and campaigns in this report.
+  const parentIds = new Set([...adList.map(a => a.adset_id), ...adList.map(a => a.campaign_id)]);
+  const parentChanges: ParentStatusChange[] = [];
+  for (const [id, t] of timelines) {
+    if (t.level === 'ad' || !parentIds.has(id)) continue;
+    for (const e of t.events) if (e.event === 'on' || e.event === 'off') parentChanges.push({ ...e, level: t.level, id, name: t.name });
+  }
+  parentChanges.sort((a, b) => a.at.localeCompare(b.at));
+
   const report: MetaReport = {
     generated_at: new Date().toISOString(),
     today, timezone: tz, account_id: acct,
@@ -425,6 +532,10 @@ export async function buildMetaReport(opts: BuildOptions): Promise<MetaReport> {
     funnel,
     summary: [],
     ads: adList, adsets, campaigns,
+    parent_status_changes: parentChanges,
+    status_history_available: activities != null,
+    status_history_since: activities != null ? shiftDays(today, -ACTIVITY_LOOKBACK_DAYS) : null,
+    kpi_targets: { landing_to_booking: LANDING_TO_BOOKING_KPI },
     rules: RULES,
   };
   report.summary = summarise(report);
@@ -470,6 +581,17 @@ export function summarise(r: MetaReport): string[] {
 }
 
 // Account / funnel summary block for one window, in the paste-ready format.
+// Landing page → booking rate against its KPI (floor 5%, target 7–8%).
+export function landingLine(f: FunnelStats): string {
+  const k = LANDING_TO_BOOKING_KPI;
+  const kpi = `KPI: never below ${k.floorPct}%, target ${k.targetLowPct}–${k.targetHighPct}%`;
+  if (!f.landing_visits) return `Landing page → booking: — (no landing-page visits tracked in this window · ${kpi})`;
+  const p = f.landing_to_booking_pct ?? 0;
+  const status = p < k.floorPct ? 'BELOW FLOOR' : p < k.targetLowPct ? 'ABOVE FLOOR, BELOW TARGET' : 'ON TARGET';
+  return `Landing page → booking: ${pct(p, 1)} (${int(f.page_bookings)} bookings / ${int(f.landing_visits)} landing-page visits) — ${status} · ${kpi}` +
+    (f.landing_tracked_since ? ` · visits tracked from ${f.landing_tracked_since}` : '');
+}
+
 export function accountSummary(r: MetaReport, w: WindowDays): string {
   const t = r.totals[w];
   const f = r.funnel?.[w];
@@ -483,6 +605,7 @@ export function accountSummary(r: MetaReport, w: WindowDays): string {
   lines.push(`Ad spend: ${money0(t.spend)}`);
   lines.push(`Leads: ${int(f.leads)} (CPL ${money(div(t.spend, f.leads))})${t.leads !== f.leads ? ` · Meta-reported leads: ${int(t.leads)}` : ''}`);
   lines.push(`Bookings: ${int(f.demos_booked)} (Lead→Booking ${pct(f.lead_to_booking_pct, 0)} · Cost per booked demo ${money(div(t.spend, f.demos_booked))})`);
+  lines.push(landingLine(f));
   lines.push(`Kept demos: ${int(f.demos_shown)} (Cost per kept demo ${money(div(t.spend, f.demos_shown))})`);
   if (f.spam_leads || f.spam_appointments) lines.push(`Fake submissions excluded: ${int(f.spam_leads)} leads, ${int(f.spam_appointments)} demos (Meta still counts these)`);
   lines.push(`Sales calls: ${int(f.sales_calls_booked)} booked / ${int(f.sales_calls_shown)} shown`);
@@ -516,7 +639,7 @@ export function renderMarkdown(r: MetaReport): string {
     '>',
     `> **Definitions.** L30 / L7 / L3 = last 30 / 7 / 3 days ending ${r.today}. A *kept demo* is a booked demo that showed. *Control* = the best ad in L7 (named in section 3). Ad-level numbers are L7.`,
     '>',
-    '> **KPI targets (compare every number to these):** cost per booked demo ≤ $90 · cost per lead ≤ $70 · link CTR > 1.0% · CPC < $2.50. Priority order: cost per kept demo → cost per booked demo → cost per lead → CTR/CPC. Account-level cost per booked demo is in section 1; per-ad kept-demo cost is in section 3.',
+    '> **KPI targets (compare every number to these):** cost per booked demo ≤ $90 · cost per lead ≤ $70 · link CTR > 1.0% · CPC < $2.50 · landing page → booking rate never below 5%, aiming for 7–8% (section 1 marks each window BELOW FLOOR / BELOW TARGET / ON TARGET; below 5% is a funnel problem — page or offer — not a media problem). Priority order: cost per kept demo → cost per booked demo → cost per lead → CTR/CPC. Account-level cost per booked demo is in section 1; per-ad kept-demo cost is in section 3.',
     '>',
     '> **Missing data rule.** If kept-demo data is N/A, or the header says there is no per-ad kept-demo source, treat it as MISSING, not zero. Never pause or rank an ad on kept demos in that case — fall back to CPL, CTR and CPC and say explicitly that kept-demo data is unavailable.',
     '>',
@@ -527,6 +650,8 @@ export function renderMarkdown(r: MetaReport): string {
     '> **2) ACTION ITEMS** (3–7 bullets, very concrete) — start with "Do this next:". Each bullet is a direct instruction executable today or this week: which ads to PAUSE (exact ad name + ID) and why; which ads to KEEP (exact ad name + ID) and why; how many NEW ads to create, in what formats (UGC / VO / static) and which existing ad to model; any funnel/sales changes required if those are the real bottleneck.',
     '>',
     '> **3) DETAILS & REASONING** — only after the snapshot and actions: key metrics by window (L30, L7, L3) and what changed; ad-level commentary (CTR, CPC, CPL, cost per kept demo) against the KPI targets; patterns in hooks, formats or angles that are working or failing. Justification and nuance only — no new action items here.',
+    '>',
+    '> **On/off history.** Section 5 lists exactly when each ad (and its ad set / campaign) was turned on or off. Before judging an ad on its L7 or L3 numbers, check how much of that window it was actually live — an ad switched off mid-window has low spend because it was off, not because it failed.',
     '>',
     '> **General rules:** tie every recommendation back to the KPIs in priority order. Be decisive — no "it depends" without a recommendation; if something is unclear, name the test you want next. Brevity over fluff: a battlefield brief, not a novel.',
   ].join('\n'));
@@ -560,5 +685,23 @@ export function renderMarkdown(r: MetaReport): string {
 
   parts.push('\n## 4. Creative map');
   parts.push(r.ads.map(a => `- ${a.ad_name} (${a.ad_id}, ${a.status ?? 'status —'}) = ${a.creative_type !== '—' ? a.creative_type + ' · ' : ''}${a.creative.description}`).join('\n'));
+
+  parts.push('\n## 5. Ad on/off history');
+  if (!r.status_history_available) {
+    parts.push('Meta did not return the account activity log for this run, so on/off times are unavailable.');
+  } else {
+    parts.push(`Every time each ad was created, started delivering, turned ON or turned OFF, oldest first (times in ${r.timezone}; log covers ${r.status_history_since} → ${r.today}). "Now" is the ad's current status in Meta.`);
+    const label: Record<StatusEvent['event'], string> = { created: 'Created', first_delivery: 'First delivery', on: 'Turned ON', off: 'Turned OFF' };
+    const line = (e: StatusEvent) => `${label[e.event]} ${e.local}${e.detail ? ` (${e.detail})` : ''}${e.actor && (e.event === 'on' || e.event === 'off') ? ` by ${e.actor}` : ''}`;
+    parts.push(table(['Ad name', 'Ad ID', 'Now', 'Last turned ON', 'Last turned OFF', 'Full timeline'], r.ads.map(a => {
+      const last = (ev: 'on' | 'off') => [...a.status_history].reverse().find(e => e.event === ev)?.local ?? '—';
+      return [a.ad_name, a.ad_id, a.status ?? '—', last('on'), last('off'),
+        a.status_history.length ? a.status_history.map(line).join(' → ') : 'No changes in the log window'];
+    })));
+    if (r.parent_status_changes.length) {
+      parts.push('\n**Ad set / campaign switches** (these turn every ad underneath on or off, even when the ad itself was not touched):');
+      parts.push(r.parent_status_changes.map(e => `- ${e.local} — ${e.level} "${e.name}" turned ${e.event === 'on' ? 'ON' : 'OFF'}${e.detail ? ` (${e.detail})` : ''}${e.actor ? ` by ${e.actor}` : ''}`).join('\n'));
+    }
+  }
   return parts.join('\n');
 }

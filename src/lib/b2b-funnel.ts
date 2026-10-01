@@ -26,6 +26,12 @@ export type FunnelStats = {
   lead_to_booking_pct: number | null;   // demos booked / leads
   show_pct: number | null;              // demos shown / demos booked
   close_pct: number | null;             // closes / demos shown
+  // Funnel pages (the site's own visit tracking): booking-confirmation page hits ÷ landing page hits.
+  landing_visits: number;
+  calendar_visits: number;
+  page_bookings: number;                // visit_thankyou
+  landing_to_booking_pct: number | null;
+  landing_tracked_since: string | null; // earliest landing visit in the window (YYYY-MM-DD) — tracking began 2026-09
   kept_demos_by_ad: Record<string, number>;    // ad_id → demos shown (GHL attribution)
 };
 
@@ -42,7 +48,7 @@ export function dayBounds(since: string, until: string, tz: string): { from: str
   return { from, to };
 }
 
-type B2BRow = { event_type: string; revenue: number | null; ghl_contact_id: string | null; ad_id: string | null };
+type B2BRow = { event_type: string; occurred_at: string | null; revenue: number | null; ghl_contact_id: string | null; ad_id: string | null };
 type DialRow = { is_pickup: boolean | null; speed_to_lead_seconds: number | null };
 
 export async function getFunnelStats(service: Service, since: string, until: string, tz: string): Promise<FunnelStats> {
@@ -51,9 +57,10 @@ export async function getFunnelStats(service: Service, since: string, until: str
   const tomsiId = await getTomsiClientId(service);
   const [b2b, dialsRes] = await Promise.all([
     service.from('b2b_events')
-      .select('event_type, revenue, ghl_contact_id, ad_id')
+      .select('event_type, occurred_at, revenue, ghl_contact_id, ad_id')
       .gte('occurred_at', from).lte('occurred_at', to)
-      .in('event_type', ['lead', 'intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close', 'spam_lead', 'spam_appointment']),
+      .in('event_type', ['lead', 'intro_booked', 'intro_shown', 'sales_call_booked', 'sales_call_shown', 'close', 'spam_lead', 'spam_appointment', 'visit_landing', 'visit_calendar', 'visit_thankyou'])
+      .limit(10000),
     tomsiId
       ? service.from('events').select('is_pickup, speed_to_lead_seconds')
           .eq('client_id', tomsiId).eq('event_type', 'dial')
@@ -78,6 +85,11 @@ export async function getFunnelStats(service: Service, since: string, until: str
     if (r.event_type === 'sales_call_shown' && r.ad_id) keptByAd[r.ad_id] = (keptByAd[r.ad_id] ?? 0) + 1;
   }
 
+  const landingVisits = count('visit_landing');
+  const pageBookings = count('visit_thankyou');
+  const firstLanding = rows.filter(r => r.event_type === 'visit_landing' && r.occurred_at)
+    .map(r => r.occurred_at as string).sort()[0] ?? null;
+
   const pickups = dials.filter(d => d.is_pickup).length;
   const speeds = dials.map(d => Number(d.speed_to_lead_seconds)).filter(n => Number.isFinite(n) && n > 0);
   const rate = (n: number, d: number) => (d > 0 ? (n / d) * 100 : null);
@@ -100,6 +112,13 @@ export async function getFunnelStats(service: Service, since: string, until: str
     lead_to_booking_pct: rate(demosBooked, leads),
     show_pct: rate(demosShown, demosBooked),
     close_pct: rate(closes, demosShown),
+    landing_visits: landingVisits,
+    calendar_visits: count('visit_calendar'),
+    page_bookings: pageBookings,
+    landing_to_booking_pct: rate(pageBookings, landingVisits),
+    landing_tracked_since: firstLanding
+      ? new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(firstLanding))
+      : null,
     kept_demos_by_ad: keptByAd,
   };
 }

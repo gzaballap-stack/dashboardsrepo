@@ -1,3 +1,21 @@
+## 2026-09-30 — Meta report: landing→booking KPI and ad on/off history
+
+- **Landing page → booking KPI** (owner's target: never below **5%**, aim for
+  **7–8%**). Each account-summary window prints the rate with BELOW FLOOR /
+  ABOVE FLOOR, BELOW TARGET / ON TARGET, and the KPI line in the AI style block
+  carries the same numbers (`LANDING_TO_BOOKING_KPI` in `meta-report.ts`).
+  Rate = `visit_thankyou` ÷ `visit_landing` from `b2b_events`, the same
+  definition as the dashboard's `landing_to_booking`. Page-visit tracking only
+  began 2026-09-25, so L30 and L7 are identical until 30 days have passed — the
+  line prints "visits tracked from <date>" to make that visible.
+- **Section 5, ad on/off history.** From Meta's account activity log
+  (`/act_…/activities`, 180-day lookback): per ad — created, first delivery,
+  every turn ON / turn OFF with the time (report timezone) and who did it, plus
+  ad set / campaign switches for the ad sets and campaigns in the report. Meta
+  logs a switch in steps (Active → Pending process → Inactive); only settled
+  states count. If the log is refused the section says so and the report still
+  builds. The AI block tells the reader to check live-days before judging L7/L3.
+
 ## 2026-09-28 — B2B: one-call demo model, reconciled Sep history, live attribution
 
 - **Cutoff.** The two-call (intro → sales call) process ended in early September.
