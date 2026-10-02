@@ -66,11 +66,16 @@ export async function POST(req: Request) {
     type CampAcc  = { campaign_id: string; campaign_name: string; spend: number; impressions: number; reach: number; link_clicks: number; unique_clicks: number; leads: number };
     type AdSetAcc = { campaign_id: string; campaign_name: string; adset_id: string; adset_name: string; spend: number; impressions: number; reach: number; link_clicks: number; unique_clicks: number; leads: number };
 
-    const LEAD_ACTIONS = new Set(['lead', 'offsite_conversion.fb_pixel_lead', 'onsite_conversion.lead_grouped']);
+    // Meta's `lead` action is already the total; `fb_pixel_lead` (website) and
+    // `lead_grouped` (instant form) are its parts. Summing all three doubled the
+    // count — use the total when Meta sends it, the parts only when it doesn't.
+    const LEAD_PARTS = new Set(['offsite_conversion.fb_pixel_lead', 'onsite_conversion.lead_grouped']);
     const leadsFrom = (row: Record<string, unknown>) => {
       const actions = row.actions as { action_type?: string; value?: string }[] | undefined;
       if (!Array.isArray(actions)) return 0;
-      return actions.filter(a => a.action_type && LEAD_ACTIONS.has(a.action_type))
+      const total = actions.find(a => a.action_type === 'lead');
+      if (total) return parseInt(total.value ?? '0', 10) || 0;
+      return actions.filter(a => a.action_type && LEAD_PARTS.has(a.action_type))
         .reduce((sum, a) => sum + (parseInt(a.value ?? '0', 10) || 0), 0);
     };
 

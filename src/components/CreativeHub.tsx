@@ -29,7 +29,7 @@ type AdRun = {
 type Creative = {
   key: string; name: string; names: string[]; entry: Entry | null; kind: string | null;
   first: string | null; last: string | null; days: number; runs: Run[]; live: boolean;
-  spend: number; leads: number; appts: number; shows: number; closes: number;
+  spend: number; meta_leads: number; leads: number; appts: number; shows: number; closes: number;
   cost_per_lead: number; cost_per_appt: number;
   clients: { id: string; name: string }[]; ads: AdRun[]; meta: Meta | null;
 };
@@ -236,6 +236,7 @@ export default function CreativeHub({ scope, tab, clients }: {
                     {c.days > 0 && (
                       <div className="text-[11px]" style={{ color: "#4a4a4a" }}>
                         {fmt$(c.spend)} · {c.leads} leads · {c.appts} {apptWord.toLowerCase()}
+                        {c.meta_leads > 0 && <span style={{ color: "#949494" }}> · {c.meta_leads} on FB</span>}
                         {scope === "b2c" && c.clients.length > 1 && <span style={{ color: "#949494" }}> · {c.clients.length} clients</span>}
                       </div>
                     )}
@@ -494,8 +495,10 @@ function Drawer({ creative, scope, apptWord, onClose, onSaved }: {
   const st = creative ? STATUS[statusOf(creative)] : STATUS.draft;
   const stats: [string, string][] = creative && creative.days > 0 ? [
     ["Spend", fmt$(creative.spend)],
-    ["Leads", String(creative.leads)],
+    ["Leads (CRM)", String(creative.leads)],
     ["Cost / lead", creative.leads ? fmt$(creative.cost_per_lead) : "—"],
+    ["Leads (Facebook)", String(creative.meta_leads)],
+    ["Cost / FB lead", creative.meta_leads ? fmt$(creative.spend / creative.meta_leads) : "—"],
     [apptWord, String(creative.appts)],
     [`Cost / ${apptWord.toLowerCase().replace(/s$/, "")}`, creative.appts ? fmt$(creative.cost_per_appt) : "—"],
     ["Shows", String(creative.shows)],
@@ -557,7 +560,7 @@ function Drawer({ creative, scope, apptWord, onClose, onSaved }: {
                 ))}
               </div>
             )}
-            {creative && creative.days > 0 && <div className="text-[10px]" style={{ color: "#b8b8b8" }}>All time, first-touch — same counting as the Creative Leaderboard.</div>}
+            {creative && creative.days > 0 && <div className="text-[10px]" style={{ color: "#b8b8b8" }}>All time. CRM figures are first-touch, as on the Creative Leaderboard; Facebook leads are Meta&apos;s own count.</div>}
           </div>
 
           {/* Copy + our notes */}

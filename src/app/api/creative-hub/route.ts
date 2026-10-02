@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { getAuthContext, isAuthError, validateWebhookSecret } from '@/lib/api-auth';
 import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL, type AdFunnel } from '@/lib/ad-funnel';
-import { normaliseName, creativeKey } from '@/lib/creative-key';
+import { normaliseName, creativeKey, codeOf } from '@/lib/creative-key';
 import { loadMeta, refreshMeta, metaAgeHours, inferKind, listCampaignAds, REFRESH_HOURS, EXPIRED_HOURS, type HubMeta } from '@/lib/creative-hub';
 
 /**
@@ -29,7 +29,7 @@ type Service = ReturnType<typeof createServiceClient>;
 type Scope = 'b2b' | 'b2c';
 
 const ENTRY_FIELDS = [
-  'kind', 'campaign_label', 'launch_date', 'headline', 'primary_text',
+  'code', 'tags', 'kind', 'campaign_label', 'launch_date', 'headline', 'primary_text',
   'prompt', 'script', 'background_notes', 'notes', 'media_url',
 ] as const;
 
@@ -39,12 +39,12 @@ type Entry = { id: string; scope: Scope; pool_key: string; name: string; updated
 type SpendRow = {
   client_id: string; report_date: string; campaign_id: string; campaign_name: string | null;
   adset_name: string | null; ad_id: string; ad_name: string | null;
-  spend: number | string; impressions: number | null; link_clicks: number | null;
+  spend: number | string; impressions: number | null; link_clicks: number | null; leads: number | null;
 };
 
 type AdAcc = {
   ad_id: string; ad_name: string; client_id: string; campaign_id: string; campaign_name: string;
-  adset_name: string; days: Set<string>; spend: number; impressions: number; link_clicks: number;
+  adset_name: string; days: Set<string>; spend: number; impressions: number; link_clicks: number; meta_leads: number;
   first: string; last: string;
 };
 
@@ -100,7 +100,7 @@ export async function GET(req: Request) {
     for (let offset = 0; ; offset += PAGE) {
       const { data, error } = await service
         .from('ad_campaigns')
-        .select('client_id, report_date, campaign_id, campaign_name, adset_name, ad_id, ad_name, spend, impressions, link_clicks')
+        .select('client_id, report_date, campaign_id, campaign_name, adset_name, ad_id, ad_name, spend, impressions, link_clicks, leads')
         .eq('level', 'ad')
         .in('client_id', clientIds)
         .neq('ad_id', '')
@@ -111,7 +111,7 @@ export async function GET(req: Request) {
         let a = ads.get(r.ad_id);
         if (!a) {
           a = { ad_id: r.ad_id, ad_name: '', client_id: r.client_id, campaign_id: r.campaign_id, campaign_name: '',
-                adset_name: '', days: new Set(), spend: 0, impressions: 0, link_clicks: 0,
+                adset_name: '', days: new Set(), spend: 0, impressions: 0, link_clicks: 0, meta_leads: 0,
                 first: r.report_date, last: r.report_date };
           ads.set(r.ad_id, a);
         }
@@ -124,6 +124,7 @@ export async function GET(req: Request) {
         a.spend += Number(r.spend) || 0;
         a.impressions += r.impressions ?? 0;
         a.link_clicks += r.link_clicks ?? 0;
+        a.meta_leads += r.leads ?? 0;
       }
       if (!data || data.length < PAGE) break;
     }
@@ -150,7 +151,7 @@ export async function GET(req: Request) {
           // clutter (client accounts are full of them), not a launch.
           if (ads.has(ad.id) || !ad.name || ad.effective_status !== 'ACTIVE') continue;
           ads.set(ad.id, { ad_id: ad.id, ad_name: ad.name, client_id: c.client_id, campaign_id: campaignId, campaign_name: c.name,
-            adset_name: ad.adset?.name ?? '', days: new Set(), spend: 0, impressions: 0, link_clicks: 0, first: '', last: '' });
+            adset_name: ad.adset?.name ?? '', days: new Set(), spend: 0, impressions: 0, link_clicks: 0, meta_leads: 0, first: '', last: '' });
         }
       }
     } catch { /* the hub still works from the spend data alone */ }
@@ -168,10 +169,24 @@ export async function GET(req: Request) {
     });
   } catch { /* outcomes stay at zero rather than failing the library */ }
 
+  // ── Our side: prompts, scripts, notes (loaded first — the code on an entry
+  // decides which key its ads are filed under) ──
+  const { data: entryRows, error: eErr } = await service
+    .from('creative_hub_entries').select('*').eq('scope', scope);
+  if (eErr) return NextResponse.json({ error: eErr.message }, { status: 500 });
+  // An entry answers to its name and to its code, so an ad renamed in Meta from
+  // "AI Slop 7" to "AI-007 Kitchen Made of Money" keeps the same record.
+  const entries = new Map<string, Entry>();
+  for (const e of (entryRows ?? []) as Entry[]) {
+    entries.set(e.pool_key, e);
+    if (e.code) entries.set(e.code.toLowerCase(), e);
+  }
+  const canonical = (k: string) => entries.get(k)?.code?.toLowerCase() ?? k;
+
   // ── Meta side: copy + media for the most recent ad of each creative ──
   const byKey = new Map<string, AdAcc[]>();
   for (const a of ads.values()) {
-    const key = keyOf(a.ad_name);
+    const key = canonical(keyOf(a.ad_name));
     byKey.set(key, [...(byKey.get(key) ?? []), a]);
   }
   const lead = new Map<string, AdAcc>();   // creative key → the ad that represents it
@@ -201,29 +216,24 @@ export async function GET(req: Request) {
     if (aging.length) void refreshMeta(service, token, aging).catch(() => {});
   }
 
-  // ── Our side: prompts, scripts, notes ──
-  const { data: entryRows, error: eErr } = await service
-    .from('creative_hub_entries').select('*').eq('scope', scope);
-  if (eErr) return NextResponse.json({ error: eErr.message }, { status: 500 });
-  const entries = new Map((entryRows ?? []).map(e => [e.pool_key as string, e as Entry]));
-
   const usable = (m: HubMeta | undefined) => (m && !m.error ? m : undefined);
 
   const creatives = [...byKey.entries()].map(([key, list]) => {
     const spellings = new Map<string, number>();
     const days = new Set<string>();
     const f: AdFunnel = { ...EMPTY_AD_FUNNEL };
-    let spend = 0, impressions = 0, link_clicks = 0;
+    let spend = 0, impressions = 0, link_clicks = 0, meta_leads = 0;
     for (const a of list) {
       const n = normaliseName(a.ad_name) || '(unnamed ad)';
       spellings.set(n, (spellings.get(n) ?? 0) + a.spend + 0.001);
       for (const d of a.days) days.add(d);
-      spend += a.spend; impressions += a.impressions; link_clicks += a.link_clicks;
+      spend += a.spend; impressions += a.impressions; link_clicks += a.link_clicks; meta_leads += a.meta_leads;
       const af = funnel.get(a.ad_id);
       if (af) for (const k of Object.keys(f) as (keyof AdFunnel)[]) f[k] += af[k];
     }
     const names = [...spellings.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
     const entry = entries.get(key) ?? null;
+    const code = entry?.code ?? codeOf(names[0]) ?? null;
     const rep = lead.get(key)!;
     // Prefer the representative ad; fall back to any sibling Meta did answer for.
     const m = usable(meta.get(rep.ad_id)) ?? list.map(a => usable(meta.get(a.ad_id))).find(Boolean) ?? null;
@@ -241,7 +251,7 @@ export async function GET(req: Request) {
       : recent.some(a => !!a.last && dayNum(today) - dayNum(a.last) <= 2);
 
     return {
-      key, name, names,
+      key, code, name, names,
       entry,
       kind: entry?.kind ?? inferKind(name, m?.format ?? null),
       first,
@@ -249,7 +259,9 @@ export async function GET(req: Request) {
       days: days.size,
       runs,
       live,
-      spend, impressions, link_clicks,
+      // Meta's own lead count (website + instant form) — the only lead number
+      // that exists for ads that ran before CRM tracking began.
+      spend, impressions, link_clicks, meta_leads,
       ...f,
       ...funnelRates(spend, f),
       clients: [...new Set(list.map(a => a.client_id))].map(id => ({ id, name: clientName.get(id) ?? '—' })),
@@ -272,12 +284,15 @@ export async function GET(req: Request) {
   // Entries with no ad behind them yet: drafts, and work older than the spend data.
   // Left out when looking at one client — a draft belongs to no client.
   if (!clientFilter) {
-    for (const [key, entry] of entries) {
-      if (byKey.has(key)) continue;
+    const seen = new Set<string>();
+    for (const entry of entries.values()) {
+      const key = entry.code?.toLowerCase() ?? entry.pool_key;
+      if (byKey.has(key) || seen.has(key)) continue;
+      seen.add(key);
       creatives.push({
-        key, name: entry.name, names: [entry.name], entry, kind: entry.kind,
+        key, code: entry.code, name: entry.name, names: [entry.name], entry, kind: entry.kind,
         first: null, last: null, days: 0, runs: [], live: false,
-        spend: 0, impressions: 0, link_clicks: 0,
+        spend: 0, impressions: 0, link_clicks: 0, meta_leads: 0,
         ...EMPTY_AD_FUNNEL, ...funnelRates(0, EMPTY_AD_FUNNEL),
         clients: [], ads: [], meta: null,
       });
@@ -294,8 +309,8 @@ export async function GET(req: Request) {
             days: new Set(), spend: 0, creatives: new Map() };
       camps.set(a.campaign_id, c);
     }
-    const key = keyOf(a.ad_name);
-    const cc = c.creatives.get(key) ?? { key, name: normaliseName(a.ad_name) || '(unnamed ad)', days: new Set<string>(), spend: 0 };
+    const key = canonical(keyOf(a.ad_name));
+    const cc = c.creatives.get(key) ?? { key, name: entries.get(key)?.name ?? (normaliseName(a.ad_name) || '(unnamed ad)'), days: new Set<string>(), spend: 0 };
     for (const d of a.days) { c.days.add(d); cc.days.add(d); }
     c.spend += a.spend; cc.spend += a.spend;
     c.creatives.set(key, cc);
@@ -337,6 +352,13 @@ export async function POST(req: Request) {
     const v = body[f];
     row[f] = typeof v === 'string' && v.trim() ? v.trim() : null;
   }
+  if (typeof row.code === 'string') {
+    const code = codeOf(row.code);
+    if (!code || code.length !== row.code.length) {
+      return NextResponse.json({ error: 'Codes look like AI-007 or IMG-002b: type, dash, three digits, optional letter.' }, { status: 400 });
+    }
+    row.code = code;
+  }
 
   const q = typeof body.id === 'string' && body.id
     ? service.from('creative_hub_entries').update(row).eq('id', body.id)
@@ -345,7 +367,7 @@ export async function POST(req: Request) {
   if (error) {
     const clash = error.code === '23505';
     return NextResponse.json(
-      { error: clash ? 'Another creative already uses that name.' : error.message },
+      { error: clash ? (error.message.includes('code') ? 'Another creative already uses that code.' : 'Another creative already uses that name.') : error.message },
       { status: clash ? 409 : 500 },
     );
   }
