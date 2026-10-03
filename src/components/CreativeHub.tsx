@@ -10,7 +10,8 @@ type Scope = "b2b" | "b2c";
 type Run = { start: string; end: string };
 
 type Entry = {
-  id: string; name: string; kind: string | null; campaign_label: string | null; launch_date: string | null;
+  id: string; name: string; code: string | null; category: string | null; folder_id: string | null; seq: number | null;
+  tags: string | null; kind: string | null; campaign_label: string | null; launch_date: string | null;
   headline: string | null; primary_text: string | null; prompt: string | null; script: string | null;
   background_notes: string | null; notes: string | null; media_url: string | null;
 };
@@ -26,8 +27,13 @@ type AdRun = {
   first: string; last: string; spend: number; status: string | null;
 };
 
+type Folder = { id: string; category: string; name: string; slug: string };
+type Category = { code: string; label: string };
+
 type Creative = {
-  key: string; name: string; names: string[]; entry: Entry | null; kind: string | null;
+  key: string; code: string | null; name: string; names: string[]; entry: Entry | null; kind: string | null;
+  category: string | null; folder_id: string | null; seq: number | null;
+  fb_name: string; names_match: boolean;
   first: string | null; last: string | null; days: number; runs: Run[]; live: boolean;
   spend: number; meta_leads: number; leads: number; appts: number; shows: number; closes: number;
   cost_per_lead: number; cost_per_appt: number;
@@ -40,7 +46,34 @@ type Campaign = {
   creatives: { key: string; name: string; spend: number; runs: Run[] }[];
 };
 
-type HubData = { today: string; creatives: Creative[]; campaigns: Campaign[]; meta_error: string | null };
+type HubData = {
+  today: string; creatives: Creative[]; campaigns: Campaign[]; folders: Folder[]; categories: Category[];
+  can_rename: boolean; meta_error: string | null;
+};
+
+const UNFILED = "__unfiled__";
+
+async function postJson(url: string, body: unknown, method = "POST") {
+  const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.error) throw new Error(json.error ?? `Request failed (${res.status})`);
+  return json;
+}
+
+// Ask for a folder name and create it. When the category already holds
+// creatives at its root and this is its first folder, they all move in — a
+// category either has folders or it doesn't.
+async function createFolder(scope: Scope, category: string, hasFolders: boolean, rootCount: number): Promise<Folder | null> {
+  const name = window.prompt("Folder name (e.g. Slop, Realistic, Billboard):")?.trim();
+  if (!name) return null;
+  const moveRoot = !hasFolders && rootCount > 0
+    && window.confirm(`Move the ${rootCount} creative${rootCount === 1 ? "" : "s"} already in this category into “${name}”? They will be renumbered.`);
+  const json = await postJson("/api/creative-hub/folders", { scope, category, name, move_root: moveRoot });
+  return json.folder as Folder;
+}
+
+// Names the ads currently have in Meta, so a rename only touches wrong ones.
+const currentNames = (c: Creative | null) => Object.fromEntries((c?.ads ?? []).map(a => [a.ad_id, a.ad_name]));
 
 const KINDS = ["Talking head", "UGC video", "Voiceover video", "AI image", "AI video", "Static image", "Carousel"];
 
@@ -111,11 +144,16 @@ export default function CreativeHub({ scope, tab, clients }: {
   const [error, setError] = useState("");
   const [clientId, setClientId] = useState("");
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<"all" | "live" | "off" | "draft">("all");
-  const [kind, setKind] = useState("");
-  const [sort, setSort] = useState<"recent" | "spend" | "cost">("recent");
+  const [view, setView] = useState<"folders" | "all" | "live" | "off" | "draft">("folders");
+  const [cat, setCat] = useState<string>("");            // folders view: category code, or UNFILED
+  const [folderSel, setFolderSel] = useState<string>(""); // folders view: "" = whole category, "root" = no folder, else folder id
+  const [sort, setSort] = useState<"code" | "recent" | "spend" | "cost">("code");
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [fileTo, setFileTo] = useState<{ category: string; folder_id: string }>({ category: "", folder_id: "" });
+  const [busy, setBusy] = useState("");
+  const [notice, setNotice] = useState("");
 
   const apptWord = scope === "b2b" ? "Demos" : "Appts";
 
@@ -135,25 +173,84 @@ export default function CreativeHub({ scope, tab, clients }: {
 
   useEffect(() => { load(); }, [load]);
 
-  const kinds = useMemo(() => [...new Set((data?.creatives ?? []).map(c => c.kind).filter((k): k is string => !!k))].sort(), [data]);
+  const categories = data?.categories ?? [];
+  const folders = data?.folders ?? [];
+  const countIn = (code: string) => (data?.creatives ?? []).filter(c => (c.category ?? UNFILED) === code).length;
+  // First category with something in it, else the first category.
+  const activeCat = cat || categories.find(c => countIn(c.code) > 0)?.code || categories[0]?.code || UNFILED;
+  const catFolders = folders.filter(f => f.category === activeCat);
+  const rootCount = (data?.creatives ?? []).filter(c => c.category === activeCat && !c.folder_id).length;
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = (data?.creatives ?? []).filter(c => {
-      if (status !== "all" && statusOf(c) !== status) return false;
-      if (kind && c.kind !== kind) return false;
+      if (view === "folders") {
+        if ((c.category ?? UNFILED) !== activeCat) return false;
+        if (folderSel === "root" && c.folder_id) return false;
+        if (folderSel && folderSel !== "root" && c.folder_id !== folderSel) return false;
+      } else if (view !== "all" && statusOf(c) !== view) return false;
       if (!q) return true;
-      const hay = [c.name, ...c.names, c.kind, c.entry?.campaign_label, c.entry?.script, c.entry?.prompt, c.entry?.notes,
+      const hay = [c.code, c.name, ...c.names, c.kind, c.entry?.tags, c.entry?.campaign_label, c.entry?.script, c.entry?.prompt, c.entry?.notes,
         c.entry?.headline ?? c.meta?.headline, c.entry?.primary_text ?? c.meta?.primary_text,
         ...c.ads.map(a => a.campaign_name), ...c.clients.map(cl => cl.name)];
       return hay.some(h => h?.toLowerCase().includes(q));
     });
+    if (sort === "code") list.sort((a, b) => (a.code ?? "\uffff").localeCompare(b.code ?? "\uffff") || b.spend - a.spend);
     if (sort === "spend") list.sort((a, b) => b.spend - a.spend);
     if (sort === "cost") list.sort((a, b) => (a.appts > 0 ? a.cost_per_appt : Infinity) - (b.appts > 0 ? b.cost_per_appt : Infinity) || b.spend - a.spend);
     return list;
-  }, [data, search, status, kind, sort]);
+  }, [data, search, view, activeCat, folderSel, sort]);
 
   const open = openKey ? data?.creatives.find(c => c.key === openKey) ?? null : null;
+
+  const toggle = (key: string) => setSelected(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+
+  // File every selected creative into the chosen category / folder. Creatives
+  // that only exist as an ad name get a record first.
+  async function fileSelected() {
+    if (!data || !fileTo.category) return;
+    setBusy("Filing…"); setNotice("");
+    try {
+      const picked = data.creatives.filter(c => selected.has(c.key));
+      const names: Record<string, string> = {};
+      for (const c of picked) for (const a of c.ads) names[a.ad_id] = a.ad_name;
+      const json = await postJson("/api/creative-hub", {
+        scope, category: fileTo.category, folder_id: fileTo.folder_id || null, current_names: names,
+        assign: picked.map(c => (c.entry ? { id: c.entry.id } : { name: c.name })),
+      });
+      setSelected(new Set());
+      const renamed = (json.renamed ?? []) as { ok: boolean }[];
+      if (renamed.length) setNotice(`${renamed.filter(r => r.ok).length} ad name${renamed.filter(r => r.ok).length === 1 ? "" : "s"} updated in Facebook${renamed.some(r => !r.ok) ? `, ${renamed.filter(r => !r.ok).length} failed` : ""}.`);
+      await load();
+    } catch (e) {
+      setNotice((e as Error).message);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function newFolder() {
+    if (activeCat === UNFILED) return;
+    try {
+      const f = await createFolder(scope, activeCat, catFolders.length > 0, rootCount);
+      if (f) { await load(); setFolderSel(f.id); }
+    } catch (e) { setNotice((e as Error).message); }
+  }
+
+  async function renameAll() {
+    if (!data) return;
+    setBusy("Renaming…"); setNotice("");
+    try {
+      const names: Record<string, string> = {};
+      for (const c of data.creatives) for (const a of c.ads) names[a.ad_id] = a.ad_name;
+      const json = await postJson("/api/creative-hub/push-names", { scope, current_names: names });
+      setNotice(`${json.renamed} ad name${json.renamed === 1 ? "" : "s"} updated in Facebook${json.failed ? `, ${json.failed} failed` : ""}.`);
+      await load();
+    } catch (e) { setNotice((e as Error).message); } finally { setBusy(""); }
+  }
+
+  const needsRename = (data?.creatives ?? []).filter(c => c.code && !c.names_match).length;
+  const chip = (active: boolean) => ({ background: active ? "rgba(0,0,0,0.09)" : "#f7f7f7", color: active ? "#111111" : "#6b6b6b" });
 
   return (
     <div className="space-y-4">
@@ -166,23 +263,17 @@ export default function CreativeHub({ scope, tab, clients }: {
           </select>
         )}
         {tab === "library" && (<>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, copy, script…"
-            className="px-3 py-1.5 rounded-lg text-xs outline-none w-56" style={INPUT} />
           <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.162)" }}>
-            {(["all", "live", "off", "draft"] as const).map(s => (
-              <button key={s} onClick={() => setStatus(s)} className="px-3 py-1.5 text-xs font-semibold"
-                style={{ background: status === s ? "rgba(0,0,0,0.09)" : "#f7f7f7", color: status === s ? "#111111" : "#6b6b6b" }}>
-                {s === "all" ? "All" : STATUS[s].label}
+            {(["folders", "all", "live", "off", "draft"] as const).map(v => (
+              <button key={v} onClick={() => { setView(v); setSelected(new Set()); }} className="px-3 py-1.5 text-xs font-semibold" style={chip(view === v)}>
+                {v === "folders" ? "Folders" : v === "all" ? "All" : STATUS[v].label}
               </button>
             ))}
           </div>
-          {kinds.length > 1 && (
-            <select value={kind} onChange={e => setKind(e.target.value)} className="px-3 py-1.5 rounded-lg text-xs font-medium outline-none" style={INPUT}>
-              <option value="">All types</option>
-              {kinds.map(k => <option key={k} value={k}>{k}</option>)}
-            </select>
-          )}
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search code, name, copy, script, tags…"
+            className="px-3 py-1.5 rounded-lg text-xs outline-none w-56" style={INPUT} />
           <select value={sort} onChange={e => setSort(e.target.value as typeof sort)} className="px-3 py-1.5 rounded-lg text-xs font-medium outline-none" style={INPUT}>
+            <option value="code">By code</option>
             <option value="recent">Most recent</option>
             <option value="spend">Most spend</option>
             <option value="cost">Best cost per {scope === "b2b" ? "demo" : "appt"}</option>
@@ -195,12 +286,75 @@ export default function CreativeHub({ scope, tab, clients }: {
         )}
       </div>}
 
+      {/* Folders: category tabs, then the folders inside the category */}
+      {data && tab === "library" && view === "folders" && (
+        <div className="rounded-2xl p-4 space-y-3" style={CARD}>
+          <div className="flex gap-2 flex-wrap">
+            {[...categories, { code: UNFILED, label: "Uncategorised" }].map(c => {
+              const n = countIn(c.code);
+              const active = activeCat === c.code;
+              return (
+                <button key={c.code} onClick={() => { setCat(c.code); setFolderSel(""); setSelected(new Set()); }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2"
+                  style={{ ...chip(active), border: `1px solid ${active ? "rgba(0,0,0,0.25)" : "transparent"}`, opacity: n || active ? 1 : 0.6 }}>
+                  {c.label}
+                  <span className="text-[10px] font-bold px-1.5 rounded-full" style={{ background: active ? "#111111" : "rgba(0,0,0,0.08)", color: active ? "#ffffff" : "#6b6b6b" }}>{n}</span>
+                </button>
+              );
+            })}
+          </div>
+          {activeCat !== UNFILED && (
+            <div className="flex gap-2 flex-wrap items-center" style={{ borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 10 }}>
+              <span className="text-[10px] font-bold uppercase tracking-widest mr-1" style={{ color: "#c2c2c2" }}>Folders</span>
+              <button onClick={() => setFolderSel("")} className="px-2.5 py-1 rounded-md text-xs font-medium" style={chip(folderSel === "")}>
+                All in {categories.find(c => c.code === activeCat)?.label}
+              </button>
+              {catFolders.map(f => {
+                const n = (data.creatives ?? []).filter(c => c.folder_id === f.id).length;
+                return (
+                  <button key={f.id} onClick={() => setFolderSel(f.id)} className="px-2.5 py-1 rounded-md text-xs font-medium" style={chip(folderSel === f.id)} title={`${activeCat}/${f.slug}/…`}>
+                    {f.name} <span style={{ color: "#949494" }}>{n}</span>
+                  </button>
+                );
+              })}
+              {catFolders.length > 0 && rootCount > 0 && (
+                <button onClick={() => setFolderSel("root")} className="px-2.5 py-1 rounded-md text-xs font-medium" style={{ ...chip(folderSel === "root"), color: "#92400e" }}>
+                  Needs a folder <span>{rootCount}</span>
+                </button>
+              )}
+              <button onClick={newFolder} className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ color: "#111111", border: "1px dashed rgba(0,0,0,0.25)" }}>+ New folder</button>
+              {activeCat && (
+                <span className="text-[10px] ml-auto" style={{ color: "#949494" }}>
+                  Codes here look like <b>{activeCat}{catFolders.length ? `/${catFolders[0].slug}` : ""}/001</b>
+                </span>
+              )}
+            </div>
+          )}
+          {activeCat === UNFILED && countIn(UNFILED) > 0 && (
+            <div className="text-xs" style={{ color: "#6b6b6b" }}>Tick creatives below and file them into a category — that gives each one its code.</div>
+          )}
+        </div>
+      )}
+
       {error && (
         <div className="rounded-2xl p-4 text-sm" style={{ background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)", color: "#b91c1c" }}>{error}</div>
+      )}
+      {notice && (
+        <div className="rounded-2xl p-3 text-xs flex items-center gap-3" style={{ ...CARD, color: "#111111" }}>
+          {notice}<button onClick={() => setNotice("")} className="ml-auto text-[10px] font-semibold" style={{ color: "#949494" }}>Dismiss</button>
+        </div>
       )}
       {data?.meta_error && (
         <div className="rounded-2xl p-3 text-xs" style={{ ...CARD, color: "#92400e" }}>
           Facebook previews are unavailable right now ({data.meta_error}). Everything else is up to date.
+        </div>
+      )}
+      {data && tab === "library" && needsRename > 0 && (
+        <div className="rounded-2xl p-3 text-xs flex items-center gap-3 flex-wrap" style={{ ...CARD, color: "#4a4a4a" }}>
+          {needsRename} ad{needsRename === 1 ? " is" : "s are"} still named the old way in Facebook.
+          {data.can_rename
+            ? <button onClick={renameAll} disabled={!!busy} className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy ? 0.6 : 1 }}>{busy || "Rename them in Facebook"}</button>
+            : <span style={{ color: "#949494" }}>Open each one and copy its Facebook name into Ads Manager — automatic renaming needs a Facebook token that can edit ads.</span>}
         </div>
       )}
 
@@ -209,61 +363,108 @@ export default function CreativeHub({ scope, tab, clients }: {
       {data && tab === "library" && (
         shown.length === 0 ? (
           <div className="rounded-2xl p-8 text-center text-sm" style={{ ...CARD, color: "#6b6b6b" }}>
-            {data.creatives.length === 0 ? "No creatives yet. Ads appear here automatically once they run — or add one with “New creative”." : "Nothing matches these filters."}
+            {data.creatives.length === 0 ? "No creatives yet. Ads appear here automatically once they run — or add one with “New creative”."
+              : view === "folders" ? "Nothing filed here yet." : "Nothing matches these filters."}
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" style={{ opacity: loading ? 0.6 : 1 }}>
             {shown.map(c => {
               const st = STATUS[statusOf(c)];
+              const isSel = selected.has(c.key);
               return (
-                <button key={c.key} onClick={() => setOpenKey(c.key)} className="text-left rounded-2xl overflow-hidden transition-transform duration-150 hover:-translate-y-0.5" style={CARD}>
-                  <div className="relative">
-                    <Thumb c={c} className="w-full aspect-[4/5]" />
-                    <div className="absolute top-2 left-2"><Chip color={st.color} bg="#ffffff">● {st.label}</Chip></div>
-                    {isVideo(c) && (c.meta?.thumbnail_url || c.meta?.image_url) && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.55)" }}>
-                          <svg className="w-4 h-4 ml-0.5" fill="#ffffff" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                <div key={c.key} className="relative rounded-2xl overflow-hidden transition-transform duration-150 hover:-translate-y-0.5" style={{ ...CARD, outline: isSel ? "2px solid #111111" : "none" }}>
+                  <button onClick={() => setOpenKey(c.key)} className="text-left w-full">
+                    <div className="relative">
+                      <Thumb c={c} className="w-full aspect-[4/5]" />
+                      <div className="absolute top-2 left-2"><Chip color={st.color} bg="#ffffff">● {st.label}</Chip></div>
+                      {isVideo(c) && (c.meta?.thumbnail_url || c.meta?.image_url) && (
+                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: "rgba(0,0,0,0.55)" }}>
+                            <svg className="w-4 h-4 ml-0.5" fill="#ffffff" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-3 space-y-1.5">
-                    <div className="text-sm font-semibold truncate" style={{ color: "#111111" }} title={c.name}>{c.name}</div>
-                    <div className="text-[11px] truncate" style={{ color: "#767676" }}>
-                      {[c.kind, ranLabel(c)].filter(Boolean).join(" · ")}
+                      )}
                     </div>
-                    {c.days > 0 && (
-                      <div className="text-[11px]" style={{ color: "#4a4a4a" }}>
-                        {fmt$(c.spend)} · {c.leads} leads · {c.appts} {apptWord.toLowerCase()}
-                        {c.meta_leads > 0 && <span style={{ color: "#949494" }}> · {c.meta_leads} on FB</span>}
-                        {scope === "b2c" && c.clients.length > 1 && <span style={{ color: "#949494" }}> · {c.clients.length} clients</span>}
+                    <div className="p-3 space-y-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {c.code
+                          ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: "#111111", color: "#ffffff", letterSpacing: "0.02em" }}>{c.code}</span>
+                          : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: "rgba(217,119,6,0.12)", color: "#92400e" }}>No code</span>}
+                        {c.code && !c.names_match && <span title="Facebook still has the old name" className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "#d97706" }} />}
                       </div>
-                    )}
-                    <div className="flex gap-1 flex-wrap pt-0.5">
-                      {OUR_FIELDS.filter(f => c.entry?.[f.id]).map(f => <Chip key={f.id}>{f.label}</Chip>)}
-                      {!OUR_FIELDS.some(f => c.entry?.[f.id]) && <span className="text-[10px]" style={{ color: "#b8b8b8" }}>No script or prompt yet</span>}
+                      <div className="text-sm font-semibold truncate" style={{ color: "#111111" }} title={c.name}>{c.name}</div>
+                      <div className="text-[11px] truncate" style={{ color: "#767676" }}>
+                        {[c.kind, ranLabel(c)].filter(Boolean).join(" · ")}
+                      </div>
+                      {c.days > 0 && (
+                        <div className="text-[11px]" style={{ color: "#4a4a4a" }}>
+                          {fmt$(c.spend)} · {c.leads} leads · {c.appts} {apptWord.toLowerCase()}
+                          {c.meta_leads > 0 && <span style={{ color: "#949494" }}> · {c.meta_leads} on FB</span>}
+                          {scope === "b2c" && c.clients.length > 1 && <span style={{ color: "#949494" }}> · {c.clients.length} clients</span>}
+                        </div>
+                      )}
+                      <div className="flex gap-1 flex-wrap pt-0.5">
+                        {(c.entry?.tags ?? "").split(",").map(t => t.trim()).filter(Boolean).slice(0, 4).map(t => <Chip key={t}>{t}</Chip>)}
+                        {OUR_FIELDS.filter(f => c.entry?.[f.id]).map(f => <Chip key={f.id} color="#6b6b6b" bg="transparent">{f.label} ✓</Chip>)}
+                        {!OUR_FIELDS.some(f => c.entry?.[f.id]) && !c.entry?.tags && <span className="text-[10px]" style={{ color: "#b8b8b8" }}>No script or prompt yet</span>}
+                      </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                  {/* Select for bulk filing */}
+                  <button onClick={e => { e.stopPropagation(); toggle(c.key); }} aria-label={isSel ? "Unselect" : "Select"}
+                    className="absolute top-2 right-2 w-6 h-6 rounded-md flex items-center justify-center"
+                    style={{ background: isSel ? "#111111" : "rgba(255,255,255,0.92)", border: "1px solid rgba(0,0,0,0.2)", color: "#ffffff" }}>
+                    {isSel && <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                  </button>
+                </div>
               );
             })}
           </div>
         )
       )}
 
+      {/* Bulk filing bar */}
+      {data && selected.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap" style={{ ...CARD, boxShadow: "0 12px 40px -8px rgba(0,0,0,0.3)", maxWidth: "calc(100vw - 32px)" }}>
+          <span className="text-xs font-semibold" style={{ color: "#111111" }}>{selected.size} selected</span>
+          <span className="text-xs" style={{ color: "#6b6b6b" }}>File in</span>
+          <select value={fileTo.category} onChange={e => setFileTo({ category: e.target.value, folder_id: "" })} className="px-2.5 py-1.5 rounded-lg text-xs font-medium outline-none" style={INPUT}>
+            <option value="">Category…</option>
+            {categories.map(c => <option key={c.code} value={c.code}>{c.label} ({c.code})</option>)}
+          </select>
+          {fileTo.category && folders.some(f => f.category === fileTo.category) && (
+            <select value={fileTo.folder_id} onChange={e => setFileTo(ft => ({ ...ft, folder_id: e.target.value }))} className="px-2.5 py-1.5 rounded-lg text-xs font-medium outline-none" style={INPUT}>
+              <option value="">Folder…</option>
+              {folders.filter(f => f.category === fileTo.category).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          )}
+          <button onClick={fileSelected} disabled={!!busy || !fileTo.category || (folders.some(f => f.category === fileTo.category) && !fileTo.folder_id)}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy || !fileTo.category || (folders.some(f => f.category === fileTo.category) && !fileTo.folder_id) ? 0.5 : 1 }}>
+            {busy || "Apply"}
+          </button>
+          <button onClick={() => setSelected(new Set())} className="text-xs font-semibold" style={{ color: "#767676" }}>Clear</button>
+        </div>
+      )}
+
       {data && tab === "timeline" && (
         <Timeline data={data} scope={scope} showClient={scope === "b2c" && !clientId} onOpen={setOpenKey} />
       )}
 
-      {(open || creating) && (
+      {(open || creating) && data && (
         <Drawer
           key={open?.key ?? "new"}
           creative={open}
           scope={scope}
           apptWord={apptWord}
+          folders={folders}
+          categories={categories}
+          canRename={data.can_rename}
+          defaultCategory={view === "folders" && activeCat !== UNFILED ? activeCat : ""}
+          defaultFolder={view === "folders" && folderSel && folderSel !== "root" ? folderSel : ""}
+          onFoldersChanged={load}
           onClose={() => { setOpenKey(null); setCreating(false); }}
           onSaved={async key => { setCreating(false); await load(); setOpenKey(key); }}
+          onNotice={setNotice}
         />
       )}
     </div>
@@ -441,17 +642,22 @@ function TextBlock({ label, text, source, onAdd }: { label: string; text: string
   );
 }
 
-function Drawer({ creative, scope, apptWord, onClose, onSaved }: {
+function Drawer({ creative, scope, apptWord, folders, categories, canRename, defaultCategory, defaultFolder, onFoldersChanged, onClose, onSaved, onNotice }: {
   creative: Creative | null; scope: Scope; apptWord: string;
-  onClose: () => void; onSaved: (key: string) => Promise<void>;
+  folders: Folder[]; categories: Category[]; canRename: boolean;
+  defaultCategory: string; defaultFolder: string;
+  onFoldersChanged: () => Promise<void>;
+  onClose: () => void; onSaved: (key: string) => Promise<void>; onNotice: (s: string) => void;
 }) {
   const entry = creative?.entry ?? null;
   const hasAds = (creative?.ads.length ?? 0) > 0;
   const [editing, setEditing] = useState(!creative);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [copied, setCopied] = useState(false);
   const blank = () => ({
-    name: creative?.name ?? "", kind: entry?.kind ?? "", campaign_label: entry?.campaign_label ?? "", launch_date: entry?.launch_date ?? "",
+    name: creative?.name ?? "", category: entry?.category ?? creative?.category ?? defaultCategory, folder_id: entry?.folder_id ?? creative?.folder_id ?? defaultFolder,
+    tags: entry?.tags ?? "", kind: entry?.kind ?? "", campaign_label: entry?.campaign_label ?? "", launch_date: entry?.launch_date ?? "",
     headline: entry?.headline ?? "", primary_text: entry?.primary_text ?? "", script: entry?.script ?? "", prompt: entry?.prompt ?? "",
     background_notes: entry?.background_notes ?? "", notes: entry?.notes ?? "", media_url: entry?.media_url ?? "",
   });
@@ -467,14 +673,12 @@ function Drawer({ creative, scope, apptWord, onClose, onSaved }: {
   async function save() {
     setSaving(true); setErr("");
     try {
-      const res = await fetch("/api/creative-hub", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: entry?.id, scope, ...form }),
-      });
-      const json = await res.json();
-      if (!res.ok || json.error) { setErr(json.error ?? "Could not save."); return; }
+      const json = await postJson("/api/creative-hub", { id: entry?.id, scope, ...form, folder_id: form.folder_id || null, current_names: currentNames(creative) });
       setEditing(false);
-      await onSaved(json.entry.pool_key);
+      const renamed = (json.renamed ?? []) as { ok: boolean; error?: string }[];
+      if (renamed.length) onNotice(renamed.every(r => r.ok) ? `Ad name${renamed.length === 1 ? "" : "s"} updated in Facebook.` : `Facebook rename failed: ${renamed.find(r => !r.ok)?.error ?? "unknown error"}`);
+      const saved = json.entry as Entry;
+      await onSaved(saved.code ? saved.code.toLowerCase() : (creative?.key ?? saved.name));
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -491,8 +695,28 @@ function Drawer({ creative, scope, apptWord, onClose, onSaved }: {
     if (hasAds) await onSaved(creative!.key); else { await onSaved(""); onClose(); }
   }
 
+  async function renameInMeta() {
+    if (!entry) return;
+    setSaving(true); setErr("");
+    try {
+      const json = await postJson("/api/creative-hub/push-names", { scope, entry_id: entry.id, current_names: currentNames(creative) });
+      onNotice(json.failed ? `Facebook rename failed: ${(json.results as { error?: string }[]).find(r => r.error)?.error ?? ""}` : `${json.renamed} ad name${json.renamed === 1 ? "" : "s"} updated in Facebook.`);
+      await onSaved(creative!.key);
+    } catch (e) { setErr((e as Error).message); } finally { setSaving(false); }
+  }
+
+  async function addFolder() {
+    if (!form.category) return;
+    try {
+      const f = await createFolder(scope, form.category, folders.some(x => x.category === form.category), 0);
+      if (f) { await onFoldersChanged(); set("folder_id", f.id); }
+    } catch (e) { setErr((e as Error).message); }
+  }
+
   const m = creative?.meta ?? null;
   const st = creative ? STATUS[statusOf(creative)] : STATUS.draft;
+  const formFolders = folders.filter(f => f.category === form.category);
+  const folderName = (id: string | null) => folders.find(f => f.id === id)?.name ?? null;
   const stats: [string, string][] = creative && creative.days > 0 ? [
     ["Spend", fmt$(creative.spend)],
     ["Leads (CRM)", String(creative.leads)],
@@ -512,10 +736,15 @@ function Drawer({ creative, scope, apptWord, onClose, onSaved }: {
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center gap-3 px-5 py-3 flex-wrap" style={{ background: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
           <div className="min-w-0 mr-auto">
-            <div className="text-base font-semibold truncate" style={{ color: "#111111" }}>{creative?.name ?? "New creative"}</div>
+            <div className="text-base font-semibold truncate flex items-center gap-2" style={{ color: "#111111" }}>
+              {creative?.code && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ background: "#111111", color: "#ffffff" }}>{creative.code}</span>}
+              {creative?.name ?? "New creative"}
+            </div>
             {creative && (
               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                 <Chip color={st.color} bg={st.bg}>{st.label}</Chip>
+                {creative.category && <Chip>{categories.find(c => c.code === creative.category)?.label ?? creative.category}{folderName(creative.folder_id) ? ` › ${folderName(creative.folder_id)}` : ""}</Chip>}
+                {!creative.category && <Chip color="#92400e" bg="rgba(217,119,6,0.12)">Not filed yet</Chip>}
                 {creative.kind && <Chip>{creative.kind}</Chip>}
                 {entry?.campaign_label && <Chip>{entry.campaign_label}</Chip>}
                 <span className="text-[11px]" style={{ color: "#767676" }}>{ranLabel(creative)}</span>
@@ -571,10 +800,36 @@ function Drawer({ creative, scope, apptWord, onClose, onSaved }: {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <label className="block sm:col-span-2">
-                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Name</span>
-                    <input value={form.name} onChange={e => set("name", e.target.value)} disabled={hasAds} placeholder="Exactly as the ad will be named, e.g. UGC 3"
-                      className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...INPUT, opacity: hasAds ? 0.6 : 1 }} />
-                    <span className="text-[10px]" style={{ color: "#949494" }}>{hasAds ? "Taken from the ad name in Facebook." : "Name the ad exactly this in Facebook and its preview and results attach automatically."}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Title</span>
+                    <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="e.g. Kitchen Made of Money"
+                      className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
+                    <span className="text-[10px]" style={{ color: "#949494" }}>
+                      {form.category ? "The ad is named “code + title” in Facebook; the code comes from the category and folder below." : "Pick a category to give it a code."}
+                    </span>
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Category</span>
+                    <select value={form.category} onChange={e => { set("category", e.target.value); set("folder_id", ""); }} className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT}>
+                      <option value="">Not filed</option>
+                      {categories.map(c => <option key={c.code} value={c.code}>{c.label} ({c.code})</option>)}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Folder</span>
+                    <div className="flex gap-2 mt-1">
+                      <select value={form.folder_id} onChange={e => set("folder_id", e.target.value)} disabled={!form.category} className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm outline-none" style={{ ...INPUT, opacity: form.category ? 1 : 0.6 }}>
+                        <option value="">{formFolders.length ? "Choose a folder…" : "No folders in this category"}</option>
+                        {formFolders.map(f => <option key={f.id} value={f.id}>{f.name} ({form.category}/{f.slug})</option>)}
+                      </select>
+                      <button type="button" onClick={addFolder} disabled={!form.category} className="px-2.5 rounded-lg text-xs font-semibold" style={{ border: "1px dashed rgba(0,0,0,0.25)", color: "#111111", opacity: form.category ? 1 : 0.5 }}>+ New</button>
+                    </div>
+                    {formFolders.length > 0 && !form.folder_id && <span className="text-[10px]" style={{ color: "#92400e" }}>This category uses folders — pick one.</span>}
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Tags</span>
+                    <input value={form.tags} onChange={e => set("tags", e.target.value)} placeholder="hook-1, body-2, garbage-leads, $1-down"
+                      className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
+                    <span className="text-[10px]" style={{ color: "#949494" }}>Comma-separated. What it&apos;s made of and what angle it takes — searchable.</span>
                   </label>
                   <label className="block">
                     <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Type</span>
@@ -616,6 +871,27 @@ function Drawer({ creative, scope, apptWord, onClose, onSaved }: {
                 )}
               </div>
             ) : creative && (<>
+              {creative.code && (
+                <section className="rounded-xl p-3 flex items-center gap-3 flex-wrap" style={{ background: "#f7f7f7" }}>
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Name in Facebook</div>
+                    <div className="text-sm font-semibold truncate" style={{ color: "#111111" }}>{creative.fb_name}</div>
+                    <div className="text-[10px]" style={{ color: creative.names_match ? "#15803d" : "#92400e" }}>
+                      {!hasAds ? "Use this exact name when you create the ad." : creative.names_match ? "Matches Facebook." : `Facebook still has: ${[...new Set(creative.ads.map(a => a.ad_name))].join(", ")}`}
+                    </div>
+                  </div>
+                  <div className="ml-auto flex gap-2">
+                    <button onClick={() => { navigator.clipboard.writeText(creative.fb_name); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                      className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ border: "1px solid rgba(0,0,0,0.162)", color: copied ? "#15803d" : "#111111" }}>{copied ? "Copied" : "Copy"}</button>
+                    {hasAds && !creative.names_match && canRename && (
+                      <button onClick={renameInMeta} disabled={saving} className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: saving ? 0.6 : 1 }}>Rename in Facebook</button>
+                    )}
+                  </div>
+                </section>
+              )}
+              {(entry?.tags) && (
+                <div className="flex gap-1 flex-wrap">{entry.tags.split(",").map(t => t.trim()).filter(Boolean).map(t => <Chip key={t}>{t}</Chip>)}</div>
+              )}
               <TextBlock label="Headline" text={entry?.headline ?? m?.headline ?? null} source={entry?.headline ? undefined : "from Facebook"} onAdd={() => setEditing(true)} />
               <TextBlock label="Primary text" text={entry?.primary_text ?? m?.primary_text ?? null} source={entry?.primary_text ? undefined : "from Facebook"} onAdd={() => setEditing(true)} />
               <TextBlock label="Script" text={entry?.script ?? null} onAdd={() => setEditing(true)} />

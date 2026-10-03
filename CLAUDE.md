@@ -153,7 +153,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `metrics`, `agent-stats`, `heatmap`, `report` | Core reporting reads |
 | `ad-spend/*`, `b2b-ad-spend/*` | Ad spend sync — `sync-all` fetches + stores every ad level in one call |
 | `campaign-overview`, `campaign-exclusions`, `client-ad-breakdown` | Campaign views |
-| `creative-hub`, `creative-leaderboard` | **Creative & Copy Hub** — one record per creative (same pooled name as the leaderboard): media + copy pulled live from Meta by ad id and cached in `creative_hub_meta`, run dates from `ad_campaigns`, and our own prompt / script / background notes in `creative_hub_entries`. Split B2B (Tomsi Media) / B2C (clients). Needs `META_ACCESS_TOKEN`. See `NOTES.md` 2026-10-01. |
+| `creative-hub`, `creative-hub/folders`, `creative-hub/push-names`, `creative-leaderboard` | **Creative & Copy Hub** — one record per creative, filed in a category / folder that gives it its code (`AI/SLOP/001`), ads bound by id in `creative_hub_links`; media + copy pulled live from Meta and cached in `creative_hub_meta`, run dates from `ad_campaigns`, prompt / script / tags in `creative_hub_entries`. Split B2B (Tomsi Media) / B2C (clients). Needs `META_ACCESS_TOKEN`; renaming ads in Meta needs `META_MANAGEMENT_TOKEN`. See `NOTES.md` 2026-10-01/02. |
 | `csm-dashboard`, `client-csm-status`, `client-touchpoints`, `client-windows` | CSM health tracking |
 | `zip-*` (`zip-lookup`, `zip-data`, `zip-radius`, `zip-neighborhoods`, `zip-performance`) | In-dashboard zip/territory features (uses `src/lib/census.ts` + `zip-score.ts`) |
 | `calendar` | Calendar panel — fetches each user's private Google Calendar iCal feed server-side and parses it with `src/lib/ics.ts`. Feed URLs are secrets: stored in `calendar_feeds`, never returned to the browser. |
@@ -292,6 +292,7 @@ Census fetching in `src/lib/census.ts` (needs `CENSUS_API_KEY`).
 | `ANTHROPIC_API_KEY` | AI Campaign Chat (unset by default) |
 | `GHL_API_KEY` | GoHighLevel Private Integration token for the **client** account — reads per-contact ad attribution |
 | `GHL_API_KEY_B2B` | Private Integration token for the **Tomsi Media** sub-account (`jdBERcRjjBJ8dkPT9AOu`). B2B attribution — live in the B2B webhook and via `pull_b2b_attribution`. See `NOTES.md` 2026-09-28 |
+| `META_MANAGEMENT_TOKEN` | Optional. A Meta system-user token with `ads_management` — lets the Creative Hub rename ads in Meta to `<code> <title>`. Unset = buttons explain how to do it by hand |
 | `META_ACCESS_TOKEN` | Creative & Copy Hub previews (all client accounts) and the Meta B2B report (`meta-b2b-report`) — the long-lived token the Make spend scenarios use. Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_DEMO_EVENT` (legacy `META_KEPT_INTRO_EVENT` still works) |
 
 Never commit `.env*` — they're gitignored. Production values live in Railway.

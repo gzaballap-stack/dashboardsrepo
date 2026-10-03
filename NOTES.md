@@ -1,3 +1,55 @@
+## 2026-10-02 — Creative hub: folders, codes, Facebook history
+
+- **Codes come from where a creative is filed.** Categories (fixed, in
+  `CATEGORIES`, `src/lib/creative-key.ts`): `AI` AI image · `TH` talking head ·
+  `UGC` · `VO` voiceover. Inside a category, optional **folders** (table
+  `creative_hub_folders`; the slug is the first word of the name, upper-case,
+  and never changes). Code = `AI/SLOP/001` or `TH/004`: category, folder slug,
+  running number per folder (`nextCode`). Moving a creative gives it the next
+  number in its new place; a category's first folder can pull in everything at
+  the category root (`move_root`) — a category either has folders or it doesn't.
+  The Library opens on a **Folders** view (category tabs → folder chips →
+  cards), with tick-to-select and a bottom bar to file several at once.
+- **Ads are bound by id** (`creative_hub_links`), not by name. The GET matches
+  an ad by saved link → code at the front of its Meta name → pooled name, and
+  saves new name matches as links. So the Meta name can be changed to
+  `<code> <title>` (shown as "Name in Facebook" with Copy) without losing
+  history. **Automatic renaming in Meta is built but dormant:** the shared
+  token only has `ads_read`; set `META_MANAGEMENT_TOKEN` (a system-user token
+  with `ads_management`) and the "Rename in Facebook" buttons go live
+  (`/api/creative-hub/push-names`, also run after a save / bulk filing).
+- **Tags** (free text on the entry) carry what a creative is made of and its
+  angle — `hook-1, body-2, garbage-leads, $1-down` — searchable and shown as
+  chips. The owner chose dumb codes + tags over encoding the recipe in the code.
+- **B2B filed on V1 (28 coded):** AI/SLOP/001–011 (= AI Slop 1–11, titled from
+  the PDF), AI/REALISTIC/001–003 (= Realistic Image 1, 2, 6), TH/001–007 (Hook
+  1–5 Body 1, Hook 2 Body 2, Hook 2 Body 3; the four extra hooks got entries
+  with their scripts), UGC/001–005, VO/001–002. Left **Uncategorised**: the
+  February statics "Ad 1–6", "Winnner (Ad 2) V2", "New Engagement Ad" — the
+  owner's call what they are. Nothing was renamed in Meta yet (22 ads still
+  carry the old names; the hub flags them).
+- **Facebook history pulled into V1 (owner's go-ahead):** every day from
+  2026-02-10 to 2026-08-13 through `/api/b2b-ad-spend/sync-all` (145 days with
+  data, 670 ad rows), so the B2B hub and timeline run from February. B2B
+  **All Time** ad spend is ~$5,800 higher as a result; the Martial-Arts
+  campaigns (Nov–Dec 2025) were deliberately left out. Then the whole range was
+  re-pulled after fixing the lead count (next bullet).
+- **Meta lead count was doubled** in the B2B sync (`lead` total + its parts
+  summed); fixed in `b2b-ad-spend/sync-all` and re-pulled. The **client sync
+  has the same bug and is untouched** (task chip raised; changes Campaign
+  Overview numbers for clients, needs the owner). The hub shows Meta's count as
+  "Leads (Facebook)" beside CRM leads — the only lead figure for pre-tracking ads.
+- **Attribution finding (not a bug):** CRM credit is first touch. "AI Slop 3"
+  read 0 leads because Bruce Sherritt first clicked AI Slop 1 and converted via
+  AI Slop 3 (Meta credits the latter), and the other Meta "lead" was a flagged
+  fake. B2B leads carry **no `last_touch`** (0 of 19; client leads do) — the
+  B2B webhook only reads first touch. Pending the owner: capture last touch for
+  B2B and add a First/Last toggle to the hub.
+- **Possible lost instant-form leads:** several B2B ads carry a lead form
+  (`lead_gen_form_id 1075823084847034`); Meta reports 6 on-Facebook leads since
+  Sep 27 with no matching GHL contacts. The read token cannot open the form's
+  leads. Flagged to the owner to check Leads Center.
+
 ## 2026-10-01 — Creative & Copy Hub (new top-level menu)
 
 One place for every creative: the image/video, the copy, when it ran, and what

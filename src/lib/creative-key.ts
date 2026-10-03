@@ -35,22 +35,36 @@ export function poolKey(name: string): string {
 }
 
 /**
- * The creative code at the front of a name — "AI-007 Kitchen Made of Money" →
- * "AI-007". Types: TH talking head · UGC · VO voiceover · AI absurd AI image ·
- * RI realistic AI image · IMG designed static / photo · AIV AI video · CAR
- * carousel. Three digits, optional variant letter (IMG-002b).
+ * Categories a creative is filed under. The code is the category, the folder
+ * inside it (optional) and a running number: AI/SLOP/001, TH/004.
  */
-export const CODE_TYPES = ['TH', 'UGC', 'VO', 'AI', 'RI', 'IMG', 'AIV', 'CAR'] as const;
-const CODE_RE = new RegExp(`^(${CODE_TYPES.join('|')})-(\\d{3})([a-z])?(?![\\w-])`, 'i');
+export const CATEGORIES = [
+  { code: 'AI',  label: 'AI image' },
+  { code: 'TH',  label: 'Talking head' },
+  { code: 'UGC', label: 'UGC' },
+  { code: 'VO',  label: 'Voiceover' },
+] as const;
+export type CategoryCode = (typeof CATEGORIES)[number]['code'];
+export const CATEGORY_CODES = CATEGORIES.map(c => c.code) as readonly string[];
+export const categoryLabel = (code: string | null | undefined) =>
+  CATEGORIES.find(c => c.code === code)?.label ?? code ?? 'Uncategorised';
 
+const CODE_RE = new RegExp(`^(${CATEGORY_CODES.join('|')})(?:/([A-Z0-9][A-Z0-9-]*))?/(\\d{1,3})([a-z])?(?![\\w/-])`, 'i');
+
+/** "AI/SLOP/001 Dog Driving" → "AI/SLOP/001"; null when the name carries no code. */
 export function codeOf(name: string): string | null {
   const m = name.trim().match(CODE_RE);
-  return m ? `${m[1].toUpperCase()}-${m[2]}${(m[3] ?? '').toLowerCase()}` : null;
+  if (!m) return null;
+  return buildCode(m[1].toUpperCase(), m[2]?.toUpperCase() ?? null, Number(m[3])) + (m[4] ?? '').toLowerCase();
 }
 
-/** True when the whole string is a well-formed code. */
-export function isCode(s: string): boolean {
-  return codeOf(s) === s.trim() && !/\s/.test(s.trim());
+export function buildCode(category: string, folderSlug: string | null, seq: number): string {
+  return [category, folderSlug, String(seq).padStart(3, '0')].filter(Boolean).join('/');
+}
+
+/** The folder part of a code, from its name: "Realistic images" → "REALISTIC" (first word, 12 chars max). */
+export function folderSlug(name: string): string {
+  return (name.toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim().split(' ')[0] ?? '').slice(0, 12);
 }
 
 /**

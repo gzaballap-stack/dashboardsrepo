@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase';
-import { getAuthContext, isAuthError, validateWebhookSecret } from '@/lib/api-auth';
 import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL, type AdFunnel } from '@/lib/ad-funnel';
-import { normaliseName, creativeKey, codeOf } from '@/lib/creative-key';
+import { normaliseName, creativeKey, codeOf, CATEGORIES } from '@/lib/creative-key';
 import { loadMeta, refreshMeta, metaAgeHours, inferKind, listCampaignAds, REFRESH_HOURS, EXPIRED_HOURS, type HubMeta } from '@/lib/creative-hub';
+import {
+  hubAuth, isScope, loadFolders, resolveFiling, ensureEntry, pushAdNames, canRenameInMeta, facebookName,
+  ENTRY_FIELDS, type Entry,
+} from '@/lib/creative-hub-entries';
 
 /**
  * Creative & Copy Hub.
@@ -16,25 +18,19 @@ import { loadMeta, refreshMeta, metaAgeHours, inferKind, listCampaignAds, REFRES
  *   Meta (cached)         the picture / video, headline and primary text
  *   creative_hub_entries  what only we know: prompt, script, background, notes
  *
- * GET    ?scope=b2b|b2c[&client_id=]   → { creatives, campaigns, range }
- * POST   { scope, name, …fields, id? } → create or update an entry
+ * GET    ?scope=b2b|b2c[&client_id=]   → { creatives, campaigns, folders, … }
+ * POST   { scope, name, …fields, id?, category?, folder_id? } → create or update an entry
+ * POST   { scope, assign: [{ id? | name }], category, folder_id }  → file several at once
  * DELETE ?id=                          → remove an entry (the ad data stays)
+ *
+ * Ads are matched to an entry by a saved link (ad id), then by the code at the
+ * front of the ad name, then by the pooled name. New name/code matches are
+ * saved as links, so a later rename in Meta can't detach the ad.
  *
  * b2b = the internal Tomsi Media client; b2c = every real client, pooled.
  */
 
 export const maxDuration = 60;
-
-type Service = ReturnType<typeof createServiceClient>;
-type Scope = 'b2b' | 'b2c';
-
-const ENTRY_FIELDS = [
-  'code', 'tags', 'kind', 'campaign_label', 'launch_date', 'headline', 'primary_text',
-  'prompt', 'script', 'background_notes', 'notes', 'media_url',
-] as const;
-
-type Entry = { id: string; scope: Scope; pool_key: string; name: string; updated_at: string }
-  & Record<(typeof ENTRY_FIELDS)[number], string | null>;
 
 type SpendRow = {
   client_id: string; report_date: string; campaign_id: string; campaign_name: string | null;
@@ -47,12 +43,6 @@ type AdAcc = {
   adset_name: string; days: Set<string>; spend: number; impressions: number; link_clicks: number; meta_leads: number;
   first: string; last: string;
 };
-
-async function auth(req: Request): Promise<Service | NextResponse> {
-  if (validateWebhookSecret(req)) return createServiceClient();
-  const ctx = await getAuthContext();
-  return isAuthError(ctx) ? ctx : ctx.service;
-}
 
 const DAY = 86_400_000;
 const dayNum = (d: string) => Math.round(new Date(`${d}T00:00:00Z`).getTime() / DAY);
@@ -71,13 +61,13 @@ function toRuns(days: Iterable<string>): { start: string; end: string }[] {
 }
 
 export async function GET(req: Request) {
-  const service = await auth(req);
+  const service = await hubAuth(req);
   if (service instanceof NextResponse) return service;
 
   const { searchParams } = new URL(req.url);
-  const scope = searchParams.get('scope') as Scope;
+  const scope = searchParams.get('scope');
   const clientFilter = searchParams.get('client_id');
-  if (scope !== 'b2b' && scope !== 'b2c') {
+  if (!isScope(scope)) {
     return NextResponse.json({ error: "scope must be 'b2b' or 'b2c'" }, { status: 400 });
   }
 
@@ -169,26 +159,50 @@ export async function GET(req: Request) {
     });
   } catch { /* outcomes stay at zero rather than failing the library */ }
 
-  // ── Our side: prompts, scripts, notes (loaded first — the code on an entry
-  // decides which key its ads are filed under) ──
-  const { data: entryRows, error: eErr } = await service
-    .from('creative_hub_entries').select('*').eq('scope', scope);
+  // ── Our side: entries, folders, and which ad belongs to which entry ──
+  const [{ data: entryRows, error: eErr }, folders] = await Promise.all([
+    service.from('creative_hub_entries').select('*').eq('scope', scope),
+    loadFolders(service, scope),
+  ]);
   if (eErr) return NextResponse.json({ error: eErr.message }, { status: 500 });
+  const entryList = (entryRows ?? []) as Entry[];
+  const entryById = new Map(entryList.map(e => [e.id, e]));
+  // An entry is filed under its code when it has one, else under its pooled name.
+  const keyOfEntry = (e: Entry) => e.code?.toLowerCase() ?? e.pool_key;
   // An entry answers to its name and to its code, so an ad renamed in Meta from
-  // "AI Slop 7" to "AI-007 Kitchen Made of Money" keeps the same record.
+  // "AI Slop 7" to "AI/SLOP/007 Kitchen Made of Money" lands on the same record.
   const entries = new Map<string, Entry>();
-  for (const e of (entryRows ?? []) as Entry[]) {
+  for (const e of entryList) {
     entries.set(e.pool_key, e);
     if (e.code) entries.set(e.code.toLowerCase(), e);
   }
-  const canonical = (k: string) => entries.get(k)?.code?.toLowerCase() ?? k;
+  const linkOf = new Map<string, Entry>();
+  if (entryList.length) {
+    const { data: links } = await service.from('creative_hub_links').select('ad_id, entry_id').in('entry_id', entryList.map(e => e.id));
+    for (const l of links ?? []) { const e = entryById.get(l.entry_id as string); if (e) linkOf.set(l.ad_id as string, e); }
+  }
+  // Saved link first; then the code at the front of the name; then the name.
+  const newLinks: { ad_id: string; entry_id: string }[] = [];
+  const keyForAd = (a: AdAcc) => {
+    const linked = linkOf.get(a.ad_id);
+    if (linked) return keyOfEntry(linked);
+    const k = keyOf(a.ad_name);
+    const e = entries.get(k);
+    if (!e) return k;
+    newLinks.push({ ad_id: a.ad_id, entry_id: e.id });
+    return keyOfEntry(e);
+  };
 
   // ── Meta side: copy + media for the most recent ad of each creative ──
   const byKey = new Map<string, AdAcc[]>();
+  const adKey = new Map<string, string>();
   for (const a of ads.values()) {
-    const key = canonical(keyOf(a.ad_name));
+    const key = keyForAd(a);
+    adKey.set(a.ad_id, key);
     byKey.set(key, [...(byKey.get(key) ?? []), a]);
   }
+  // Remember today's name matches so a rename in Meta can't undo them.
+  if (newLinks.length) await service.from('creative_hub_links').upsert(newLinks, { onConflict: 'ad_id', ignoreDuplicates: true });
   const lead = new Map<string, AdAcc>();   // creative key → the ad that represents it
   for (const [key, list] of byKey) {
     lead.set(key, [...list].sort((x, y) => y.last.localeCompare(x.last) || y.spend - x.spend)[0]);
@@ -234,13 +248,14 @@ export async function GET(req: Request) {
     const names = [...spellings.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
     const entry = entries.get(key) ?? null;
     const code = entry?.code ?? codeOf(names[0]) ?? null;
+    const name = entry?.name ?? names[0];
+    const fbName = entry ? facebookName(entry) : name;
     const rep = lead.get(key)!;
     // Prefer the representative ad; fall back to any sibling Meta did answer for.
     const m = usable(meta.get(rep.ad_id)) ?? list.map(a => usable(meta.get(a.ad_id))).find(Boolean) ?? null;
     const runs = toRuns(days);
     const first = runs.length ? runs[0].start : null;
     const last = runs.length ? runs[runs.length - 1].end : null;
-    const name = entry?.name ?? names[0];
     // "Live" = Meta says one of its recently-delivering ads is active. When Meta
     // gave no answer, having delivered in the last two days stands in for it.
     // An ad with no delivery at all (`last` empty) is judged on its status alone.
@@ -252,6 +267,10 @@ export async function GET(req: Request) {
 
     return {
       key, code, name, names,
+      category: entry?.category ?? null, folder_id: entry?.folder_id ?? null, seq: entry?.seq ?? null,
+      fb_name: fbName,
+      // Every ad in Meta is already called "<code> <name>".
+      names_match: list.every(a => a.ad_name === fbName),
       entry,
       kind: entry?.kind ?? inferKind(name, m?.format ?? null),
       first,
@@ -284,13 +303,15 @@ export async function GET(req: Request) {
   // Entries with no ad behind them yet: drafts, and work older than the spend data.
   // Left out when looking at one client — a draft belongs to no client.
   if (!clientFilter) {
-    const seen = new Set<string>();
-    for (const entry of entries.values()) {
-      const key = entry.code?.toLowerCase() ?? entry.pool_key;
-      if (byKey.has(key) || seen.has(key)) continue;
-      seen.add(key);
+    for (const entry of entryList) {
+      const key = keyOfEntry(entry);
+      if (byKey.has(key)) continue;
+      byKey.set(key, []);
       creatives.push({
-        key, code: entry.code, name: entry.name, names: [entry.name], entry, kind: entry.kind,
+        key, code: entry.code, name: entry.name, names: [entry.name],
+        category: entry.category, folder_id: entry.folder_id, seq: entry.seq,
+        fb_name: facebookName(entry), names_match: true,
+        entry, kind: entry.kind,
         first: null, last: null, days: 0, runs: [], live: false,
         spend: 0, impressions: 0, link_clicks: 0, meta_leads: 0,
         ...EMPTY_AD_FUNNEL, ...funnelRates(0, EMPTY_AD_FUNNEL),
@@ -309,7 +330,7 @@ export async function GET(req: Request) {
             days: new Set(), spend: 0, creatives: new Map() };
       camps.set(a.campaign_id, c);
     }
-    const key = canonical(keyOf(a.ad_name));
+    const key = adKey.get(a.ad_id) ?? keyOf(a.ad_name);
     const cc = c.creatives.get(key) ?? { key, name: entries.get(key)?.name ?? (normaliseName(a.ad_name) || '(unnamed ad)'), days: new Set<string>(), spend: 0 };
     for (const d of a.days) { c.days.add(d); cc.days.add(d); }
     c.spend += a.spend; cc.spend += a.spend;
@@ -331,18 +352,68 @@ export async function GET(req: Request) {
   const recency = (c: { last: string | null; live: boolean }) => c.last ?? (c.live ? today : '');
   creatives.sort((a, b) => recency(b).localeCompare(recency(a)) || b.spend - a.spend || a.name.localeCompare(b.name));
 
-  return NextResponse.json({ scope, today, creatives, campaigns, meta_error: metaError });
+  return NextResponse.json({
+    scope, today, creatives, campaigns, folders,
+    categories: CATEGORIES,
+    can_rename: canRenameInMeta(),
+    meta_error: metaError,
+  });
 }
 
 export async function POST(req: Request) {
-  const service = await auth(req);
+  const service = await hubAuth(req);
   if (service instanceof NextResponse) return service;
 
   const body = await req.json() as Record<string, unknown>;
-  const scope = body.scope as Scope;
+  const scope = body.scope;
+  if (!isScope(scope)) return NextResponse.json({ error: "scope must be 'b2b' or 'b2c'" }, { status: 400 });
+  const folders = await loadFolders(service, scope);
+  const filingWanted = { category: typeof body.category === 'string' ? body.category : null, folder_id: typeof body.folder_id === 'string' && body.folder_id ? body.folder_id : null };
+
+  // Names of the ads as Meta currently has them — so a rename only touches ads
+  // whose name is actually wrong. The UI sends them along; scripts may not.
+  const currentNames = new Map(Object.entries((body.current_names ?? {}) as Record<string, string>));
+  const maybeRename = async (saved: Entry[]) => {
+    if (!canRenameInMeta() || !saved.some(e => e.code)) return [];
+    try { return await pushAdNames(service, saved.filter(e => e.code), currentNames); } catch { return []; }
+  };
+
+  // ── Bulk filing: several creatives into one category / folder ──
+  if (Array.isArray(body.assign)) {
+    const saved: Entry[] = [];
+    for (const item of body.assign as { id?: string; name?: string }[]) {
+      let entry: Entry | null = null;
+      if (item.id) {
+        const { data } = await service.from('creative_hub_entries').select('*').eq('id', item.id).eq('scope', scope).maybeSingle();
+        entry = (data as Entry | null) ?? null;
+      }
+      if (!entry && item.name) {
+        const made = await ensureEntry(service, scope, item.name);
+        if ('error' in made) return NextResponse.json({ error: made.error }, { status: 400 });
+        entry = made;
+      }
+      if (!entry) continue;
+      const filing = await resolveFiling(service, scope, folders, filingWanted, entry);
+      if ('error' in filing) return NextResponse.json({ error: filing.error }, { status: 400 });
+      const { data, error } = await service.from('creative_hub_entries')
+        .update({ ...filing, updated_at: new Date().toISOString() }).eq('id', entry.id).select().single();
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      saved.push(data as Entry);
+    }
+    return NextResponse.json({ entries: saved, renamed: await maybeRename(saved) });
+  }
+
+  // ── One entry: create or update ──
   const name = typeof body.name === 'string' ? body.name.replace(/\s+/g, ' ').trim() : '';
-  if (scope !== 'b2b' && scope !== 'b2c') return NextResponse.json({ error: "scope must be 'b2b' or 'b2c'" }, { status: 400 });
   if (!name) return NextResponse.json({ error: 'A name is required' }, { status: 400 });
+
+  const id = typeof body.id === 'string' && body.id ? body.id : null;
+  let current: Entry | null = null;
+  if (id) {
+    const { data } = await service.from('creative_hub_entries').select('*').eq('id', id).maybeSingle();
+    current = (data as Entry | null) ?? null;
+    if (!current) return NextResponse.json({ error: 'That creative no longer exists.' }, { status: 404 });
+  }
 
   const row: Record<string, unknown> = {
     scope, name, pool_key: creativeKey(name, scope === 'b2b'), updated_at: new Date().toISOString(),
@@ -352,16 +423,16 @@ export async function POST(req: Request) {
     const v = body[f];
     row[f] = typeof v === 'string' && v.trim() ? v.trim() : null;
   }
-  if (typeof row.code === 'string') {
-    const code = codeOf(row.code);
-    if (!code || code.length !== row.code.length) {
-      return NextResponse.json({ error: 'Codes look like AI-007 or IMG-002b: type, dash, three digits, optional letter.' }, { status: 400 });
-    }
-    row.code = code;
+  if ('category' in body || 'folder_id' in body) {
+    const filing = await resolveFiling(service, scope, folders,
+      { category: filingWanted.category ?? current?.category ?? null, folder_id: 'folder_id' in body ? filingWanted.folder_id : current?.folder_id ?? null },
+      current);
+    if ('error' in filing) return NextResponse.json({ error: filing.error }, { status: 400 });
+    Object.assign(row, filing);
   }
 
-  const q = typeof body.id === 'string' && body.id
-    ? service.from('creative_hub_entries').update(row).eq('id', body.id)
+  const q = id
+    ? service.from('creative_hub_entries').update(row).eq('id', id)
     : service.from('creative_hub_entries').upsert(row, { onConflict: 'scope,pool_key' });
   const { data, error } = await q.select().single();
   if (error) {
@@ -371,11 +442,12 @@ export async function POST(req: Request) {
       { status: clash ? 409 : 500 },
     );
   }
-  return NextResponse.json({ entry: data });
+  const entry = data as Entry;
+  return NextResponse.json({ entry, renamed: await maybeRename([entry]) });
 }
 
 export async function DELETE(req: Request) {
-  const service = await auth(req);
+  const service = await hubAuth(req);
   if (service instanceof NextResponse) return service;
 
   const id = new URL(req.url).searchParams.get('id');
