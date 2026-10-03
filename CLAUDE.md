@@ -163,6 +163,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `ai-campaign-chat` | Claude-powered chat over a campaign/client's data — see below |
 | `admin/*` | One-off ops: seeds, backfills, schema/migration runners (bypass auth via secret) |
 | `cron/seed-daily` | V2 demo-data daily seed (driven by the V2 data session) |
+| `b2b-stat-source` | Records behind the TM Dashboard tiles — clicking any tile opens `StatSourceModal` (what it measures, the sum, the source system, the rows counted). Catalog in `src/lib/b2b-stat-sources.ts`, keyed by tile label. See `NOTES.md` 2026-10-03. |
 | `meta-b2b-report` | Meta B2B prospecting report (L30/L7/L3 funnel summary, ad set + L7 ad tables with kill flags, creative map) built on demand — the **Meta report** button on the TM Dashboard. Needs `META_ACCESS_TOKEN`. See `NOTES.md` 2026-09-25. |
 
 ---

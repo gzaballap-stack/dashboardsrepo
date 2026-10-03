@@ -1,3 +1,26 @@
+## 2026-10-03 — B2B dashboard: click a tile to see where it comes from; unattributed note
+
+- **Every tile on the TM Dashboard is clickable** (52 of them). The panel
+  (`StatSourceModal`) shows what the stat measures, the sum behind it using the
+  numbers on screen, which system the data originates in, and the actual
+  records counted (lead / demo / call / page visit / daily spend rows).
+  Definitions live in one catalog, `src/lib/b2b-stat-sources.ts`, keyed by the
+  tile's **label** — rename a tile and its entry must be renamed too; change a
+  definition in `lib/metrics.ts` or `/api/b2b-metrics` and its entry must
+  follow. Records come from `GET /api/b2b-stat-source` (session auth, read-only,
+  same date bounds as the two metrics routes). Checked against V1 for
+  2026-09-01 → 10-03: all 52 entries' record counts match their tiles.
+- Client dashboards are untouched: `KpiCard` only becomes clickable when it is
+  passed `onStat`, which only the Tomsi block does.
+- **Campaign Overview "missing lead"** (owner saw client row: 2 leads, campaign /
+  ad set / ad rows: 1). Not a bug: the client row counts every lead, the rows
+  under it only count leads carrying ad attribution, and Connie Harris
+  (2026-10-02) has none — `pull_b2b_attribution` dry-run confirms GHL holds no
+  ad source for her contact. The drawer now prints a note under the campaign,
+  ad set and ad tables whenever the rows add up to less than the total
+  ("Not tied to any campaign: 1 lead…"). The rollup itself is unchanged —
+  unattributed events are still never spread across ads.
+
 ## 2026-10-02 — Creative hub: folders, codes, Facebook history
 
 - **Codes come from where a creative is filed.** Categories (fixed, in

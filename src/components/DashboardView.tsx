@@ -1,5 +1,7 @@
 "use client";
 
+import StatSourceModal from "@/components/StatSourceModal";
+import type { StatNumbers } from "@/lib/b2b-stat-sources";
 import { useEffect, useRef, useState } from "react";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
@@ -67,6 +69,7 @@ type Metrics = {
 
 type Cohort = { booked: number; show_rate: number; close_rate: number };
 type B2bKpis = {
+  leads?: number;
   cash_collected: number; self_booked: number; team_booked: number;
   booking_leads: number; non_booking_leads: number;
   landing_visits: number; calendar_visits: number; bookings: number;
@@ -214,13 +217,20 @@ function getDateRange(p: Preset): { start: string; end: string } {
   return { start: "", end: "" };
 }
 
-function KpiCard({ label, value, accent = false, note }: {
+function KpiCard({ label, value, accent = false, note, onStat }: {
   label: string; value: string; accent?: boolean;
   // Optional KPI flag under the value. Only the B2B funnel tiles pass it.
   note?: { text: string; color: string };
+  // B2B dashboard only: clicking the tile opens "where this number comes from".
+  onStat?: (label: string, value: string) => void;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl p-5 flex flex-col gap-2 group transition-all duration-200 hover:translate-y-[-1px]"
+    <div className={`relative overflow-hidden rounded-2xl p-5 flex flex-col gap-2 group transition-all duration-200 hover:translate-y-[-1px]${onStat ? " cursor-pointer" : ""}`}
+      {...(onStat ? {
+        role: "button", tabIndex: 0, title: "See where this number comes from",
+        onClick: () => onStat(label, value),
+        onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onStat(label, value); } },
+      } : {})}
       style={{ background: "linear-gradient(135deg, #ffffff 0%, #f7f7f7 100%)", border: "1px solid rgba(0,0,0,0.07)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
       <div className="absolute top-0 left-0 w-1 h-full rounded-l-xl" style={{ background: accent ? "#000000" : "#000000" }} />
       <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#6b6b6b" }}>{label}</span>
@@ -423,6 +433,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const [heatmapDays, setHeatmapDays] = useState(0);
   const [heatmapClientId, setHeatmapClientId] = useState("");
   const [b2bKpis, setB2bKpis] = useState<B2bKpis | null>(null);
+  // B2B dashboard: the tile whose "where this comes from" panel is open.
+  const [statOpen, setStatOpen] = useState<{ label: string; value: string } | null>(null);
   const [showWeekly, setShowWeekly] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -1293,33 +1305,53 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
               const bookingLeads = b2bKpis?.booking_leads ?? 0;
               const nonBookingLeads = b2bKpis ? b2bKpis.non_booking_leads : Math.max(0, metrics.new_leads - metrics.booked_appointments);
               // Even, gap-free grid: cards flow edge to edge and the last row stretches to fill.
+              const openStat = (label: string, value: string) => setStatOpen({ label, value });
+              const statNumbers: StatNumbers = {
+                ad_spend: metrics.ad_spend, leads: metrics.new_leads,
+                booked_pending: metrics.booked_appointments,
+                total_booked: metrics.total_booked_appointments ?? metrics.booked_appointments,
+                shows: metrics.shows, no_shows: metrics.no_shows, closes: metrics.closes,
+                revenue: metrics.total_revenue ?? 0, cash,
+                spam_leads: metrics.spam_leads ?? 0, spam_appointments: metrics.spam_appointments ?? 0,
+                dials: metrics.outbound_dials, pickups: metrics.pickups, conversations: metrics.conversations,
+                callbacks: metrics.callbacks, speed_to_lead_min: metrics.speed_to_lead_min,
+                self_booked: selfBooked, team_booked: teamBooked,
+                booking_leads: bookingLeads, non_booking_leads: nonBookingLeads,
+                b2b_leads: b2bKpis?.leads ?? metrics.new_leads,
+                landing_visits: b2bKpis?.landing_visits ?? 0, calendar_visits: b2bKpis?.calendar_visits ?? 0,
+                bookings: b2bKpis?.bookings ?? 0, precall_views: b2bKpis?.precall_views ?? 0, vsl_views: b2bKpis?.vsl_views ?? 0,
+              };
               const EVEN = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 } as React.CSSProperties;
               return (
               <div className="space-y-8 max-w-7xl">
+                {statOpen && (
+                  <StatSourceModal label={statOpen.label} value={statOpen.value} numbers={statNumbers}
+                    startDate={viewStart} endDate={viewEnd} onClose={() => setStatOpen(null)} />
+                )}
                 <section>
                   <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Overview</h2>
                   <div style={EVEN}>
-                    <KpiCard label="Ad Spend" value={fmt$(metrics.ad_spend)} />
-                    <KpiCard label="Leads" value={fmtInt(metrics.new_leads)} />
-                    <KpiCard label="Booking Leads" value={fmtInt(bookingLeads)} />
-                    <KpiCard label="Non-Booking Leads" value={fmtInt(nonBookingLeads)} />
-                    <KpiCard label="Demos Booked" value={fmtInt(metrics.total_booked_appointments ?? metrics.booked_appointments)} />
-                    <KpiCard label="Demo Booking Rate" value={fmtPct(metrics.total_appt_booking_rate ?? metrics.appt_booking_rate)} accent />
-                    <KpiCard label="Demos To Take Place" value={fmtInt(metrics.total_appts_to_take_place ?? metrics.appts_to_take_place)} />
-                    <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
-                    <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
-                    <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
-                    <KpiCard label="CPL" value={metrics.new_leads > 0 ? fmt$(metrics.cpl) : "—"} />
-                    <KpiCard label="CP Demo Booked" value={(metrics.total_booked_appointments ?? 0) > 0 ? fmt$(metrics.total_cp_appt ?? 0) : "—"} />
-                    <KpiCard label="CP Demo Shown" value={metrics.shows > 0 ? fmt$(metrics.ad_spend / metrics.shows) : "—"} />
-                    <KpiCard label="CAC" value={metrics.closes > 0 ? fmt$(metrics.ad_spend / metrics.closes) : "—"} />
-                    <KpiCard label="Close Rate" value={metrics.shows > 0 ? fmtPct(metrics.close_rate) : "—"} accent />
-                    <KpiCard label="Cash Collected" value={cash > 0 ? fmt$(cash) : "—"} accent />
-                    <KpiCard label="ROAS" value={metrics.ad_spend > 0 && cash > 0 ? `${(cash / metrics.ad_spend).toFixed(2)}x` : "—"} accent />
+                    <KpiCard onStat={openStat} label="Ad Spend" value={fmt$(metrics.ad_spend)} />
+                    <KpiCard onStat={openStat} label="Leads" value={fmtInt(metrics.new_leads)} />
+                    <KpiCard onStat={openStat} label="Booking Leads" value={fmtInt(bookingLeads)} />
+                    <KpiCard onStat={openStat} label="Non-Booking Leads" value={fmtInt(nonBookingLeads)} />
+                    <KpiCard onStat={openStat} label="Demos Booked" value={fmtInt(metrics.total_booked_appointments ?? metrics.booked_appointments)} />
+                    <KpiCard onStat={openStat} label="Demo Booking Rate" value={fmtPct(metrics.total_appt_booking_rate ?? metrics.appt_booking_rate)} accent />
+                    <KpiCard onStat={openStat} label="Demos To Take Place" value={fmtInt(metrics.total_appts_to_take_place ?? metrics.appts_to_take_place)} />
+                    <KpiCard onStat={openStat} label="Shows" value={fmtInt(metrics.shows)} accent />
+                    <KpiCard onStat={openStat} label="No Shows" value={fmtInt(metrics.no_shows)} />
+                    <KpiCard onStat={openStat} label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
+                    <KpiCard onStat={openStat} label="CPL" value={metrics.new_leads > 0 ? fmt$(metrics.cpl) : "—"} />
+                    <KpiCard onStat={openStat} label="CP Demo Booked" value={(metrics.total_booked_appointments ?? 0) > 0 ? fmt$(metrics.total_cp_appt ?? 0) : "—"} />
+                    <KpiCard onStat={openStat} label="CP Demo Shown" value={metrics.shows > 0 ? fmt$(metrics.ad_spend / metrics.shows) : "—"} />
+                    <KpiCard onStat={openStat} label="CAC" value={metrics.closes > 0 ? fmt$(metrics.ad_spend / metrics.closes) : "—"} />
+                    <KpiCard onStat={openStat} label="Close Rate" value={metrics.shows > 0 ? fmtPct(metrics.close_rate) : "—"} accent />
+                    <KpiCard onStat={openStat} label="Cash Collected" value={cash > 0 ? fmt$(cash) : "—"} accent />
+                    <KpiCard onStat={openStat} label="ROAS" value={metrics.ad_spend > 0 && cash > 0 ? `${(cash / metrics.ad_spend).toFixed(2)}x` : "—"} accent />
                     {/* ROI needs revenue generated — arrives with the payment tracker. */}
-                    <KpiCard label="ROI" value={metrics.ad_spend > 0 && cash > 0 ? `${(metrics.roi * 100).toFixed(0)}%` : "—"} />
-                    <KpiCard label="Fake Leads" value={fmtInt(metrics.spam_leads ?? 0)} />
-                    <KpiCard label="Fake Demos" value={fmtInt(metrics.spam_appointments ?? 0)} />
+                    <KpiCard onStat={openStat} label="ROI" value={metrics.ad_spend > 0 && cash > 0 ? `${(metrics.roi * 100).toFixed(0)}%` : "—"} />
+                    <KpiCard onStat={openStat} label="Fake Leads" value={fmtInt(metrics.spam_leads ?? 0)} />
+                    <KpiCard onStat={openStat} label="Fake Demos" value={fmtInt(metrics.spam_appointments ?? 0)} />
                   </div>
                 </section>
 
@@ -1328,18 +1360,18 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                 <section>
                   <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Calling Stats</h2>
                   <div style={EVEN}>
-                    <KpiCard label="Speed To Lead (Min)" value={fmtDec(metrics.speed_to_lead_min)} />
-                    <KpiCard label="Outbound Dials" value={fmtInt(metrics.outbound_dials)} />
-                    <KpiCard label="Dials Per Lead" value={fmtDec(metrics.dials_per_lead)} />
-                    <KpiCard label="Pickups (40s+)" value={fmtInt(metrics.pickups)} />
-                    <KpiCard label="Pick Up Rate" value={fmtPct(metrics.pickup_pct)} accent />
-                    <KpiCard label="Conversations (2m+)" value={fmtInt(metrics.conversations)} />
-                    <KpiCard label="Conversation Rate" value={fmtPct(metrics.conversation_pct)} />
-                    <KpiCard label="Callback Requests" value={fmtInt(metrics.callbacks)} />
-                    <KpiCard label="Callback Rate" value={fmtPct(metrics.cb_pct)} />
-                    <KpiCard label="Leads To Call" value={fmtInt(Math.max(0, metrics.new_leads - selfBooked))} />
-                    <KpiCard label="Hand-Booked Demos" value={bookedByKnown ? fmtInt(teamBooked) : "—"} />
-                    <KpiCard label="Lead Demo Booking Rate" value={leadBookingRate != null ? fmtPct(leadBookingRate) : "—"} accent />
+                    <KpiCard onStat={openStat} label="Speed To Lead (Min)" value={fmtDec(metrics.speed_to_lead_min)} />
+                    <KpiCard onStat={openStat} label="Outbound Dials" value={fmtInt(metrics.outbound_dials)} />
+                    <KpiCard onStat={openStat} label="Dials Per Lead" value={fmtDec(metrics.dials_per_lead)} />
+                    <KpiCard onStat={openStat} label="Pickups (40s+)" value={fmtInt(metrics.pickups)} />
+                    <KpiCard onStat={openStat} label="Pick Up Rate" value={fmtPct(metrics.pickup_pct)} accent />
+                    <KpiCard onStat={openStat} label="Conversations (2m+)" value={fmtInt(metrics.conversations)} />
+                    <KpiCard onStat={openStat} label="Conversation Rate" value={fmtPct(metrics.conversation_pct)} />
+                    <KpiCard onStat={openStat} label="Callback Requests" value={fmtInt(metrics.callbacks)} />
+                    <KpiCard onStat={openStat} label="Callback Rate" value={fmtPct(metrics.cb_pct)} />
+                    <KpiCard onStat={openStat} label="Leads To Call" value={fmtInt(Math.max(0, metrics.new_leads - selfBooked))} />
+                    <KpiCard onStat={openStat} label="Hand-Booked Demos" value={bookedByKnown ? fmtInt(teamBooked) : "—"} />
+                    <KpiCard onStat={openStat} label="Lead Demo Booking Rate" value={leadBookingRate != null ? fmtPct(leadBookingRate) : "—"} accent />
                   </div>
                 </section>
 
@@ -1348,31 +1380,31 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                 <section>
                   <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Funnel Stats</h2>
                   <div style={EVEN}>
-                    <KpiCard label="Landing Page Visits" value={fmtInt(b2bKpis?.landing_visits ?? 0)} />
-                    <KpiCard label="Calendar Page Visits" value={fmtInt(b2bKpis?.calendar_visits ?? 0)} />
-                    <KpiCard label="Bookings" value={fmtInt(b2bKpis?.bookings ?? 0)} />
-                    <KpiCard label="Landing → Calendar Rate" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.landing_to_calendar ?? 0) : "—"} accent />
-                    <KpiCard label="Calendar → Booking Rate" value={b2bKpis?.calendar_visits ? fmtPct(b2bKpis.calendar_to_booking ?? 0) : "—"} accent />
-                    <KpiCard label="Landing → Booking Rate" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.landing_to_booking) : "—"} accent
+                    <KpiCard onStat={openStat} label="Landing Page Visits" value={fmtInt(b2bKpis?.landing_visits ?? 0)} />
+                    <KpiCard onStat={openStat} label="Calendar Page Visits" value={fmtInt(b2bKpis?.calendar_visits ?? 0)} />
+                    <KpiCard onStat={openStat} label="Bookings" value={fmtInt(b2bKpis?.bookings ?? 0)} />
+                    <KpiCard onStat={openStat} label="Landing → Calendar Rate" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.landing_to_calendar ?? 0) : "—"} accent />
+                    <KpiCard onStat={openStat} label="Calendar → Booking Rate" value={b2bKpis?.calendar_visits ? fmtPct(b2bKpis.calendar_to_booking ?? 0) : "—"} accent />
+                    <KpiCard onStat={openStat} label="Landing → Booking Rate" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.landing_to_booking) : "—"} accent
                       note={b2bKpis?.landing_visits
                         ? (b2bKpis.landing_to_booking >= 5
                             ? { text: "On target · KPI 5%+", color: "#15803d" }
                             : { text: "Below KPI · 5% minimum", color: "#b91c1c" })
                         : undefined} />
-                    <KpiCard label="Lead Page Conversion" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.lead_page_conversion) : "—"} accent />
-                    <KpiCard label="Lead Booking Rate" value={metrics.new_leads ? fmtPct(b2bKpis?.lead_booking_rate_funnel ?? 0) : "—"} accent />
-                    <KpiCard label="Pre-Call Views" value={fmtInt(b2bKpis?.precall_views ?? 0)} />
-                    <KpiCard label="Pre-Call View Rate" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_view_rate) : "—"} accent />
-                    <KpiCard label="Pre-Call 25%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_25_rate) : "—"} />
-                    <KpiCard label="Pre-Call 50%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_50_rate) : "—"} />
-                    <KpiCard label="Pre-Call 75%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_75_rate) : "—"} />
-                    <KpiCard label="Pre-Call 100%" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_100_rate) : "—"} />
-                    <KpiCard label="VSL Views" value={fmtInt(b2bKpis?.vsl_views ?? 0)} />
-                    <KpiCard label="VSL View Rate" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_view_rate) : "—"} accent />
-                    <KpiCard label="VSL 25%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_25_rate) : "—"} />
-                    <KpiCard label="VSL 50%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_50_rate) : "—"} />
-                    <KpiCard label="VSL 75%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_75_rate) : "—"} />
-                    <KpiCard label="VSL 100%" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_100_rate) : "—"} />
+                    <KpiCard onStat={openStat} label="Lead Page Conversion" value={b2bKpis?.landing_visits ? fmtPct(b2bKpis.lead_page_conversion) : "—"} accent />
+                    <KpiCard onStat={openStat} label="Lead Booking Rate" value={metrics.new_leads ? fmtPct(b2bKpis?.lead_booking_rate_funnel ?? 0) : "—"} accent />
+                    <KpiCard onStat={openStat} label="Pre-Call Views" value={fmtInt(b2bKpis?.precall_views ?? 0)} />
+                    <KpiCard onStat={openStat} label="Pre-Call View Rate" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_view_rate) : "—"} accent />
+                    <KpiCard onStat={openStat} label="Pre-Call 25%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_25_rate) : "—"} />
+                    <KpiCard onStat={openStat} label="Pre-Call 50%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_50_rate) : "—"} />
+                    <KpiCard onStat={openStat} label="Pre-Call 75%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_75_rate) : "—"} />
+                    <KpiCard onStat={openStat} label="Pre-Call 100%" value={b2bKpis?.bookings ? fmtPct(b2bKpis.precall_100_rate) : "—"} />
+                    <KpiCard onStat={openStat} label="VSL Views" value={fmtInt(b2bKpis?.vsl_views ?? 0)} />
+                    <KpiCard onStat={openStat} label="VSL View Rate" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_view_rate) : "—"} accent />
+                    <KpiCard onStat={openStat} label="VSL 25%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_25_rate) : "—"} />
+                    <KpiCard onStat={openStat} label="VSL 50%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_50_rate) : "—"} />
+                    <KpiCard onStat={openStat} label="VSL 75%+" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_75_rate) : "—"} />
+                    <KpiCard onStat={openStat} label="VSL 100%" value={b2bKpis?.bookings ? fmtPct(b2bKpis.vsl_100_rate) : "—"} />
                   </div>
                 </section>
 

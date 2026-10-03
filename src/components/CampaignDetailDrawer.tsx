@@ -848,6 +848,31 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
     );
   };
 
+  // The total row counts every lead and demo; the rows below it only count the
+  // ones the CRM can tie to an ad. When those differ, say so — otherwise the
+  // table looks like it lost a lead.
+  const renderUnattributedNote = (rows: unknown[], level: "campaign" | "ad set" | "ad") => {
+    if (entity.kind !== "client") return null;
+    const withFunnel = rows.filter(r => !!(r as { funnel?: AdFunnel }).funnel) as { funnel: AdFunnel }[];
+    if (!withFunnel.length) return null;
+    const c = entity.client;
+    const sum = (k: "leads" | "appts" | "closes") => withFunnel.reduce((n, r) => n + (r.funnel[k] || 0), 0);
+    const gaps = [
+      { n: c.leads - sum("leads"), one: "lead", many: "leads" },
+      { n: c.appts - sum("appts"), one: c.is_internal ? "demo" : "appointment", many: c.is_internal ? "demos" : "appointments" },
+      { n: c.closes - sum("closes"), one: "close", many: "closes" },
+    ].filter(g => g.n > 0);
+    if (!gaps.length) return null;
+    const list = gaps.map(g => `${g.n} ${g.n === 1 ? g.one : g.many}`).join(", ");
+    return (
+      <p className="text-xs mt-3 px-1" style={{ color: "#767676" }}>
+        <span className="font-semibold" style={{ color: "#111111" }}>Not tied to any {level}: {list}.</span>{" "}
+        The total above ({c.leads} {c.leads === 1 ? "lead" : "leads"}) counts everyone; these rows only count people
+        whose record says which ad they came from. The rest have no ad source recorded, so they can&apos;t be placed on a row.
+      </p>
+    );
+  };
+
   const renderCampaigns = () => {
     const camps = isBb
       ? entity.data.campaigns
@@ -925,6 +950,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
           </tbody>
         </table>
       </div>
+      {renderUnattributedNote(camps, "campaign")}
       </div>
     );
   };
@@ -1159,13 +1185,13 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         ? "Run the updated Make scenario to populate ad set data. It fetches adset-level insights from Meta daily."
         : "No ad set data found for this date range. Make sure your client Make scenario sends adset-level data."
     );
-    return renderMetricTable(
+    return (<div>{renderMetricTable(
       "Ad Set",
       adSetData,
       r => (r as AdSetRow).adset_name ?? (r as AdSetRow).adset_id,
       r => r.campaign_name ?? null,
       (r, i) => (r as AdSetRow).adset_id || String(i),
-    );
+    )}{renderUnattributedNote(adSetData, "ad set")}</div>);
   };
 
   const renderAds = () => {
@@ -1176,13 +1202,13 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
         ? "Run the updated Make scenario to populate ad-level data."
         : "No ad data found for this date range. Make sure your client Make scenario sends ad-level data."
     );
-    return renderMetricTable(
+    return (<div>{renderMetricTable(
       "Ad",
       adData,
       r => (r as AdRow).ad_name ?? (r as AdRow).ad_id,
       r => (r as AdRow).adset_name ?? r.campaign_name ?? null,
       (r, i) => (r as AdRow).ad_id || String(i),
-    );
+    )}{renderUnattributedNote(adData, "ad")}</div>);
   };
 
   const renderRecordings = () => {
