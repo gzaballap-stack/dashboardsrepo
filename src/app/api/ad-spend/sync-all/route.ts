@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
+import { followUpDate } from '@/lib/spend-sync-today';
 import { resolveClientId } from '@/lib/client-lookup';
 
 // Single-shot client sync: fetches ad-level data from Meta once, aggregates to
@@ -8,7 +9,7 @@ import { resolveClientId } from '@/lib/client-lookup';
 // (all three levels) in one request. Replaces the 3-module per-client Make blueprint.
 // Body: { client_name, date, platform, meta_token, account_id }
 
-export async function POST(req: Request) {
+async function syncOne(req: Request) {
   try {
     if (!validateWebhookSecret(req)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -198,4 +199,21 @@ export async function POST(req: Request) {
   } catch (e) {
     return NextResponse.json({ error: `Invalid request: ${e}` }, { status: 400 });
   }
+}
+
+// The scheduled sync asks for yesterday; it also refreshes today-so-far, so the
+// dashboard's spend moves during the day (see lib/spend-sync-today). The
+// requested date is always synced first and its result is what the caller gets;
+// the follow-up is best-effort and can never fail or change that result.
+export async function POST(req: Request) {
+  const raw = await req.text();
+  const again = (body: string) => new Request(req.url, { method: 'POST', headers: req.headers, body });
+
+  const res = await syncOne(again(raw));
+  try {
+    const payload = JSON.parse(raw) as Record<string, unknown>;
+    const next = res.ok ? followUpDate(payload.date) : null;
+    if (next) await syncOne(again(JSON.stringify({ ...payload, date: next })));
+  } catch { /* today's refresh is secondary */ }
+  return res;
 }

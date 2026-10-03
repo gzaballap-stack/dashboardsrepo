@@ -1070,3 +1070,14 @@ can never block or fail an event insert.
   "Non-Booking Leads" stays leads that never booked.
 - Open: new bookings (Bruce, Pablo) arrive without `booked_by` — the GHL
   self-booked workflow is missing the field.
+
+## 2026-10-03 — Ad spend refreshed three times a day, including today
+
+- The 13 Make spend scenarios (12 clients + B2B) ran once a day at 07:00 and
+  asked for *yesterday* only, so the dashboard never showed today's spend.
+- `ad-spend/sync-all` and `b2b-ad-spend/sync-all` now sync the requested date
+  and then, for a recent request (not a backfill), the following day too —
+  today so far (`src/lib/spend-sync-today.ts`). Upserts, so each run overwrites
+  today and the next morning's run finalises it. The follow-up is best-effort
+  and never changes the response for the requested date.
+- Make schedules: 07:00, 13:00, 19:00 (Make org time). No blueprint change.
