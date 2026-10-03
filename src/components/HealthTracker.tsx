@@ -568,8 +568,11 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function HealthTracker() {
   const thisMonday = useMemo(() => mondayOf(new Date()), []);
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [month, setMonth] = useState(() => new Date().getMonth());
+  // Open on the month holding *this week*, not the month holding today. A week
+  // is filed under its Monday, so on 2 October the current week (29 Sep – 4 Oct)
+  // lives in September — landing on October hid the week you came to log.
+  const [year, setYear] = useState(() => mondayOf(new Date()).getFullYear());
+  const [month, setMonth] = useState(() => mondayOf(new Date()).getMonth());
   const [tab, setTab] = useState<Tab>("calendar");
 
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -863,7 +866,7 @@ export default function HealthTracker() {
         <EntrySheet
           weekStart={openWeek}
           entry={byWeek.get(openWeek) ?? null}
-          previous={logged.filter(e => e.week_start < openWeek).slice(-1)[0] ?? null}
+          history={logged.filter(e => e.week_start < openWeek)}
           // The programme, plus anything this particular week already holds
           // numbers for. The second half matters: saving rewrites the whole
           // week, so a lift missing from the form would be erased by the next
@@ -1211,10 +1214,32 @@ function clearDraft(weekStart: string, ifJson?: string) {
   } catch {}
 }
 
-function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, onClose, onSave, onDelete }: {
+// The most recent earlier week that actually carries this figure, and how long
+// ago that was. Looking only at last week left the hint blank whenever a lift
+// was skipped — which is most weeks, for anything trained once a fortnight.
+function lastLogged<T>(history: Entry[], weekStart: string, pick: (e: Entry) => T | null | undefined) {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const value = pick(history[i]);
+    if (value === null || value === undefined) continue;
+    const weeksAgo = Math.round(
+      (parseISO(weekStart).getTime() - parseISO(history[i].week_start).getTime()) / (7 * 86400000),
+    );
+    return { value, weeksAgo };
+  }
+  return null;
+}
+
+// "last" when it was the week before, otherwise how far back it was — a figure
+// from a month ago shouldn't read as though it were current.
+function agoLabel(weeksAgo: number) {
+  return weeksAgo <= 1 ? "last" : `${weeksAgo} wks ago`;
+}
+
+function EntrySheet({ weekStart, entry, history, exercises, unit, lengthUnit, onClose, onSave, onDelete }: {
   weekStart: string;
   entry: Entry | null;
-  previous: Entry | null;
+  // Every logged week before this one, oldest first.
+  history: Entry[];
   exercises: string[];
   unit: string;
   lengthUnit: string;
@@ -1360,6 +1385,10 @@ function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, o
   const monday = parseISO(weekStart);
   const title = `${weekLabel(monday)}, ${monday.getFullYear()}`;
 
+  const lastWeight = lastLogged(history, weekStart, e => avgOf([e.weight_1, e.weight_2, e.weight_3]));
+  const lastWaist = lastLogged(history, weekStart, e => e.waist);
+  const lastBicep = lastLogged(history, weekStart, e => e.bicep);
+
   function handleClose() {
     void flush();
     onClose();
@@ -1433,17 +1462,19 @@ function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, o
         <span style={{ fontSize: 11, fontWeight: 600, color: MUTED }}>Average</span>
         <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{fmt(avg, 2)}</span>
         <span style={{ fontSize: 10, color: FAINT }}>{unit}</span>
-        {previous && (
+        {lastWeight && (
           <span style={{ marginLeft: "auto", fontSize: 11, color: FAINT }}>
-            last: {fmt(avgOf([previous.weight_1, previous.weight_2, previous.weight_3]), 2)}
+            {agoLabel(lastWeight.weeksAgo)}: {fmt(lastWeight.value, 2)}
           </span>
         )}
       </div>
 
       <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr", marginTop: 12 }}>
-        <Field label={`Waist (${lengthUnit})`} hint={previous?.waist != null ? `last ${fmt(previous.waist)}` : undefined}
+        <Field label={`Waist (${lengthUnit})`}
+          hint={lastWaist ? `${agoLabel(lastWaist.weeksAgo)} ${fmt(lastWaist.value)}` : undefined}
           value={waist} onChange={setWaist} />
-        <Field label={`Bicep (${lengthUnit})`} hint={previous?.bicep != null ? `last ${fmt(previous.bicep)}` : undefined}
+        <Field label={`Bicep (${lengthUnit})`}
+          hint={lastBicep ? `${agoLabel(lastBicep.weeksAgo)} ${fmt(lastBicep.value)}` : undefined}
           value={bicep} onChange={setBicep} />
       </div>
 
@@ -1452,14 +1483,17 @@ function EntrySheet({ weekStart, entry, previous, exercises, unit, lengthUnit, o
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {exercises.map(name => {
-          const prev = previous?.lifts?.[name];
+          const prev = lastLogged(history, weekStart, e => {
+            const l = e.lifts?.[name];
+            return l && (l.load !== null || l.reps !== null) ? l : null;
+          });
           return (
             <div key={name}>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 5 }}>
                 <span style={{ fontSize: 12.5, fontWeight: 600, color: INK }}>{name}</span>
-                {prev && (prev.load !== null || prev.reps !== null) && (
+                {prev && (
                   <span style={{ fontSize: 10, color: FAINT }}>
-                    last {fmt(prev.load)} {unit} × {fmt(prev.reps, 0)}
+                    {agoLabel(prev.weeksAgo)} {fmt(prev.value.load)} {unit} × {fmt(prev.value.reps, 0)}
                   </span>
                 )}
               </div>
