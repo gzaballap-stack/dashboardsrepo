@@ -159,6 +159,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `calendar` | Calendar panel — fetches each user's private Google Calendar iCal feed server-side and parses it with `src/lib/ics.ts`. Feed URLs are secrets: stored in `calendar_feeds`, never returned to the browser. |
 | `task-templates/*` | Task Board **Weekly Non-Negotiables** — the templates, `materialize` (turns them into that week's task rows, idempotent on `(template_id, template_date)`), and `counts` (live call lists from `b2b_events`). |
 | `lift-log/*` | Health Tracker — weekly log, diet/split plans, and the public token-based CSV/JSON export |
+| `profit-loss` | **Profit and Loss** (Tools) — one row per line of a month (client payment, business expense, personal expense) in `pnl_lines`, scoped to the signed-in user. Totals, the Overview and the Clients tab are all summed from those lines in the browser. See `NOTES.md` 2026-10-04. |
 | `me` | Who is signed in and which features they're allowed to open |
 | `ai-campaign-chat` | Claude-powered chat over a campaign/client's data — see below |
 | `admin/*` | One-off ops: seeds, backfills, schema/migration runners (bypass auth via secret) |
@@ -313,6 +314,7 @@ Never commit `.env*` — they're gitignored. Production values live in Railway.
 | Creative & Copy Hub (library, timeline, detail drawer) | `src/components/CreativeHub.tsx`, `src/lib/creative-hub.ts`, `src/lib/creative-key.ts` |
 | Per-user feature access | `src/lib/feature-access.ts` (+ `src/middleware.ts`, Settings > Users) |
 | Health Tracker (log, diet plan, gym split) | `src/components/HealthTracker.tsx` |
+| Profit and Loss (month sheet, overview, clients) | `src/components/ProfitLoss.tsx`, `src/app/api/profit-loss/route.ts` |
 | Calendar (a panel inside the Task Board) + iCal parsing | `src/components/CalendarView.tsx`, `src/lib/ics.ts` |
 | Env switching | `scripts/switch-env.js` |
 | First-time setup skill | `.claude/commands/start.md` (`/start`) |

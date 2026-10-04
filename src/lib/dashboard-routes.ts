@@ -65,6 +65,7 @@ export const VIEW_ROUTES: Record<string, { slug: string; label: string; section:
   zip_tool:             { slug: "zip-score-engine",      label: "Zip Score Engine",      section: "tools" },
   task_board:           { slug: "task-board",            label: "Task Board",            section: "tools" },
   lift_tracker:         { slug: "health-tracker",        label: "Health Tracker",        section: "tools" },
+  profit_loss:          { slug: "profit-and-loss",       label: "Profit and Loss",       section: "tools" },
 };
 
 export const CLIENTS_VIEW_ROUTES: Record<string, { slug: string; label: string }> = {

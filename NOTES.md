@@ -1,3 +1,41 @@
+## 2026-10-04 — Profit and Loss (new tool)
+
+A rebuild of the owner's "Revenue & Expenses" Google Sheet, under **Tools >
+Profit and Loss** (`src/components/ProfitLoss.tsx`, `/api/profit-loss`).
+
+- **One table, `pnl_lines`** — a row per line of a month: `revenue` (a client
+  payment), `expense` (business cost) or `personal` (with `leisure` true/false,
+  the sheet's Necessary / Leisure split). Scoped per user like the Health
+  Tracker; RLS on with no policies, so only the server reads it.
+- **Profit = revenue − expenses.** Personal spending sits beside it and is never
+  subtracted — same as the sheet. Margin = profit / revenue ("n/a" at $0).
+- **Nothing is stored twice.** The sheet's "Years" tab (month table, totals,
+  monthly average, highest / lowest month) is the **Overview** tab and its
+  client lifetime-value block is the **Clients** tab — both summed in the
+  browser from the month lines. "Monthly average" margin is the average of the
+  monthly margins, as in the sheet. Clients are grouped by name, ignoring case
+  and stray spaces.
+- An empty month offers **Copy <previous month>** — clients and business
+  expenses only, amounts included, to be adjusted.
+- **Access:** new feature `profit_loss` (Settings > Users). Restricted accounts
+  don't see it until granted; unrestricted accounts see their own empty sheet,
+  never anyone else's.
+- **Schema:** `supabase/migrations/add_profit_loss.sql`, run with
+  `node scripts/migrate-profit-loss.mjs <v1|v2>`. Applied to **V2** on
+  2026-10-04. **V1 is run by the owner** (the code session's writes to V1's
+  database were blocked by its permission settings) — until it is applied the
+  page shows a load error on V1.
+- **The sheet's data (21 months, Jan 2025 – Sep 2026, 285 lines)** goes into
+  the owner's V1 account with
+  `node scripts/import-profit-loss.mjs <email> .pnl-import/lines.json` — also
+  run by the owner. The script applies the sheet's own client-name clean-up and
+  refuses to run twice. `.pnl-import/` is gitignored: real personal finances,
+  never to be committed or seeded into V2. The sheet's own "Years" tab stops at
+  August 2026; the app includes September.
+- Checked in a local preview against the sheet's figures (every month's
+  revenue / expenses / personal total matches). Not checked in a logged-in
+  browser — no session available to the code session.
+
 ## 2026-10-03 — B2B dashboard: click a tile to see where it comes from; unattributed note
 
 - **Every tile on the TM Dashboard is clickable** (52 of them). The panel

@@ -18,7 +18,7 @@ export type FeatureId =
   | "admin_agents" | "schedule"
   | "b2b_tracking"
   | "client_roster" | "csm_dashboard" | "share_reports"
-  | "zip_tool" | "task_board" | "lift_tracker"
+  | "zip_tool" | "task_board" | "lift_tracker" | "profit_loss"
   | "admin_users";
 
 export type FeatureGroup =
@@ -53,6 +53,7 @@ export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] =
   // The id stays `lift_tracker`: it is written into saved nav state and into
   // every account's allowed_views, so renaming it would revoke access silently.
   { id: "lift_tracker",         label: "Health Tracker",        group: "Tools"             },
+  { id: "profit_loss",          label: "Profit and Loss",       group: "Tools"             },
   { id: "admin_users",          label: "User Management",       group: "Settings"          },
 ];
 
@@ -76,6 +77,7 @@ export function sanitizeViews(input: unknown): FeatureId[] | null {
 // data: client list, alerts, auth).
 const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/lift-log",           features: ["lift_tracker"] },
+  { prefix: "/api/profit-loss",        features: ["profit_loss"] },
   { prefix: "/api/tasks",              features: ["task_board"] },
   { prefix: "/api/zip-",               features: ["zip_tool"] },
   { prefix: "/api/metrics",            features: ["dashboard"] },
