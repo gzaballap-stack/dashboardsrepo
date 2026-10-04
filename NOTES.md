@@ -15,6 +15,18 @@ Profit and Loss** (`src/components/ProfitLoss.tsx`, `/api/profit-loss`).
   browser from the month lines. "Monthly average" margin is the average of the
   monthly margins, as in the sheet. Clients are grouped by name, ignoring case
   and stray spaces.
+- **Clients tab works on a time frame** (All time / a year / last 3, 6, 12
+  months counted back from the latest month logged / any From–To). Inside it:
+  clients, revenue, average value per client, average monthly per client
+  (revenue ÷ client-months), share of revenue, and who is new (first payment
+  ever falls in the frame).
+  - **Retention is month to month:** of the clients who paid in one month, the
+    share who paid again the next. The frame's rate pools every month in it
+    ("51 of 91 paid again"); churn is the rest. A client who skips a month
+    counts as lost that month and as "Back" when they return — the owner was
+    told and may want a 2-month grace instead. A month with nothing logged
+    before it has no rate. A $0 line is not a payment.
+  - A half-entered current month will read as heavy churn until it is complete.
 - An empty month offers **Copy <previous month>** — clients and business
   expenses only, amounts included, to be adjusted.
 - **Access:** new feature `profit_loss` (Settings > Users). Restricted accounts
