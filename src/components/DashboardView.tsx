@@ -22,6 +22,7 @@ import BrandBackground from "./BrandBackground";
 import TaskBoard from "./TaskBoard";
 import HealthTracker from "./HealthTracker";
 import ProfitLoss from "./ProfitLoss";
+import SalesTracker from "./SalesTracker";
 import { hasFeature, type FeatureId } from "@/lib/feature-access";
 import { pathForRoute, routeForSlug, type DashRoute } from "@/lib/dashboard-routes";
 import CampaignOverview from "./CampaignOverview";
@@ -110,11 +111,12 @@ type View =
   | "task_board"
   | "lift_tracker"
   | "profit_loss"
+  | "sales_tracker"
   | "b2b_tracking";
 
 // B2B view type alias — rendered under Tomsi Media section
 type TomsiView =
-  | "b2b_tracking" | "dashboard" | "campaign_overview" | "goals"
+  | "b2b_tracking" | "dashboard" | "campaign_overview" | "goals" | "sales_tracker"
   | "leads" | "dials" | "appointments" | "speed_to_lead"
   | "heatmap_show" | "heatmap_pickup" | "heatmap_leads";
 
@@ -124,6 +126,9 @@ const TOMSI_NAV: { group: string; items: { id: TomsiView; label: string; icon: s
   { group: "Overview", items: [
     { id: "dashboard",            label: "B2B Dashboard",        icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
     { id: "goals",                label: "Goal Tracker",         icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
+  ]},
+  { group: "Sales", items: [
+    { id: "sales_tracker",        label: "Sales Tracker",        icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" },
   ]},
   { group: "Raw Data", items: [
     { id: "leads",         label: "New Leads",     icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
@@ -200,6 +205,7 @@ const NAV_ICONS: Record<View, string> = {
   zip_tool:         "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z",
   lift_tracker:     "M6.5 6.5v11M17.5 6.5v11M3.5 9.5v5M20.5 9.5v5M6.5 12h11",
   profit_loss:      "M3 17l6-6 4 4 8-8M15 7h6v6",
+  sales_tracker:    "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
 };
 
 function getDateRange(p: Preset): { start: string; end: string } {
@@ -483,7 +489,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       if (savedTop) setTopSection(savedTop);
       // Tools views only belong to the Tools section; restoring one anywhere else
       // would render the tool inside the Clients Dashboard.
-      if (saved.view && !(TOOLS_VIEWS.includes(saved.view) && savedTop !== "tools"))
+      if (saved.view && !(TOOLS_VIEWS.includes(saved.view) && savedTop !== "tools")
+        && !(saved.view === "sales_tracker" && savedTop !== "tomsi_media"))
         setView(saved.view as View);
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
       if (savedTop === "tomsi_media" && saved.tomsiView && !["b2b_tracking","campaign_overview"].includes(saved.tomsiView)) setView(saved.tomsiView as View);
@@ -714,7 +721,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
         else if (clientsNavVisible.length) setTopSection("clients");
         return;
       }
-      if (!can(view) || TOOLS_VIEWS.includes(view)) {
+      if (!can(view) || TOOLS_VIEWS.includes(view) || view === "sales_tracker") {
         const first = NAV.find(n => n.group === groups[0] && can(n.view));
         if (first) setView(first.view);
       }
@@ -1118,8 +1125,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
             </a>
           )}
 
-          {/* Tomsi Media date range selector */}
-          {topSection === "tomsi_media" && (
+          {/* Tomsi Media date range selector (the Sales Tracker has its own) */}
+          {topSection === "tomsi_media" && tomsiView !== "sales_tracker" && (
             <div className="relative" ref={presetRef}>
               <button
                 onClick={() => setShowPresetMenu(v => !v)}
@@ -1150,7 +1157,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
               )}
             </div>
           )}
-          {topSection === "tomsi_media" && tomsiPreset === "custom" && (
+          {topSection === "tomsi_media" && tomsiView !== "sales_tracker" && tomsiPreset === "custom" && (
             <div className="relative">
               <button onClick={() => setShowRangePicker(true)} className="px-3 py-2 rounded-lg text-sm" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
                 {fmtRange(customStart, customEnd)}<span className="ml-2 text-xs" style={{ color: "#949494" }}>Change</span>
@@ -1559,6 +1566,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           {view === "task_board" && topSection === "tools" && <TaskBoard />}
           {view === "lift_tracker" && topSection === "tools" && <HealthTracker />}
           {view === "profit_loss" && topSection === "tools" && <ProfitLoss />}
+          {view === "sales_tracker" && inTomsi && <SalesTracker />}
 
           </>)}
 

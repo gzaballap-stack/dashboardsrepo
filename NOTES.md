@@ -1,3 +1,34 @@
+## 2026-10-04 — Sales Tracker (TM Dashboard)
+
+A rebuild of the owner's "Sales Tracker 2026" Google Sheet, under **TM
+Dashboard > Sales > Sales Tracker** (`src/components/SalesTracker.tsx`,
+`/api/sales-calls`).
+
+- **One table, `sales_calls`** — a row per sales call: date, name, source,
+  pricing / pitch, length (min), recording link, outcome (`won` / `lost` /
+  `dq` / `na` / `pending`), my emotions, conclusion, notes, contact. Shared by
+  everyone with TM Dashboard access (gated on `b2b_tracking`), not per user.
+  RLS on with no policies.
+- **Totals follow the sheet:** "Total calls" = won + lost; closing % = won ÷
+  (won + lost). DQ, N/A and Pending are counted beside it, never in the %.
+  Under 30 calls the closing % tile carries the sheet's "little meaning" caveat.
+- Time frame: all time / a year / a month. Breakdowns by month and by pitch
+  (pitches grouped ignoring case and spacing). Calls list filters by outcome
+  and searches name / pitch / notes; click a row for conclusion and notes,
+  "Edit" for the form. The page hides the TM date-range picker.
+- **Schema:** `supabase/migrations/add_sales_calls.sql`, run with
+  `node scripts/migrate-sales-tracker.mjs <v1|v2>` — applied to **V1 and V2**
+  on 2026-10-04 (one new table, additive).
+- **Sheet data loaded on V1 only**: 48 calls (Jan–Sep 2026; 24 won, 20 lost,
+  3 DQ, 1 N/A) via `node scripts/import-sales-tracker.mjs v1
+  .sales-import/calls.json` (refuses to run twice; `.sales-import/` gitignored).
+  The month tabs were the source; the "2026" tab only filled blank emotions /
+  notes. Kimberly Gibbs' "4/31/26" was stored as 4/30/26. Month totals match
+  the sheet's tabs.
+- The 5 calls on the "Copy of August 2026" tab were dated 10/10–10/29/26; the
+  owner confirmed they are September, loaded 2026-10-05 as 9/10–9/29 (53 calls
+  in total).
+
 ## 2026-10-04 — Profit and Loss (new tool)
 
 A rebuild of the owner's "Revenue & Expenses" Google Sheet, under **Tools >

@@ -42,3 +42,4 @@ next-env.d.ts
 
 # Profit and Loss import data — real personal finances, never commit
 /.pnl-import/
+/.sales-import/

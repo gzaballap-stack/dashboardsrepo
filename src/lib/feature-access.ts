@@ -102,6 +102,7 @@ const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/csm-recordings",     features: ["csm_dashboard"] },
   { prefix: "/api/client-sessions",    features: ["zip_tool"] },
   { prefix: "/api/b2b-metrics",        features: ["b2b_tracking"] },
+  { prefix: "/api/sales-calls",        features: ["b2b_tracking"] },
   { prefix: "/api/b2b-ads",            features: ["b2b_tracking"] },
   { prefix: "/api/b2b-adsets",         features: ["b2b_tracking"] },
 ];

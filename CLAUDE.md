@@ -160,6 +160,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `task-templates/*` | Task Board **Weekly Non-Negotiables** — the templates, `materialize` (turns them into that week's task rows, idempotent on `(template_id, template_date)`), and `counts` (live call lists from `b2b_events`). |
 | `lift-log/*` | Health Tracker — weekly log, diet/split plans, and the public token-based CSV/JSON export |
 | `profit-loss` | **Profit and Loss** (Tools) — one row per line of a month (client payment, business expense, personal expense) in `pnl_lines`, scoped to the signed-in user. Totals, the Overview and the Clients tab are all summed from those lines in the browser. See `NOTES.md` 2026-10-04. |
+| `sales-calls` | **Sales Tracker** (TM Dashboard) — Tomsi Media's sales-call log in `sales_calls`, shared by everyone with TM access. See `NOTES.md` 2026-10-04 (Sales Tracker). |
 | `me` | Who is signed in and which features they're allowed to open |
 | `ai-campaign-chat` | Claude-powered chat over a campaign/client's data — see below |
 | `admin/*` | One-off ops: seeds, backfills, schema/migration runners (bypass auth via secret) |
