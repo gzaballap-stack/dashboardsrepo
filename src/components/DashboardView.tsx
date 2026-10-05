@@ -110,7 +110,6 @@ type View =
   | "zip_tool"
   | "task_board"
   | "lift_tracker"
-  | "profit_loss"
   | "sales_tracker"
   | "b2b_tracking";
 
@@ -174,7 +173,6 @@ const NAV: { view: View; label: string; group?: string }[] = [
   { view: "zip_tool",         label: "Zip Score Engine",  group: "Tools"       },
   { view: "task_board",       label: "Task Board",        group: "Tools"       },
   { view: "lift_tracker",     label: "Health Tracker",    group: "Tools"       },
-  { view: "profit_loss",      label: "Profit and Loss",   group: "Tools"       },
 ];
 
 const SETTINGS_ICON = "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z";
@@ -204,7 +202,6 @@ const NAV_ICONS: Record<View, string> = {
   task_board:       "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-6 0h.01M12 16h3m-6 0h.01",
   zip_tool:         "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z",
   lift_tracker:     "M6.5 6.5v11M17.5 6.5v11M3.5 9.5v5M20.5 9.5v5M6.5 12h11",
-  profit_loss:      "M3 17l6-6 4 4 8-8M15 7h6v6",
   sales_tracker:    "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
 };
 
@@ -326,8 +323,10 @@ function ShareReports({ clients }: { clients: Client[] }) {
   );
 }
 
-// Sections with no children — tapping these navigates directly.
+// Sections with a single page — tapping these opens it straight away (and
+// shows the page in the sub-menu), since there is nothing to choose between.
 const SECTION_IS_LEAF = new Set<string>(["payments"]);
+const PROFIT_LOSS_ICON = "M3 17l6-6 4 4 8-8M15 7h6v6";
 
 const CLIENTS_NAV: { id: ClientsView; label: string; icon: string }[] = [
   { id: "client_roster", label: "Client Roster", icon: NAV_ICONS.admin_clients },
@@ -362,11 +361,10 @@ const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: strin
   {
     id: "payments", label: "Payments",
     icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z",
-    badge: "Coming Soon",
   },
 ];
 
-const TOOLS_VIEWS: string[] = ["zip_tool", "task_board", "lift_tracker", "profit_loss"];
+const TOOLS_VIEWS: string[] = ["zip_tool", "task_board", "lift_tracker"];
 
 // Creative & Copy Hub: two separate libraries (Tomsi Media's own ads, and the
 // clients'), each with its library, its timeline and its creative leaderboard.
@@ -472,9 +470,14 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
         return;
       }
 
-      let savedTop = ["clients_dashboard","tomsi_media","creative_hub","tools","clients","settings"].includes(saved.topSection)
+      let savedTop = ["clients_dashboard","tomsi_media","creative_hub","tools","clients","payments","settings"].includes(saved.topSection)
         ? saved.topSection as TopSection
         : null;
+      // Profit and Loss moved from Tools to Payments; a saved position follows it.
+      if (saved.view === "profit_loss") {
+        if (savedTop === "tools") savedTop = "payments";
+        saved.view = "dashboard";
+      }
       if (HUB_VIEWS.includes(saved.hubView)) setHubView(saved.hubView as HubView);
       // The Creative Leaderboard moved into the Creative & Copy Hub. Someone
       // whose saved position is the old page lands on its new home.
@@ -702,7 +705,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
     : id === "creative_hub"    ? hubNavVisible.length > 0
     : id === "clients"         ? clientsNavVisible.length > 0
     : id === "tools"           ? toolsVisible.length > 0
-    : id === "payments"        ? unrestricted
+    : id === "payments"        ? can("profit_loss")
     : true;
 
   // Someone whose access was narrowed can still have a now-forbidden view saved
@@ -742,7 +745,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const crumb: [string | null, string] =
     topSection === "tomsi_media" ? ["Tomsi Media", TOMSI_LABEL[tomsiView] ?? "B2B Dashboard"]
     : topSection === "creative_hub" ? ["Creative & Copy Hub", HUB_LABEL[hubView]]
-    : topSection === "payments"  ? [null, "Payments"]
+    : topSection === "payments"  ? ["Payments", "Profit and Loss"]
     : topSection === "clients"   ? ["Clients", CLIENTS_NAV.find(c => c.id === clientsView)?.label ?? "Clients"]
     : topSection === "settings"  ? ["Settings", "Users"]
     : [NAV.find(n => n.view === view)?.group ?? null, NAV.find(n => n.view === view)?.label ?? "Dashboard"];
@@ -812,6 +815,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     // straight there, since there is nothing to expand.
                     if (SECTION_IS_LEAF.has(sec.id)) {
                       setTopSection(sec.id);
+                      setExpandedSections(prev => new Set(prev).add(sec.id));
                       setSidebarOpen(false);
                       return;
                     }
@@ -916,6 +920,26 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                         </button>
                       );
                     })}
+                  </div>
+                )}
+
+                {/* Sub-nav for Payments */}
+                {!navCollapsed && sec.id === "payments" && expandedSections.has("payments") && (
+                  <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
+                    <button
+                      onClick={() => { setTopSection("payments"); setSidebarOpen(false); }}
+                      className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
+                      style={isActive
+                        ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
+                        : { color: "#767676" }}
+                      onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
+                      onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#767676"; }}
+                    >
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d={PROFIT_LOSS_ICON} />
+                      </svg>
+                      Profit and Loss
+                    </button>
                   </div>
                 )}
 
@@ -1265,24 +1289,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
             : <CreativeHub key={hubView.slice(0, 3)} scope={hubView.startsWith("b2b") ? "b2b" : "b2c"} tab={hubView.endsWith("_timeline") ? "timeline" : "library"} clients={publicClients} />
           )}
 
-          {topSection === "payments" && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 20, padding: 40 }}>
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: "rgba(0,0,0,0.048)", border: "1px solid rgba(0,0,0,0.09)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg style={{ width: 28, height: 28, color: "#949494" }} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                </svg>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <p style={{ fontSize: 18, fontWeight: 700, color: "#111111", marginBottom: 6 }}>Payment Tracking</p>
-                <p style={{ fontSize: 13, color: "#949494", maxWidth: 320, lineHeight: 1.6 }}>
-                  A payment tracking platform is being built here. You'll be able to track invoices, payments, and revenue across all clients.
-                </p>
-              </div>
-              <div style={{ padding: "6px 14px", borderRadius: 20, background: "rgba(0,0,0,0.048)", border: "1px solid rgba(0,0,0,0.09)", fontSize: 11, fontWeight: 700, color: "#6b6b6b", letterSpacing: "0.06em" }}>
-                COMING SOON
-              </div>
-            </div>
-          )}
+          {topSection === "payments" && can("profit_loss") && <ProfitLoss />}
 
           {(topSection === "clients_dashboard" || topSection === "tools" || (topSection === "tomsi_media" && tomsiView !== "b2b_tracking")) && (<>
 
@@ -1565,7 +1572,6 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           {view === "zip_tool" && topSection === "tools" && <ZipTool />}
           {view === "task_board" && topSection === "tools" && <TaskBoard />}
           {view === "lift_tracker" && topSection === "tools" && <HealthTracker />}
-          {view === "profit_loss" && topSection === "tools" && <ProfitLoss />}
           {view === "sales_tracker" && inTomsi && <SalesTracker />}
 
           </>)}

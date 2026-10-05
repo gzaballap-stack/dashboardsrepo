@@ -120,10 +120,13 @@ function Badge({ outcome }: { outcome: Outcome }) {
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+function Panel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 16, padding: 16, minWidth: 0 }}>
-      <h3 style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 10 }}>{title}</h3>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: INK, flex: 1 }}>{title}</h3>
+        {action}
+      </div>
       {children}
     </div>
   );
@@ -158,6 +161,71 @@ function BreakdownTable({ label, rows }: { label: string; rows: { key: string; t
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// Tick the pricing / pitches on offer right now, or add one that has no calls
+// yet. Saved as one shared list.
+function PitchEditor({ known, current, onSave, onCancel }: {
+  known: string[];
+  current: string[];
+  onSave: (names: string[]) => Promise<string | null>;
+  onCancel: () => void;
+}) {
+  const [options, setOptions] = useState<string[]>(() => {
+    const keys = new Set(current.map(pitchKey));
+    return [...current, ...known.filter(k => !keys.has(pitchKey(k)))];
+  });
+  const [on, setOn] = useState<Set<string>>(() => new Set(current.map(pitchKey)));
+  const [fresh, setFresh] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const toggle = (p: string) => setOn(prev => {
+    const next = new Set(prev);
+    const k = pitchKey(p);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    return next;
+  });
+  const add = () => {
+    const name = fresh.trim().replace(/\s+/g, " ");
+    if (!name) return;
+    const k = pitchKey(name);
+    if (!options.some(o => pitchKey(o) === k)) setOptions(prev => [name, ...prev]);
+    setOn(prev => new Set(prev).add(k));
+    setFresh("");
+  };
+  const save = async () => {
+    setBusy(true);
+    const err = await onSave(options.filter(o => on.has(pitchKey(o))));
+    setBusy(false);
+    if (err) setError(err);
+  };
+
+  return (
+    <div>
+      <p style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>Tick the pricing on offer right now. Past pitches stay in the calls.</p>
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <input value={fresh} onChange={e => setFresh(e.target.value)} onKeyDown={e => { if (e.key === "Enter") add(); }}
+          placeholder="Add a new pitch, e.g. $1 + 250 PPA" aria-label="New pitch" style={{ ...FIELD, flex: 1 }} />
+        <button onClick={add} style={{ padding: "7px 12px", borderRadius: 9, fontSize: 12.5, fontWeight: 600, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Add</button>
+      </div>
+      <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+        {options.map(o => (
+          <label key={o} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px", fontSize: 13, color: INK, cursor: "pointer", borderRadius: 7 }}>
+            <input type="checkbox" checked={on.has(pitchKey(o))} onChange={() => toggle(o)} style={{ width: 15, height: 15, accentColor: INK }} />
+            {o}
+          </label>
+        ))}
+      </div>
+      {error && <p style={{ fontSize: 12.5, color: BAD, marginTop: 8 }}>{error}</p>}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+        <button onClick={onCancel} style={{ padding: "7px 12px", borderRadius: 9, fontSize: 12.5, fontWeight: 600, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Cancel</button>
+        <button onClick={save} disabled={busy} style={{ padding: "7px 14px", borderRadius: 9, fontSize: 12.5, fontWeight: 600, background: INK, color: "#ffffff", opacity: busy ? 0.5 : 1 }}>
+          {busy ? "Saving…" : `Save (${on.size} current)`}
+        </button>
+      </div>
     </div>
   );
 }
@@ -273,6 +341,10 @@ export default function SalesTracker() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Draft | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  // Pricing on offer right now (shared). Empty = not set, so every pitch shows.
+  const [current, setCurrent] = useState<string[]>([]);
+  const [editPitches, setEditPitches] = useState(false);
+  const [allPitches, setAllPitches] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -285,6 +357,22 @@ export default function SalesTracker() {
     }
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    fetch("/api/sales-pitches").then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.pitches) setCurrent(d.pitches); }).catch(() => {});
+  }, []);
+
+  const savePitches = async (names: string[]): Promise<string | null> => {
+    const res = await fetch("/api/sales-pitches", {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pitches: names }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return data.error || "Could not save";
+    setCurrent(data.pitches);
+    setEditPitches(false);
+    setAllPitches(false);
+    return null;
+  };
 
   const all = useMemo(() => calls ?? [], [calls]);
 
@@ -321,16 +409,28 @@ export default function SalesTracker() {
       g.calls.push(c);
       m.set(k, g);
     }
-    return [...m.values()].map(g => ({ key: g.label, t: tally(g.calls) }))
+    const everything = [...m.values()].map(g => ({ key: g.label, t: tally(g.calls) }))
       .filter(r => r.t.won + r.t.lost > 0)
       .sort((a, b) => (b.t.won + b.t.lost) - (a.t.won + a.t.lost));
-  }, [inFrame]);
+    // With a current list set, show just those — in its order, with zeros for
+    // a pitch nobody has run in this time frame yet.
+    if (!current.length || allPitches) return everything;
+    return current.map(name => ({ key: name, t: tally(m.get(pitchKey(name))?.calls ?? []) }));
+  }, [inFrame, current, allPitches]);
 
-  const pitches = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const c of all) if (c.pitch.trim() && !m.has(pitchKey(c.pitch))) m.set(pitchKey(c.pitch), c.pitch.trim());
-    return [...m.values()];
+  // Every pitch ever used, most-used first.
+  const known = useMemo(() => {
+    const m = new Map<string, { name: string; n: number }>();
+    for (const c of all) if (c.pitch.trim()) {
+      const k = pitchKey(c.pitch);
+      const g = m.get(k) ?? { name: c.pitch.trim(), n: 0 };
+      g.n++;
+      m.set(k, g);
+    }
+    return [...m.values()].sort((a, b) => b.n - a.n).map(g => g.name);
   }, [all]);
+  // The call form suggests the current pricing; with none set, everything.
+  const pitches = current.length ? current : known;
 
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -398,7 +498,23 @@ export default function SalesTracker() {
       {/* breakdowns */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
         <Panel title="By month"><BreakdownTable label="Month" rows={byMonth} /></Panel>
-        <Panel title="By pricing / pitch"><BreakdownTable label="Pitch" rows={byPitch} /></Panel>
+        <Panel title={current.length && !allPitches && !editPitches ? "By pricing / pitch · current" : "By pricing / pitch"}
+          action={!editPitches && (
+            <button onClick={() => setEditPitches(true)} style={{ fontSize: 12.5, fontWeight: 600, color: MUTED }}>Edit</button>
+          )}>
+          {editPitches ? (
+            <PitchEditor known={known} current={current} onSave={savePitches} onCancel={() => setEditPitches(false)} />
+          ) : (
+            <>
+              <BreakdownTable label="Pitch" rows={byPitch} />
+              {current.length > 0 && (
+                <button onClick={() => setAllPitches(v => !v)} style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginTop: 10 }}>
+                  {allPitches ? "Show current pricing only" : "Show past pricing too"}
+                </button>
+              )}
+            </>
+          )}
+        </Panel>
       </div>
 
       {/* call log */}

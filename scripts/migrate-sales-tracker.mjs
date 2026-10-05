@@ -57,14 +57,16 @@ async function runSQL(sql, label) {
 console.log(`Target: ${target} (${PROJECT_REF})\n`);
 
 await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_sales_calls.sql'), 'utf-8'),
-  'Sales Tracker table');
+  'Sales Tracker tables');
 
 const check = await runSQL(`
   select
     (select count(*) from information_schema.tables
       where table_schema = 'public' and table_name = 'sales_calls') as sales_table,
     (select relrowsecurity from pg_class where relname = 'sales_calls') as rls_on,
-    (select count(*) from sales_calls) as calls;
+    (select count(*) from sales_calls) as calls,
+    (select relrowsecurity from pg_class where relname = 'sales_pitches') as pitches_rls_on,
+    (select count(*) from sales_pitches) as pitches;
 `, 'Verify');
 
 console.log('\n' + JSON.stringify(check, null, 2));

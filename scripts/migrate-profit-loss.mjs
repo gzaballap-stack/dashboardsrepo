@@ -1,4 +1,4 @@
-// Applies the Profit and Loss table.
+// Applies the Profit and Loss tables.
 //
 // Both databases have to be migrated separately — deploying does not touch
 // schema. Run it once per environment:
@@ -6,7 +6,7 @@
 //   node scripts/migrate-profit-loss.mjs v1
 //   node scripts/migrate-profit-loss.mjs v2
 //
-// Additive only, and safe to re-run: one new table, IF NOT EXISTS.
+// Additive only, and safe to re-run: two new tables, IF NOT EXISTS.
 
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -59,12 +59,16 @@ console.log(`Target: ${target} (${PROJECT_REF})\n`);
 await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_profit_loss.sql'), 'utf-8'),
   'Profit and Loss table');
 
+await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_profit_loss_clients.sql'), 'utf-8'),
+  'Profit and Loss client details table');
+
 const check = await runSQL(`
   select
     (select count(*) from information_schema.tables
-      where table_schema = 'public' and table_name = 'pnl_lines') as pnl_table,
-    (select relrowsecurity from pg_class where relname = 'pnl_lines') as rls_on,
-    (select count(*) from pnl_lines) as lines;
+      where table_schema = 'public' and table_name in ('pnl_lines', 'pnl_clients')) as pnl_tables,
+    (select bool_and(relrowsecurity) from pg_class where relname in ('pnl_lines', 'pnl_clients')) as rls_on,
+    (select count(*) from pnl_lines) as lines,
+    (select count(*) from pnl_clients) as client_details;
 `, 'Verify');
 
 console.log('\n' + JSON.stringify(check, null, 2));

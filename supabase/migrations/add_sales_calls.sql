@@ -29,3 +29,14 @@ create index if not exists sales_calls_date_idx on sales_calls (call_date);
 -- Only the server (service role) reads or writes this table; with no policies,
 -- the browser keys can't touch it.
 alter table sales_calls enable row level security;
+
+-- The pricing / pitches on offer right now. The Sales Tracker's "By pricing"
+-- panel shows these by default; every pitch ever used stays in the calls.
+create table if not exists sales_pitches (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null,
+  position   integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table sales_pitches enable row level security;

@@ -22,7 +22,7 @@ export type FeatureId =
   | "admin_users";
 
 export type FeatureGroup =
-  | "Clients Dashboard" | "TM Dashboard" | "Creative & Copy Hub" | "Clients" | "Tools" | "Settings";
+  | "Clients Dashboard" | "TM Dashboard" | "Creative & Copy Hub" | "Clients" | "Tools" | "Payments" | "Settings";
 
 export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] = [
   { id: "dashboard",            label: "Dashboard",             group: "Clients Dashboard" },
@@ -53,12 +53,12 @@ export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] =
   // The id stays `lift_tracker`: it is written into saved nav state and into
   // every account's allowed_views, so renaming it would revoke access silently.
   { id: "lift_tracker",         label: "Health Tracker",        group: "Tools"             },
-  { id: "profit_loss",          label: "Profit and Loss",       group: "Tools"             },
+  { id: "profit_loss",          label: "Profit and Loss",       group: "Payments"          },
   { id: "admin_users",          label: "User Management",       group: "Settings"          },
 ];
 
 export const FEATURE_GROUPS: FeatureGroup[] =
-  ["Clients Dashboard", "TM Dashboard", "Creative & Copy Hub", "Clients", "Tools", "Settings"];
+  ["Clients Dashboard", "TM Dashboard", "Creative & Copy Hub", "Clients", "Tools", "Payments", "Settings"];
 
 export const ALL_FEATURE_IDS: FeatureId[] = FEATURES.map(f => f.id);
 
@@ -103,6 +103,7 @@ const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/client-sessions",    features: ["zip_tool"] },
   { prefix: "/api/b2b-metrics",        features: ["b2b_tracking"] },
   { prefix: "/api/sales-calls",        features: ["b2b_tracking"] },
+  { prefix: "/api/sales-pitches",      features: ["b2b_tracking"] },
   { prefix: "/api/b2b-ads",            features: ["b2b_tracking"] },
   { prefix: "/api/b2b-adsets",         features: ["b2b_tracking"] },
 ];

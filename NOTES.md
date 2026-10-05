@@ -25,6 +25,12 @@ Dashboard > Sales > Sales Tracker** (`src/components/SalesTracker.tsx`,
   The month tabs were the source; the "2026" tab only filled blank emotions /
   notes. Kimberly Gibbs' "4/31/26" was stored as 4/30/26. Month totals match
   the sheet's tabs.
+- **Current pricing** (2026-10-05): "Edit" on the By pricing / pitch panel
+  ticks which pitches are on offer now, or adds a new one with no calls yet.
+  Stored in `sales_pitches` (one shared list, `/api/sales-pitches`, PUT
+  replaces it; same migration file, applied to V1 and V2). Once set, the panel
+  shows only those (zeros included), with "Show past pricing too"; the call
+  form suggests only current pricing. Empty list = every pitch shows.
 - The 5 calls on the "Copy of August 2026" tab were dated 10/10–10/29/26; the
   owner confirmed they are September, loaded 2026-10-05 as 9/10–9/29 (53 calls
   in total).
