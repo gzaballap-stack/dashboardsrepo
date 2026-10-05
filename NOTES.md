@@ -1,3 +1,31 @@
+## 2026-10-05 — Profit and Loss: moved to Payments; client details
+
+- **Profit and Loss now lives under Payments**, not Tools. Payments lost its
+  "Coming Soon" placeholder; tapping it opens Profit and Loss (its only page,
+  also listed as a sub-item). The section shows for anyone holding
+  `profit_loss` — the feature id is unchanged, so nobody's access moved; it is
+  just grouped under "Payments" in Settings > Users. The old
+  `/dashboard/tools/profit-and-loss` link and a saved Tools position both
+  follow it to `/dashboard/payments`.
+- **Edit on a client** (Clients tab) opens a side panel: their details (client
+  name, company, contact name, email, phone, website, notes) and their whole
+  history, all time regardless of the tab's time frame — total paid, months
+  paid, average per month, last paid, a payments-by-month chart and table.
+- **Details live in `pnl_clients`**, per user, tied to payment lines by
+  `name_key` (the name lower-cased and trimmed) — lines still carry the name as
+  text. So **renaming a client renames every one of their lines**
+  (`PUT /api/profit-loss/clients`), and renaming onto an existing client's name
+  merges the two after a confirm (blank details keep the other client's).
+  The page still works if `pnl_clients` can't be read.
+- **Schema:** `supabase/migrations/add_profit_loss_clients.sql`, applied to
+  **V1 and V2** on 2026-10-05 by `scripts/migrate-profit-loss.mjs` (which now
+  runs both Profit and Loss files). One new empty table, additive.
+- Checked in a local preview with the sheet's numbers (open, save, rename).
+  **Not checked signed in:** the sidebar move and real saving.
+- Still open from 2026-10-04, unanswered by the owner: the churn rule (one
+  missed month vs two), whether "Deposits" counts as a client, and whether the
+  current month should be left out of retention until it ends.
+
 ## 2026-10-04 — Sales Tracker (TM Dashboard)
 
 A rebuild of the owner's "Sales Tracker 2026" Google Sheet, under **TM

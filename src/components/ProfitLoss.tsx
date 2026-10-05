@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Profit and Loss
@@ -10,7 +11,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
                 personal spending split necessary / leisure.
      Overview — every month side by side, with totals, averages and extremes.
      Clients  — what each client has paid, for how many months, and how many
-                stay from one month to the next — over any time frame.
+                stay from one month to the next — over any time frame. Edit
+                opens one client: their details and every payment.
 
    Profit is revenue − expenses. Personal spending is shown beside it and never
    subtracted. Every figure on the Overview and Clients tabs is summed from the
@@ -37,6 +39,22 @@ type Totals = {
 };
 
 type MonthRow = Totals & { month: string };
+
+// What we know about a client beyond the name on their payment lines. A client
+// is whoever a revenue line names; the two are matched on clientKey(name).
+type Profile = {
+  name_key: string; name: string;
+  contact_name: string | null; company: string | null; email: string | null;
+  phone: string | null; website: string | null; notes: string | null;
+};
+
+type ClientForm = {
+  name: string; contact_name: string; company: string; email: string;
+  phone: string; website: string; notes: string;
+};
+
+// Same client typed two ways ("Dave", "dave ") is one client.
+const clientKey = (name: string) => name.trim().toLowerCase();
 
 const CARD = "#ffffff";
 const BORDER = "1px solid rgba(0,0,0,0.07)";
@@ -384,6 +402,168 @@ const TD: React.CSSProperties = {
 
 const profitColor = (n: number) => (n < 0 ? BAD : INK);
 
+/* ── one client ───────────────────────────────────────────────────────────── */
+
+const FIELD: React.CSSProperties = {
+  width: "100%", padding: "9px 11px", borderRadius: 10, fontSize: 13.5, color: INK,
+  background: CARD, border: "1px solid rgba(0,0,0,0.14)", outline: "none", fontFamily: "inherit",
+};
+
+const FORM_FIELDS: { id: keyof ClientForm; label: string; type?: string; placeholder?: string }[] = [
+  { id: "name", label: "Client name" },
+  { id: "company", label: "Company" },
+  { id: "contact_name", label: "Contact name" },
+  { id: "email", label: "Email", type: "email" },
+  { id: "phone", label: "Phone", type: "tel" },
+  { id: "website", label: "Website" },
+];
+
+// A client's details and their whole payment history, all time. Saving a new
+// name renames them on every month, so the history stays attached.
+function ClientPanel({ name, profile, lines, months, otherKeys, onSave, onClose, onOpenMonth }: {
+  name: string;
+  profile: Profile | null;
+  lines: Line[];                 // this client's payment lines
+  months: string[];              // every month logged, oldest first
+  otherKeys: Set<string>;
+  onSave: (form: ClientForm) => Promise<string | null>;
+  onClose: () => void;
+  onOpenMonth: (month: string) => void;
+}) {
+  const stored: ClientForm = useMemo(() => ({
+    name,
+    contact_name: profile?.contact_name ?? "", company: profile?.company ?? "",
+    email: profile?.email ?? "", phone: profile?.phone ?? "",
+    website: profile?.website ?? "", notes: profile?.notes ?? "",
+  }), [name, profile]);
+  const [form, setForm] = useState<ClientForm>(stored);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const dirty = (Object.keys(stored) as (keyof ClientForm)[]).some(k => form[k].trim() !== stored[k].trim());
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const set = (id: keyof ClientForm, value: string) => { setForm(f => ({ ...f, [id]: value })); setSaved(false); };
+
+  const submit = async () => {
+    const next = form.name.trim();
+    if (!next) { setError("The client needs a name."); return; }
+    if (clientKey(next) !== clientKey(name) && otherKeys.has(clientKey(next))
+      && !window.confirm(`"${next}" is already a client. Merge ${name} into it? Their payments will count as one client.`)) return;
+    setBusy(true);
+    const problem = await onSave(form);
+    setBusy(false);
+    setError(problem);
+    setSaved(!problem);
+  };
+
+  const paid = new Map<string, number>();
+  for (const l of lines) if (l.amount) paid.set(l.month, (paid.get(l.month) ?? 0) + l.amount);
+  const paidMonths = [...paid.keys()].sort();
+  const total = [...paid.values()].reduce((s, v) => s + v, 0);
+  const first = paidMonths[0], last = paidMonths[paidMonths.length - 1];
+  const latest = months[months.length - 1];
+  const since = first ? months.filter(m => m >= first) : [];
+
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label={`${name} — client details`}
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.42)", display: "flex", justifyContent: "flex-end" }}>
+      <div style={{
+        width: "min(720px, 100%)", height: "100%", overflowY: "auto", background: "#f6f6f5",
+        padding: 20, display: "flex", flexDirection: "column", gap: 14, boxShadow: "-24px 0 60px rgba(0,0,0,0.25)",
+      }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h3 style={{ fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>{name}</h3>
+            <p style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>
+              {[profile?.company, profile?.contact_name].filter(Boolean).join(" · ") || "No details saved yet"}
+            </p>
+          </div>
+          <button onClick={onClose} aria-label="Close" style={{ ...BTN_QUIET, padding: "7px 11px" }}>Close</button>
+        </div>
+
+        {/* ── details ── */}
+        <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 16, padding: 16 }}>
+          <h4 style={{ fontSize: 12, fontWeight: 700, color: INK, letterSpacing: "0.08em", marginBottom: 12 }}>DETAILS</h4>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+            {FORM_FIELDS.map(f => (
+              <label key={f.id} style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, display: "flex", flexDirection: "column", gap: 5 }}>
+                {f.label}
+                <input type={f.type ?? "text"} value={form[f.id]} onChange={e => set(f.id, e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") submit(); }} style={FIELD} />
+                {f.id === "name" && (
+                  <span style={{ fontSize: 11, fontWeight: 400, color: FAINT }}>Changing it renames this client on every month.</span>
+                )}
+              </label>
+            ))}
+          </div>
+          <label style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, display: "flex", flexDirection: "column", gap: 5, marginTop: 12 }}>
+            Notes
+            <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={3}
+              style={{ ...FIELD, resize: "vertical", lineHeight: 1.5 }} />
+          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 14 }}>
+            <button onClick={submit} disabled={busy || !dirty}
+              style={{ padding: "9px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "#000000", color: "#ffffff", opacity: busy || !dirty ? 0.35 : 1 }}>
+              {busy ? "Saving…" : "Save"}
+            </button>
+            {error && <span role="alert" style={{ fontSize: 12.5, color: BAD }}>{error}</span>}
+            {saved && !dirty && <span style={{ fontSize: 12.5, color: GOOD }}>Saved</span>}
+          </div>
+        </div>
+
+        {/* ── breakdown ── */}
+        {paidMonths.length === 0 ? (
+          <p style={{ fontSize: 13, color: MUTED, padding: "4px 2px" }}>No payments logged for this client.</p>
+        ) : (<>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+            <Tile label="Total paid" value={money(total)} />
+            <Tile label="Months paid" value={String(paidMonths.length)} sub={`of ${since.length} since ${monthName(first, true)}`} />
+            <Tile label="Average per month" value={money(Math.round(total / paidMonths.length))} />
+            <Tile label="Last paid" value={monthName(last, true)}
+              sub={last === latest ? "Paying now" : `Not paying in ${monthName(latest, true)}`} />
+          </div>
+
+          <BarChart title="Payments by month" legend={[]} onPick={onOpenMonth}
+            top={niceCeil(Math.max(...paid.values()))} tick={compact}
+            cols={since.map(m => ({
+              month: m,
+              groups: [[{ value: paid.get(m) ?? 0, color: INK }]],
+              tip: [{ l: "Paid", v: money(paid.get(m) ?? 0) }],
+              aria: `${monthName(m)}: paid ${money(paid.get(m) ?? 0)}`,
+            }))} />
+
+          <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 16, overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ ...TH, textAlign: "left" }}>Month</th>
+                  <th style={TH}>Paid</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...paidMonths].reverse().map(m => (
+                  <tr key={m} onClick={() => onOpenMonth(m)} className="pnl-click" style={{ cursor: "pointer" }}>
+                    <td style={{ ...TD, textAlign: "left", fontWeight: 600 }}>{monthName(m)}</td>
+                    <td style={{ ...TD, fontWeight: 600 }}>{money(paid.get(m)!)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>)}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /* ── the tool ─────────────────────────────────────────────────────────────── */
 
 type Tab = "month" | "overview" | "clients";
@@ -403,6 +583,8 @@ export default function ProfitLoss() {
   const [scope, setScope] = useState<number | "all">("all");
   const [copying, setCopying] = useState(false);
   const [clientRange, setClientRange] = useState<{ from: string; to: string } | null>(null);
+  const [profiles, setProfiles] = useState<Record<string, Profile>>({});
+  const [editing, setEditing] = useState<string | null>(null);   // clientKey of the open client
 
   const load = useCallback(async (pickMonth: boolean) => {
     try {
@@ -422,6 +604,14 @@ export default function ProfitLoss() {
   }, [thisMonth]);
 
   useEffect(() => { load(true); }, [load]);
+
+  // Client details are an extra: if they can't be read, the sheet still works.
+  useEffect(() => {
+    fetch("/api/profit-loss/clients")
+      .then(res => (res.ok ? res.json() : { clients: [] }))
+      .then(body => setProfiles(Object.fromEntries((body.clients ?? []).map((c: Profile) => [c.name_key, c]))))
+      .catch(() => {});
+  }, []);
 
   const send = useCallback(async (method: string, url: string, body?: unknown) => {
     const res = await fetch(url, {
@@ -508,14 +698,14 @@ export default function ProfitLoss() {
   const to = clientRange && clientRange.to < latestMonth ? clientRange.to : latestMonth;
 
   const clientStats = useMemo(() => {
-    // Same client typed two ways ("Dave", "dave ") is one client; first spelling wins.
+    // First spelling of a client's name wins.
     const logged = new Set(monthRows.map(r => r.month));
     const paid = new Map<string, Map<string, number>>();   // month → client → amount
     const names = new Map<string, string>();
     const firstEver = new Map<string, string>();
     for (const l of all) {
       if (l.kind !== "revenue" || !l.amount) continue;
-      const key = l.label.trim().toLowerCase();
+      const key = clientKey(l.label);
       if (!key) continue;
       if (!names.has(key)) names.set(key, l.label.trim());
       if (!paid.has(l.month)) paid.set(l.month, new Map());
@@ -560,7 +750,7 @@ export default function ProfitLoss() {
     const total = [...perClient.values()].reduce((s, c) => s + c.total, 0);
     const list = [...perClient.entries()]
       .map(([key, c]) => ({
-        name: names.get(key)!, total: c.total, months: c.months.length,
+        key, name: names.get(key)!, total: c.total, months: c.months.length,
         share: total ? c.total / total : 0,
         first: c.months[0], last: c.months[c.months.length - 1],
         isNew: firstEver.get(key)! >= from,
@@ -571,7 +761,7 @@ export default function ProfitLoss() {
     const base = byMonth.reduce((s, r) => s + (r.base ?? 0), 0);
     const kept = byMonth.reduce((s, r) => s + (r.base === null ? 0 : r.stayed), 0);
     return {
-      months, lastMonth, byMonth, list, total, base, kept,
+      months, lastMonth, byMonth, list, total, base, kept, names,
       clientMonths: list.reduce((s, c) => s + c.months, 0),
       newCount: list.filter(c => c.isNew).length,
       payingNow: list.filter(c => c.paying).length,
@@ -589,7 +779,30 @@ export default function ProfitLoss() {
     ];
   }, [years, firstMonth, latestMonth]);
 
-  const openMonth = (m: string) => { setMonth(m); setTab("month"); };
+  const openMonth = (m: string) => { setEditing(null); setMonth(m); setTab("month"); };
+
+  // Saves the open client's details. A new name is applied to every one of
+  // their lines, here and on the server, so their history follows them.
+  const saveClient = async (form: ClientForm): Promise<string | null> => {
+    if (!editing) return null;
+    const current = clientStats.names.get(editing) ?? profiles[editing]?.name ?? editing;
+    try {
+      const { client } = await send("PUT", "/api/profit-loss/clients", { current, ...form });
+      const saved = client as Profile;
+      setProfiles(prev => {
+        const next = { ...prev };
+        delete next[editing];
+        next[saved.name_key] = saved;
+        return next;
+      });
+      setLines(prev => (prev ?? []).map(l =>
+        l.kind === "revenue" && clientKey(l.label) === editing && l.label !== saved.name ? { ...l, label: saved.name } : l));
+      setEditing(saved.name_key);
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : "Could not save";
+    }
+  };
   const rowKey = (l: Line) => `${l.id}:${l.label}:${l.amount}`;
 
   if (lines === null) {
@@ -866,16 +1079,20 @@ export default function ProfitLoss() {
                   <th style={TH}>Paid</th><th style={TH}>Share</th><th style={TH}>Months</th>
                   <th style={TH}>Avg / month</th><th style={TH}>First paid</th><th style={TH}>Last paid</th>
                   <th style={TH}>Paying in {monthName(cs.lastMonth, true)}</th>
+                  <th style={TH} aria-label="Edit" />
                 </tr>
               </thead>
               <tbody>
-                {cs.list.map(c => (
-                  <tr key={c.name}>
+                {cs.list.map(c => {
+                  const about = [profiles[c.key]?.company, profiles[c.key]?.contact_name].filter(Boolean).join(" · ");
+                  return (
+                  <tr key={c.key}>
                     <td style={{ ...TD, textAlign: "left", fontWeight: 600 }}>
-                      {c.name}
+                      <button onClick={() => setEditing(c.key)} style={{ fontWeight: 600, color: INK, textAlign: "left" }}>{c.name}</button>
                       {c.isNew && (
                         <span style={{ marginLeft: 8, padding: "2px 7px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>New</span>
                       )}
+                      {about && <div style={{ fontSize: 11.5, fontWeight: 400, color: MUTED, marginTop: 2 }}>{about}</div>}
                     </td>
                     <td style={{ ...TD, fontWeight: 600 }}>{money(c.total)}</td>
                     <td style={{ ...TD, color: MUTED }}>{pct(c.share)}</td>
@@ -884,8 +1101,12 @@ export default function ProfitLoss() {
                     <td style={{ ...TD, color: MUTED }}>{monthName(c.first, true)}</td>
                     <td style={{ ...TD, color: MUTED }}>{monthName(c.last, true)}</td>
                     <td style={{ ...TD, fontWeight: 600, color: c.paying ? INK : FAINT }}>{c.paying ? "Yes" : "No"}</td>
+                    <td style={TD}>
+                      <button onClick={() => setEditing(c.key)} aria-label={`Edit ${c.name}`} style={{ ...BTN_QUIET, padding: "5px 11px", fontSize: 12 }}>Edit</button>
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -917,6 +1138,16 @@ export default function ProfitLoss() {
           </table>
         </div>
       </>))}
+
+      {editing && (
+        <ClientPanel
+          name={cs.names.get(editing) ?? profiles[editing]?.name ?? editing}
+          profile={profiles[editing] ?? null}
+          lines={all.filter(l => l.kind === "revenue" && clientKey(l.label) === editing)}
+          months={monthRows.map(r => r.month)}
+          otherKeys={new Set([...cs.names.keys()].filter(k => k !== editing))}
+          onSave={saveClient} onClose={() => setEditing(null)} onOpenMonth={openMonth} />
+      )}
 
       <style>{`
         .pnl-input:hover { background: rgba(0,0,0,0.035) !important; }

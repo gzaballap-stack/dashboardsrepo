@@ -682,7 +682,6 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   // never briefly emptied out for someone who does have access.
   const allowedViews = me?.allowed_views ?? null;
   const isAdmin = me?.is_admin ?? false;
-  const unrestricted = !allowedViews;
   const can = (v: string) => hasFeature(v as FeatureId, allowedViews);
 
   const groups = allGroups.filter(g => NAV.some(n => n.group === g && can(n.view)));
