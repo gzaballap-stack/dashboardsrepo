@@ -1,3 +1,13 @@
+## 2026-10-06 — Creative hub: folders as collage boxes
+
+The Library's **Folders** view is now browsed like Airbnb wishlists: category
+boxes (a 2×2 collage of the first four pictures inside, name, count) → folder
+boxes inside a category → the grid of creatives. A category with no folders
+opens straight onto its grid; "Needs a folder" and a dashed "New folder" box
+sit beside the folders. Breadcrumb at the top to go back up; typing in the
+search box cuts straight to a grid across everything. `FolderBox` in
+`src/components/CreativeHub.tsx`; no data changes.
+
 ## 2026-10-05 — Profit and Loss: moved to Payments; client details
 
 - **Profit and Loss now lives under Payments**, not Tools. Payments lost its

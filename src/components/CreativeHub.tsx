@@ -134,6 +134,29 @@ function Thumb({ c, className = "" }: { c: Creative; className?: string }) {
   return <img src={src} alt={c.name} referrerPolicy="no-referrer" loading="lazy" onError={() => setBroken(true)} className={`object-cover ${className}`} style={{ background: "#f2f2f2" }} />;
 }
 
+// A folder box, Airbnb-wishlist style: the first four pictures inside it as a
+// 2×2 collage, then the name and how many creatives it holds.
+function FolderBox({ label, sub, items, onClick, dashed }: {
+  label: string; sub: string; items: Creative[]; onClick: () => void; dashed?: boolean;
+}) {
+  // Creatives that have a picture first, so the box isn't four grey tiles.
+  const pics = [...items].sort((a, b) => Number(!!(b.meta?.thumbnail_url || b.meta?.image_url)) - Number(!!(a.meta?.thumbnail_url || a.meta?.image_url))).slice(0, 4);
+  return (
+    <button onClick={onClick} className="text-left group">
+      <div className="grid grid-cols-2 rounded-2xl overflow-hidden aspect-square transition-transform duration-150 group-hover:-translate-y-0.5"
+        style={{ gap: 2, background: "#ffffff", border: dashed ? "2px dashed rgba(0,0,0,0.2)" : "1px solid rgba(0,0,0,0.07)", boxShadow: dashed ? "none" : CARD.boxShadow }}>
+        {dashed
+          ? <div className="col-span-2 flex items-center justify-center text-3xl font-light" style={{ color: "#949494" }}>+</div>
+          : [0, 1, 2, 3].map(i => pics[i]
+            ? <Thumb key={pics[i].key} c={pics[i]} className="w-full h-full" />
+            : <div key={i} style={{ background: "#9a9a9a" }} />)}
+      </div>
+      <div className="mt-2 text-sm font-semibold" style={{ color: "#111111" }}>{label}</div>
+      <div className="text-xs" style={{ color: "#767676" }}>{sub}</div>
+    </button>
+  );
+}
+
 export default function CreativeHub({ scope, tab, clients }: {
   scope: Scope;
   tab: "library" | "timeline";
@@ -145,7 +168,7 @@ export default function CreativeHub({ scope, tab, clients }: {
   const [clientId, setClientId] = useState("");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"folders" | "all" | "live" | "off" | "draft">("folders");
-  const [cat, setCat] = useState<string>("");            // folders view: category code, or UNFILED
+  const [cat, setCat] = useState<string>("");            // folders view: "" = the top level (category boxes), a category code, or UNFILED
   const [folderSel, setFolderSel] = useState<string>(""); // folders view: "" = whole category, "root" = no folder, else folder id
   const [sort, setSort] = useState<"code" | "recent" | "spend" | "cost">("code");
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -175,16 +198,24 @@ export default function CreativeHub({ scope, tab, clients }: {
 
   const categories = data?.categories ?? [];
   const folders = data?.folders ?? [];
-  const countIn = (code: string) => (data?.creatives ?? []).filter(c => (c.category ?? UNFILED) === code).length;
-  // First category with something in it, else the first category.
-  const activeCat = cat || categories.find(c => countIn(c.code) > 0)?.code || categories[0]?.code || UNFILED;
+  const inCat = (code: string) => (data?.creatives ?? []).filter(c => (c.category ?? UNFILED) === code);
+  const countIn = (code: string) => inCat(code).length;
+  const activeCat = cat;
   const catFolders = folders.filter(f => f.category === activeCat);
-  const rootCount = (data?.creatives ?? []).filter(c => c.category === activeCat && !c.folder_id).length;
+  const rootItems = (data?.creatives ?? []).filter(c => c.category === activeCat && !c.folder_id);
+  const rootCount = rootItems.length;
+  const q = search.trim().toLowerCase();
+  // Where the folders view is: the category boxes, a category's folder boxes,
+  // or a grid of creatives. A search cuts straight to a grid of everything.
+  const level: "categories" | "folders" | "grid" =
+    view !== "folders" || q ? "grid"
+    : !cat ? "categories"
+    : !folderSel && catFolders.length > 0 ? "folders"
+    : "grid";
 
   const shown = useMemo(() => {
-    const q = search.trim().toLowerCase();
     const list = (data?.creatives ?? []).filter(c => {
-      if (view === "folders") {
+      if (view === "folders" && !q) {
         if ((c.category ?? UNFILED) !== activeCat) return false;
         if (folderSel === "root" && c.folder_id) return false;
         if (folderSel && folderSel !== "root" && c.folder_id !== folderSel) return false;
@@ -199,7 +230,7 @@ export default function CreativeHub({ scope, tab, clients }: {
     if (sort === "spend") list.sort((a, b) => b.spend - a.spend);
     if (sort === "cost") list.sort((a, b) => (a.appts > 0 ? a.cost_per_appt : Infinity) - (b.appts > 0 ? b.cost_per_appt : Infinity) || b.spend - a.spend);
     return list;
-  }, [data, search, view, activeCat, folderSel, sort]);
+  }, [data, q, view, activeCat, folderSel, sort]);
 
   const open = openKey ? data?.creatives.find(c => c.key === openKey) ?? null : null;
 
@@ -286,53 +317,61 @@ export default function CreativeHub({ scope, tab, clients }: {
         )}
       </div>}
 
-      {/* Folders: category tabs, then the folders inside the category */}
-      {data && tab === "library" && view === "folders" && (
-        <div className="rounded-2xl p-4 space-y-3" style={CARD}>
-          <div className="flex gap-2 flex-wrap">
-            {[...categories, { code: UNFILED, label: "Uncategorised" }].map(c => {
-              const n = countIn(c.code);
-              const active = activeCat === c.code;
-              return (
-                <button key={c.code} onClick={() => { setCat(c.code); setFolderSel(""); setSelected(new Set()); }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2"
-                  style={{ ...chip(active), border: `1px solid ${active ? "rgba(0,0,0,0.25)" : "transparent"}`, opacity: n || active ? 1 : 0.6 }}>
-                  {c.label}
-                  <span className="text-[10px] font-bold px-1.5 rounded-full" style={{ background: active ? "#111111" : "rgba(0,0,0,0.08)", color: active ? "#ffffff" : "#6b6b6b" }}>{n}</span>
-                </button>
-              );
-            })}
-          </div>
-          {activeCat !== UNFILED && (
-            <div className="flex gap-2 flex-wrap items-center" style={{ borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 10 }}>
-              <span className="text-[10px] font-bold uppercase tracking-widest mr-1" style={{ color: "#c2c2c2" }}>Folders</span>
-              <button onClick={() => setFolderSel("")} className="px-2.5 py-1 rounded-md text-xs font-medium" style={chip(folderSel === "")}>
-                All in {categories.find(c => c.code === activeCat)?.label}
-              </button>
-              {catFolders.map(f => {
-                const n = (data.creatives ?? []).filter(c => c.folder_id === f.id).length;
-                return (
-                  <button key={f.id} onClick={() => setFolderSel(f.id)} className="px-2.5 py-1 rounded-md text-xs font-medium" style={chip(folderSel === f.id)} title={`${activeCat}/${f.slug}/…`}>
-                    {f.name} <span style={{ color: "#949494" }}>{n}</span>
-                  </button>
-                );
-              })}
-              {catFolders.length > 0 && rootCount > 0 && (
-                <button onClick={() => setFolderSel("root")} className="px-2.5 py-1 rounded-md text-xs font-medium" style={{ ...chip(folderSel === "root"), color: "#92400e" }}>
-                  Needs a folder <span>{rootCount}</span>
-                </button>
-              )}
-              <button onClick={newFolder} className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ color: "#111111", border: "1px dashed rgba(0,0,0,0.25)" }}>+ New folder</button>
-              {activeCat && (
-                <span className="text-[10px] ml-auto" style={{ color: "#949494" }}>
-                  Codes here look like <b>{activeCat}{catFolders.length ? `/${catFolders[0].slug}` : ""}/001</b>
-                </span>
-              )}
-            </div>
+      {/* Folders: breadcrumb, then boxes (categories → folders) or the grid */}
+      {data && tab === "library" && view === "folders" && !q && (
+        <div className="flex items-center gap-2 flex-wrap text-sm">
+          <button onClick={() => { setCat(""); setFolderSel(""); setSelected(new Set()); }} className="font-semibold" style={{ color: cat ? "#767676" : "#111111" }}>Folders</button>
+          {cat && (<>
+            <span style={{ color: "#c2c2c2" }}>›</span>
+            <button onClick={() => { setFolderSel(""); setSelected(new Set()); }} className="font-semibold" style={{ color: folderSel ? "#767676" : "#111111" }}>
+              {cat === UNFILED ? "Uncategorised" : categories.find(c => c.code === cat)?.label ?? cat}
+            </button>
+          </>)}
+          {folderSel && (<>
+            <span style={{ color: "#c2c2c2" }}>›</span>
+            <span className="font-semibold" style={{ color: "#111111" }}>{folderSel === "root" ? "Needs a folder" : folders.find(f => f.id === folderSel)?.name}</span>
+          </>)}
+          {cat && cat !== UNFILED && (
+            <button onClick={newFolder} className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ color: "#111111", border: "1px dashed rgba(0,0,0,0.25)" }}>+ New folder</button>
           )}
-          {activeCat === UNFILED && countIn(UNFILED) > 0 && (
-            <div className="text-xs" style={{ color: "#6b6b6b" }}>Tick creatives below and file them into a category — that gives each one its code.</div>
+          {cat && cat !== UNFILED && (
+            <span className="text-[10px] ml-auto" style={{ color: "#949494" }}>
+              Codes here look like <b>{cat}{folderSel && folderSel !== "root" ? `/${folders.find(f => f.id === folderSel)?.slug}` : catFolders.length ? `/${catFolders[0].slug}` : ""}/001</b>
+            </span>
           )}
+          {cat === UNFILED && countIn(UNFILED) > 0 && (
+            <span className="text-xs ml-auto" style={{ color: "#6b6b6b" }}>Tick creatives and file them into a category — that gives each one its code.</span>
+          )}
+        </div>
+      )}
+
+      {data && tab === "library" && level === "categories" && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
+          {[...categories, { code: UNFILED, label: "Uncategorised" }].filter(c => c.code !== UNFILED || countIn(UNFILED) > 0).map(c => {
+            const items = inCat(c.code);
+            const n = items.length;
+            return (
+              <FolderBox key={c.code} label={c.label} items={items}
+                sub={n === 0 ? "Empty" : `${n} creative${n === 1 ? "" : "s"}${folders.some(f => f.category === c.code) ? ` · ${folders.filter(f => f.category === c.code).length} folders` : ""}`}
+                onClick={() => { setCat(c.code); setFolderSel(""); setSelected(new Set()); }} />
+            );
+          })}
+        </div>
+      )}
+
+      {data && tab === "library" && level === "folders" && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
+          {catFolders.map(f => {
+            const items = (data.creatives ?? []).filter(c => c.folder_id === f.id);
+            return (
+              <FolderBox key={f.id} label={f.name} items={items} sub={`${items.length} creative${items.length === 1 ? "" : "s"} · ${cat}/${f.slug}`}
+                onClick={() => { setFolderSel(f.id); setSelected(new Set()); }} />
+            );
+          })}
+          {rootCount > 0 && (
+            <FolderBox label="Needs a folder" items={rootItems} sub={`${rootCount} not in a folder yet`} onClick={() => { setFolderSel("root"); setSelected(new Set()); }} />
+          )}
+          <FolderBox label="New folder" sub="" items={[]} dashed onClick={newFolder} />
         </div>
       )}
 
@@ -360,7 +399,7 @@ export default function CreativeHub({ scope, tab, clients }: {
 
       {loading && !data && <div className="rounded-2xl p-8 text-center text-sm" style={{ ...CARD, color: "#6b6b6b" }}>Loading creatives…</div>}
 
-      {data && tab === "library" && (
+      {data && tab === "library" && level === "grid" && (
         shown.length === 0 ? (
           <div className="rounded-2xl p-8 text-center text-sm" style={{ ...CARD, color: "#6b6b6b" }}>
             {data.creatives.length === 0 ? "No creatives yet. Ads appear here automatically once they run — or add one with “New creative”."
@@ -459,7 +498,7 @@ export default function CreativeHub({ scope, tab, clients }: {
           folders={folders}
           categories={categories}
           canRename={data.can_rename}
-          defaultCategory={view === "folders" && activeCat !== UNFILED ? activeCat : ""}
+          defaultCategory={view === "folders" && activeCat && activeCat !== UNFILED ? activeCat : ""}
           defaultFolder={view === "folders" && folderSel && folderSel !== "root" ? folderSel : ""}
           onFoldersChanged={load}
           onClose={() => { setOpenKey(null); setCreating(false); }}
