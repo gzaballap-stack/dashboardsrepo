@@ -59,6 +59,24 @@ Dashboard > Sales > Sales Tracker** (`src/components/SalesTracker.tsx`,
   replaces it; same migration file, applied to V1 and V2). Once set, the panel
   shows only those (zeros included), with "Show past pricing too"; the call
   form suggests only current pricing. Empty list = every pitch shows.
+- **History loaded (2026-10-05):** the owner's older "Sales Performance
+  Tracker" sheet — 217 calls, 2023–2025 (incl. the "No Show & Bad Calls" tab
+  as N/A). Year tabs were the source, month tabs added their extra rows and
+  filled blanks. Outcome mapping: BAD FIT → DQ, NO PITCH / blank → N/A,
+  DEPOSIT → Won. Sources normalised (cc / cc i / Cold call → Cold Call; FB Ads
+  → Ads). Dates were in mixed m/d and d/m order, read with the tab's month as
+  the tie-breaker; five Jan-2025 rows typed "/22" were taken as 2025, and
+  "20/18/25"-style typos as that tab's month. Totals therefore differ from the
+  sheet's year tabs (2025: 78 decided vs the sheet's 69).
+  The page defaults to the current year; older years only appear when picked
+  in the time-frame menu, which lists months for the year in view only.
+- **Pitch catalogue (2026-10-05):** `sales_pitches` now has `active`
+  (`add_sales_pitch_active.sql`, applied V1 + V2). Un-ticking hides a pitch
+  from the panel but keeps it in the catalogue and its calls. In Edit, click a
+  name to rename it everywhere (PATCH `/api/sales-pitches` {from,to}; renaming
+  onto an existing name merges); open a pitch to see its prospects and move
+  one to another pitch (ordinary call PATCH). Picking an old year falls back to
+  the pricing actually used then if none of today's pitches has a call in view.
 - The 5 calls on the "Copy of August 2026" tab were dated 10/10–10/29/26; the
   owner confirmed they are September, loaded 2026-10-05 as 9/10–9/29 (53 calls
   in total).

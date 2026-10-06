@@ -58,6 +58,8 @@ console.log(`Target: ${target} (${PROJECT_REF})\n`);
 
 await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_sales_calls.sql'), 'utf-8'),
   'Sales Tracker tables');
+await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_sales_pitch_active.sql'), 'utf-8'),
+  'Pitch active flag');
 
 const check = await runSQL(`
   select

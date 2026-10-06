@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Sales Tracker (TM Dashboard)
@@ -33,6 +33,8 @@ type Call = {
   contact: string;
   created_at: string;
 };
+
+type Pitch = { name: string; active: boolean };
 
 type Draft = Omit<Call, "id" | "created_at" | "call_minutes"> & { id?: string; call_minutes: string };
 
@@ -165,65 +167,142 @@ function BreakdownTable({ label, rows }: { label: string; rows: { key: string; t
   );
 }
 
-// Tick the pricing / pitches on offer right now, or add one that has no calls
-// yet. Saved as one shared list.
-function PitchEditor({ known, current, onSave, onCancel }: {
-  known: string[];
-  current: string[];
-  onSave: (names: string[]) => Promise<string | null>;
+// The pricing catalogue. Tick what is on offer right now — un-ticking hides a
+// pitch from the By pricing panel but keeps it here and in its calls. Click a
+// name to rename it everywhere; open a pitch to see its prospects and move
+// one to another pitch.
+function PitchEditor({ catalogue, used, calls, onSave, onRename, onMove, onCancel }: {
+  catalogue: Pitch[];
+  used: string[];                 // pitches found in calls but not in the catalogue
+  calls: Call[];
+  onSave: (pitches: Pitch[]) => Promise<string | null>;
+  onRename: (from: string, to: string) => Promise<string | null>;
+  onMove: (call: Call, pitch: string) => Promise<string | null>;
   onCancel: () => void;
 }) {
-  const [options, setOptions] = useState<string[]>(() => {
-    const keys = new Set(current.map(pitchKey));
-    return [...current, ...known.filter(k => !keys.has(pitchKey(k)))];
-  });
-  const [on, setOn] = useState<Set<string>>(() => new Set(current.map(pitchKey)));
+  const [rows, setRows] = useState<Pitch[]>(() => [
+    ...catalogue,
+    ...used.filter(u => !catalogue.some(c => pitchKey(c.name) === pitchKey(u))).map(name => ({ name, active: false })),
+  ]);
   const [fresh, setFresh] = useState("");
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [openPitch, setOpenPitch] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Enter commits a rename and the input then loses focus; this stops the
+  // blur committing it a second time.
+  const renameDone = useRef(false);
 
-  const toggle = (p: string) => setOn(prev => {
-    const next = new Set(prev);
-    const k = pitchKey(p);
-    if (next.has(k)) next.delete(k); else next.add(k);
-    return next;
-  });
+  const byKey = useMemo(() => {
+    const m = new Map<string, Call[]>();
+    for (const c of calls) if (c.pitch.trim()) m.set(pitchKey(c.pitch), [...(m.get(pitchKey(c.pitch)) ?? []), c]);
+    return m;
+  }, [calls]);
+
+  const toggle = (name: string) => setRows(prev => prev.map(r => (r.name === name ? { ...r, active: !r.active } : r)));
   const add = () => {
     const name = fresh.trim().replace(/\s+/g, " ");
     if (!name) return;
-    const k = pitchKey(name);
-    if (!options.some(o => pitchKey(o) === k)) setOptions(prev => [name, ...prev]);
-    setOn(prev => new Set(prev).add(k));
+    if (rows.some(r => pitchKey(r.name) === pitchKey(name))) { setRows(prev => prev.map(r => (pitchKey(r.name) === pitchKey(name) ? { ...r, active: true } : r))); }
+    else setRows(prev => [{ name, active: true }, ...prev]);
     setFresh("");
+  };
+  const commitRename = async (from: string) => {
+    if (renameDone.current) return;
+    renameDone.current = true;
+    const to = draftName.trim().replace(/\s+/g, " ");
+    setRenaming(null);
+    if (!to || to === from) return;
+    setBusy(true);
+    const err = await onRename(from, to);
+    setBusy(false);
+    if (err) { setError(err); return; }
+    setRows(prev => {
+      const target = prev.find(r => r.name !== from && pitchKey(r.name) === pitchKey(to));
+      // Renaming onto an existing pitch merges into it.
+      if (target) return prev.filter(r => r.name !== from);
+      return prev.map(r => (r.name === from ? { ...r, name: to } : r));
+    });
+    if (openPitch === from) setOpenPitch(to);
   };
   const save = async () => {
     setBusy(true);
-    const err = await onSave(options.filter(o => on.has(pitchKey(o))));
+    const err = await onSave(rows);
     setBusy(false);
     if (err) setError(err);
   };
 
+  const active = rows.filter(r => r.active).length;
+  const BTN: React.CSSProperties = { padding: "7px 12px", borderRadius: 9, fontSize: 12.5, fontWeight: 600, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" };
+
   return (
     <div>
-      <p style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>Tick the pricing on offer right now. Past pitches stay in the calls.</p>
+      <p style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>
+        Tick the pricing on offer right now. Un-ticked pitches stay here and in their calls — they just leave the panel. Click a name to rename it.
+      </p>
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         <input value={fresh} onChange={e => setFresh(e.target.value)} onKeyDown={e => { if (e.key === "Enter") add(); }}
           placeholder="Add a new pitch, e.g. $1 + 250 PPA" aria-label="New pitch" style={{ ...FIELD, flex: 1 }} />
-        <button onClick={add} style={{ padding: "7px 12px", borderRadius: 9, fontSize: 12.5, fontWeight: 600, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Add</button>
+        <button onClick={add} style={BTN}>Add</button>
       </div>
-      <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
-        {options.map(o => (
-          <label key={o} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px", fontSize: 13, color: INK, cursor: "pointer", borderRadius: 7 }}>
-            <input type="checkbox" checked={on.has(pitchKey(o))} onChange={() => toggle(o)} style={{ width: 15, height: 15, accentColor: INK }} />
-            {o}
-          </label>
-        ))}
+      <div style={{ maxHeight: 360, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+        {rows.map(r => {
+          const its = byKey.get(pitchKey(r.name)) ?? [];
+          const isOpen = openPitch === r.name;
+          return (
+            <div key={r.name} style={{ borderRadius: 8, background: isOpen ? "rgba(0,0,0,0.03)" : undefined }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 4px", fontSize: 13, color: r.active ? INK : MUTED }}>
+                <input type="checkbox" checked={r.active} onChange={() => toggle(r.name)} aria-label={`${r.name} is current`}
+                  style={{ width: 15, height: 15, accentColor: INK, flexShrink: 0 }} />
+                {renaming === r.name ? (
+                  <input autoFocus value={draftName} onChange={e => setDraftName(e.target.value)} aria-label="Pitch name"
+                    onBlur={() => commitRename(r.name)}
+                    onKeyDown={e => { if (e.key === "Enter") commitRename(r.name); if (e.key === "Escape") { renameDone.current = true; setRenaming(null); } }}
+                    style={{ ...FIELD, flex: 1, padding: "4px 8px" }} />
+                ) : (
+                  <button onClick={() => { renameDone.current = false; setRenaming(r.name); setDraftName(r.name); }} title="Rename"
+                    style={{ flex: 1, textAlign: "left", fontSize: 13, color: "inherit", padding: "4px 0", borderBottom: "1px dashed rgba(0,0,0,0.18)" }}>
+                    {r.name}
+                  </button>
+                )}
+                <button onClick={() => setOpenPitch(isOpen ? null : r.name)} aria-expanded={isOpen}
+                  style={{ fontSize: 12, fontWeight: 600, color: MUTED, whiteSpace: "nowrap", padding: "4px 6px" }}>
+                  {its.length} {its.length === 1 ? "prospect" : "prospects"} {isOpen ? "▴" : "▾"}
+                </button>
+              </div>
+              {isOpen && (
+                <div style={{ padding: "2px 8px 10px 33px", display: "flex", flexDirection: "column", gap: 4 }}>
+                  {!its.length && <p style={{ fontSize: 12.5, color: FAINT }}>No calls on this pitch yet.</p>}
+                  {its.map(c => (
+                    <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                      <span style={{ color: FAINT, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{shortDate(c.call_date)}</span>
+                      <span style={{ flex: 1, color: INK, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                      <Badge outcome={c.outcome} />
+                      <select value={r.name} aria-label={`Pitch for ${c.name}`} disabled={busy}
+                        onChange={async e => {
+                          const to = e.target.value;
+                          setBusy(true);
+                          const err = await onMove(c, to);
+                          setBusy(false);
+                          if (err) setError(err);
+                        }}
+                        style={{ ...FIELD, width: "auto", padding: "3px 6px", fontSize: 12 }}>
+                        {rows.map(o => <option key={o.name} value={o.name}>{o.name}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       {error && <p style={{ fontSize: 12.5, color: BAD, marginTop: 8 }}>{error}</p>}
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-        <button onClick={onCancel} style={{ padding: "7px 12px", borderRadius: 9, fontSize: 12.5, fontWeight: 600, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Cancel</button>
-        <button onClick={save} disabled={busy} style={{ padding: "7px 14px", borderRadius: 9, fontSize: 12.5, fontWeight: 600, background: INK, color: "#ffffff", opacity: busy ? 0.5 : 1 }}>
-          {busy ? "Saving…" : `Save (${on.size} current)`}
+        <button onClick={onCancel} style={BTN}>Cancel</button>
+        <button onClick={save} disabled={busy} style={{ ...BTN, background: INK, color: "#ffffff", padding: "7px 14px", opacity: busy ? 0.5 : 1 }}>
+          {busy ? "Saving…" : `Save (${active} current)`}
         </button>
       </div>
     </div>
@@ -341,8 +420,9 @@ export default function SalesTracker() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Draft | null>(null);
   const [open, setOpen] = useState<string | null>(null);
-  // Pricing on offer right now (shared). Empty = not set, so every pitch shows.
-  const [current, setCurrent] = useState<string[]>([]);
+  // The pricing catalogue (shared). Active ones are the panel's default view;
+  // with nothing active, every pitch shows.
+  const [catalogue, setCatalogue] = useState<Pitch[]>([]);
   const [editPitches, setEditPitches] = useState(false);
   const [allPitches, setAllPitches] = useState(false);
 
@@ -359,30 +439,48 @@ export default function SalesTracker() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     fetch("/api/sales-pitches").then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d?.pitches) setCurrent(d.pitches); }).catch(() => {});
+      .then(d => { if (d?.pitches) setCatalogue(d.pitches); }).catch(() => {});
   }, []);
 
-  const savePitches = async (names: string[]): Promise<string | null> => {
+  const savePitches = async (pitches: Pitch[]): Promise<string | null> => {
     const res = await fetch("/api/sales-pitches", {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pitches: names }),
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pitches }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return data.error || "Could not save";
-    setCurrent(data.pitches);
+    setCatalogue(data.pitches);
     setEditPitches(false);
     setAllPitches(false);
     return null;
   };
 
+  // Renames a pitch in the catalogue and on every call that used it.
+  const renamePitch = async (from: string, to: string): Promise<string | null> => {
+    const res = await fetch("/api/sales-pitches", {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from, to }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return data.error || "Could not rename";
+    setCalls(prev => (prev ?? []).map(c => (pitchKey(c.pitch) === pitchKey(from) ? { ...c, pitch: to } : c)));
+    setCatalogue(prev => {
+      const merged = prev.some(p => pitchKey(p.name) !== pitchKey(from) && pitchKey(p.name) === pitchKey(to));
+      return merged ? prev.filter(p => pitchKey(p.name) !== pitchKey(from)) : prev.map(p => (pitchKey(p.name) === pitchKey(from) ? { ...p, name: to } : p));
+    });
+    return null;
+  };
+
   const all = useMemo(() => calls ?? [], [calls]);
+  const current = useMemo(() => catalogue.filter(p => p.active).map(p => p.name), [catalogue]);
 
   // Time-frame choices: every year and month that has a call, newest first.
   const frames = useMemo(() => {
     const years = new Set<string>(), months = new Set<string>();
     for (const c of all) if (c.call_date) { years.add(c.call_date.slice(0, 4)); months.add(c.call_date.slice(0, 7)); }
     years.add(String(new Date().getFullYear()));
-    return { years: [...years].sort().reverse(), months: [...months].sort().reverse() };
-  }, [all]);
+    // Months are offered for the year in view only, so older years don't crowd the list.
+    const year = frame === "all" ? String(new Date().getFullYear()) : frame.slice(0, 4);
+    return { years: [...years].sort().reverse(), months: [...months].filter(m => m.startsWith(year)).sort().reverse() };
+  }, [all, frame]);
 
   const inFrame = useMemo(
     () => (frame === "all" ? all : all.filter(c => c.call_date?.startsWith(frame))),
@@ -412,23 +510,27 @@ export default function SalesTracker() {
     const everything = [...m.values()].map(g => ({ key: g.label, t: tally(g.calls) }))
       .filter(r => r.t.won + r.t.lost > 0)
       .sort((a, b) => (b.t.won + b.t.lost) - (a.t.won + a.t.lost));
-    // With a current list set, show just those — in its order, with zeros for
-    // a pitch nobody has run in this time frame yet.
+    // With current pricing set, show just that — in catalogue order, with
+    // zeros for a pitch nobody has run in this time frame yet.
     if (!current.length || allPitches) return everything;
-    return current.map(name => ({ key: name, t: tally(m.get(pitchKey(name))?.calls ?? []) }));
+    const rows = current.map(name => ({ key: name, t: tally(m.get(pitchKey(name))?.calls ?? []) }));
+    // An older year ran on older pricing: when none of today's pitches has a
+    // call in view, show what was actually pitched instead of a column of zeros.
+    return rows.some(r => r.t.total) ? rows : everything;
   }, [inFrame, current, allPitches]);
 
-  // Every pitch ever used, most-used first.
+  // Every pitch used in this time frame, most-used first. Older years' pricing
+  // only turns up once you pick that year.
   const known = useMemo(() => {
     const m = new Map<string, { name: string; n: number }>();
-    for (const c of all) if (c.pitch.trim()) {
+    for (const c of inFrame) if (c.pitch.trim()) {
       const k = pitchKey(c.pitch);
       const g = m.get(k) ?? { name: c.pitch.trim(), n: 0 };
       g.n++;
       m.set(k, g);
     }
     return [...m.values()].sort((a, b) => b.n - a.n).map(g => g.name);
-  }, [all]);
+  }, [inFrame]);
   // The call form suggests the current pricing; with none set, everything.
   const pitches = current.length ? current : known;
 
@@ -503,7 +605,10 @@ export default function SalesTracker() {
             <button onClick={() => setEditPitches(true)} style={{ fontSize: 12.5, fontWeight: 600, color: MUTED }}>Edit</button>
           )}>
           {editPitches ? (
-            <PitchEditor known={known} current={current} onSave={savePitches} onCancel={() => setEditPitches(false)} />
+            <PitchEditor catalogue={catalogue} used={known} calls={inFrame}
+              onSave={savePitches} onRename={renamePitch}
+              onMove={async (c, pitch) => save({ ...c, pitch, call_minutes: c.call_minutes == null ? "" : String(c.call_minutes) })}
+              onCancel={() => setEditPitches(false)} />
           ) : (
             <>
               <BreakdownTable label="Pitch" rows={byPitch} />
