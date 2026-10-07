@@ -34,6 +34,34 @@ function Input({ label, ...props }: { label: string } & React.InputHTMLAttribute
   );
 }
 
+// A password box with a Show / Hide toggle, so what you typed can be checked
+// before it is saved.
+function PasswordInput({ label, ...props }: { label: string } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "type">) {
+  const [show, setShow] = useState(false);
+  return (
+    <div>
+      <label className="block text-xs font-medium mb-1" style={{ color: "#767676" }}>{label}</label>
+      <div className="relative">
+        <input
+          type={show ? "text" : "password"}
+          autoComplete="new-password"
+          className="w-full pl-3 pr-16 py-2 rounded-lg text-sm outline-none"
+          style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}
+          {...props}
+        />
+        <button
+          type="button"
+          onClick={() => setShow(v => !v)}
+          aria-label={show ? "Hide password" : "Show password"}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold px-2 py-1 rounded-md"
+          style={{ color: "#4a4a4a", background: "rgba(0,0,0,0.06)" }}>
+          {show ? "Hide" : "Show"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Ticking boxes for one account. An admin is always unrestricted, so the editor
 // only appears for everyone else.
 function AccessEditor({ user, onSave, onCancel }: {
@@ -235,7 +263,7 @@ export default function UserManager() {
         <h3 className="text-sm font-semibold" style={{ color: "#4a4a4a" }}>Add New User</h3>
         <form onSubmit={handleAdd} className="space-y-3">
           <Input label="Email" type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} required placeholder="user@company.com" />
-          <Input label="Password" type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required placeholder="Min 8 characters" />
+          <PasswordInput label="Password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required placeholder="Min 8 characters" />
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={newIsAdmin} onChange={e => setNewIsAdmin(e.target.checked)}
               className="rounded" />
@@ -326,7 +354,7 @@ export default function UserManager() {
               <div className="rounded-2xl px-5 py-4 flex items-end gap-3"
                 style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.12)" }}>
                 <div className="flex-1">
-                  <Input label="New Password" type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min 8 characters" />
+                  <PasswordInput label="New Password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min 8 characters" />
                 </div>
                 <button
                   onClick={() => handleChangePassword(u.id)}
