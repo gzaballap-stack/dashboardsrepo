@@ -502,7 +502,7 @@ export default function TaskBoard() {
           bucket: b,
           items: rows.filter(t => t.bucket === b.id).sort((x, y) => x.position - y.position),
         }))
-        .filter(sec => sec.items.length > 0)
+        .filter(sec => sec.items.length > 0 || dragFromList)
     : [{ key: "all", bucket: null as (typeof BUCKETS)[number] | null, items: rows }];
 
   // Month review: a Mon-Sun grid of the month, plus everything completed in it.
@@ -1648,7 +1648,20 @@ export default function TaskBoard() {
                       : "Tap a letter to re-rank a project here, or drag it onto a column, a day in the strip, or a date in Month view. It stays on this list until it is done."}
                   </p>
                   {sections.map(sec => (
-                  <div key={sec.key} style={{ marginBottom: sec.bucket ? 10 : 0 }}>
+                  <div
+                    key={sec.key}
+                    data-drop={sec.bucket ? `proj:${sec.bucket.id}` : undefined}
+                    style={{
+                      marginBottom: sec.bucket ? 10 : 0,
+                      ...(sec.bucket ? {
+                        borderRadius: 8,
+                        padding: dropZone === `proj:${sec.bucket.id}` ? 4 : 0,
+                        background: dropZone === `proj:${sec.bucket.id}` ? "rgba(0,0,0,0.05)" : "transparent",
+                        border: `1px dashed ${dropZone === `proj:${sec.bucket.id}` ? "rgba(0,0,0,0.3)" : "transparent"}`,
+                        minHeight: sec.items.length === 0 ? 34 : undefined,
+                      } : null),
+                    }}
+                  >
                   {sec.bucket && (
                     <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 2px 5px" }}>
                       <span style={{
