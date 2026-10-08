@@ -19,12 +19,28 @@ qualified appointments needed. Everything derived is computed in
   GHL workflow when the revenue fields change. Returns the figures, a `doc_id`
   parsed from `doc_url` / `doc_id`, and `replacements` (`[{find, replace}]`)
   for Make's Google Docs "Replace a Text in a Document" module.
-- Make side (not in this repo): the create-doc scenario must store the new
-  doc's link on the contact (`area_breakdown_doc` or similar); the update
-  scenario is GHL webhook → HTTP POST sales-call-goals → Google Docs replace
-  text on `{{doc_id}}`. Replacing is one-shot per tag: after the first fill the
-  tags are gone, so a second edit needs the doc re-created (or the old values
-  found instead of the tags).
+- The route reads whatever the payload lacks straight off the GHL contact
+  (B2B token): the doc link is custom field `2iC8q2ndjpWgGd9uqKAl` (Custom Area
+  Breakdown URL — the territory scenario already writes it), the three numbers
+  are `OEFTmQgo…`/`gqnInqYl…`/`ZlYCAvDy…`. So Make only has to send
+  `contact_id`.
+- **Make scenario (live, built via API 2026-10-08):** "CCM - Sales Call Numbers
+  (fill the doc)", id 7851284, webhook 3867886
+  (`hook.eu1.make.com/v6ni7478jpk76rkzadsi6zbnhayu2ln8`). Webhook → HTTP POST
+  sales-call-goals → Google Docs `replaceATextInADocument` with
+  `document = doc_id` and `replaceText = replacements` (the whole array mapped
+  in one go — item keys `oldText`/`newText`). Filtered to run only when a doc
+  id came back and all three numbers are present. Blueprint (secret scrubbed)
+  in `make-blueprints/ccm-sales-call-numbers.blueprint.json`.
+- The Google Docs module's field names aren't discoverable through the API
+  (`/sdk/apps` is custom-apps only); they were found by running a probe
+  scenario and reading the errors. Array field = `replaceText`, doc field =
+  `document`. Verified end-to-end on a throwaway doc (then trashed).
+- GHL workflow "One Call: Client's Numbers Submitted" must point at the
+  **numbers** webhook above — not the territory one, which would mint a second
+  doc with a 35-mile default radius.
+- Replacing is one-shot per tag: after the first fill the tags are gone, so a
+  second edit needs the doc re-created.
 
 ---
 

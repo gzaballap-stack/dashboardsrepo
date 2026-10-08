@@ -1,0 +1,141 @@
+{
+  "name": "CCM - Sales Call Numbers (fill the doc)",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "hook": 3867886,
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0
+        },
+        "restore": {
+          "parameters": {
+            "hook": {
+              "data": {
+                "editable": "true"
+              },
+              "label": "CCM - Sales Call Numbers Webhook"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "mapper": {
+        "ca": "",
+        "qs": [],
+        "url": "https://app.tomsimedia.com/api/admin/sales-call-goals",
+        "data": "{\"contact_id\": \"{{1.contact_id}}\", \"Contact ID\": \"{{1.`Contact ID`}}\", \"average_job\": \"{{1.average_job}}\", \"Average Job\": \"{{1.`Average Job`}}\", \"current_revenue\": \"{{1.current_revenue}}\", \"Current Revenue\": \"{{1.`Current Revenue`}}\", \"revenue_goal\": \"{{1.revenue_goal}}\", \"Revenue Goal\": \"{{1.`Revenue Goal`}}\", \"close_rate\": \"{{1.close_rate}}\", \"doc_url\": \"{{1.custom_area_breakdown_url}}\"}",
+        "gzip": false,
+        "method": "post",
+        "headers": [
+          {
+            "name": "Authorization",
+            "value": "Bearer REPLACE_WITH_YOUR_WEBHOOK_SECRET"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "timeout": "",
+        "useMtls": false,
+        "authPass": "",
+        "authUser": "",
+        "bodyType": "raw",
+        "contentType": "application/json",
+        "serializeUrl": false,
+        "shareCookies": false,
+        "parseResponse": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "followAllRedirects": false,
+        "rejectUnauthorized": true
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "google-docs:replaceATextInADocument",
+      "version": 1,
+      "parameters": {
+        "__IMTCONN__": 10803479
+      },
+      "filter": {
+        "name": "Doc found and all 3 numbers present",
+        "conditions": [
+          [
+            {
+              "a": "{{2.data.doc_id}}",
+              "o": "exist"
+            },
+            {
+              "a": "{{2.data.complete}}",
+              "b": "true",
+              "o": "text:equal"
+            }
+          ]
+        ]
+      },
+      "mapper": {
+        "document": "{{2.data.doc_id}}",
+        "replaceText": "{{2.data.replacements}}"
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0
+        },
+        "restore": {
+          "parameters": {
+            "__IMTCONN__": {
+              "data": {
+                "scoped": "true",
+                "connection": "google"
+              },
+              "label": "Gonzalo's Google connection"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "designer": {
+      "orphans": []
+    },
+    "scenario": {
+      "dlq": false,
+      "slots": null,
+      "dataloss": false,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "roundtrips": 1,
+      "sequential": false,
+      "confidential": false,
+      "freshVariables": false,
+      "autoCommitTriggerLast": true
+    }
+  }
+}
