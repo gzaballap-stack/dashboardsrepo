@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { geocodeZip, getZctasNearPoint, fetchZipMetrics, type ScoredZipMetrics } from '@/lib/census';
 import { percentileLabel } from '@/lib/zip-score';
+import { computeGoals } from '@/lib/goal-math';
 
 const PIN_COLOR = '#000000';
 
@@ -252,6 +253,15 @@ export async function POST(req: Request) {
     blue:           list(tiers.blue),   blue_count:   String(tiers.blue.length),
     yellow:         list(tiers.yellow), yellow_count: String(tiers.yellow.length),
     red:            list(tiers.red),    red_count:    String(tiers.red.length),
+    // Revenue-goal section. If the three numbers are already on the contact they
+    // come through filled; otherwise the tags are passed back verbatim so the
+    // sales-call-goals scenario can fill them in later with "replace text".
+    ...computeGoals({
+      average_job:     body.average_job     ?? customData.average_job     ?? extractCustomField(customFields, 'average_job'),
+      current_revenue: body.current_revenue ?? customData.current_revenue ?? extractCustomField(customFields, 'current_revenue'),
+      revenue_goal:    body.revenue_goal    ?? customData.revenue_goal    ?? extractCustomField(customFields, 'revenue_goal'),
+      close_rate:      body.close_rate      ?? customData.close_rate      ?? extractCustomField(customFields, 'close_rate'),
+    }).doc,
     // One tag per figure for each of the top five, so the template can lay them
     // out as nested bullets — a single multi-line value can't carry that structure.
     ...Object.fromEntries(

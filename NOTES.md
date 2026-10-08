@@ -1,3 +1,33 @@
+## 2026-10-08 — Revenue-goal numbers on the Custom Area Breakdown doc
+
+The sales-call doc gets a section with the prospect's own numbers: average
+job, current revenue, revenue goal, and (derived) revenue gap, jobs needed,
+qualified appointments needed. Everything derived is computed in
+`src/lib/goal-math.ts` — never by hand on the call.
+
+- **Inputs** are GHL contact custom fields `average_job`, `current_revenue`,
+  `revenue_goal`, optional `close_rate` (defaults to 30%; "35", "35%" and
+  "0.35" all work). Amounts accept `$1,250,000`, `1.2m`, `500k`.
+- **Jobs needed** = ceil((goal − current) / average job);
+  **appointments needed** = ceil(jobs / close rate).
+- **Template tags:** `{{average_job}} {{current_revenue}} {{revenue_goal}}
+  {{revenue_gap}} {{jobs_needed}} {{appointments_needed}} {{close_rate}}`.
+- `/api/admin/onboard` now returns those tags inside `doc` too. If the numbers
+  aren't on the contact yet, each value is the **tag itself** (`{{jobs_needed}}`)
+  so the placeholder survives the first merge and can be replaced later.
+- **New:** `POST /api/admin/sales-call-goals` (admin secret). Fired by a second
+  GHL workflow when the revenue fields change. Returns the figures, a `doc_id`
+  parsed from `doc_url` / `doc_id`, and `replacements` (`[{find, replace}]`)
+  for Make's Google Docs "Replace a Text in a Document" module.
+- Make side (not in this repo): the create-doc scenario must store the new
+  doc's link on the contact (`area_breakdown_doc` or similar); the update
+  scenario is GHL webhook → HTTP POST sales-call-goals → Google Docs replace
+  text on `{{doc_id}}`. Replacing is one-shot per tag: after the first fill the
+  tags are gone, so a second edit needs the doc re-created (or the old values
+  found instead of the tags).
+
+---
+
 ## 2026-10-06 — Creative hub: folders as collage boxes
 
 The Library's **Folders** view is now browsed like Airbnb wishlists: category

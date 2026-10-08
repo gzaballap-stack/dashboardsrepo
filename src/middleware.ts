@@ -12,6 +12,7 @@ const BYPASS_ROUTES = [
   '/api/b2b-adsets',
   '/api/b2b-ads',
   '/api/admin/onboard',
+  '/api/admin/sales-call-goals',
   '/api/admin/seed-v2',
   '/api/admin/backfill-closes',
   '/api/admin/seed-zip-performance',
