@@ -6,7 +6,7 @@ qualified appointments needed. Everything derived is computed in
 `src/lib/goal-math.ts` — never by hand on the call.
 
 - **Inputs** are GHL contact custom fields `average_job`, `current_revenue`,
-  `revenue_goal`, optional `close_rate` (defaults to 30%; "35", "35%" and
+  `revenue_goal`, optional `close_rate` (defaults to 20%; "35", "35%" and
   "0.35" all work). Amounts accept `$1,250,000`, `1.2m`, `500k`.
 - **Jobs needed** = ceil((goal − current) / average job);
   **appointments needed** = ceil(jobs / close rate).

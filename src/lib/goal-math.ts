@@ -11,7 +11,7 @@ export const GOAL_TAGS = [
 ] as const;
 export type GoalTag = typeof GOAL_TAGS[number];
 
-export const DEFAULT_CLOSE_RATE = 0.3;
+export const DEFAULT_CLOSE_RATE = 0.2;
 
 // "$1,250,000", "1.2m", "500k", "35%", "0.35" → number (or null when blank/junk)
 export function parseAmount(raw: unknown): number | null {
