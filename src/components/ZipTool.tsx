@@ -1016,6 +1016,37 @@ export default function ZipTool() {
     }
   }, [pins, radius, pushPinHistory]);
 
+  // Resizing a pin that's already on the map. The ring follows the slider live;
+  // the zips re-fetch once the slider has been still for a moment, so dragging
+  // across the range doesn't fire a lookup per notch.
+  const resizeTimerRef = useRef<number | null>(null);
+  const handleResizePin = useCallback((id: string, newRadius: number) => {
+    if (resizeTimerRef.current === null) pushPinHistory(); // one undo step per drag
+    else window.clearTimeout(resizeTimerRef.current);
+
+    setPins(prev => prev.map(p => p.id === id ? { ...p, radius: newRadius } : p));
+
+    resizeTimerRef.current = window.setTimeout(() => {
+      resizeTimerRef.current = null;
+      const pin = pinsRef.current.find(p => p.id === id);
+      if (!pin) return;
+      abortRefs.current.get(id)?.abort();
+      const ctrl = new AbortController();
+      abortRefs.current.set(id, ctrl);
+      setPins(prev => prev.map(p => p.id === id ? { ...p, loading: true } : p));
+      fetch(`/api/zip-radius?lat=${pin.lat}&lng=${pin.lng}&radius=${newRadius}`, { signal: ctrl.signal })
+        .then(r => r.json())
+        .then(data => setPins(prev => prev.map(p =>
+          p.id === id
+            ? { ...p, zips: data.zips ?? [], features: data.features ?? [], scores: data.scores ?? {}, loading: false }
+            : p
+        )))
+        .catch(e => {
+          if (e?.name !== "AbortError") setPins(prev => prev.map(p => p.id === id ? { ...p, loading: false } : p));
+        });
+    }, 450);
+  }, [pushPinHistory]);
+
   const handleDeletePin = useCallback((id: string) => {
     pushPinHistory(); // snapshot before deletion so it can be restored
     abortRefs.current.get(id)?.abort();
@@ -1647,19 +1678,32 @@ export default function ZipTool() {
 
         {/* Pin mode controls */}
         {(<>
+          {/* With a radius pin selected, the slider resizes that pin; otherwise it
+              sets the radius for the next pin dropped. */}
+          {(() => {
+            const resizing = selectedPin && selectedPin.radius > 0 ? selectedPin : null;
+            const shown = resizing ? resizing.radius : radius;
+            return (
           <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 11, color: "#767676", textTransform: "uppercase", letterSpacing: "0.07em" }}>Radius</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#000000" }}>{radius} mi</span>
+              <span style={{ fontSize: 11, color: resizing ? "#000000" : "#767676", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                {resizing ? `${resizing.label} radius` : "Radius"}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#000000" }}>{shown} mi</span>
             </div>
-            <input type="range" min={5} max={200} step={5} value={radius}
-              onChange={e => setRadius(parseInt(e.target.value))}
-              style={{ width: "100%", accentColor: "#000000", cursor: "pointer" }} />
+            <input type="range" min={5} max={200} step={5} value={shown}
+              onChange={e => resizing
+                ? handleResizePin(resizing.id, parseInt(e.target.value))
+                : setRadius(parseInt(e.target.value))}
+              style={{ width: "100%", accentColor: resizing ? resizing.color : "#000000", cursor: "pointer" }} />
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
               <span style={{ fontSize: 10, color: "#949494" }}>5 mi</span>
+              {resizing && <span style={{ fontSize: 10, color: "#949494" }}>drag to resize the selected pin</span>}
               <span style={{ fontSize: 10, color: "#949494" }}>200 mi</span>
             </div>
           </div>
+            );
+          })()}
           <div style={{ padding: "6px 12px 8px", borderBottom: "1px solid rgba(0,0,0,0.095)", display: "flex", gap: 6, flexShrink: 0 }}>
             <button onClick={() => setPinMode("include")}
               style={{
