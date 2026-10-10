@@ -1298,3 +1298,21 @@ can never block or fail an event insert.
   today and the next morning's run finalises it. The follow-up is best-effort
   and never changes the response for the requested date.
 - Make schedules: 07:00, 13:00, 19:00 (Make org time). No blueprint change.
+
+## 2026-10-10 — Funnel engagement scenario was queueing events
+
+- Make scenario 7570422 (CCM - Funnel Engagement → Supabase, the page-visit /
+  video-watch hook) was scheduled **every 15 min with one webhook per run**, so
+  events sat in the hook queue and landed one at a time, stamped with the
+  processing time. Changed to **run immediately** (like the lead / booking
+  scenarios); `occurred_at` now keeps the event's own timestamp when the page
+  sends one (`ifempty(1.occurred_at; now)`). Queue drained (6 events).
+- VSL added to the confirmation page as a second custom embed (YouTube
+  `QYbCOpAf_Rk`, events `vsl_watch`). Both embeds now create the YouTube
+  player behind the thumbnail on load, so one click plays (was two).
+- GHL's Video element renders a custom embed lazily; it may not render for
+  headless/programmatic visits — real visitors are fine.
+- Demo bookings now arrive via Make 7111665 (Sales Call Booked) with
+  `booked_by` — confirmed by the Test Zaballa booking (self).
+- Test contact "Test Zaballa" (LCEMMvD7gEFcc3PuuY6w, exists in GHL since 2025)
+  produced a booking + visits on 2026-10-10 — to be removed after the test.
