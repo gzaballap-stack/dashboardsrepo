@@ -11,7 +11,7 @@ export async function GET(req: Request) {
 
   let eventsQ = ctx.service
     .from('b2b_events')
-    .select('event_type, revenue, occurred_at, ghl_contact_id, booked_by, progress_pct');
+    .select('event_type, revenue, occurred_at, ghl_contact_id, booked_by, progress_pct, external_id');
 
   if (start_date) eventsQ = eventsQ.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsQ = eventsQ.lte('occurred_at', `${end_date}T23:59:59.999Z`);
@@ -146,15 +146,35 @@ export async function GET(req: Request) {
   // ── Funnel engagement (page visits + video watch) ──
   const ev = events ?? [];
   const cnt = (t: string) => ev.filter(e => e.event_type === t).length;
-  const landing_visits  = cnt('visit_landing');
-  const calendar_visits = cnt('visit_calendar');
-  const bookings        = cnt('visit_thankyou');
+  // Page visits: one per person. Newer rows carry a per-person key
+  // (`visit_landing:<contact or visitor>`), so the webhook already keeps one row
+  // per person; older rows had no key and count as they were stored.
+  const people = (type: string) => {
+    const seen = new Set<string>(); let n = 0;
+    for (const e of ev) {
+      if (e.event_type !== type) continue;
+      const key = (e as { external_id?: string | null }).external_id;
+      if (!key) { n++; continue; }
+      if (!seen.has(key)) { seen.add(key); n++; }
+    }
+    return n;
+  };
+  const landing_visits  = people('visit_landing');
+  const calendar_visits = people('visit_calendar');
+  // "Bookings" are demos actually booked (GHL), not thank-you page loads — a
+  // reload or a revisit of the confirmation page is not another booking.
+  const bookings        = count('sales_call_booked');
   // Per-contact furthest watch %, for view + milestone rates.
+  // A viewer is the contact when known, else the anonymous visitor key the page
+  // sends (`precall:<visitor>:<pct>`), so a watch still counts before the
+  // thank-you link carries the contact id.
+  const viewerKey = (e: { ghl_contact_id?: string | null; external_id?: string | null }) =>
+    e.ghl_contact_id || (e.external_id ? e.external_id.split(':')[1] || null : null);
   const watchers = (type: string) => {
     const m = new Map<string, number>();
     for (const e of ev) {
       if (e.event_type !== type) continue;
-      const id = (e as { ghl_contact_id?: string | null }).ghl_contact_id;
+      const id = viewerKey(e as { ghl_contact_id?: string | null; external_id?: string | null });
       if (!id) continue;
       const p = Number((e as { progress_pct?: number | null }).progress_pct) || 0;
       m.set(id, Math.max(m.get(id) ?? 0, p));

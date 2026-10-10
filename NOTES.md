@@ -1316,3 +1316,10 @@ can never block or fail an event insert.
   `booked_by` — confirmed by the Test Zaballa booking (self).
 - Test contact "Test Zaballa" (LCEMMvD7gEFcc3PuuY6w, exists in GHL since 2025)
   produced a booking + visits on 2026-10-10 — to be removed after the test.
+- Funnel stats (same day): **Bookings = demos booked** (`sales_call_booked`),
+  no longer thank-you page loads. Page visits and video watches count **one per
+  person**: the page snippets now send `external_id` = `<type>:<contact id or
+  anonymous visitor id>` (visitor id kept in localStorage), the Make scenario
+  forwards it, and the webhook upserts on it. Watch viewers key on the contact
+  or that visitor id, so anonymous watches count too. One footer snippet now
+  serves all three pages (picks the event by path).

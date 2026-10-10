@@ -13,6 +13,7 @@ export type SrcEvent = {
   duration_seconds?: number | null; speed_to_lead_seconds?: number | null; call_status?: string | null;
   revenue?: number | null; ghl_contact_id?: string | null; campaign_name?: string | null; ad_id?: string | null; ad_name?: string | null;
   booked_by?: string | null; progress_pct?: number | null;
+  external_id?: string | null;
 };
 export type SrcData = { events: SrcEvent[]; b2b: SrcEvent[]; spend: { spend_date: string; amount: number }[]; excluded_spend: number; ad_names?: Record<string, string> };
 
@@ -91,16 +92,24 @@ const dialDetail = (e: SrcEvent) => join(e.is_conversation ? 'Conversation' : e.
 const dials = (d: SrcData, title = 'Outbound dials', f: (e: SrcEvent) => boolean = () => true) => person(title, ev(d, 'dial').filter(f), dialDetail);
 const demoBookings = (d: SrcData, by: 'self' | 'team') =>
   person(by === 'self' ? 'Demos the lead booked themselves' : 'Demos booked by your team', bb(d, 'sales_call_booked').filter(e => e.booked_by === by), () => (by === 'self' ? 'Booked via the calendar link' : 'Booked by hand'));
-const visits = (d: SrcData, type: string, title: string) => person(title, bb(d, type), undefined, nameIndex(d), 'Visitor (not yet a lead)');
+// One row per person: rows with a per-person key are already unique; older rows had no key.
+const visits = (d: SrcData, type: string, title: string) => {
+  const seen = new Set<string>();
+  const list = bb(d, type).filter(e => { if (!e.external_id) return true; if (seen.has(e.external_id)) return false; seen.add(e.external_id); return true; });
+  return person(title, list, undefined, nameIndex(d), 'Visitor (not yet a lead)');
+};
+const demosBooked = (d: SrcData) => person('Demos booked', bb(d, 'sales_call_booked'), e => (e.booked_by === 'team' ? 'Booked by hand' : e.booked_by === 'self' ? 'Booked via the calendar link' : undefined));
+const viewerKey = (e: SrcEvent) => e.ghl_contact_id || (e.external_id ? e.external_id.split(':')[1] || null : null);
 
 // One row per contact, at the furthest point they watched.
 function watchers(d: SrcData, type: string, title: string, min = 0): SourcePart {
   const names = nameIndex(d);
   const best = new Map<string, SrcEvent>();
   for (const e of bb(d, type)) {
-    if (!e.ghl_contact_id) continue;
-    const cur = best.get(e.ghl_contact_id);
-    if (!cur || (Number(e.progress_pct) || 0) > (Number(cur.progress_pct) || 0)) best.set(e.ghl_contact_id, e);
+    const key = viewerKey(e);
+    if (!key) continue;
+    const cur = best.get(key);
+    if (!cur || (Number(e.progress_pct) || 0) > (Number(cur.progress_pct) || 0)) best.set(key, e);
   }
   const list = [...best.values()].filter(e => (Number(e.progress_pct) || 0) >= min);
   return person(title, list, e => `Watched ${Number(e.progress_pct) || 0}%`, names, 'Name not recorded');
@@ -122,21 +131,21 @@ const watchStats = (kind: 'Pre-Call' | 'VSL', type: string, views: (n: StatNumbe
       parts: d => [watchers(d, type, 'Viewers')],
     },
     [`${kind} View Rate`]: {
-      what: `Of the people who booked on the page, how many watched the ${video}.`,
+      what: `Of the people who booked a demo, how many watched the ${video}.`,
       origin: SITE, formula: n => `${views(n)} viewers ÷ ${n.bookings} bookings = ${pct(views(n), n.bookings)}`,
-      parts: d => [watchers(d, type, 'Viewers'), visits(d, 'visit_thankyou', 'Bookings')],
+      parts: d => [watchers(d, type, 'Viewers'), demosBooked(d)],
     },
   };
   for (const th of [25, 50, 75, 100]) {
     out[`${kind} ${th}%${th === 100 ? '' : '+'}`] = {
-      what: `Of the people who booked on the page, how many watched at least ${th}% of the ${video}.`,
+      what: `Of the people who booked a demo, how many watched at least ${th}% of the ${video}.`,
       origin: SITE,
       formula: (n, d) => {
         if (!d) return `People who reached ${th}% ÷ ${n.bookings} bookings`;
         const reached = watchers(d, type, '', th).rows.length;
         return `${reached} reached ${th}% ÷ ${n.bookings} bookings = ${pct(reached, n.bookings)}`;
       },
-      parts: d => [watchers(d, type, `Watched ${th}%${th === 100 ? '' : ' or more'}`, th), visits(d, 'visit_thankyou', 'Bookings')],
+      parts: d => [watchers(d, type, `Watched ${th}%${th === 100 ? '' : ' or more'}`, th), demosBooked(d)],
     };
   }
   return out;
@@ -310,19 +319,19 @@ export const B2B_STAT_SOURCES: Record<string, StatSource> = {
 
   // ── Funnel ──
   'Landing Page Visits': {
-    what: 'Times the landing page was opened.',
-    origin: SITE, formula: n => `${n.landing_visits} page loads`,
+    what: 'People who opened the landing page. Each person counts once, however many times they reloaded.',
+    origin: SITE, formula: n => `${n.landing_visits} people`,
     parts: d => [visits(d, 'visit_landing', 'Landing page visits')],
   },
   'Calendar Page Visits': {
-    what: 'Times the calendar page was opened.',
-    origin: SITE, formula: n => `${n.calendar_visits} page loads`,
+    what: 'People who opened the calendar page. Each person counts once.',
+    origin: SITE, formula: n => `${n.calendar_visits} people`,
     parts: d => [visits(d, 'visit_calendar', 'Calendar page visits')],
   },
   'Bookings': {
-    what: 'Times the booking-confirmed page was reached, meaning a demo was booked on the site.',
-    origin: SITE, formula: n => `${n.bookings} bookings completed on the page`,
-    parts: d => [visits(d, 'visit_thankyou', 'Bookings')],
+    what: 'Demos booked, from GoHighLevel. The same number as Demos Booked above.',
+    origin: GHL, formula: n => `${n.bookings} demos booked`,
+    parts: d => [demosBooked(d)],
   },
   'Landing → Calendar Rate': {
     what: 'Share of landing page visits that went on to the calendar page.',
@@ -332,12 +341,12 @@ export const B2B_STAT_SOURCES: Record<string, StatSource> = {
   'Calendar → Booking Rate': {
     what: 'Share of calendar page visits that ended in a booking.',
     origin: SITE, formula: n => `${n.bookings} bookings ÷ ${n.calendar_visits} calendar visits = ${pct(n.bookings, n.calendar_visits)}`,
-    parts: d => [visits(d, 'visit_thankyou', 'Bookings'), visits(d, 'visit_calendar', 'Calendar page visits')],
+    parts: d => [demosBooked(d), visits(d, 'visit_calendar', 'Calendar page visits')],
   },
   'Landing → Booking Rate': {
     what: 'Share of landing page visits that ended in a booked demo. KPI: never below 5%, aim for 7–8%.',
     origin: SITE, formula: n => `${n.bookings} bookings ÷ ${n.landing_visits} landing visits = ${pct(n.bookings, n.landing_visits)}`,
-    parts: d => [visits(d, 'visit_thankyou', 'Bookings'), visits(d, 'visit_landing', 'Landing page visits')],
+    parts: d => [demosBooked(d), visits(d, 'visit_landing', 'Landing page visits')],
   },
   'Lead Page Conversion': {
     what: 'Share of landing page visits that became a lead.',
@@ -346,8 +355,8 @@ export const B2B_STAT_SOURCES: Record<string, StatSource> = {
   },
   'Lead Booking Rate': {
     what: 'Share of leads that completed a booking on the page.',
-    origin: mixed('Bookings from your funnel pages; leads from GoHighLevel.'), formula: n => `${n.bookings} bookings ÷ ${n.b2b_leads} leads = ${pct(n.bookings, n.b2b_leads)}`,
-    parts: d => [visits(d, 'visit_thankyou', 'Bookings'), b2bLeads(d)],
+    origin: GHL, formula: n => `${n.bookings} bookings ÷ ${n.b2b_leads} leads = ${pct(n.bookings, n.b2b_leads)}`,
+    parts: d => [demosBooked(d), b2bLeads(d)],
   },
   ...watchStats('Pre-Call', 'precall_watch', n => n.precall_views),
   ...watchStats('VSL', 'vsl_watch', n => n.vsl_views),

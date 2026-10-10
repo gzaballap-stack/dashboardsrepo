@@ -51,7 +51,7 @@ export async function GET(req: Request) {
       }),
       all(() => {
         let q = ctx.service.from('b2b_events')
-          .select('event_type, occurred_at, lead_name, revenue, booked_by, progress_pct, ghl_contact_id, ad_id, ad_name')
+          .select('event_type, occurred_at, lead_name, revenue, booked_by, progress_pct, ghl_contact_id, ad_id, ad_name, external_id')
           .order('occurred_at', { ascending: false });
         if (start_date) q = q.gte('occurred_at', `${start_date}T00:00:00.000Z`);
         if (end_date)   q = q.lte('occurred_at', `${end_date}T23:59:59.999Z`);
