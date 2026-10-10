@@ -39,8 +39,14 @@ qualified appointments needed. Everything derived is computed in
 - GHL workflow "One Call: Client's Numbers Submitted" must point at the
   **numbers** webhook above — not the territory one, which would mint a second
   doc with a 35-mile default radius.
-- Replacing is one-shot per tag: after the first fill the tags are gone, so a
-  second edit needs the doc re-created.
+- **2026-10-10 — numbers can be changed after the first fill.** The route
+  remembers what it last wrote into each doc (`sales_call_doc_fills`, keyed by
+  doc id, applied to V1 and V2 via `scripts/migrate-sales-call-doc-fills.mjs`).
+  First run swaps the `{{tags}}`; later runs swap the previous values for the
+  new ones. Every value carries an invisible field-specific suffix (zero-width
+  chars, `fieldMarker()`), because a bare "1" would match every 1 in the zip
+  lists. Docs filled before this change have no markers and no stored row, so
+  they can't be updated in place — re-create them (or fix by hand).
 
 ---
 
