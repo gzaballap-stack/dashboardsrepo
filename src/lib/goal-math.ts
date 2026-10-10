@@ -13,6 +13,15 @@ export type GoalTag = typeof GOAL_TAGS[number];
 
 export const DEFAULT_CLOSE_RATE = 0.2;
 
+// Each value written into the doc carries an invisible, field-specific suffix
+// (zero-width spaces / non-joiners). It's what lets a later run find exactly
+// that value again — "1" on its own would match every 1 in the zip lists —
+// without touching the formatting around it.
+export function fieldMarker(tag: GoalTag): string {
+  const i = GOAL_TAGS.indexOf(tag) + 1;           // 1..7
+  return [4, 2, 1].map(b => (i & b ? '\u200C' : '\u200B')).join('');
+}
+
 // "$1,250,000", "1.2m", "500k", "35%", "0.35" → number (or null when blank/junk)
 export function parseAmount(raw: unknown): number | null {
   if (raw == null) return null;

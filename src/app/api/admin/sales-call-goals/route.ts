@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { validateWebhookSecret } from '@/lib/api-auth';
-import { computeGoals, parseDocId, GOAL_TAGS } from '@/lib/goal-math';
+import { createServiceClient } from '@/lib/supabase';
+import { computeGoals, parseDocId, fieldMarker, GOAL_TAGS, type GoalTag } from '@/lib/goal-math';
 
 type GHLCustomField = { key?: string; id?: string; value: string };
 
@@ -85,10 +86,30 @@ export async function POST(req: Request) {
   const doc_id = parseDocId(docRaw);
 
   // Make's Google Docs "Replace a Text in a Document" takes old/new text pairs.
-  const replacements = GOAL_TAGS.map(t => ({
-    find: `{{${t}}}`, replace: result.doc[t],
-    oldText: `{{${t}}}`, newText: result.doc[t],
-  }));
+  // First fill: swap the {{tag}}. Later fills: swap the value written last
+  // time (remembered per doc, carrying its invisible marker) for the new one.
+  const service = createServiceClient();
+  let previous: Record<string, string> | null = null;
+  if (doc_id) {
+    const { data } = await service
+      .from('sales_call_doc_fills').select('rendered').eq('doc_id', doc_id).maybeSingle();
+    previous = (data?.rendered as Record<string, string> | undefined) ?? null;
+  }
+  const rendered = Object.fromEntries(
+    GOAL_TAGS.map(t => [t, result.doc[t].startsWith('{{') ? result.doc[t] : result.doc[t] + fieldMarker(t)])
+  ) as Record<GoalTag, string>;
+  const replacements = GOAL_TAGS.map(t => {
+    const oldText = previous?.[t] && !previous[t].startsWith('{{') ? previous[t] : `{{${t}}}`;
+    return { find: oldText, replace: rendered[t], oldText, newText: rendered[t] };
+  });
+  const changed = !previous || GOAL_TAGS.some(t => previous![t] !== rendered[t]);
+
+  if (doc_id && result.complete) {
+    await service.from('sales_call_doc_fills').upsert(
+      { doc_id, contact_id, rendered, filled_at: new Date().toISOString() },
+      { onConflict: 'doc_id' }
+    );
+  }
 
   return NextResponse.json({
     success: true,
@@ -98,6 +119,8 @@ export async function POST(req: Request) {
     contact_source,
     doc_id,
     doc_url: doc_id ? `https://docs.google.com/document/d/${doc_id}/edit` : null,
+    first_fill: !previous,
+    changed,
     ...result.doc,
     numbers: result.numbers,
     replacements,
