@@ -3,7 +3,7 @@ import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { whoopConfigured } from '@/lib/whoop';
 
 const DAY_COLS = 'day, cycle_id, recovery_score, hrv_ms, resting_hr, spo2, skin_temp_c, '
-  + 'sleep_hours, nap_hours, sleep_performance, sleep_efficiency, sleep_consistency, respiratory_rate, '
+  + 'sleep_hours, nap_hours, sleep_performance, sleep_efficiency, sleep_consistency, respiratory_rate, sleep_need_hours, sleep_debt_hours, '
   + 'sleep_stages, strain, kilojoules, avg_hr, max_hr, workouts, scored, synced_at';
 
 // Connection status and the stored days. Tokens never leave the server.

@@ -77,6 +77,9 @@ await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_health_
 await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_whoop.sql'), 'utf-8'),
   'Whoop connection + days');
 
+await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_whoop_sleep_need.sql'), 'utf-8'),
+  'Whoop sleep need + debt columns');
+
 const check = await runSQL(`
   select
     (select count(*) from information_schema.tables

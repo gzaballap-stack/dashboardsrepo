@@ -105,6 +105,8 @@ export type WhoopDay = {
   sleep_efficiency?: number | null;
   sleep_consistency?: number | null;
   respiratory_rate?: number | null;
+  sleep_need_hours?: number | null;
+  sleep_debt_hours?: number | null;
   sleep_stages?: { light: number | null; deep: number | null; rem: number | null; awake: number | null } | null;
   strain: number | null;
   kilojoules?: number | null;
@@ -122,6 +124,7 @@ export type WhoopWeek = {
   resting_hr: number | null;
   sleep_hours: number | null;
   sleep_performance: number | null;
+  sleep_debt: number | null;      // average hours of debt carried, per night
   strain: number | null;          // average per day
   strain_total: number | null;    // the week's sum, since strain accumulates
   workouts: number;
@@ -162,6 +165,7 @@ export function whoopWeeks(days: WhoopDay[]): Map<string, WhoopWeek> {
       resting_hr: mean(ds.map(d => d.resting_hr)),
       sleep_hours: mean(ds.map(d => d.sleep_hours)),
       sleep_performance: mean(ds.map(d => d.sleep_performance)),
+      sleep_debt: mean(ds.map(d => d.sleep_debt_hours)),
       strain: mean(strains),
       strain_total: strains.length ? Math.round(strains.reduce((a, b) => a + b, 0) * 10) / 10 : null,
       workouts: ds.reduce((n, d) => n + (d.workouts?.length ?? 0), 0),

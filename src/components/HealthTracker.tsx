@@ -1699,6 +1699,7 @@ function Progress({ logged, exercises, unit, lengthUnit, whoopByWeek }: {
       .filter((p): p is { x: string; y: number } => p.y !== null && Number.isFinite(p.y));
   const recoverySeries = wseries(w => w.recovery);
   const sleepSeries = wseries(w => w.sleep_hours);
+  const debtSeries = wseries(w => w.sleep_debt);
   const hrvSeries = wseries(w => w.hrv);
   const rhrSeries = wseries(w => w.resting_hr);
   const strainSeries = wseries(w => w.strain);
@@ -1713,6 +1714,7 @@ function Progress({ logged, exercises, unit, lengthUnit, whoopByWeek }: {
           <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", marginBottom: 12 }}>
             <Stat label="Recovery" unit="%" {...ends(recoverySeries)} />
             <Stat label="Sleep" unit="h / night" {...ends(sleepSeries)} />
+            <Stat label="Sleep debt" unit="h" lowerIsBetter {...ends(debtSeries)} />
             <Stat label="HRV" unit="ms" {...ends(hrvSeries)} />
             <Stat label="Resting HR" unit="bpm" lowerIsBetter {...ends(rhrSeries)} />
             <Stat label="Strain" unit="/ day" {...ends(strainSeries)} />
@@ -2975,6 +2977,7 @@ function WhoopTab({ status, notice, syncing, year, setYear, month, setMonth, thi
                   <span style={{ marginLeft: "auto", display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: MUTED }}>
                     <span>Recovery <b style={{ color: recoveryColor(wk.recovery) }}>{wk.recovery == null ? "—" : `${fmt(wk.recovery, 0)}%`}</b></span>
                     <span>Sleep <b style={{ color: INK }}>{wk.sleep_hours == null ? "—" : `${fmt(wk.sleep_hours, 1)}h`}</b></span>
+                    <span>Debt <b style={{ color: wk.sleep_debt != null && wk.sleep_debt >= 1 ? "#b4472e" : INK }}>{wk.sleep_debt == null ? "—" : `${fmt(wk.sleep_debt, 1)}h`}</b></span>
                     <span>Strain <b style={{ color: INK }}>{wk.strain == null ? "—" : fmt(wk.strain, 1)}</b></span>
                     <span>HRV <b style={{ color: INK }}>{wk.hrv == null ? "—" : fmt(wk.hrv, 0)}</b></span>
                     <span>RHR <b style={{ color: INK }}>{wk.resting_hr == null ? "—" : fmt(wk.resting_hr, 0)}</b></span>
@@ -3093,6 +3096,9 @@ function WhoopDaySheet({ day, onClose }: { day: WhoopDay; onClose: () => void })
 
       <WhoopHead>Sleep</WhoopHead>
       <WhoopRow label="Asleep" value={day.sleep_hours} unit="h" />
+      <WhoopRow label="Needed" value={day.sleep_need_hours} unit="h" />
+      <WhoopRow label="Sleep debt" value={day.sleep_debt_hours} unit="h"
+        color={day.sleep_debt_hours != null && day.sleep_debt_hours >= 1 ? "#b4472e" : undefined} />
       {day.nap_hours != null && day.nap_hours > 0 && <WhoopRow label="Naps" value={day.nap_hours} unit="h" />}
       <WhoopRow label="Sleep performance" value={day.sleep_performance} unit="%" />
       <WhoopRow label="Efficiency" value={day.sleep_efficiency} unit="%" />

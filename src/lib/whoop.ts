@@ -204,6 +204,12 @@ type Sleep = {
     };
     sleep_performance_percentage?: number; sleep_efficiency_percentage?: number;
     sleep_consistency_percentage?: number; respiratory_rate?: number;
+    // Whoop's sleep need for the night: a baseline plus what recent strain and
+    // carried-over debt add, minus what a nap took off (that one is negative).
+    sleep_needed?: {
+      baseline_milli?: number; need_from_sleep_debt_milli?: number;
+      need_from_recent_strain_milli?: number; need_from_recent_nap_milli?: number;
+    };
   } | null;
 };
 type Workout = {
@@ -230,6 +236,7 @@ export type DayRow = {
   sleep_hours: number | null; nap_hours: number | null;
   sleep_performance: number | null; sleep_efficiency: number | null; sleep_consistency: number | null;
   respiratory_rate: number | null;
+  sleep_need_hours: number | null; sleep_debt_hours: number | null;
   sleep_stages: { light: number | null; deep: number | null; rem: number | null; awake: number | null } | null;
   strain: number | null; kilojoules: number | null; avg_hr: number | null; max_hr: number | null;
   workouts: { sport: string; strain: number | null; minutes: number | null; start: string; avg_hr: number | null; max_hr: number | null }[];
@@ -272,6 +279,12 @@ export function assembleDays(userId: string, cycles: Cycle[], recoveries: Recove
     const awake = stages?.total_awake_time_milli;
     const asleep = typeof inBed === 'number' && typeof awake === 'number' ? inBed - awake : undefined;
 
+    const need = main?.score?.sleep_needed;
+    const needMilli = need
+      ? (need.baseline_milli ?? 0) + (need.need_from_sleep_debt_milli ?? 0)
+        + (need.need_from_recent_strain_milli ?? 0) + (need.need_from_recent_nap_milli ?? 0)
+      : undefined;
+
     const napMilli = naps.reduce((n, s) => {
       const st = s.score?.stage_summary;
       const bed = st?.total_in_bed_time_milli, aw = st?.total_awake_time_milli;
@@ -305,6 +318,8 @@ export function assembleDays(userId: string, cycles: Cycle[], recoveries: Recove
       sleep_efficiency: num(main?.score?.sleep_efficiency_percentage),
       sleep_consistency: num(main?.score?.sleep_consistency_percentage),
       respiratory_rate: num(main?.score?.respiratory_rate),
+      sleep_need_hours: hours(needMilli),
+      sleep_debt_hours: hours(need?.need_from_sleep_debt_milli),
       sleep_stages: stages ? {
         light: hours(stages.total_light_sleep_time_milli),
         deep: hours(stages.total_slow_wave_sleep_time_milli),
