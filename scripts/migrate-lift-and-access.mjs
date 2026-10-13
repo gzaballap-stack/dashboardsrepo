@@ -74,10 +74,13 @@ await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_user_fe
 await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_health_plans.sql'), 'utf-8'),
   'Diet plan + gym split columns');
 
+await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_whoop.sql'), 'utf-8'),
+  'Whoop connection + days');
+
 const check = await runSQL(`
   select
     (select count(*) from information_schema.tables
-      where table_schema = 'public' and table_name in ('lift_entries','lift_settings')) as lift_tables,
+      where table_schema = 'public' and table_name in ('lift_entries','lift_settings','whoop_connections','whoop_days')) as lift_tables,
     (select count(*) from information_schema.columns
       where table_schema = 'public' and table_name = 'profiles' and column_name = 'allowed_views') as access_column,
     (select count(*) from profiles where allowed_views is not null) as restricted_accounts;

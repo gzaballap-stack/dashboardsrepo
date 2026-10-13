@@ -77,6 +77,7 @@ export function sanitizeViews(input: unknown): FeatureId[] | null {
 // data: client list, alerts, auth).
 const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/lift-log",           features: ["lift_tracker"] },
+  { prefix: "/api/whoop",              features: ["lift_tracker"] },
   { prefix: "/api/profit-loss",        features: ["profit_loss"] },
   { prefix: "/api/tasks",              features: ["task_board"] },
   { prefix: "/api/zip-",               features: ["zip_tool"] },

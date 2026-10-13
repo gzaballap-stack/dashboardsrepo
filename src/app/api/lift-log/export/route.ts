@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { mergeExerciseNames, activeProgrammeExercises } from '@/lib/health-tracker';
+import { mergeExerciseNames, activeProgrammeExercises, whoopWeeks, type WhoopDay } from '@/lib/health-tracker';
 
 // Read-only export of one person's weekly health log, addressed by their share token.
 // Public by design: the token is the credential, so it can be pasted into a
@@ -81,9 +81,26 @@ export async function GET(req: Request) {
     const diet = withActiveFlags(settings.diet_plan, 'plans');
     const split = withActiveFlags(settings.split_plan, 'programmes');
 
+    // Whoop, if connected: one row per day and the same rolled into weeks keyed
+    // by Monday, so a reader can set a week's recovery beside its weight.
+    const { data: whoopDays } = await service
+      .from('whoop_days')
+      .select('day, recovery_score, hrv_ms, resting_hr, spo2, skin_temp_c, sleep_hours, nap_hours, '
+        + 'sleep_performance, sleep_efficiency, sleep_consistency, respiratory_rate, sleep_stages, '
+        + 'strain, kilojoules, avg_hr, max_hr, workouts, scored')
+      .eq('user_id', settings.user_id)
+      .order('day', { ascending: true });
+    const whoop = (whoopDays ?? []) as unknown as WhoopDay[];
+
     return NextResponse.json({
       unit, length_unit: lengthUnit, exercises,
       goal: settings.goal_note ?? null,
+      whoop: {
+        connected: whoop.length > 0,
+        note: 'A Whoop day starts when you wake; the night before belongs to it. weeks[] are averages by the Monday of that week.',
+        days: whoop,
+        weeks: [...whoopWeeks(whoop).values()].sort((a, b) => a.week_start.localeCompare(b.week_start)),
+      },
       // Named up front. Which plan is being run was only knowable by matching
       // `activeId` against a list of ids, which is a step a reader can get
       // wrong — and getting it wrong means coaching the wrong plan.

@@ -159,6 +159,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `calendar` | Calendar panel — fetches each user's private Google Calendar iCal feed server-side and parses it with `src/lib/ics.ts`. Feed URLs are secrets: stored in `calendar_feeds`, never returned to the browser. |
 | `task-templates/*` | Task Board **Weekly Non-Negotiables** — the templates, `materialize` (turns them into that week's task rows, idempotent on `(template_id, template_date)`), and `counts` (live call lists from `b2b_events`). |
 | `lift-log/*` | Health Tracker — weekly log, diet/split plans, and the public token-based CSV/JSON export |
+| `whoop/*` | Health Tracker **Whoop** connection — `connect` → OAuth → `callback`, `sync` (POST, re-reads recent days), `GET` status + days, `DELETE` disconnect. Tokens in `whoop_connections` (server-only), days in `whoop_days`. Day = morning you woke. See `NOTES.md` 2026-10-13. |
 | `profit-loss`, `profit-loss/clients` | **Profit and Loss** (Payments menu) — one row per line of a month (client payment, business expense, personal expense) in `pnl_lines`, scoped to the signed-in user. Totals, the Overview and the Clients tab are all summed from those lines in the browser. Client details (company, contact…) live in `pnl_clients`, tied to the lines by name. See `NOTES.md` 2026-10-04/05. |
 | `sales-calls` | **Sales Tracker** (TM Dashboard) — Tomsi Media's sales-call log in `sales_calls`, shared by everyone with TM access. See `NOTES.md` 2026-10-04 (Sales Tracker). |
 | `me` | Who is signed in and which features they're allowed to open |
@@ -295,6 +296,7 @@ Census fetching in `src/lib/census.ts` (needs `CENSUS_API_KEY`).
 | `ANTHROPIC_API_KEY` | AI Campaign Chat (unset by default) |
 | `GHL_API_KEY` | GoHighLevel Private Integration token for the **client** account — reads per-contact ad attribution |
 | `GHL_API_KEY_B2B` | Private Integration token for the **Tomsi Media** sub-account (`jdBERcRjjBJ8dkPT9AOu`). B2B attribution — live in the B2B webhook and via `pull_b2b_attribution`. See `NOTES.md` 2026-09-28 |
+| `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` | Health Tracker Whoop connection (personal developer app). Optional `WHOOP_REDIRECT_URI` to override the forwarded-host callback URL. Unset = the Whoop tab says "not set up" |
 | `META_MANAGEMENT_TOKEN` | Optional. A Meta system-user token with `ads_management` — lets the Creative Hub rename ads in Meta to `<code> <title>`. Unset = buttons explain how to do it by hand |
 | `META_ACCESS_TOKEN` | Creative & Copy Hub previews (all client accounts) and the Meta B2B report (`meta-b2b-report`) — the long-lived token the Make spend scenarios use. Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_DEMO_EVENT` (legacy `META_KEPT_INTRO_EVENT` still works) |
 
@@ -314,7 +316,8 @@ Never commit `.env*` — they're gitignored. Production values live in Railway.
 | Database schema | `supabase/schema.sql` (+ `supabase/migrations/`) |
 | Creative & Copy Hub (library, timeline, detail drawer) | `src/components/CreativeHub.tsx`, `src/lib/creative-hub.ts`, `src/lib/creative-key.ts` |
 | Per-user feature access | `src/lib/feature-access.ts` (+ `src/middleware.ts`, Settings > Users) |
-| Health Tracker (log, diet plan, gym split) | `src/components/HealthTracker.tsx` |
+| Health Tracker (log, diet plan, gym split, Whoop tab) | `src/components/HealthTracker.tsx`, `src/lib/health-tracker.ts` |
+| Whoop OAuth, token refresh, day assembly | `src/lib/whoop.ts`, `src/app/api/whoop/` |
 | Profit and Loss (month sheet, overview, clients, client details) | `src/components/ProfitLoss.tsx`, `src/app/api/profit-loss/` |
 | Calendar (a panel inside the Task Board) + iCal parsing | `src/components/CalendarView.tsx`, `src/lib/ics.ts` |
 | Env switching | `scripts/switch-env.js` |

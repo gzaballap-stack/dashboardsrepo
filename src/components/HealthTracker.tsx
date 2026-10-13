@@ -1,16 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { mergeExerciseNames, activeProgrammeExercises, parseDecimal } from "@/lib/health-tracker";
+import {
+  mergeExerciseNames, activeProgrammeExercises, parseDecimal,
+  whoopWeeks, type WhoopDay, type WhoopWeek,
+} from "@/lib/health-tracker";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Health Tracker
 
-   Four tabs over one person's data:
+   Five tabs over one person's data:
      Calendar  — the weekly log. One row per week, keyed to that week's Monday.
      Progress  — the same rows read back as stats and charts.
      Diet      — a standing daily eating plan; its macros are summed from the food.
      Split     — a standing weekly training plan.
+     Whoop     — recovery, sleep and strain pulled from Whoop, one row per day,
+                 shown by week. Read-only: Whoop is the source. Each week's
+                 averages also sit on the calendar cards and in Progress.
 
    The log is rows in `lift_entries`. The two plans are documents on that user's
    `lift_settings` row: they describe intent, not history, so they are edited in
@@ -557,14 +563,25 @@ const BTN_QUIET: React.CSSProperties = {
 
 /* ── the tool ─────────────────────────────────────────────────────────────── */
 
-type Tab = "calendar" | "progress" | "diet" | "split";
+type Tab = "calendar" | "progress" | "diet" | "split" | "whoop";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "calendar", label: "Calendar" },
   { id: "progress", label: "Progress" },
   { id: "diet", label: "Diet" },
   { id: "split", label: "Split" },
+  { id: "whoop", label: "Whoop" },
 ];
+
+type WhoopStatus = {
+  configured: boolean;
+  connected: boolean;
+  connected_at?: string | null;
+  last_synced_at?: string | null;
+  syncing?: boolean;
+  last_error?: string | null;
+  days: WhoopDay[];
+};
 
 export default function HealthTracker() {
   const thisMonday = useMemo(() => mondayOf(new Date()), []);
@@ -582,6 +599,67 @@ export default function HealthTracker() {
 
   const [openWeek, setOpenWeek] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Whoop is loaded apart from the log so a Whoop hiccup never blanks the
+  // tracker. `null` until the first answer comes back.
+  const [whoop, setWhoop] = useState<WhoopStatus | null>(null);
+  const [whoopNotice, setWhoopNotice] = useState("");
+  const [whoopSyncing, setWhoopSyncing] = useState(false);
+  const autoSynced = useRef(false);
+
+  const loadWhoop = useCallback(async () => {
+    try {
+      const r = await fetch("/api/whoop");
+      if (!r.ok) return;
+      const d = await r.json();
+      setWhoop({ configured: !!d.configured, connected: !!d.connected, connected_at: d.connected_at ?? null,
+        last_synced_at: d.last_synced_at ?? null, syncing: !!d.syncing, last_error: d.last_error ?? null,
+        days: Array.isArray(d.days) ? d.days : [] });
+    } catch { /* leave as is */ }
+  }, []);
+
+  const syncWhoop = useCallback(async (days?: number) => {
+    setWhoopSyncing(true);
+    try {
+      const r = await fetch("/api/whoop/sync", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(days ? { days } : {}),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok && r.status !== 409) setWhoopNotice(d.error ?? "Whoop sync failed");
+      else setWhoopNotice("");
+    } catch {
+      setWhoopNotice("Whoop sync failed — no connection");
+    }
+    await loadWhoop();
+    setWhoopSyncing(false);
+  }, [loadWhoop]);
+
+  // Back from Whoop's approval screen: land on the tab and say how it went.
+  useEffect(() => {
+    const apply = () => {
+      const p = new URLSearchParams(window.location.search);
+      const w = p.get("whoop");
+      if (!w) return;
+      setTab("whoop");
+      if (w === "connected") setWhoopNotice("Whoop connected. Pulling in your last three months.");
+      else if (w === "error") setWhoopNotice(`Couldn't connect Whoop: ${p.get("reason") ?? "unknown error"}`);
+      p.delete("whoop"); p.delete("reason");
+      const qs = p.toString();
+      window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    };
+    apply();
+  }, []);
+
+  // A routine refresh whenever the tracker opens and the last one is over
+  // three hours old. There is no scheduler; the user opens this most days.
+  useEffect(() => {
+    if (!whoop?.connected || autoSynced.current || whoop.syncing) return;
+    const last = whoop.last_synced_at ? new Date(whoop.last_synced_at).getTime() : 0;
+    if (Date.now() - last < 3 * 3_600_000) return;
+    autoSynced.current = true;
+    void syncWhoop();
+  }, [whoop, syncWhoop]);
 
   // The pinned header's height, so the calendar's own controls can pin directly
   // beneath it. Measured rather than assumed — it wraps to two lines on a phone.
@@ -654,7 +732,9 @@ export default function HealthTracker() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); loadWhoop(); }, [load, loadWhoop]);
+
+  const whoopByWeek = useMemo(() => whoopWeeks(whoop?.days ?? []), [whoop?.days]);
 
   const byWeek = useMemo(() => {
     const m = new Map<string, Entry>();
@@ -840,14 +920,30 @@ export default function HealthTracker() {
       {tab === "calendar" && (
         <Calendar
           year={year} setYear={setYear} month={month} setMonth={setMonth}
-          weeks={weeks} byWeek={byWeek}
+          weeks={weeks} byWeek={byWeek} whoopByWeek={whoopByWeek}
           thisMonday={iso(thisMonday)} unit={unit} lengthUnit={lengthUnit}
           onOpen={setOpenWeek} stickyTop={narrow ? headerH : null}
         />
       )}
 
       {tab === "progress" && (
-        <Progress logged={logged} exercises={exercises} unit={unit} lengthUnit={lengthUnit} />
+        <Progress logged={logged} exercises={exercises} unit={unit} lengthUnit={lengthUnit}
+          whoopByWeek={whoopByWeek} />
+      )}
+
+      {tab === "whoop" && (
+        <WhoopTab
+          status={whoop} notice={whoopNotice} syncing={whoopSyncing}
+          year={year} setYear={setYear} month={month} setMonth={setMonth}
+          thisMonday={iso(thisMonday)}
+          onSync={() => syncWhoop()}
+          onBackfill={() => syncWhoop(180)}
+          onDisconnect={async () => {
+            await fetch("/api/whoop", { method: "DELETE" });
+            setWhoopNotice("");
+            await loadWhoop();
+          }}
+        />
       )}
 
       {tab === "diet" && settings && (
@@ -908,9 +1004,10 @@ const STICKY_BAR: React.CSSProperties = {
   paddingTop: 8,
 };
 
-function WeekCard({ monday, entry, isNow, big, unit, lengthUnit, onOpen, cardRef }: {
+function WeekCard({ monday, entry, whoop, isNow, big, unit, lengthUnit, onOpen, cardRef }: {
   monday: Date;
   entry: Entry | undefined;
+  whoop?: WhoopWeek;
   isNow: boolean;
   big: boolean;
   unit: string;
@@ -996,6 +1093,25 @@ function WeekCard({ monday, entry, isNow, big, unit, lengthUnit, onOpen, cardRef
         </div>
       )}
 
+      {/* What Whoop saw that week, so recovery sits right next to the weight
+          it might explain. */}
+      {big && whoop && (whoop.recovery != null || whoop.sleep_hours != null || whoop.strain != null) && (
+        <span style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 2 }}>
+          {([
+            ["Recovery", whoop.recovery, "%", recoveryColor(whoop.recovery)],
+            ["Sleep", whoop.sleep_hours, "h", "#3a3a3a"],
+            ["Strain", whoop.strain, "", "#3a3a3a"],
+          ] as const).map(([label, value, suffix, color]) => (
+            <span key={label} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: FAINT }}>{label}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: value == null ? "rgba(0,0,0,0.2)" : color }}>
+                {value == null ? "—" : `${fmt(value, label === "Recovery" ? 0 : 1)}${suffix}`}
+              </span>
+            </span>
+          ))}
+        </span>
+      )}
+
       {big && entry?.notes && (
         <span style={{
           fontSize: 12, color: "#6b6b6b", lineHeight: 1.45, marginTop: 2,
@@ -1012,13 +1128,14 @@ function WeekCard({ monday, entry, isNow, big, unit, lengthUnit, onOpen, cardRef
   );
 }
 
-function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, unit, lengthUnit, onOpen, stickyTop }: {
+function Calendar({ year, setYear, month, setMonth, weeks, byWeek, whoopByWeek, thisMonday, unit, lengthUnit, onOpen, stickyTop }: {
   year: number;
   setYear: (y: number) => void;
   month: number;
   setMonth: (m: number) => void;
   weeks: Date[];
   byWeek: Map<string, Entry>;
+  whoopByWeek: Map<string, WhoopWeek>;
   thisMonday: string;
   unit: string;
   lengthUnit: string;
@@ -1139,6 +1256,7 @@ function Calendar({ year, setYear, month, setMonth, weeks, byWeek, thisMonday, u
                 key={iso(w)}
                 monday={w}
                 entry={byWeek.get(iso(w))}
+                whoop={whoopByWeek.get(iso(w))}
                 isNow={iso(w) === thisMonday}
                 big={big}
                 unit={unit}
@@ -1534,10 +1652,12 @@ function EntrySheet({ weekStart, entry, history, exercises, unit, lengthUnit, on
 
 /* ── progress ─────────────────────────────────────────────────────────────── */
 
-function Progress({ logged, exercises, unit, lengthUnit }: {
+function Progress({ logged, exercises, unit, lengthUnit, whoopByWeek }: {
   logged: Entry[]; exercises: string[]; unit: string; lengthUnit: string;
+  whoopByWeek: Map<string, WhoopWeek>;
 }) {
-  if (logged.length === 0) {
+  const whoopRows = [...whoopByWeek.values()].sort((a, b) => a.week_start.localeCompare(b.week_start));
+  if (logged.length === 0 && whoopRows.length === 0) {
     return (
       <div style={{
         background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18,
@@ -1570,8 +1690,44 @@ function Progress({ logged, exercises, unit, lengthUnit }: {
 
   const weekSpan = logged.length;
 
+  const wlabel = (w: WhoopWeek) => {
+    const d = parseISO(w.week_start);
+    return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
+  };
+  const wseries = (pick: (w: WhoopWeek) => number | null) =>
+    whoopRows.map(w => ({ x: wlabel(w), y: pick(w) }))
+      .filter((p): p is { x: string; y: number } => p.y !== null && Number.isFinite(p.y));
+  const recoverySeries = wseries(w => w.recovery);
+  const sleepSeries = wseries(w => w.sleep_hours);
+  const hrvSeries = wseries(w => w.hrv);
+  const rhrSeries = wseries(w => w.resting_hr);
+  const strainSeries = wseries(w => w.strain);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+      {whoopRows.length > 0 && (
+        <section>
+          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: FAINT, marginBottom: 10 }}>
+            Whoop · weekly averages · {whoopRows.length} week{whoopRows.length === 1 ? "" : "s"}
+          </p>
+          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", marginBottom: 12 }}>
+            <Stat label="Recovery" unit="%" {...ends(recoverySeries)} />
+            <Stat label="Sleep" unit="h / night" {...ends(sleepSeries)} />
+            <Stat label="HRV" unit="ms" {...ends(hrvSeries)} />
+            <Stat label="Resting HR" unit="bpm" lowerIsBetter {...ends(rhrSeries)} />
+            <Stat label="Strain" unit="/ day" {...ends(strainSeries)} />
+          </div>
+          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
+            <Panel title="Recovery" subtitle="Weekly average, %"><Chart points={recoverySeries} unit="%" height={150} /></Panel>
+            <Panel title="Sleep" subtitle="Hours asleep a night, weekly average"><Chart points={sleepSeries} unit="h" height={150} /></Panel>
+            <Panel title="HRV" subtitle="ms, weekly average"><Chart points={hrvSeries} unit="ms" height={150} /></Panel>
+            <Panel title="Resting heart rate" subtitle="bpm, weekly average"><Chart points={rhrSeries} unit="bpm" height={150} /></Panel>
+            <Panel title="Strain" subtitle="Daily strain, weekly average"><Chart points={strainSeries} unit="" height={150} /></Panel>
+          </div>
+        </section>
+      )}
+
+      {logged.length > 0 && (<>
       <section>
         <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: FAINT, marginBottom: 10 }}>
           Since you started · {weekSpan} week{weekSpan === 1 ? "" : "s"} logged
@@ -1634,6 +1790,7 @@ function Progress({ logged, exercises, unit, lengthUnit }: {
           </div>
         </section>
       )}
+      </>)}
     </div>
   );
 }
@@ -2653,6 +2810,325 @@ function WeeklyVolume({ prog }: { prog: SplitProgramme }) {
         </p>
       )}
     </div>
+  );
+}
+
+/* ── whoop ────────────────────────────────────────────────────────────────── */
+
+// Whoop's own bands: green from 67, yellow from 34, red below.
+function recoveryColor(r: number | null | undefined) {
+  if (r == null) return FAINT;
+  return r >= 67 ? "#1a7f4b" : r >= 34 ? "#b8860b" : "#b4472e";
+}
+
+function agoText(iso: string | null | undefined) {
+  if (!iso) return "never";
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const h = Math.round(mins / 60);
+  if (h < 48) return `${h} h ago`;
+  return `${Math.round(h / 24)} days ago`;
+}
+
+const WEEKDAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
+const WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+function WhoopTab({ status, notice, syncing, year, setYear, month, setMonth, thisMonday, onSync, onBackfill, onDisconnect }: {
+  status: WhoopStatus | null;
+  notice: string;
+  syncing: boolean;
+  year: number; setYear: (y: number) => void;
+  month: number; setMonth: (m: number) => void;
+  thisMonday: string;
+  onSync: () => void;
+  onBackfill: () => void;
+  onDisconnect: () => Promise<void>;
+}) {
+  const [openDay, setOpenDay] = useState<string | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+
+  const byDay = useMemo(() => {
+    const m = new Map<string, WhoopDay>();
+    for (const d of status?.days ?? []) m.set(d.day, d);
+    return m;
+  }, [status?.days]);
+
+  const weeks = useMemo(() => weeksOfYear(year).filter(w => w.getMonth() === month), [year, month]);
+  const byWeek = useMemo(() => whoopWeeks(status?.days ?? []), [status?.days]);
+  const today = iso(new Date());
+
+  const step = (n: number) => {
+    const d = new Date(year, month + n, 1);
+    setYear(d.getFullYear());
+    setMonth(d.getMonth());
+  };
+
+  const bad = /couldn|failed|expired|reconnect/i.test(notice);
+  const Notice = notice ? (
+    <p style={{
+      fontSize: 12, lineHeight: 1.5, padding: "9px 12px", borderRadius: 10, marginBottom: 14,
+      background: bad ? "rgba(180,71,46,0.08)" : "rgba(0,0,0,0.035)",
+      color: bad ? "#b4472e" : "#3a3a3a",
+    }}>
+      {notice}
+    </p>
+  ) : null;
+
+  if (!status) {
+    return <div style={{ padding: 32, fontSize: 13, color: FAINT }}>Checking Whoop…</div>;
+  }
+
+  if (!status.configured) {
+    return (
+      <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 48, textAlign: "center" }}>
+        <p style={{ fontSize: 14, fontWeight: 600, color: INK }}>Whoop isn&apos;t set up on this server yet</p>
+        <p style={{ fontSize: 12, color: FAINT, maxWidth: 420, margin: "6px auto 0" }}>
+          The Whoop app keys need adding to the server before anyone can connect.
+        </p>
+      </div>
+    );
+  }
+
+  if (!status.connected) {
+    return (
+      <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 40, textAlign: "center" }}>
+        {Notice}
+        <p style={{ fontSize: 15, fontWeight: 700, color: INK }}>Connect your Whoop</p>
+        <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55, maxWidth: 440, margin: "8px auto 0" }}>
+          Recovery, sleep, HRV, resting heart rate and strain, pulled in each day and
+          laid out by week. Each week&apos;s averages also land on your calendar cards,
+          next to your weight. Whoop will ask you to sign in and approve read access —
+          nothing is ever written back.
+        </p>
+        <a href="/api/whoop/connect" style={{ ...BTN_PRIMARY, display: "inline-block", marginTop: 18, textDecoration: "none" }}>
+          Connect Whoop
+        </a>
+      </div>
+    );
+  }
+
+  const needsReconnect = !!status.last_error && /reconnect|expired/i.test(status.last_error);
+
+  return (
+    <div>
+      {Notice}
+      {status.last_error && !notice && (
+        <p style={{
+          fontSize: 12, lineHeight: 1.5, padding: "9px 12px", borderRadius: 10, marginBottom: 14,
+          background: "rgba(180,71,46,0.08)", color: "#b4472e",
+        }}>
+          {status.last_error}
+          {needsReconnect && <> — <a href="/api/whoop/connect" style={{ fontWeight: 600, color: "#b4472e" }}>reconnect</a></>}
+        </p>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={() => step(-1)} aria-label="Previous month" style={{ ...BTN_QUIET, padding: "6px 12px" }}>‹</button>
+          <span style={{ fontSize: 15, fontWeight: 700, color: INK, textAlign: "center", minWidth: 132 }}>
+            {MONTHS[month]} {year}
+          </span>
+          <button onClick={() => step(1)} aria-label="Next month" style={{ ...BTN_QUIET, padding: "6px 12px" }}>›</button>
+        </div>
+        <span style={{ fontSize: 11, color: FAINT, marginLeft: "auto" }}>
+          {syncing || status.syncing ? "Syncing…" : `Synced ${agoText(status.last_synced_at)}`}
+        </span>
+        <button onClick={onSync} disabled={syncing || !!status.syncing} style={{ ...BTN_QUIET, opacity: syncing ? 0.6 : 1 }}>
+          Sync now
+        </button>
+      </div>
+
+      <p style={{ fontSize: 11, color: FAINT, marginBottom: 14, lineHeight: 1.5 }}>
+        A Whoop day starts when you wake, so last night&apos;s sleep sits on this morning.
+        Tap a day for everything Whoop recorded.
+      </p>
+
+      {weeks.length === 0 && (
+        <p style={{ fontSize: 12, color: FAINT, padding: "24px 0" }}>No weeks start in this month.</p>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {weeks.map(monday => {
+          const key = iso(monday);
+          const wk = byWeek.get(key);
+          const isNow = key === thisMonday;
+          const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+          const any = days.some(d => byDay.has(iso(d)));
+          return (
+            <div key={key} style={{
+              background: any ? CARD : "rgba(0,0,0,0.018)",
+              border: any ? BORDER : "1px dashed rgba(0,0,0,0.13)",
+              boxShadow: any ? SHADOW : "none",
+              outline: isNow ? `2px solid ${INK}` : "none", outlineOffset: isNow ? 1 : 0,
+              borderRadius: 18, padding: 16,
+            }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: any ? INK : FAINT }}>{weekLabel(monday)}</span>
+                {isNow && (
+                  <span style={{
+                    fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+                    padding: "2px 7px", borderRadius: 20, background: INK, color: "#ffffff",
+                  }}>This week</span>
+                )}
+                {wk && (
+                  <span style={{ marginLeft: "auto", display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: MUTED }}>
+                    <span>Recovery <b style={{ color: recoveryColor(wk.recovery) }}>{wk.recovery == null ? "—" : `${fmt(wk.recovery, 0)}%`}</b></span>
+                    <span>Sleep <b style={{ color: INK }}>{wk.sleep_hours == null ? "—" : `${fmt(wk.sleep_hours, 1)}h`}</b></span>
+                    <span>Strain <b style={{ color: INK }}>{wk.strain == null ? "—" : fmt(wk.strain, 1)}</b></span>
+                    <span>HRV <b style={{ color: INK }}>{wk.hrv == null ? "—" : fmt(wk.hrv, 0)}</b></span>
+                    <span>RHR <b style={{ color: INK }}>{wk.resting_hr == null ? "—" : fmt(wk.resting_hr, 0)}</b></span>
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gap: 6, gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
+                {days.map((d, i) => {
+                  const k = iso(d);
+                  const day = byDay.get(k);
+                  const future = k > today;
+                  return (
+                    <button key={k} onClick={() => day && setOpenDay(k)} disabled={!day}
+                      style={{
+                        padding: "8px 2px", borderRadius: 12, textAlign: "center", minWidth: 0, overflow: "hidden",
+                        background: day ? "rgba(0,0,0,0.028)" : "transparent",
+                        border: day ? "1px solid transparent" : "1px dashed rgba(0,0,0,0.10)",
+                        opacity: future ? 0.35 : 1, cursor: day ? "pointer" : "default",
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                      }}>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: FAINT }}>
+                        {WEEKDAY_LETTERS[i]} <span style={{ fontWeight: 500 }}>{d.getDate()}</span>
+                      </span>
+                      <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.05, letterSpacing: "-0.02em",
+                        color: day?.recovery_score == null ? "rgba(0,0,0,0.18)" : recoveryColor(day.recovery_score) }}>
+                        {day?.recovery_score == null ? "—" : fmt(day.recovery_score, 0)}
+                      </span>
+                      <span style={{ fontSize: 10, color: day?.sleep_hours == null ? "rgba(0,0,0,0.18)" : "#3a3a3a", whiteSpace: "nowrap" }}>
+                        {day?.sleep_hours == null ? "—" : `${fmt(day.sleep_hours, 1)}h`}
+                      </span>
+                      <span style={{ fontSize: 10, color: day?.strain == null ? "rgba(0,0,0,0.18)" : MUTED, whiteSpace: "nowrap" }}>
+                        {day?.strain == null ? "—" : fmt(day.strain, 1)}
+                      </span>
+                      {day && day.scored === false && (
+                        <span style={{ fontSize: 8.5, color: FAINT }}>scoring</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p style={{ fontSize: 9.5, color: FAINT, marginTop: 8 }}>recovery % · sleep · strain</p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 22 }}>
+        <button onClick={onBackfill} disabled={syncing} style={{ ...BTN_QUIET, fontSize: 12 }}>
+          Pull the last 6 months
+        </button>
+        <span style={{ flex: 1 }} />
+        {!confirmDisconnect ? (
+          <button onClick={() => setConfirmDisconnect(true)} style={{ ...BTN_QUIET, fontSize: 12, color: "#b4472e", background: "rgba(180,71,46,0.09)" }}>
+            Disconnect
+          </button>
+        ) : (
+          <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11.5, color: MUTED }}>Keeps the days already pulled.</span>
+            <button onClick={async () => { await onDisconnect(); setConfirmDisconnect(false); }}
+              style={{ ...BTN_QUIET, fontSize: 12, color: "#ffffff", background: "#b4472e" }}>
+              Yes, disconnect
+            </button>
+            <button onClick={() => setConfirmDisconnect(false)} style={{ ...BTN_QUIET, fontSize: 12 }}>Cancel</button>
+          </span>
+        )}
+      </div>
+
+      {openDay && byDay.get(openDay) && (
+        <WhoopDaySheet day={byDay.get(openDay)!} onClose={() => setOpenDay(null)} />
+      )}
+    </div>
+  );
+}
+
+function WhoopRow({ label, value, unit, color }: { label: string; value: number | null | undefined; unit?: string; color?: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "7px 0", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
+      <span style={{ fontSize: 12.5, color: MUTED }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 700, color: value == null ? "rgba(0,0,0,0.2)" : (color ?? INK) }}>
+        {value == null ? "—" : fmt(value, Number.isInteger(value) ? 0 : 1)}
+        {value != null && unit ? <span style={{ fontSize: 10, fontWeight: 500, color: FAINT }}> {unit}</span> : null}
+      </span>
+    </div>
+  );
+}
+
+function WhoopHead({ children }: { children: React.ReactNode }) {
+  return (
+    <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: FAINT, margin: "18px 0 4px" }}>
+      {children}
+    </p>
+  );
+}
+
+function WhoopDaySheet({ day, onClose }: { day: WhoopDay; onClose: () => void }) {
+  const d = parseISO(day.day);
+  const title = `${WEEKDAY_NAMES[(d.getDay() + 6) % 7]}, ${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
+  const kcal = day.kilojoules != null ? Math.round(day.kilojoules / 4.184) : null;
+
+  return (
+    <Sheet title={title} onClose={onClose}
+      footer={<><span style={{ flex: 1 }} /><button onClick={onClose} style={BTN_PRIMARY}>Done</button></>}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={{ fontSize: 42, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1, color: recoveryColor(day.recovery_score) }}>
+          {day.recovery_score == null ? "—" : fmt(day.recovery_score, 0)}
+        </span>
+        <span style={{ fontSize: 12, color: FAINT }}>% recovery{day.scored === false ? " · still scoring" : ""}</span>
+      </div>
+
+      <WhoopHead>Recovery</WhoopHead>
+      <WhoopRow label="HRV" value={day.hrv_ms} unit="ms" />
+      <WhoopRow label="Resting heart rate" value={day.resting_hr} unit="bpm" />
+      <WhoopRow label="Blood oxygen" value={day.spo2} unit="%" />
+      <WhoopRow label="Skin temperature" value={day.skin_temp_c} unit="°C" />
+
+      <WhoopHead>Sleep</WhoopHead>
+      <WhoopRow label="Asleep" value={day.sleep_hours} unit="h" />
+      {day.nap_hours != null && day.nap_hours > 0 && <WhoopRow label="Naps" value={day.nap_hours} unit="h" />}
+      <WhoopRow label="Sleep performance" value={day.sleep_performance} unit="%" />
+      <WhoopRow label="Efficiency" value={day.sleep_efficiency} unit="%" />
+      <WhoopRow label="Consistency" value={day.sleep_consistency} unit="%" />
+      <WhoopRow label="Respiratory rate" value={day.respiratory_rate} unit="/min" />
+      {day.sleep_stages && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 10 }}>
+          {([["Light", day.sleep_stages.light], ["Deep", day.sleep_stages.deep], ["REM", day.sleep_stages.rem], ["Awake", day.sleep_stages.awake]] as const).map(([l, v]) => (
+            <div key={l} style={{ padding: "8px 6px", borderRadius: 10, background: "rgba(0,0,0,0.035)", textAlign: "center" }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: FAINT }}>{l}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: v == null ? "rgba(0,0,0,0.2)" : INK }}>{v == null ? "—" : `${fmt(v, 1)}h`}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <WhoopHead>Strain</WhoopHead>
+      <WhoopRow label="Day strain" value={day.strain} />
+      <WhoopRow label="Calories burned" value={kcal} unit="kcal" />
+      <WhoopRow label="Average heart rate" value={day.avg_hr} unit="bpm" />
+      <WhoopRow label="Max heart rate" value={day.max_hr} unit="bpm" />
+
+      {(day.workouts?.length ?? 0) > 0 && (
+        <>
+          <WhoopHead>Workouts</WhoopHead>
+          {day.workouts!.map((w, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "7px 0", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
+              <span style={{ fontSize: 12.5, color: INK, fontWeight: 600 }}>{w.sport}</span>
+              <span style={{ fontSize: 11.5, color: MUTED, textAlign: "right" }}>
+                {w.minutes != null ? `${w.minutes} min` : ""}{w.strain != null ? ` · strain ${fmt(w.strain, 1)}` : ""}{w.avg_hr != null ? ` · ${fmt(w.avg_hr, 0)} bpm avg` : ""}
+              </span>
+            </div>
+          ))}
+        </>
+      )}
+    </Sheet>
   );
 }
 

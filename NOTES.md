@@ -479,6 +479,56 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ---
 
+## 2026-10-13 — Health Tracker: Whoop connection
+
+Fifth tab, **Whoop**: recovery, HRV, resting HR, SpO2, skin temp, sleep (hours,
+performance, efficiency, consistency, stages, naps), strain, calories and
+workouts, one row per day, shown by week. Read-only — Whoop is the source.
+
+**Connection is OAuth, the first in the app.** `/api/whoop/connect` sends the
+browser to Whoop with an 8-char `state` in an httpOnly cookie; `/api/whoop/
+callback` checks it, exchanges the code, stores tokens in `whoop_connections`
+(server-side only, never returned), fetches the profile, pulls 90 days and
+bounces to `/dashboard?whoop=connected` (the tracker reads that, opens the tab,
+strips the query). Redirect URI is built from `x-forwarded-proto/host` behind
+Railway, overridable with `WHOOP_REDIRECT_URI`. **The exact callback URL must be
+registered in the Whoop developer dashboard**: `https://app.tomsimedia.com/api/whoop/callback`.
+
+**Tokens rotate.** Access tokens last ~1h; a refresh returns a *new* refresh
+token and kills the old one, so a refresh is written to the row immediately and
+two syncs must never run at once — `sync_started_at` is a 2-minute lock
+(`runSync` throws `busy`). A dead refresh token (400/401 on refresh) sets
+`last_error` to "reconnect" wording; the tab shows a reconnect link.
+
+**Day rule.** A Whoop *cycle* runs wake→wake. The day is the local date of the
+cycle's start (its `timezone_offset` applied), so last night's sleep sits on
+this morning. Recovery and sleep attach to the day by `cycle_id`, workouts by
+their own local start date. `assembleDays` in `src/lib/whoop.ts` is pure and
+checked against fixtures (the scratchpad test covered timezone edges, naps,
+pending scores, week grouping). `sleep_hours` = in-bed minus awake, main sleep
+only; naps are separate. `scored=false` rows are kept and rewritten next sync.
+
+**No scheduler.** The tracker syncs on open if the last sync is >3h old, plus
+"Sync now" and "Pull the last 6 months". Routine sync re-reads the last 10 days
+because Whoop re-scores recent days. Rate limit is 100/min, 10k/day — a 90-day
+pull is ~15 calls.
+
+**Weekly roll-ups** (`whoopWeeks` in `src/lib/health-tracker.ts`, client-safe)
+key by the Monday of the day's week and appear on the calendar's big week cards
+(Recovery / Sleep / Strain), in Progress (five tiles + five charts), and in the
+share export under `whoop.weeks[]` alongside `whoop.days[]`.
+
+Env: `WHOOP_CLIENT_ID`, `WHOOP_CLIENT_SECRET` — set locally; **must be added to
+the V1 Railway service** (V2 can go without: the tab says "not set up"). The
+secret was pasted into a chat on 2026-10-13; rotate it in the Whoop dashboard
+when convenient. Migration `add_whoop.sql` applied to V1 and V2 on 2026-10-13.
+
+Disconnect deletes the connection row but keeps `whoop_days` — history is the
+user's, and reconnecting fills in from there. Not built: revoking at Whoop's end.
+
+---
+
+
 ## 2026-09-25 — Meta B2B report reshaped to the Hormozi-AI paste spec
 
 > **Later the same day: Slack dropped.** The user decided against a Slack bot,

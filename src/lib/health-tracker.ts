@@ -88,3 +88,84 @@ export function activeProgrammeExercises(splitPlan: unknown): string[] {
   }
   return names;
 }
+
+/* ── Whoop, folded into weeks ─────────────────────────────────────────────── */
+
+// The subset of a Whoop day the tracker reads. Mirrors `whoop_days`.
+export type WhoopDay = {
+  day: string;
+  recovery_score: number | null;
+  hrv_ms: number | null;
+  resting_hr: number | null;
+  spo2?: number | null;
+  skin_temp_c?: number | null;
+  sleep_hours: number | null;
+  nap_hours?: number | null;
+  sleep_performance?: number | null;
+  sleep_efficiency?: number | null;
+  sleep_consistency?: number | null;
+  respiratory_rate?: number | null;
+  sleep_stages?: { light: number | null; deep: number | null; rem: number | null; awake: number | null } | null;
+  strain: number | null;
+  kilojoules?: number | null;
+  avg_hr?: number | null;
+  max_hr?: number | null;
+  workouts?: { sport: string; strain: number | null; minutes: number | null; start: string; avg_hr: number | null; max_hr: number | null }[];
+  scored?: boolean;
+};
+
+export type WhoopWeek = {
+  week_start: string;
+  days: number;
+  recovery: number | null;
+  hrv: number | null;
+  resting_hr: number | null;
+  sleep_hours: number | null;
+  sleep_performance: number | null;
+  strain: number | null;          // average per day
+  strain_total: number | null;    // the week's sum, since strain accumulates
+  workouts: number;
+};
+
+// Monday of the week a YYYY-MM-DD falls in, as YYYY-MM-DD. Done on the date
+// parts alone so it can never slip a day across a timezone.
+export function weekStartOf(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const shift = (dt.getUTCDay() + 6) % 7;
+  dt.setUTCDate(dt.getUTCDate() - shift);
+  return dt.toISOString().slice(0, 10);
+}
+
+const mean = (xs: (number | null | undefined)[]) => {
+  const v = xs.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
+  return v.length ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 : null;
+};
+
+// Weekly averages, keyed by the week's Monday. A day lands on the week of the
+// morning it belongs to, so Sunday night's sleep counts for Monday's week —
+// the same rule the Whoop app uses.
+export function whoopWeeks(days: WhoopDay[]): Map<string, WhoopWeek> {
+  const groups = new Map<string, WhoopDay[]>();
+  for (const d of days) {
+    const k = weekStartOf(d.day);
+    groups.set(k, [...(groups.get(k) ?? []), d]);
+  }
+  const out = new Map<string, WhoopWeek>();
+  for (const [week_start, ds] of groups) {
+    const strains = ds.map(d => d.strain).filter((x): x is number => typeof x === 'number');
+    out.set(week_start, {
+      week_start,
+      days: ds.length,
+      recovery: mean(ds.map(d => d.recovery_score)),
+      hrv: mean(ds.map(d => d.hrv_ms)),
+      resting_hr: mean(ds.map(d => d.resting_hr)),
+      sleep_hours: mean(ds.map(d => d.sleep_hours)),
+      sleep_performance: mean(ds.map(d => d.sleep_performance)),
+      strain: mean(strains),
+      strain_total: strains.length ? Math.round(strains.reduce((a, b) => a + b, 0) * 10) / 10 : null,
+      workouts: ds.reduce((n, d) => n + (d.workouts?.length ?? 0), 0),
+    });
+  }
+  return out;
+}
