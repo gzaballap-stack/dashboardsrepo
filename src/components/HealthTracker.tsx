@@ -16,7 +16,7 @@ import {
      Split     — a standing weekly training plan.
      Whoop     — recovery, sleep and strain pulled from Whoop, one row per day,
                  shown by week. Read-only: Whoop is the source. Each week's
-                 averages also sit on the calendar cards and in Progress.
+                 averages also sit on the calendar cards.
 
    The log is rows in `lift_entries`. The two plans are documents on that user's
    `lift_settings` row: they describe intent, not history, so they are edited in
@@ -927,8 +927,7 @@ export default function HealthTracker() {
       )}
 
       {tab === "progress" && (
-        <Progress logged={logged} exercises={exercises} unit={unit} lengthUnit={lengthUnit}
-          whoopByWeek={whoopByWeek} />
+        <Progress logged={logged} exercises={exercises} unit={unit} lengthUnit={lengthUnit} />
       )}
 
       {tab === "whoop" && (
@@ -1652,12 +1651,10 @@ function EntrySheet({ weekStart, entry, history, exercises, unit, lengthUnit, on
 
 /* ── progress ─────────────────────────────────────────────────────────────── */
 
-function Progress({ logged, exercises, unit, lengthUnit, whoopByWeek }: {
+function Progress({ logged, exercises, unit, lengthUnit }: {
   logged: Entry[]; exercises: string[]; unit: string; lengthUnit: string;
-  whoopByWeek: Map<string, WhoopWeek>;
 }) {
-  const whoopRows = [...whoopByWeek.values()].sort((a, b) => a.week_start.localeCompare(b.week_start));
-  if (logged.length === 0 && whoopRows.length === 0) {
+  if (logged.length === 0) {
     return (
       <div style={{
         background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18,
@@ -1690,49 +1687,8 @@ function Progress({ logged, exercises, unit, lengthUnit, whoopByWeek }: {
 
   const weekSpan = logged.length;
 
-  const wlabel = (w: WhoopWeek) => {
-    const d = parseISO(w.week_start);
-    return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`;
-  };
-  const wseries = (pick: (w: WhoopWeek) => number | null) =>
-    whoopRows.map(w => ({ x: wlabel(w), y: pick(w) }))
-      .filter((p): p is { x: string; y: number } => p.y !== null && Number.isFinite(p.y));
-  const recoverySeries = wseries(w => w.recovery);
-  const sleepSeries = wseries(w => w.sleep_hours);
-  const debtSeries = wseries(w => w.sleep_debt);
-  const hrvSeries = wseries(w => w.hrv);
-  const rhrSeries = wseries(w => w.resting_hr);
-  const strainSeries = wseries(w => w.strain);
-  const stepsSeries = wseries(w => w.steps);
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-      {whoopRows.length > 0 && (
-        <section>
-          <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: FAINT, marginBottom: 10 }}>
-            Whoop · weekly averages · {whoopRows.length} week{whoopRows.length === 1 ? "" : "s"}
-          </p>
-          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", marginBottom: 12 }}>
-            <Stat label="Recovery" unit="%" {...ends(recoverySeries)} />
-            <Stat label="Sleep" unit="h / night" {...ends(sleepSeries)} />
-            <Stat label="Sleep debt" unit="h" lowerIsBetter {...ends(debtSeries)} />
-            <Stat label="HRV" unit="ms" {...ends(hrvSeries)} />
-            <Stat label="Resting HR" unit="bpm" lowerIsBetter {...ends(rhrSeries)} />
-            <Stat label="Strain" unit="/ day" {...ends(strainSeries)} />
-            <Stat label="Steps" unit="/ day" {...ends(stepsSeries)} />
-          </div>
-          <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
-            <Panel title="Recovery" subtitle="Weekly average, %"><Chart points={recoverySeries} unit="%" height={150} /></Panel>
-            <Panel title="Sleep" subtitle="Hours asleep a night, weekly average"><Chart points={sleepSeries} unit="h" height={150} /></Panel>
-            <Panel title="HRV" subtitle="ms, weekly average"><Chart points={hrvSeries} unit="ms" height={150} /></Panel>
-            <Panel title="Resting heart rate" subtitle="bpm, weekly average"><Chart points={rhrSeries} unit="bpm" height={150} /></Panel>
-            <Panel title="Strain" subtitle="Daily strain, weekly average"><Chart points={strainSeries} unit="" height={150} /></Panel>
-            <Panel title="Steps" subtitle="Per day, weekly average"><Chart points={stepsSeries} unit="" height={150} /></Panel>
-          </div>
-        </section>
-      )}
-
-      {logged.length > 0 && (<>
       <section>
         <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: FAINT, marginBottom: 10 }}>
           Since you started · {weekSpan} week{weekSpan === 1 ? "" : "s"} logged
@@ -1795,7 +1751,6 @@ function Progress({ logged, exercises, unit, lengthUnit, whoopByWeek }: {
           </div>
         </section>
       )}
-      </>)}
     </div>
   );
 }
