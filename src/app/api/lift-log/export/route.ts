@@ -81,8 +81,11 @@ export async function GET(req: Request) {
     const diet = withActiveFlags(settings.diet_plan, 'plans');
     const split = withActiveFlags(settings.split_plan, 'programmes');
 
-    // Whoop, if connected: one row per day and the same rolled into weeks keyed
-    // by Monday, so a reader can set a week's recovery beside its weight.
+    // Whoop, if connected. Weekly averages always; the daily rows only on
+    // request (`&whoop=all`) or the last fortnight by default — 480 days came
+    // to 400 KB, and the link's main reader is an AI that truncates long pages,
+    // so it was seeing a cut-off document and no Whoop at all.
+    const wantAll = searchParams.get('whoop') === 'all';
     const { data: whoopDays } = await service
       .from('whoop_days')
       .select('day, recovery_score, hrv_ms, resting_hr, spo2, skin_temp_c, sleep_hours, nap_hours, '
@@ -91,15 +94,22 @@ export async function GET(req: Request) {
       .eq('user_id', settings.user_id)
       .order('day', { ascending: true });
     const whoop = (whoopDays ?? []) as unknown as WhoopDay[];
+    const recentFrom = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
+    const whoopOut = wantAll ? whoop : whoop.filter(d => d.day >= recentFrom);
 
     return NextResponse.json({
       unit, length_unit: lengthUnit, exercises,
       goal: settings.goal_note ?? null,
       whoop: {
         connected: whoop.length > 0,
-        note: 'A Whoop day starts when you wake; the night before belongs to it. weeks[] are averages by the Monday of that week.',
-        days: whoop,
+        note: 'A Whoop day starts when you wake; the night before belongs to it. '
+          + 'weeks[] are averages keyed by the Monday of that week and cover the whole history. '
+          + (wantAll
+            ? 'days[] is every day.'
+            : `days[] is the last 14 days only; add &whoop=all to the link for every day (${whoop.length} rows).`),
+        history_from: whoop[0]?.day ?? null,
         weeks: [...whoopWeeks(whoop).values()].sort((a, b) => a.week_start.localeCompare(b.week_start)),
+        days: whoopOut,
       },
       // Named up front. Which plan is being run was only knowable by matching
       // `activeId` against a list of ids, which is a step a reader can get
@@ -114,10 +124,28 @@ export async function GET(req: Request) {
     });
   }
 
+  // The spreadsheet gets each week's Whoop averages too, beside that week's
+  // weight — the same roll-up the calendar cards show.
+  const { data: csvWhoopDays } = await service
+    .from('whoop_days')
+    .select('day, recovery_score, hrv_ms, resting_hr, sleep_hours, sleep_performance, sleep_debt_hours, strain, steps, workouts')
+    .eq('user_id', settings.user_id);
+  const wk = whoopWeeks((csvWhoopDays ?? []) as unknown as WhoopDay[]);
+  const hasWhoop = wk.size > 0;
+  const WHOOP_COLS = hasWhoop
+    ? ['Recovery (%)', 'Sleep (h)', 'Sleep Debt (h)', 'HRV (ms)', 'Resting HR', 'Strain', 'Steps']
+    : [];
+  const whoopCells = (week: string) => {
+    if (!hasWhoop) return [];
+    const w = wk.get(week);
+    return w ? [w.recovery, w.sleep_hours, w.sleep_debt, w.hrv, w.resting_hr, w.strain, w.steps] : WHOOP_COLS.map(() => null);
+  };
+
   const header = [
     'Week Start',
     `Weight 1 (${unit})`, `Weight 2 (${unit})`, `Weight 3 (${unit})`, `Weight Avg (${unit})`,
     `Waist (${lengthUnit})`, `Bicep (${lengthUnit})`,
+    ...WHOOP_COLS,
     ...exercises.flatMap(x => [`${x} (${unit})`, `${x} (reps)`]),
     'Notes',
   ];
@@ -126,6 +154,7 @@ export async function GET(req: Request) {
     r.week_start,
     r.weight_1, r.weight_2, r.weight_3, r.weight_avg,
     r.waist, r.bicep,
+    ...whoopCells(r.week_start),
     ...exercises.flatMap(x => [r.lifts[x]?.load ?? null, r.lifts[x]?.reps ?? null]),
     r.notes,
   ]);
