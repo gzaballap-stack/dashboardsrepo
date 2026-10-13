@@ -86,7 +86,7 @@ export async function GET(req: Request) {
     const { data: whoopDays } = await service
       .from('whoop_days')
       .select('day, recovery_score, hrv_ms, resting_hr, spo2, skin_temp_c, sleep_hours, nap_hours, '
-        + 'sleep_performance, sleep_efficiency, sleep_consistency, respiratory_rate, sleep_need_hours, sleep_debt_hours, sleep_stages, '
+        + 'sleep_performance, sleep_efficiency, sleep_consistency, respiratory_rate, sleep_need_hours, sleep_debt_hours, steps, bed_time_local, wake_time_local, sleep_cycles, disturbances, sleep_stages, '
         + 'strain, kilojoules, avg_hr, max_hr, workouts, scored')
       .eq('user_id', settings.user_id)
       .order('day', { ascending: true });

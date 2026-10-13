@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   let days = 10;
   try {
     const body = await req.json();
-    if (typeof body?.days === 'number' && body.days > 0) days = Math.min(365, Math.floor(body.days));
+    if (typeof body?.days === 'number' && body.days > 0) days = Math.min(1095, Math.floor(body.days));
   } catch { /* no body is fine */ }
 
   try {

@@ -937,7 +937,7 @@ export default function HealthTracker() {
           year={year} setYear={setYear} month={month} setMonth={setMonth}
           thisMonday={iso(thisMonday)}
           onSync={() => syncWhoop()}
-          onBackfill={() => syncWhoop(180)}
+          onBackfill={() => syncWhoop(1095)}
           onDisconnect={async () => {
             await fetch("/api/whoop", { method: "DELETE" });
             setWhoopNotice("");
@@ -1703,6 +1703,7 @@ function Progress({ logged, exercises, unit, lengthUnit, whoopByWeek }: {
   const hrvSeries = wseries(w => w.hrv);
   const rhrSeries = wseries(w => w.resting_hr);
   const strainSeries = wseries(w => w.strain);
+  const stepsSeries = wseries(w => w.steps);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
@@ -1718,6 +1719,7 @@ function Progress({ logged, exercises, unit, lengthUnit, whoopByWeek }: {
             <Stat label="HRV" unit="ms" {...ends(hrvSeries)} />
             <Stat label="Resting HR" unit="bpm" lowerIsBetter {...ends(rhrSeries)} />
             <Stat label="Strain" unit="/ day" {...ends(strainSeries)} />
+            <Stat label="Steps" unit="/ day" {...ends(stepsSeries)} />
           </div>
           <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
             <Panel title="Recovery" subtitle="Weekly average, %"><Chart points={recoverySeries} unit="%" height={150} /></Panel>
@@ -1725,6 +1727,7 @@ function Progress({ logged, exercises, unit, lengthUnit, whoopByWeek }: {
             <Panel title="HRV" subtitle="ms, weekly average"><Chart points={hrvSeries} unit="ms" height={150} /></Panel>
             <Panel title="Resting heart rate" subtitle="bpm, weekly average"><Chart points={rhrSeries} unit="bpm" height={150} /></Panel>
             <Panel title="Strain" subtitle="Daily strain, weekly average"><Chart points={strainSeries} unit="" height={150} /></Panel>
+            <Panel title="Steps" subtitle="Per day, weekly average"><Chart points={stepsSeries} unit="" height={150} /></Panel>
           </div>
         </section>
       )}
@@ -2981,6 +2984,7 @@ function WhoopTab({ status, notice, syncing, year, setYear, month, setMonth, thi
                     <span>Strain <b style={{ color: INK }}>{wk.strain == null ? "—" : fmt(wk.strain, 1)}</b></span>
                     <span>HRV <b style={{ color: INK }}>{wk.hrv == null ? "—" : fmt(wk.hrv, 0)}</b></span>
                     <span>RHR <b style={{ color: INK }}>{wk.resting_hr == null ? "—" : fmt(wk.resting_hr, 0)}</b></span>
+                    <span>Steps <b style={{ color: INK }}>{wk.steps == null ? "—" : fmt(wk.steps, 0)}</b></span>
                   </span>
                 )}
               </div>
@@ -3027,8 +3031,9 @@ function WhoopTab({ status, notice, syncing, year, setYear, month, setMonth, thi
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 22 }}>
         <button onClick={onBackfill} disabled={syncing} style={{ ...BTN_QUIET, fontSize: 12 }}>
-          Pull the last 6 months
+          {syncing ? "Pulling…" : "Pull all history"}
         </button>
+        <span style={{ fontSize: 11, color: FAINT }}>Everything Whoop has, up to three years. Takes a minute or two.</span>
         <span style={{ flex: 1 }} />
         {!confirmDisconnect ? (
           <button onClick={() => setConfirmDisconnect(true)} style={{ ...BTN_QUIET, fontSize: 12, color: "#b4472e", background: "rgba(180,71,46,0.09)" }}>
@@ -3095,6 +3100,14 @@ function WhoopDaySheet({ day, onClose }: { day: WhoopDay; onClose: () => void })
       <WhoopRow label="Skin temperature" value={day.skin_temp_c} unit="°C" />
 
       <WhoopHead>Sleep</WhoopHead>
+      {(day.bed_time_local || day.wake_time_local) && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "7px 0", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
+          <span style={{ fontSize: 12.5, color: MUTED }}>In bed</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: INK }}>
+            {day.bed_time_local ?? "—"} <span style={{ fontSize: 10, fontWeight: 500, color: FAINT }}>to</span> {day.wake_time_local ?? "—"}
+          </span>
+        </div>
+      )}
       <WhoopRow label="Asleep" value={day.sleep_hours} unit="h" />
       <WhoopRow label="Needed" value={day.sleep_need_hours} unit="h" />
       <WhoopRow label="Sleep debt" value={day.sleep_debt_hours} unit="h"
@@ -3104,6 +3117,8 @@ function WhoopDaySheet({ day, onClose }: { day: WhoopDay; onClose: () => void })
       <WhoopRow label="Efficiency" value={day.sleep_efficiency} unit="%" />
       <WhoopRow label="Consistency" value={day.sleep_consistency} unit="%" />
       <WhoopRow label="Respiratory rate" value={day.respiratory_rate} unit="/min" />
+      <WhoopRow label="Sleep cycles" value={day.sleep_cycles} />
+      <WhoopRow label="Disturbances" value={day.disturbances} />
       {day.sleep_stages && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 10 }}>
           {([["Light", day.sleep_stages.light], ["Deep", day.sleep_stages.deep], ["REM", day.sleep_stages.rem], ["Awake", day.sleep_stages.awake]] as const).map(([l, v]) => (
@@ -3117,6 +3132,7 @@ function WhoopDaySheet({ day, onClose }: { day: WhoopDay; onClose: () => void })
 
       <WhoopHead>Strain</WhoopHead>
       <WhoopRow label="Day strain" value={day.strain} />
+      <WhoopRow label="Steps" value={day.steps} />
       <WhoopRow label="Calories burned" value={kcal} unit="kcal" />
       <WhoopRow label="Average heart rate" value={day.avg_hr} unit="bpm" />
       <WhoopRow label="Max heart rate" value={day.max_hr} unit="bpm" />
@@ -3125,11 +3141,24 @@ function WhoopDaySheet({ day, onClose }: { day: WhoopDay; onClose: () => void })
         <>
           <WhoopHead>Workouts</WhoopHead>
           {day.workouts!.map((w, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, padding: "7px 0", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
-              <span style={{ fontSize: 12.5, color: INK, fontWeight: 600 }}>{w.sport}</span>
-              <span style={{ fontSize: 11.5, color: MUTED, textAlign: "right" }}>
-                {w.minutes != null ? `${w.minutes} min` : ""}{w.strain != null ? ` · strain ${fmt(w.strain, 1)}` : ""}{w.avg_hr != null ? ` · ${fmt(w.avg_hr, 0)} bpm avg` : ""}
-              </span>
+            <div key={i} style={{ padding: "8px 0", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                <span style={{ fontSize: 12.5, color: INK, fontWeight: 600 }}>{w.sport}</span>
+                <span style={{ fontSize: 11.5, color: MUTED, textAlign: "right" }}>
+                  {w.minutes != null ? `${w.minutes} min` : ""}{w.strain != null ? ` · strain ${fmt(w.strain, 1)}` : ""}{w.kcal != null ? ` · ${w.kcal} kcal` : ""}
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: FAINT, marginTop: 3, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {w.avg_hr != null && <span>{fmt(w.avg_hr, 0)} bpm avg{w.max_hr != null ? ` · ${fmt(w.max_hr, 0)} max` : ""}</span>}
+                {w.distance_m != null && w.distance_m > 0 && <span>{w.distance_m >= 1000 ? `${fmt(w.distance_m / 1000, 2)} km` : `${fmt(w.distance_m, 0)} m`}</span>}
+                {w.altitude_gain_m != null && w.altitude_gain_m > 0 && <span>+{fmt(w.altitude_gain_m, 0)} m climb</span>}
+              </div>
+              {w.zones && w.zones.some(z => z != null && z > 0) && (
+                <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ color: FAINT }}>HR zones</span>
+                  {w.zones.map((z, zi) => (zi > 0 && z != null && z > 0) ? <span key={zi}>Z{zi} {z}m</span> : null)}
+                </div>
+              )}
             </div>
           ))}
         </>
