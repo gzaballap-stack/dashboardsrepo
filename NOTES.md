@@ -1,3 +1,41 @@
+## 2026-10-14 — Two AI-ready Meta reports: full brief + 7-day update
+
+The TM Dashboard's "Meta report" button is now two: **Full brief** and
+**Update** (`/api/meta-b2b-report?mode=full|update`, Markdown download; the
+original mode-less report still exists). Built by `src/lib/meta-report-brief.ts`
+on top of `buildMetaReport`.
+
+- **Full brief** = what a chat with no context on us needs in one paste:
+  standing instructions + KPI targets · the business brief
+  (`src/lib/b2b-brief.ts`, hand-written text — edit it when the offer, price or
+  process changes; `[fill in]` marks what the owner still has to supply) ·
+  what is live now (ads delivering in L3, campaign/ad set budgets and targeting
+  from Meta, Hub creatives never launched) · account history by month with the
+  best CPL month marked · L30/L7/L3 funnel summary · ad sets L30/L7 · L7 ad
+  table with flags · **creative library**: one block per Creative Hub entry with
+  lifetime results (Meta + GHL first-touch, every demo booked), video hook /
+  hold / average watch, on/off timeline, week-by-week table (creatives ≥ $100,
+  last 12 weeks), headline, primary text, script, prompt, background, notes ·
+  L30 placement and age/gender breakdown · funnel page rates · ad set /
+  campaign switches. Older ads with no Hub record are in the scoreboard only
+  (under $100 lifetime = one summed line). ~12.5k words on 2026-10-14.
+- **Update** = last 7 days for a chat that already has the brief: switches
+  on/off, new ads, new Hub creatives (with script/prompt), notes edited, what is
+  delivering, L7 vs prior 7 bullets, L7/L3 summary, L7 ad sets, L7 ad table
+  with flags, L7 funnel pages. ~2k words.
+- Extra Meta calls (all `safe`, a refusal leaves the section empty rather than
+  failing the report): lifetime + weekly (`time_increment=7`) + video insights
+  per ad, monthly account history, `publisher_platform,platform_position` and
+  `age,gender` breakdowns, campaign and ad set budgets/targeting. Both reports
+  build in ~6–10 s against V1.
+- The Hub `notes` field doubles as the decision log in the report — write why a
+  creative was paused / what was learned there.
+- **Data-quality finding, not fixed:** `visit_thankyou` on 2026-10-10 fired every
+  15 minutes for hours (someone / a tab sitting on the confirmation page with
+  auto-refresh) plus a 4× duplicate at 14:38:55 — 15 "bookings" in L7 against
+  1 real demo. Landing → booking reads 83% for the week. Needs a dedupe rule
+  (e.g. one thank-you per contact / per IP per day) — owner to decide.
+
 ## 2026-10-14 — Creative hub: Copy page
 
 New **Copy** page under B2B and B2C in the hub (`b2b_copy` / `b2c_copy`,
