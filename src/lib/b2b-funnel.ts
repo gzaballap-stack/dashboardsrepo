@@ -33,6 +33,7 @@ export type FunnelStats = {
   landing_to_booking_pct: number | null;
   landing_tracked_since: string | null; // earliest landing visit in the window (YYYY-MM-DD) — tracking began 2026-09
   kept_demos_by_ad: Record<string, number>;    // ad_id → demos shown (GHL attribution)
+  demos_by_ad: Record<string, number>;         // ad_id → demos booked (GHL attribution)
 };
 
 // Local-day bounds → UTC ISO strings, for a given IANA timezone.
@@ -81,8 +82,11 @@ export async function getFunnelStats(service: Service, since: string, until: str
   const cash = rows.filter(r => r.event_type === 'close').reduce((s, r) => s + (Number(r.revenue) || 0), 0);
 
   const keptByAd: Record<string, number> = {};
+  const bookedByAd: Record<string, number> = {};
   for (const r of rows) {
-    if (r.event_type === 'sales_call_shown' && r.ad_id) keptByAd[r.ad_id] = (keptByAd[r.ad_id] ?? 0) + 1;
+    if (!r.ad_id) continue;
+    if (r.event_type === 'sales_call_shown') keptByAd[r.ad_id] = (keptByAd[r.ad_id] ?? 0) + 1;
+    if (r.event_type === 'sales_call_booked') bookedByAd[r.ad_id] = (bookedByAd[r.ad_id] ?? 0) + 1;
   }
 
   const landingVisits = count('visit_landing');
@@ -120,5 +124,6 @@ export async function getFunnelStats(service: Service, since: string, until: str
       ? new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(firstLanding))
       : null,
     kept_demos_by_ad: keptByAd,
+    demos_by_ad: bookedByAd,
   };
 }

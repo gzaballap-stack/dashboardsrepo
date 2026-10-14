@@ -11,6 +11,7 @@ import { createServiceClient } from '@/lib/supabase';
 //   GET ?mode=full                       → the full media-buying brief for a chat with no context
 //   GET ?mode=update                     → the 7-day update for a chat that already has the brief
 //   (no mode = the original L30/L7/L3 report)
+//   GET ?asof=YYYY-MM-DD                 → build the report as it would have read on that day
 // Auth: a signed-in dashboard user, `Authorization: Bearer <ADMIN_WEBHOOK_SECRET>`,
 // or `?token=` = the read-only share link (share/route.ts) — what a Claude
 // project fetches. The token only opens the report, nothing else.
@@ -48,9 +49,11 @@ export async function GET(req: Request) {
     const download = url.searchParams.get('download') === '1';
     const mode = url.searchParams.get('mode');
     const funnelFor = (since: string, until: string, tz: string) => getFunnelStats(service, since, until, tz);
+    const asof = url.searchParams.get('asof');
+    const now = asof && /^\d{4}-\d{2}-\d{2}$/.test(asof) ? new Date(`${asof}T12:00:00Z`) : undefined;
 
     if (mode === 'full' || mode === 'update') {
-      const { markdown } = await buildBriefReport({ token, campaigns, funnelFor, service, mode });
+      const { markdown } = await buildBriefReport({ token, campaigns, funnelFor, service, mode, now });
       const name = mode === 'full' ? 'b2b-full-brief' : 'b2b-update';
       return new NextResponse(markdown, { headers: {
         'Content-Type': 'text/markdown; charset=utf-8',
@@ -58,7 +61,7 @@ export async function GET(req: Request) {
       } });
     }
 
-    const report = await buildMetaReport({ token, campaigns, funnelFor });
+    const report = await buildMetaReport({ token, campaigns, funnelFor, now });
     if (url.searchParams.get('format') === 'json') {
       return new NextResponse(JSON.stringify(report, null, 2), { headers: {
         'Content-Type': 'application/json; charset=utf-8',

@@ -1,3 +1,21 @@
+## 2026-10-14 — Brief: booked demos per ad, the OS control rule, "OS verdict", as-of date
+
+- `FunnelStats.demos_by_ad` (sales_call_booked by ad id) joins `kept_demos_by_ad`.
+- The brief's L7 ad table now has **Demos booked / Cost per demo / L3 spend
+  and demos** per ad and an **OS verdict** column = the owner's weekly operating
+  system computed on L7 (`OS` consts in `meta-report-brief.ts`): CONTROL =
+  lowest cost per booked demo with ≥ 2 demos; KILL = ≥ 1,000 impressions and
+  CTR under half the control's, or ≥ $135 and 0 demos; WATCH = ≥ $90 and 0
+  demos; WEAK = cost/demo 30%+ worse than control; LEARNING otherwise. Falls
+  back to the report's own control when no ad has 2 demos; demo rules are
+  skipped (and say so) when the window has no GHL ad attribution. The older
+  kept-demo flags stay as "Report flags".
+- `?asof=YYYY-MM-DD` on `/api/meta-b2b-report` builds any mode as it would have
+  read on that day (Meta insights are re-queried for those windows; ad
+  *status* is still today's). Used to check the verdicts on 2026-09-23.
+- The operating system itself (structure, bands, Mon–Sun rhythm, Rule of 100)
+  lives in `docs/claude-media-buyer.md`, the Claude project instructions.
+
 ## 2026-10-14 — Read-only link for the Meta reports (AI can fetch it)
 
 Same idea as the Health Tracker's share link. **Link** button next to Full

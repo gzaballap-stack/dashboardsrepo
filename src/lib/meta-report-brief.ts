@@ -180,7 +180,7 @@ function instructions(r: MetaReport, mode: ReportMode, sec: Record<string, numbe
     '>',
     '> **Missing data rule.** If kept-demo data is N/A, or the header says there is no per-ad kept-demo source, treat it as MISSING, not zero. Never pause or rank an ad on kept demos in that case — fall back to CPL, CTR and CPC and say so. GHL ad attribution (leads / demos per ad) only exists from September 2026; earlier creatives have Meta lead counts only.',
     '>',
-    `> **Use the report's flags.** The flag columns in section ${sec.ads} (Over_eval_floor, Zero_demo_kill, CTR_half_control, Early_CTR_trash, Perf_vs_control_bad) are the primary pause/keep signal — do not re-derive them. Always quote the exact ad name AND ad ID (names repeat across variants). Before judging an ad on L7 / L3, check the on/off history (section ${sec.history}): an ad switched off mid-window has low spend because it was off, not because it failed.`,
+    `> **Use the computed verdicts.** The "OS verdict" column in section ${sec.ads} applies the weekly operating system's control / kill / watch / learning rules on L7 — it is the primary pause/keep signal; do not re-derive it. The control is named above that table. Always quote the exact ad name AND ad ID (names repeat across variants). Before judging an ad on L7 / L3, check the on/off history (section ${sec.history}): an ad switched off mid-window has low spend because it was off, not because it failed.`,
     '>',
     '> **Answer in exactly this shape:**',
     '> **1) EXECUTIVE SNAPSHOT** (2–4 sentences): profitable or bleeding; the #1 constraint; MEDIA issue (ads / targeting / creative) or FUNNEL/SALES issue (booking, show, close). End with one line listing data gaps.',
@@ -246,29 +246,61 @@ function adsetTables(r: MetaReport, windows: readonly WindowDays[]): string {
   return parts.join('\n');
 }
 
+// The operating system's per-ad rules, on the L7 window:
+//   control  = lowest cost per booked demo with ≥ 2 demos
+//   kill     = ≥ 1,000 impressions and link CTR < half the control's, or ≥ $135 spend and 0 demos
+//   watch    = ≥ $90 spend and 0 demos (one more day or two before it hits $135)
+//   learning = under $90 and under 1,000 impressions
+const OS = { control_min_demos: 2, kill_spend: 135, watch_spend: 90, eval_impr: 1000, eval_spend: 90 } as const;
+
 function adTable(r: MetaReport): string {
   const parts: string[] = [];
-  // Only ads that actually served in the window; the rest would be rows of dashes.
   const served = r.ads.filter(a => a.windows[7].impressions > 0 || a.windows[7].spend > 0);
   const idle = r.ads.length - served.length;
-  if (idle) parts.push(`${idle} ad${idle === 1 ? '' : 's'} from the last 30 days did not serve in L7 and ${idle === 1 ? 'is' : 'are'} left out of this table (they are in the creative library and the on/off history).`);
+  if (idle) parts.push(`${idle} ad${idle === 1 ? '' : 's'} from the last 30 days did not serve in L7 and ${idle === 1 ? 'is' : 'are'} left out of this table (they are in the creative library).`);
   if (!served.length) { parts.push('No ad served in the last 7 days.'); return parts.join('\n'); }
-  parts.push(`Control = best ad in L7: link CTR ${pct(r.control.best_ctr_link_7d, 2)}, cost per kept demo ${money(r.control.best_cost_per_kept_demo_7d)}.`);
+
+  const booked = (a: AdRow, w: WindowDays) => r.funnel?.[w].demos_by_ad[a.ad_id] ?? 0;
+  const cpd = (a: AdRow, w: WindowDays) => div(a.windows[w].spend, booked(a, w));
+  const hasAttribution = r.kept_demo_source === 'ghl' || served.some(a => booked(a, 7) > 0);
+
+  // Control per the operating system; the report's own control (best kept-demo cost, else best CTR) is the fallback.
+  const eligible = served.filter(a => booked(a, 7) >= OS.control_min_demos);
+  const osControl = eligible.sort((p, q) => (cpd(p, 7) ?? Infinity) - (cpd(q, 7) ?? Infinity))[0] ?? null;
+  const control = osControl ?? r.ads.find(a => a.ad_id === r.control.best_cpki_ad_id) ?? r.ads.find(a => a.ad_id === r.control.best_ctr_ad_id) ?? null;
+  const controlCtr = control?.windows[7].ctr_link ?? null;
+
+  const verdict = (a: AdRow): string => {
+    const m = a.windows[7];
+    if (control && a.ad_id === control.ad_id) return 'CONTROL';
+    const reasons: string[] = [];
+    if (controlCtr != null && m.impressions >= OS.eval_impr && (m.ctr_link ?? 0) < controlCtr / 2) reasons.push(`CTR ${pct(m.ctr_link, 2)} < half control`);
+    if (hasAttribution && m.spend >= OS.kill_spend && booked(a, 7) === 0) reasons.push(`${money0(m.spend)} and 0 demos`);
+    if (reasons.length) return `KILL — ${reasons.join('; ')}`;
+    if (hasAttribution && m.spend >= OS.watch_spend && booked(a, 7) === 0) return `WATCH — ${money0(m.spend)} and 0 demos (kill at $${OS.kill_spend})`;
+    if (m.spend < OS.eval_spend && m.impressions < OS.eval_impr) return 'LEARNING — not enough data';
+    if (control && hasAttribution && booked(a, 7) > 0 && cpd(a, 7) != null && cpd(control, 7) != null && cpd(a, 7)! >= cpd(control, 7)! * 1.3) return `WEAK — cost/demo ${money0(cpd(a, 7))} is 30%+ worse than control`;
+    return 'KEEP';
+  };
+
+  parts.push(control
+    ? `**Control (operating-system rule, L7):** "${control.ad_name}" (${control.ad_id}) — ${osControl ? `${booked(control, 7)} demos at ${money0(cpd(control, 7))} each` : 'no ad has 2+ booked demos in L7, so the control is the best ad on kept-demo cost / CTR instead'}, link CTR ${pct(controlCtr, 2)}.`
+    : '**Control:** none — nothing served enough to be a control this week.');
+  if (!hasAttribution) parts.push('**Per-ad demos are unavailable this run** (no GHL ad attribution in the window): the demo-based rules are not applied; judge on CTR, CPC and CPL.');
+
   const flagList = (f: AdRow['flags']) => {
     const on = [f.over_eval_floor && 'Over_eval_floor', f.zero_demo_kill === true && 'Zero_demo_kill', f.ctr_half_control && 'CTR_half_control', f.early_ctr_trash && 'Early_CTR_trash', f.perf_vs_control_bad === true && 'Perf_vs_control_bad'].filter(Boolean);
-    const na = f.zero_demo_kill == null ? ' (demo flags N/A)' : '';
-    return (on.length ? on.join(', ') : 'none') + na;
+    return on.length ? on.join(', ') : 'none';
   };
   parts.push(table(
-    ['Ad set', 'Ad name', 'Ad ID', 'Now', 'Spend', 'Impr.', 'CTR (link)', 'CPC', 'Leads', 'CPL', 'Kept demos', 'Cost per kept demo', 'Flags'],
-    served.map(a => { const m = a.windows[7]; return [
+    ['Ad set', 'Ad name', 'Ad ID', 'Now', 'L7 spend', 'Impr.', 'CTR (link)', 'CPC', 'Leads', 'CPL', 'Demos booked', 'Cost/demo', 'Kept', 'L3 spend / demos', 'OS verdict', 'Report flags'],
+    served.sort((p, q) => q.windows[7].spend - p.windows[7].spend).map(a => { const m = a.windows[7]; return [
       a.adset_name, a.ad_name, a.ad_id, a.status ?? '—',
-      money(m.spend), int(m.impressions), pct(m.ctr_link, 2), money(m.cpc_link), int(m.leads), money(m.cost_per_lead), int(m.kept_demos), money(m.cost_per_kept_demo), flagList(a.flags)]; }),
+      money(m.spend), int(m.impressions), pct(m.ctr_link, 2), money(m.cpc_link), int(m.leads), money(m.cost_per_lead),
+      int(booked(a, 7)), money(cpd(a, 7)), int(m.kept_demos), `${money0(a.windows[3].spend)} / ${int(booked(a, 3))}`,
+      verdict(a), flagList(a.flags)]; }),
   ));
-  parts.push(`Flags listed = the ones that fired. Flag rules: Over_eval_floor = spend ≥ $${RULES.evalFloorSpend} OR impressions ≥ ${int(RULES.evalFloorImpressions)} · Zero_demo_kill = spend ≥ $${RULES.zeroDemoKillSpend} AND kept demos = 0 · ` +
-    `CTR_half_control = link CTR < ${RULES.ctrHalfControl * 100}% of best ad in L7 · Early_CTR_trash = impressions ≥ ${RULES.earlyCtrTrashImpressions} AND link CTR < ${RULES.earlyCtrTrash * 100}% of best ad · ` +
-    `Perf_vs_control_bad = spend ≥ $${RULES.perfVsControlSpend} AND cost per kept demo ≥ ${RULES.perfVsControlMultiple}× best ad. All on L7 numbers.` +
-    (r.kept_demo_source === 'none' ? ' **Zero_demo_kill and Perf_vs_control_bad are N/A this run: no per-ad kept-demo data.**' : ''));
+  parts.push(`OS verdict = the weekly system's rules computed on L7: CONTROL = lowest cost per booked demo with ≥ ${OS.control_min_demos} demos · KILL = ≥ ${int(OS.eval_impr)} impressions and link CTR under half the control's, or ≥ $${OS.kill_spend} with 0 demos · WATCH = ≥ $${OS.watch_spend} with 0 demos · WEAK = cost per demo 30%+ worse than control · LEARNING = under $${OS.eval_spend} and under ${int(OS.eval_impr)} impressions. "Leads" and "Demos booked" are GHL (CRM) numbers attributed to the ad; "Kept" = demos that showed. Report flags are the older kept-demo rules (Zero_demo_kill = $${RULES.zeroDemoKillSpend}+ and 0 kept demos; CTR_half_control / Early_CTR_trash on CTR vs the report's control), kept for continuity.`);
   return parts.join('\n');
 }
 

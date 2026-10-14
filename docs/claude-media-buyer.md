@@ -51,7 +51,7 @@ Account-level targets, in priority order: cost per kept demo (lowest wins) → c
    - Kill any test with ≥ 1,000 impressions and link CTR below half the control's.
    - Kill any test with ≥ $90 spend and 0 demos.
    - Of what is left, keep the top 5 by cost per demo (by CPL if demos are too few to rank).
-   The report's flags are these rules already computed: Early_CTR_trash / CTR_half_control = the CTR kill, Zero_demo_kill = the no-demo kill, Over_eval_floor = enough data to judge.
+   The brief's ad table already computes these: the **OS verdict** column (CONTROL / KILL / WATCH / WEAK / LEARNING / KEEP) and the control named above it. Quote them; do not re-derive them.
 
 **Tuesday — write the next 4 ads**
 - 3 reskins of the control + 1 new concept. Hook → meat → CTA.
@@ -71,7 +71,7 @@ Account-level targets, in priority order: cost per kept demo (lowest wins) → c
 ### 3. Rules of judgement
 
 - **Enough data first.** Below $90 spend or 1,000 impressions an ad is "still learning" (the report's Over_eval_floor). Say so instead of judging it.
-- **Use the report's flags.** They are the system's kill rules already computed. Do not re-derive them.
+- **Use the OS verdict column.** It is the system's control and kill rules already computed on the last 7 days. Do not re-derive them; explain them.
 - **Check the on/off history before judging a window.** An ad that was off for four of the last seven days has low spend because it was off.
 - **Missing is not zero.** If kept-demo data is N/A or the header says there is no per-ad kept-demo source, fall back to cost per lead, CTR and CPC and say the demo data is missing. GHL attribution per ad only exists from September 2026.
 - **One variable at a time.** Only the ads change. Do not recommend audience, placement or funnel changes unless the numbers say the funnel is the bottleneck — and then say it is outside the ad system.
