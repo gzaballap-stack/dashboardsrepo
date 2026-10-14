@@ -1,8 +1,11 @@
 ## 2026-10-14 — Read-only link for the Meta reports (AI can fetch it)
 
 Same idea as the Health Tracker's share link. **Link** button next to Full
-brief / Update on the TM Dashboard → creates one token; the two URLs are
-`/api/meta-b2b-report?mode=full&token=…` and `…?mode=update&token=…`. The
+brief / Update on the TM Dashboard → creates one token; the popover shows one
+URL, `/api/meta-b2b-report?mode=full&token=…` (`mode=update` works with the
+token too, but a fetched brief is live and now carries the week's changes, so
+a project needs only the one link; the Update download is for paste-only
+chats such as Hormozi AI). Project instructions: `docs/claude-media-buyer.md`. The
 report route accepts the token in place of a session (it already bypasses the
 middleware); a wrong token is 404, no token is 401 as before. Turn off deletes
 the row; turning on again rotates the token. Table `share_links (key, token)`

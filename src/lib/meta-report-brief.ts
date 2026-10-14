@@ -171,7 +171,7 @@ function instructions(r: MetaReport, mode: ReportMode, sec: Record<string, numbe
   const lines = [
     '> ## HOW TO READ THIS AND HOW TO ANSWER (NON-NEGOTIABLE)',
     mode === 'full'
-      ? '> You are the media buyer for this account. This document is everything you need: the business, the funnel, the targets, what is live, every creative with its script and its results, and the last 30 / 7 / 3 days. Read it all before answering. Keep it for the rest of the conversation — later messages will only send updates.'
+      ? '> You are the media buyer for this account. This document is everything you need: the business, the funnel, the targets, what is live, what changed this week, every creative with its script and its results, and the last 30 / 7 / 3 days. It is regenerated live each time it is fetched. Read it all before answering.'
       : '> You already have the full brief for this account from earlier in this conversation. This is the periodic update: what changed and the latest numbers. Apply the same targets and the same answer format as before.',
     '>',
     `> **Definitions.** L30 / L7 / L3 = last 30 / 7 / 3 days ending ${r.today}. A *demo* is a booked sales call; a *kept demo* is one that showed. *Control* = the best ad in L7 (named in the ad-level section). Ad-level window numbers are L7; lifetime numbers are marked as such.`,
@@ -488,7 +488,8 @@ function header(r: MetaReport, title: string): string {
 }
 
 export function renderFull(r: MetaReport, x: Extras, hub: Hub, groups: CreativeGroup[]): string {
-  const sec = { brief: 1, now: 2, history: 3, funnel: 4, adsets: 5, ads: 6, library: 7, pages: 8, onoff: 9 };
+  const sec = { brief: 1, now: 2, changes: 3, history: 4, funnel: 5, adsets: 6, ads: 7, library: 8, pages: 9, onoff: 10 };
+  const since = shiftDays(r.today, -(UPDATE_DAYS - 1));
   const p: string[] = [];
   p.push(header(r, 'Tomsi Media B2B — full media-buying brief'));
   p.push('');
@@ -497,10 +498,14 @@ export function renderFull(r: MetaReport, x: Extras, hub: Hub, groups: CreativeG
   p.push(B2B_BRIEF);
   p.push(`\n## ${sec.now}. Where we are right now`);
   p.push(liveNow(r, x, hub));
+  p.push(`\n## ${sec.changes}. What changed in the last ${UPDATE_DAYS} days (${since} → ${r.today})`);
+  p.push(changes(r, hub, groups, since));
+  p.push('\nLast 7 days vs the 7 before:');
+  p.push(r.summary.map(s => `- ${s}`).join('\n'));
   p.push(`\n## ${sec.history}. Account history`);
   p.push(history(x));
-  p.push(`\n## ${sec.funnel}. Funnel summary — last 30 / 7 days`);
-  for (const w of [30, 7] as const) p.push('```\n' + accountSummary(r, w) + '\n```');
+  p.push(`\n## ${sec.funnel}. Funnel summary — last 30 / 7 / 3 days`);
+  for (const w of [30, 7, 3] as const) p.push('```\n' + accountSummary(r, w) + '\n```');
   p.push(`\n## ${sec.adsets}. Ad sets`);
   p.push(adsetTables(r, [30, 7]));
   p.push(`\n## ${sec.ads}. Ad level — last 7 days (${r.windows[7].since} → ${r.windows[7].until})`);

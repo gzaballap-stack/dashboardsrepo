@@ -25,9 +25,10 @@ export default function ReportShare({ onClose }: { onClose: () => void }) {
   }
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // One link: the full brief is regenerated on every fetch and carries the
+  // week's changes, so an AI that can open a URL never needs the update.
   const links = token ? [
-    { label: "Full brief", url: `${origin}/api/meta-b2b-report?mode=full&token=${token}` },
-    { label: "Update", url: `${origin}/api/meta-b2b-report?mode=update&token=${token}` },
+    { label: "Full brief (live)", url: `${origin}/api/meta-b2b-report?mode=full&token=${token}` },
   ] : [];
 
   const BTN: React.CSSProperties = { padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "rgba(0,0,0,0.06)", border: "1px solid rgba(0,0,0,0.12)", color: "#111", cursor: "pointer" };
@@ -54,15 +55,16 @@ export default function ReportShare({ onClose }: { onClose: () => void }) {
             </div>
           ))}
           <p className="text-[11px] leading-relaxed" style={{ color: "#767676" }}>
-            Anyone with a link can read the report. In a Claude project, add the Full brief link to the
-            project instructions (&quot;read this first&quot;) and paste the Update link at the start of each chat.
-            Turning the link off kills both for good; turning it on again makes new ones.
+            Anyone with the link can read the report. Put it in your Claude project&apos;s instructions
+            (&quot;fetch this first&quot;); it is rebuilt with live numbers every time it is opened.
+            The Update download is only for chats that can&apos;t open links. Turning the link off kills it
+            for good; turning it on again makes a new one.
           </p>
           <button disabled={busy} onClick={() => set(false)} style={{ ...BTN, background: "rgba(180,71,46,0.09)", color: "#b4472e" }}>Turn off</button>
         </div>
       ) : (
         <div className="space-y-2">
-          <p className="text-xs" style={{ color: "#6b6b6b" }}>No link yet. Create one to let a Claude project (or any AI that can open a URL) read the Full brief and the Update without signing in.</p>
+          <p className="text-xs" style={{ color: "#6b6b6b" }}>No link yet. Create one to let a Claude project (or any AI that can open a URL) read the live Full brief without signing in.</p>
           <button disabled={busy} onClick={() => set(true)} style={BTN}>Create a read-only link</button>
         </div>
       )}
