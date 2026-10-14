@@ -16,7 +16,7 @@ on top of `buildMetaReport`.
   lifetime results (Meta + GHL first-touch, every demo booked), video hook /
   hold / average watch, on/off timeline, week-by-week table (creatives ≥ $100,
   last 12 weeks), headline, primary text, script, prompt, background, notes ·
-  L30 placement and age/gender breakdown · funnel page rates · ad set /
+  funnel page rates · ad set /
   campaign switches. Older ads with no Hub record are in the scoreboard only
   (under $100 lifetime = one summed line). ~12.5k words on 2026-10-14.
 - **Update** = last 7 days for a chat that already has the brief: switches
@@ -25,8 +25,9 @@ on top of `buildMetaReport`.
   with flags, L7 funnel pages. ~2k words.
 - Extra Meta calls (all `safe`, a refusal leaves the section empty rather than
   failing the report): lifetime + weekly (`time_increment=7`) + video insights
-  per ad, monthly account history, `publisher_platform,platform_position` and
-  `age,gender` breakdowns, campaign and ad set budgets/targeting. Both reports
+  per ad, monthly account history, campaign and ad set budgets/targeting.
+  (Placement and age/gender breakdowns were in the first version; the owner
+  dropped them the same day as not useful.) Both reports
   build in ~6–10 s against V1.
 - The Hub `notes` field doubles as the decision log in the report — write why a
   creative was paused / what was learned there.

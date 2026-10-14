@@ -5,14 +5,13 @@
 //             in one paste: the business brief, what is live now, account
 //             history by month, the L30/L7/L3 funnel, ad sets, the L7 ad table
 //             with flags, the creative library (script / prompt / notes, lifetime
-//             results, week-by-week life, video watch metrics), audience and
-//             placement breakdowns, funnel pages, on/off history.
+//             results, week-by-week life, video watch metrics), funnel pages,
+//             ad set / campaign switches.
 //   update  — for a chat that already has the full brief: what changed in the
 //             last 7 days, L7 vs prior 7, L3, the L7 ad table, flags, new notes.
 //
 // Extra data beyond meta-report.ts: lifetime + weekly + video insights per ad,
-// monthly account history, placement and age/gender breakdowns, campaign / ad
-// set budgets (all Meta), the Creative Hub entries and links, and the lifetime
+// monthly account history, campaign / ad set budgets (all Meta), the Creative Hub entries and links, and the lifetime
 // GHL funnel per ad (events, first touch, every demo booked).
 
 import type { createServiceClient } from './supabase';
@@ -41,7 +40,6 @@ type Insight = {
   spend?: string; impressions?: string; reach?: string; inline_link_clicks?: string; actions?: Actions;
   video_play_actions?: { value: string }[]; video_thruplay_watched_actions?: { value: string }[];
   video_avg_time_watched_actions?: { value: string }[]; video_p100_watched_actions?: { value: string }[];
-  publisher_platform?: string; platform_position?: string; age?: string; gender?: string;
 };
 
 async function graph<T>(path: string, params: Record<string, string>, token: string): Promise<T[]> {
@@ -78,21 +76,17 @@ type Extras = {
   monthly: { month: string; spend: number; impressions: number; clicks: number; leads: number }[];
   lifetime: Map<string, Lifetime & { name: string; adset: string }>;
   weekly: Map<string, Week[]>;
-  placements: { label: string; spend: number; impressions: number; clicks: number; leads: number }[];
-  demographics: { label: string; spend: number; impressions: number; clicks: number; leads: number }[];
   campaigns: Budgeted[];
   adsets: (Budgeted & { campaign_id: string })[];
 };
 
 async function fetchExtras(acct: string, token: string): Promise<Extras> {
   const base = 'spend,impressions,inline_link_clicks,actions';
-  const [monthly, lifetime, weekly, placements, demographics, campaigns, adsets] = await Promise.all([
+  const [monthly, lifetime, weekly, campaigns, adsets] = await Promise.all([
     safe(graph<Insight>(`/${acct}/insights`, { date_preset: 'maximum', time_increment: 'monthly', fields: base }, token)),
     safe(graph<Insight>(`/${acct}/insights`, { level: 'ad', date_preset: 'maximum',
       fields: `ad_id,ad_name,adset_name,campaign_name,reach,${base},video_play_actions,video_thruplay_watched_actions,video_avg_time_watched_actions,video_p100_watched_actions` }, token)),
     safe(graph<Insight>(`/${acct}/insights`, { level: 'ad', date_preset: 'maximum', time_increment: '7', fields: `ad_id,${base}` }, token)),
-    safe(graph<Insight>(`/${acct}/insights`, { date_preset: 'last_30d', breakdowns: 'publisher_platform,platform_position', fields: base }, token)),
-    safe(graph<Insight>(`/${acct}/insights`, { date_preset: 'last_30d', breakdowns: 'age,gender', fields: base }, token)),
     safe(graph<{ id: string; name: string; effective_status?: string; daily_budget?: string; lifetime_budget?: string; bid_strategy?: string; objective?: string }>(
       `/${acct}/campaigns`, { fields: 'id,name,effective_status,daily_budget,lifetime_budget,bid_strategy,objective' }, token)),
     safe(graph<{ id: string; name: string; effective_status?: string; daily_budget?: string; lifetime_budget?: string; campaign_id: string; optimization_goal?: string;
@@ -118,16 +112,11 @@ async function fetchExtras(acct: string, token: string): Promise<Extras> {
   }
   for (const list of weeks.values()) list.sort((a, b) => a.start.localeCompare(b.start));
 
-  const bd = (rows: Insight[], label: (r: Insight) => string) => rows
-    .map(r => ({ label: label(r), spend: num(r.spend), impressions: num(r.impressions), clicks: num(r.inline_link_clicks), leads: leadsOf(r.actions) }))
-    .filter(r => r.spend > 0).sort((a, b) => b.spend - a.spend);
   const cents = (s: string | undefined) => (s ? Number(s) / 100 : null);
 
   return {
     monthly: monthly.filter(r => r.date_start).map(r => ({ month: r.date_start!.slice(0, 7), spend: num(r.spend), impressions: num(r.impressions), clicks: num(r.inline_link_clicks), leads: leadsOf(r.actions) })),
     lifetime: life, weekly: weeks,
-    placements: bd(placements, r => `${r.publisher_platform ?? '?'} / ${(r.platform_position ?? '?').replace(/_/g, ' ')}`),
-    demographics: bd(demographics, r => `${r.age ?? '?'} ${r.gender ?? '?'}`),
     campaigns: campaigns.map(c => ({ id: c.id, name: c.name, status: c.effective_status ?? '—', daily: cents(c.daily_budget), lifetime: cents(c.lifetime_budget), extra: [c.objective, c.bid_strategy].filter(Boolean).join(' · ') })),
     adsets: adsets.map(s => ({
       id: s.id, name: s.name, status: s.effective_status ?? '—', campaign_id: s.campaign_id, daily: cents(s.daily_budget), lifetime: cents(s.lifetime_budget),
@@ -396,17 +385,6 @@ function creativeLibrary(r: MetaReport, groups: CreativeGroup[], today: string):
   return parts.join('\n');
 }
 
-function breakdowns(x: Extras): string {
-  const t = (rows: Extras['placements']) => table(['', 'Spend', 'Impr.', 'CTR', 'CPC', 'Leads (Meta)', 'CPL'],
-    rows.map(b => [b.label, money0(b.spend), int(b.impressions), pct(div(b.clicks * 100, b.impressions), 2), money(div(b.spend, b.clicks)), int(b.leads), money(div(b.spend, b.leads))]));
-  const parts: string[] = ['Last 30 days, Meta-reported. Where the money went and who saw it.'];
-  parts.push('\n**By placement**');
-  parts.push(x.placements.length ? t(x.placements.slice(0, 8)) : 'No placement breakdown returned.');
-  parts.push('\n**By age and gender**');
-  parts.push(x.demographics.length ? t(x.demographics.slice(0, 10)) : 'No demographic breakdown returned.');
-  return parts.join('\n');
-}
-
 function funnelPages(r: MetaReport, windows: readonly WindowDays[]): string {
   if (!r.funnel) return 'Funnel page tracking not connected for this run.';
   const k = LANDING_TO_BOOKING_KPI;
@@ -485,7 +463,7 @@ function header(r: MetaReport, title: string): string {
 }
 
 export function renderFull(r: MetaReport, x: Extras, hub: Hub, groups: CreativeGroup[]): string {
-  const sec = { brief: 1, now: 2, history: 3, funnel: 4, adsets: 5, ads: 6, library: 7, audience: 8, pages: 9, onoff: 10 };
+  const sec = { brief: 1, now: 2, history: 3, funnel: 4, adsets: 5, ads: 6, library: 7, pages: 8, onoff: 9 };
   const p: string[] = [];
   p.push(header(r, 'Tomsi Media B2B — full media-buying brief'));
   p.push('');
@@ -504,8 +482,6 @@ export function renderFull(r: MetaReport, x: Extras, hub: Hub, groups: CreativeG
   p.push(adTable(r));
   p.push(`\n## ${sec.library}. Creative library — every creative, its script and its life`);
   p.push(creativeLibrary(r, groups, r.today));
-  p.push(`\n## ${sec.audience}. Audience and placement`);
-  p.push(breakdowns(x));
   p.push(`\n## ${sec.pages}. Funnel pages`);
   p.push(funnelPages(r, [30, 7]));
   p.push(`\n## ${sec.onoff}. Ad set / campaign switches`);
