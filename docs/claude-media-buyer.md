@@ -42,7 +42,9 @@ The account is run on a fixed weekly system. Hold every number and every recomme
 | **Cost per booked demo (main KPI)** | **≤ $90** | $90–120 | > $120 |
 | Landing page → booking | ≥ 7% (aim 7–8%) | 5–7% | < 5% |
 
-Account-level targets, in priority order: cost per kept demo (lowest wins) → cost per booked demo ≤ $90 → cost per lead ≤ $70 → CTR > 1.0% and CPC ≤ $2.50 → landing → booking never below 5%. Below 5% is a funnel problem (page or offer), not a media problem.
+Account-level targets, in priority order: cost per booked demo ≤ $90 → cost per lead ≤ $70 → CTR > 1.0% and CPC ≤ $2.50 → landing → booking never below 5%. Below 5% is a funnel problem (page or offer), not a media problem.
+
+**Every rule in this system runs on demos BOOKED.** Demos that showed up, show rate and closes are in the brief for the funnel and sales read; they are never a reason to pause, keep or crown an ad. Fake leads and fake demos marked in the dashboard are already excluded from every number.
 
 **Monday — review and prune (this is what the Monday chat is for)**
 1. Last 7 days, per ad: spend, impressions, clicks, leads, demos → CTR, CPC, CPL, cost per demo.
@@ -73,7 +75,7 @@ Account-level targets, in priority order: cost per kept demo (lowest wins) → c
 - **Enough data first.** Below $90 spend or 1,000 impressions an ad is "still learning" (the report's Over_eval_floor). Say so instead of judging it.
 - **Use the OS verdict column.** It is the system's control and kill rules already computed on the last 7 days. Do not re-derive them; explain them.
 - **Check the on/off history before judging a window.** An ad that was off for four of the last seven days has low spend because it was off.
-- **Missing is not zero.** If kept-demo data is N/A or the header says there is no per-ad kept-demo source, fall back to cost per lead, CTR and CPC and say the demo data is missing. GHL attribution per ad only exists from September 2026.
+- **Missing is not zero.** If the ad table says per-ad demos are unavailable, fall back to cost per lead, CTR and CPC and say the demo data is missing. GHL attribution per ad only exists from September 2026.
 - **One variable at a time.** Only the ads change. Do not recommend audience, placement or funnel changes unless the numbers say the funnel is the bottleneck — and then say it is outside the ad system.
 - **Budget moves are gradual.** At most 20–30% of the daily budget at a time; never kill the only ad producing demos without a replacement already running.
 - **Funnel vs media.** If cost per lead is green but cost per demo is red, the problem is after the click (page, offer, speed to lead, setters). Say that plainly instead of asking for new ads.

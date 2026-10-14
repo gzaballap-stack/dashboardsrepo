@@ -19,7 +19,7 @@ import { getTomsiClientId } from './tomsi';
 import { rollupFunnelByAd, EMPTY_AD_FUNNEL, type AdFunnel } from './ad-funnel';
 import { B2B_BRIEF } from './b2b-brief';
 import {
-  buildMetaReport, accountSummary, RULES, LANDING_TO_BOOKING_KPI,
+  buildMetaReport, accountSummary, LANDING_TO_BOOKING_KPI,
   type BuildOptions, type MetaReport, type AdRow, type StatusEvent, type WindowDays,
 } from './meta-report';
 
@@ -176,11 +176,11 @@ function instructions(r: MetaReport, mode: ReportMode, sec: Record<string, numbe
     '>',
     `> **Definitions.** L30 / L7 / L3 = last 30 / 7 / 3 days ending ${r.today}. A *demo* is a booked sales call; a *kept demo* is one that showed. *Control* = the best ad in L7 (named in the ad-level section). Ad-level window numbers are L7; lifetime numbers are marked as such.`,
     '>',
-    `> **KPI targets (compare every number to these):** cost per booked demo ≤ $90 · cost per lead ≤ $70 · link CTR > 1.0% · CPC ≤ $2.50 · landing page → booking never below ${k.floorPct}%, aiming for ${k.targetLowPct}–${k.targetHighPct}% (below ${k.floorPct}% is a funnel problem — page or offer — not a media problem). Priority order: cost per kept demo → cost per booked demo → cost per lead → CTR/CPC.`,
+    `> **KPI targets (compare every number to these):** cost per booked demo ≤ $90 · cost per lead ≤ $70 · link CTR > 1.0% · CPC ≤ $2.50 · landing page → booking never below ${k.floorPct}%, aiming for ${k.targetLowPct}–${k.targetHighPct}% (below ${k.floorPct}% is a funnel problem — page or offer — not a media problem). Priority order: cost per booked demo → cost per lead → CTR/CPC. **Every kill / keep / control rule runs on demos BOOKED.** Kept demos (showed up), show rate and closes are context for the funnel and sales read — never a reason to pause an ad. Fake leads and fake demos marked in the dashboard are already excluded from every GHL number here.`,
     '>',
-    '> **Missing data rule.** If kept-demo data is N/A, or the header says there is no per-ad kept-demo source, treat it as MISSING, not zero. Never pause or rank an ad on kept demos in that case — fall back to CPL, CTR and CPC and say so. GHL ad attribution (leads / demos per ad) only exists from September 2026; earlier creatives have Meta lead counts only.',
+    '> **Missing data rule.** If the ad table says per-ad demos are unavailable, treat demos as MISSING, not zero: never pause or rank an ad on demos in that case — fall back to CPL, CTR and CPC and say so. GHL ad attribution (leads / demos per ad) only exists from September 2026; earlier creatives have Meta lead counts only.',
     '>',
-    `> **Use the computed verdicts.** The "OS verdict" column in section ${sec.ads} applies the weekly operating system's control / kill / watch / learning rules on L7 — it is the primary pause/keep signal; do not re-derive it. The control is named above that table. Always quote the exact ad name AND ad ID (names repeat across variants). Before judging an ad on L7 / L3, check the on/off history (section ${sec.history}): an ad switched off mid-window has low spend because it was off, not because it failed.`,
+    `> **Use the computed verdicts.** The "OS verdict" column in section ${sec.ads} applies the weekly operating system's control / kill / watch / learning rules on L7, all on demos booked — it is the primary pause/keep signal; do not re-derive it. The control is named above that table. Always quote the exact ad name AND ad ID (names repeat across variants). Before judging an ad on L7 / L3, check the on/off history (section ${sec.history}): an ad switched off mid-window has low spend because it was off, not because it failed.`,
     '>',
     '> **Answer in exactly this shape:**',
     '> **1) EXECUTIVE SNAPSHOT** (2–4 sentences): profitable or bleeding; the #1 constraint; MEDIA issue (ads / targeting / creative) or FUNNEL/SALES issue (booking, show, close). End with one line listing data gaps.',
@@ -267,7 +267,8 @@ function adTable(r: MetaReport): string {
   // Control per the operating system; the report's own control (best kept-demo cost, else best CTR) is the fallback.
   const eligible = served.filter(a => booked(a, 7) >= OS.control_min_demos);
   const osControl = eligible.sort((p, q) => (cpd(p, 7) ?? Infinity) - (cpd(q, 7) ?? Infinity))[0] ?? null;
-  const control = osControl ?? r.ads.find(a => a.ad_id === r.control.best_cpki_ad_id) ?? r.ads.find(a => a.ad_id === r.control.best_ctr_ad_id) ?? null;
+  // No ad with 2+ booked demos → the best link CTR stands in (never kept demos).
+  const control = osControl ?? r.ads.find(a => a.ad_id === r.control.best_ctr_ad_id) ?? null;
   const controlCtr = control?.windows[7].ctr_link ?? null;
 
   const verdict = (a: AdRow): string => {
@@ -284,23 +285,19 @@ function adTable(r: MetaReport): string {
   };
 
   parts.push(control
-    ? `**Control (operating-system rule, L7):** "${control.ad_name}" (${control.ad_id}) — ${osControl ? `${booked(control, 7)} demos at ${money0(cpd(control, 7))} each` : 'no ad has 2+ booked demos in L7, so the control is the best ad on kept-demo cost / CTR instead'}, link CTR ${pct(controlCtr, 2)}.`
+    ? `**Control (operating-system rule, L7):** "${control.ad_name}" (${control.ad_id}) — ${osControl ? `${booked(control, 7)} demos booked at ${money0(cpd(control, 7))} each` : 'no ad has 2+ booked demos in L7, so the best link CTR stands in as control'}, link CTR ${pct(controlCtr, 2)}.`
     : '**Control:** none — nothing served enough to be a control this week.');
   if (!hasAttribution) parts.push('**Per-ad demos are unavailable this run** (no GHL ad attribution in the window): the demo-based rules are not applied; judge on CTR, CPC and CPL.');
 
-  const flagList = (f: AdRow['flags']) => {
-    const on = [f.over_eval_floor && 'Over_eval_floor', f.zero_demo_kill === true && 'Zero_demo_kill', f.ctr_half_control && 'CTR_half_control', f.early_ctr_trash && 'Early_CTR_trash', f.perf_vs_control_bad === true && 'Perf_vs_control_bad'].filter(Boolean);
-    return on.length ? on.join(', ') : 'none';
-  };
   parts.push(table(
-    ['Ad set', 'Ad name', 'Ad ID', 'Now', 'L7 spend', 'Impr.', 'CTR (link)', 'CPC', 'Leads', 'CPL', 'Demos booked', 'Cost/demo', 'Kept', 'L3 spend / demos', 'OS verdict', 'Report flags'],
+    ['Ad set', 'Ad name', 'Ad ID', 'Now', 'L7 spend', 'Impr.', 'CTR (link)', 'CPC', 'Leads', 'CPL', 'Demos booked', 'Cost/demo', 'Kept (info)', 'L3 spend / demos', 'OS verdict'],
     served.sort((p, q) => q.windows[7].spend - p.windows[7].spend).map(a => { const m = a.windows[7]; return [
       a.adset_name, a.ad_name, a.ad_id, a.status ?? '—',
       money(m.spend), int(m.impressions), pct(m.ctr_link, 2), money(m.cpc_link), int(m.leads), money(m.cost_per_lead),
       int(booked(a, 7)), money(cpd(a, 7)), int(m.kept_demos), `${money0(a.windows[3].spend)} / ${int(booked(a, 3))}`,
-      verdict(a), flagList(a.flags)]; }),
+      verdict(a)]; }),
   ));
-  parts.push(`OS verdict = the weekly system's rules computed on L7: CONTROL = lowest cost per booked demo with ≥ ${OS.control_min_demos} demos · KILL = ≥ ${int(OS.eval_impr)} impressions and link CTR under half the control's, or ≥ $${OS.kill_spend} with 0 demos · WATCH = ≥ $${OS.watch_spend} with 0 demos · WEAK = cost per demo 30%+ worse than control · LEARNING = under $${OS.eval_spend} and under ${int(OS.eval_impr)} impressions. "Leads" and "Demos booked" are GHL (CRM) numbers attributed to the ad; "Kept" = demos that showed. Report flags are the older kept-demo rules (Zero_demo_kill = $${RULES.zeroDemoKillSpend}+ and 0 kept demos; CTR_half_control / Early_CTR_trash on CTR vs the report's control), kept for continuity.`);
+  parts.push(`OS verdict = the weekly system's rules computed on L7: CONTROL = lowest cost per booked demo with ≥ ${OS.control_min_demos} demos · KILL = ≥ ${int(OS.eval_impr)} impressions and link CTR under half the control's, or ≥ $${OS.kill_spend} with 0 demos · WATCH = ≥ $${OS.watch_spend} with 0 demos · WEAK = cost per demo 30%+ worse than control · LEARNING = under $${OS.eval_spend} and under ${int(OS.eval_impr)} impressions. "Leads" and "Demos booked" are GHL (CRM) numbers attributed to the ad, with fake leads / fake demos excluded; every rule runs on demos booked. "Kept" = demos that showed — context only, never a pause reason.`);
   return parts.join('\n');
 }
 
