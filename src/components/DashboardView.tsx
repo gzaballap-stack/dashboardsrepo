@@ -450,6 +450,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const [statOpen, setStatOpen] = useState<{ label: string; value: string } | null>(null);
   const [showWeekly, setShowWeekly] = useState(false);
   const [showReportShare, setShowReportShare] = useState(false);
+  const [showReportMenu, setShowReportMenu] = useState(false);
+  const reportMenuRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   // Who is signed in and what they're allowed to open. `allowed_views: null`
@@ -591,6 +593,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (presetRef.current && !presetRef.current.contains(e.target as Node)) setShowPresetMenu(false);
+      if (reportMenuRef.current && !reportMenuRef.current.contains(e.target as Node)) { setShowReportMenu(false); setShowReportShare(false); }
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -1142,32 +1145,39 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           )}
           {showWeekly && <WeeklyBreakdown onClose={() => setShowWeekly(false)} />}
 
-          {/* Tomsi Media: the two paste-ready AI reports. "Full brief" = everything a
-              chat with no context needs; "Update" = the last 7 days for a chat that
-              already has the brief. Both download as Markdown. */}
+          {/* Tomsi Media: one "Download" button → Full brief / Update (Markdown files
+              to paste into an AI chat) or Link (a read-only URL an AI project can fetch). */}
           {topSection === "tomsi_media" && (
-            <div className="flex items-center rounded-lg overflow-hidden flex-shrink-0" style={{ border: "1px solid rgba(0,0,0,0.162)", background: "#fff" }}>
-              <a href="/api/meta-b2b-report?mode=full&download=1" title="Full media-buying brief — paste into a new AI chat that knows nothing about us"
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium" style={{ color: "#111" }}>
+            <div className="relative flex-shrink-0" ref={reportMenuRef}>
+              <button onClick={() => { setShowReportMenu(v => !v); setShowReportShare(false); }} title="Media-buying reports"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
+                style={{ background: showReportMenu ? "rgba(0,0,0,0.05)" : "#fff", border: "1px solid rgba(0,0,0,0.162)", color: "#111" }}>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16" />
                 </svg>
-                Full brief
-              </a>
-              <a href="/api/meta-b2b-report?mode=update&download=1" title="7-day update — paste into a chat that already has the full brief"
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium" style={{ color: "#111", borderLeft: "1px solid rgba(0,0,0,0.162)" }}>
-                Update
-              </a>
-              <div className="relative">
-                <button onClick={() => setShowReportShare(v => !v)} title="Read-only link an AI can fetch (no sign-in)"
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium" style={{ color: "#111", borderLeft: "1px solid rgba(0,0,0,0.162)", background: showReportShare ? "rgba(0,0,0,0.05)" : "transparent" }}>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                  </svg>
-                  Link
-                </button>
-                {showReportShare && <ReportShare onClose={() => setShowReportShare(false)} />}
-              </div>
+                Download
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {showReportMenu && !showReportShare && (
+                <div className="absolute right-0 mt-2 z-50 rounded-xl py-1 w-56" style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 12px 32px -12px rgba(0,0,0,0.25)" }}>
+                  <a href="/api/meta-b2b-report?mode=full&download=1" onClick={() => setShowReportMenu(false)}
+                    className="block px-3 py-2 text-sm" style={{ color: "#111" }}>
+                    Full brief
+                    <span className="block text-[11px]" style={{ color: "#767676" }}>Everything, for a chat with no context</span>
+                  </a>
+                  <a href="/api/meta-b2b-report?mode=update&download=1" onClick={() => setShowReportMenu(false)}
+                    className="block px-3 py-2 text-sm" style={{ color: "#111", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                    Update
+                    <span className="block text-[11px]" style={{ color: "#767676" }}>Last 7 days, for a chat that has the brief</span>
+                  </a>
+                  <button onClick={() => setShowReportShare(true)}
+                    className="block w-full text-left px-3 py-2 text-sm" style={{ color: "#111", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+                    Link
+                    <span className="block text-[11px]" style={{ color: "#767676" }}>Read-only URL a Claude project can fetch</span>
+                  </button>
+                </div>
+              )}
+              {showReportShare && <ReportShare onClose={() => { setShowReportShare(false); setShowReportMenu(false); }} />}
             </div>
           )}
 
