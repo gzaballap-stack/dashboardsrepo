@@ -540,14 +540,24 @@ export default function CreativeHub({ scope, tab, clients }: {
 // ── Timeline ────────────────────────────────────────────────────────────────
 
 type TRow = { id: string; label: string; sub?: string; runs: Run[]; spend: number; live: boolean; marker?: string | null;
+  entryId?: string | null; campaignId?: string | null;
   indent?: boolean; onClick?: () => void; toggle?: boolean; openState?: boolean };
+
+// One line in the change log: what was done to the ads, when, and to what.
+type Change = { id: string; happened_on: string; note: string; entry_id: string | null; campaign_id: string | null };
 
 function Timeline({ data, scope, showClient, onOpen }: {
   data: HubData; scope: Scope; showClient: boolean; onOpen: (key: string) => void;
 }) {
   const [mode, setMode] = useState<"campaign" | "creative">("campaign");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [changes, setChanges] = useState<Change[]>([]);
+  const loadChanges = useCallback(() =>
+    fetch(`/api/creative-hub/changes?scope=${scope}`).then(r => r.json()).then(j => { if (j.changes) setChanges(j.changes); }).catch(() => {}),
+  [scope]);
+  useEffect(() => { loadChanges(); }, [loadChanges]);
   const todayN = dayNum(data.today);
+  const entryIdOf = (key: string) => data.creatives.find(c => c.key === key)?.entry?.id ?? null;
   const isLive = (runs: Run[]) => runs.length > 0 && todayN - dayNum(runs[runs.length - 1].end) <= 2;
 
   const rows: TRow[] = useMemo(() => {
@@ -556,26 +566,35 @@ function Timeline({ data, scope, showClient, onOpen }: {
         .filter(c => c.runs.length || c.entry?.launch_date)
         .sort((a, b) => (a.first ?? a.entry?.launch_date ?? "").localeCompare(b.first ?? b.entry?.launch_date ?? ""))
         .map(c => ({ id: c.key, label: c.name, sub: c.kind ?? undefined, runs: c.runs, spend: c.spend, live: c.live,
-          marker: c.entry?.launch_date, onClick: () => onOpen(c.key) }));
+          marker: c.entry?.launch_date, entryId: c.entry?.id ?? null, onClick: () => onOpen(c.key) }));
     }
     return data.campaigns.flatMap(c => {
       const isOpen = expanded.has(c.campaign_id);
       // Across clients the campaigns are all named alike, so the client leads.
       const head: TRow = { id: c.campaign_id, label: showClient ? c.client_name : c.name,
         sub: showClient ? c.name : `${c.creatives.length} creative${c.creatives.length === 1 ? "" : "s"}`,
-        runs: c.runs, spend: c.spend, live: isLive(c.runs), toggle: true, openState: isOpen,
+        runs: c.runs, spend: c.spend, live: isLive(c.runs), toggle: true, openState: isOpen, campaignId: c.campaign_id,
         onClick: () => setExpanded(prev => { const n = new Set(prev); if (n.has(c.campaign_id)) n.delete(c.campaign_id); else n.add(c.campaign_id); return n; }) };
       const kids: TRow[] = isOpen ? c.creatives.map(cc => ({ id: `${c.campaign_id}:${cc.key}`, label: cc.name, runs: cc.runs, spend: cc.spend,
-        live: isLive(cc.runs), indent: true, onClick: () => onOpen(cc.key) })) : [];
+        live: isLive(cc.runs), indent: true, entryId: entryIdOf(cc.key), onClick: () => onOpen(cc.key) })) : [];
       return [head, ...kids];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, mode, expanded, showClient]);
 
-  const starts = rows.flatMap(r => [r.runs[0]?.start, r.marker]).filter((d): d is string => !!d).map(dayNum);
+  const starts = [...rows.flatMap(r => [r.runs[0]?.start, r.marker]), ...changes.map(ch => ch.happened_on)].filter((d): d is string => !!d).map(dayNum);
   if (!starts.length) {
-    return <div className="rounded-2xl p-8 text-center text-sm" style={{ ...CARD, color: "#6b6b6b" }}>Nothing has run yet — the timeline fills in as ads go live.</div>;
+    return (
+      <div className="space-y-3">
+        <div className="rounded-2xl p-8 text-center text-sm" style={{ ...CARD, color: "#6b6b6b" }}>Nothing has run yet — the timeline fills in as ads go live.</div>
+        <ChangeLog scope={scope} data={data} changes={changes} onChanged={loadChanges} />
+      </div>
+    );
   }
+  // Changes that belong to this row (by creative or by campaign), and the
+  // ones tied to nothing, which sit in the header.
+  const changesFor = (r: TRow) => changes.filter(ch => (r.entryId && ch.entry_id === r.entryId) || (r.campaignId && ch.campaign_id === r.campaignId));
+  const globalChanges = changes.filter(ch => !ch.entry_id && !ch.campaign_id);
   const min = Math.min(...starts) - 1;
   const total = todayN - min + 2;
   const dayW = total <= 45 ? 18 : total <= 100 ? 11 : total <= 220 ? 6 : 4;
@@ -630,6 +649,10 @@ function Timeline({ data, scope, showClient, onOpen }: {
               {ticks.map(t => (
                 <div key={t.left} className="absolute bottom-1 text-[10px]" style={{ left: t.left + 3, color: "#949494" }}>{t.label}</div>
               ))}
+              {globalChanges.map(ch => (
+                <div key={ch.id} className="absolute rounded-full" title={`${fmtDay(ch.happened_on, true)} — ${ch.note}`}
+                  style={{ left: x(ch.happened_on) + dayW / 2 - 4, top: 15, width: 8, height: 8, background: "#d97706", border: "2px solid #ffffff" }} />
+              ))}
             </div>
           </div>
 
@@ -657,6 +680,10 @@ function Timeline({ data, scope, showClient, onOpen }: {
                         background: liveBar ? "#15803d" : r.indent ? "#c4c4c4" : "#9a9a9a" }} />
                   );
                 })}
+                {changesFor(r).map(ch => (
+                  <div key={ch.id} className="absolute rounded-full" title={`${fmtDay(ch.happened_on, true)} — ${ch.note}`}
+                    style={{ left: x(ch.happened_on) + dayW / 2 - 5, top: 3, width: 10, height: 10, background: "#d97706", border: "2px solid #ffffff", zIndex: 1 }} />
+                ))}
                 {r.marker && (
                   <div className="absolute" title={`Launch date: ${fmtDay(r.marker, true)}`}
                     style={{ left: x(r.marker) + dayW / 2 - 4, top: "50%", width: 8, height: 8, marginTop: -4, transform: "rotate(45deg)", background: "#111111" }} />
@@ -672,8 +699,90 @@ function Timeline({ data, scope, showClient, onOpen }: {
         </div>
       </div>
       <div className="text-[11px]" style={{ color: "#949494" }}>
-        Bars show the days each {mode === "campaign" ? "campaign" : "creative"} was delivering, from {fmtDay(dayStr(min + 1), true)} to today{scope === "b2c" ? ", across every client it ran for" : ""}. The red line is today.
+        Bars show the days each {mode === "campaign" ? "campaign" : "creative"} was delivering, from {fmtDay(dayStr(min + 1), true)} to today{scope === "b2c" ? ", across every client it ran for" : ""}. The red line is today; orange dots are logged changes (hover to read them).
       </div>
+      <ChangeLog scope={scope} data={data} changes={changes} onChanged={loadChanges} />
+    </div>
+  );
+}
+
+// ── Change log ──────────────────────────────────────────────────────────────
+
+function ChangeLog({ scope, data, changes, onChanged }: {
+  scope: Scope; data: HubData; changes: Change[]; onChanged: () => Promise<void>;
+}) {
+  const [day, setDay] = useState(data.today);
+  const [note, setNote] = useState("");
+  const [tie, setTie] = useState("");         // "" | "c:<campaign_id>" | "e:<entry_id>"
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [open, setOpen] = useState(true);
+
+  const creativeOptions = data.creatives.filter(c => c.entry?.id).map(c => ({ id: c.entry!.id, label: `${c.code ? c.code + " " : ""}${c.name}` }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const campaignOptions = data.campaigns.map(c => ({ id: c.campaign_id, label: `${c.client_name !== "—" && scope === "b2c" ? c.client_name + " — " : ""}${c.name}` }));
+  const tieLabel = (ch: Change) =>
+    ch.entry_id ? creativeOptions.find(o => o.id === ch.entry_id)?.label ?? "a creative"
+    : ch.campaign_id ? campaignOptions.find(o => o.id === ch.campaign_id)?.label ?? "a campaign"
+    : null;
+
+  async function add() {
+    if (!note.trim()) return;
+    setBusy(true); setErr("");
+    try {
+      await postJson("/api/creative-hub/changes", {
+        scope, happened_on: day, note,
+        entry_id: tie.startsWith("e:") ? tie.slice(2) : null,
+        campaign_id: tie.startsWith("c:") ? tie.slice(2) : null,
+      });
+      setNote("");
+      await onChanged();
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  }
+  async function remove(id: string) {
+    if (!window.confirm("Delete this change?")) return;
+    await fetch(`/api/creative-hub/changes?id=${id}`, { method: "DELETE" });
+    await onChanged();
+  }
+
+  return (
+    <div className="rounded-2xl" style={CARD}>
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-4 py-3 text-left">
+        <svg className="w-3 h-3" style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 150ms ease", color: "#949494" }} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+        <span className="text-sm font-semibold" style={{ color: "#111111" }}>Changes</span>
+        <span className="text-xs" style={{ color: "#949494" }}>{changes.length ? `${changes.length} logged` : "What you did to the ads, and when"}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+          <div className="flex gap-2 flex-wrap items-start">
+            <input type="date" value={day} onChange={e => setDay(e.target.value)} className="px-3 py-2 rounded-lg text-xs outline-none" style={INPUT} />
+            <select value={tie} onChange={e => setTie(e.target.value)} className="px-3 py-2 rounded-lg text-xs font-medium outline-none max-w-[260px]" style={INPUT}>
+              <option value="">Whole account</option>
+              {campaignOptions.length > 0 && <optgroup label="Campaign">{campaignOptions.map(o => <option key={o.id} value={`c:${o.id}`}>{o.label}</option>)}</optgroup>}
+              {creativeOptions.length > 0 && <optgroup label="Creative">{creativeOptions.map(o => <option key={o.id} value={`e:${o.id}`}>{o.label}</option>)}</optgroup>}
+            </select>
+            <input value={note} onChange={e => setNote(e.target.value)} onKeyDown={e => { if (e.key === "Enter") add(); }}
+              placeholder="What changed? e.g. Paused AI/SLOP/004, budget up to $150/day" className="flex-1 min-w-[240px] px-3 py-2 rounded-lg text-xs outline-none" style={INPUT} />
+            <button onClick={add} disabled={busy || !note.trim()} className="px-3 py-2 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy || !note.trim() ? 0.5 : 1 }}>{busy ? "Saving…" : "Log it"}</button>
+          </div>
+          {err && <div className="text-xs" style={{ color: "#b91c1c" }}>{err}</div>}
+          {changes.length > 0 && (
+            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(0,0,0,0.07)" }}>
+              {changes.map(ch => (
+                <div key={ch.id} className="flex items-start gap-3 px-3 py-2 text-xs group" style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
+                  <span className="w-2 h-2 rounded-full flex-shrink-0 mt-1.5" style={{ background: "#d97706" }} />
+                  <span className="whitespace-nowrap font-semibold" style={{ color: "#111111", minWidth: 84 }}>{fmtDay(ch.happened_on, true)}</span>
+                  <span className="flex-1 min-w-0" style={{ color: "#111111" }}>
+                    {ch.note}
+                    {tieLabel(ch) && <span className="ml-2" style={{ color: "#949494" }}>· {tieLabel(ch)}</span>}
+                  </span>
+                  <button onClick={() => remove(ch.id)} className="text-[10px] opacity-0 group-hover:opacity-100" style={{ color: "#b91c1c" }}>Delete</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

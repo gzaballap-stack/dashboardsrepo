@@ -58,6 +58,22 @@ on top of `buildMetaReport`.
   1 real demo. Landing → booking reads 83% for the week. Needs a dedupe rule
   (e.g. one thank-you per contact / per IP per day) — owner to decide.
 
+## 2026-10-14 — Creative hub: change log on the timeline
+
+**Changes** card under the Timeline (`ChangeLog` in `CreativeHub.tsx`): dated
+notes on what was done to the ads, optionally tied to one creative or one
+campaign. Table `creative_hub_changes` (migration `add_creative_changes.sql`,
+applied to V1 and V2); route `/api/creative-hub/changes` (GET/POST/DELETE).
+On the chart: orange dots on the tied row (creative rows in both modes,
+campaign rows in campaign mode), header dots for account-wide notes; hover
+reads the note. Change dates extend the chart's range.
+
+Also: the two B2B copy sets in use were created on V1 and attached — the
+September campaign's ("$1 Down — 50 estimates in 90 days", 15 creatives) and
+the talking heads' ("Attention Remodelers — talking heads", TH/001–007; the
+fullest of three variants that grew over Mar–Aug). No B2B ad has been active
+since Oct 4. The copy set is folded by default in the creative drawer.
+
 ## 2026-10-14 — Creative hub: Copy page
 
 New **Copy** page under B2B and B2C in the hub (`b2b_copy` / `b2c_copy`,
