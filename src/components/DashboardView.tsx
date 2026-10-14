@@ -31,6 +31,7 @@ import DateRangePicker, { fmtRange } from "./DateRangePicker";
 import CreativeLeaderboard from "./CreativeLeaderboard";
 import CSMDashboard from "./CSMDashboard";
 import CreativeHub from "./CreativeHub";
+import CopyHub from "./CopyHub";
 
 type Client = { id: string; name: string; is_live?: boolean; is_internal?: boolean };
 
@@ -368,20 +369,23 @@ const TOOLS_VIEWS: string[] = ["zip_tool", "task_board", "lift_tracker"];
 
 // Creative & Copy Hub: two separate libraries (Tomsi Media's own ads, and the
 // clients'), each with its library, its timeline and its creative leaderboard.
-type HubView = "b2b_library" | "b2b_timeline" | "b2b_leaderboard" | "b2c_library" | "b2c_timeline" | "b2c_leaderboard";
+type HubView = "b2b_library" | "b2b_copy" | "b2b_timeline" | "b2b_leaderboard" | "b2c_library" | "b2c_copy" | "b2c_timeline" | "b2c_leaderboard";
 const HUB_ICONS = {
   library:     "M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z",
+  copy:        "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z",
   timeline:    "M4 6h10M4 12h16M8 18h8",
   leaderboard: "M7 21h10M12 3v18M5 7l7-4 7 4M5 7v6a7 7 0 0014 0V7M5 7l7 4 7-4",
 };
 const HUB_NAV: { group: string; items: { id: HubView; label: string; icon: string }[] }[] = [
   { group: "B2B", items: [
     { id: "b2b_library",     label: "Library",              icon: HUB_ICONS.library },
+    { id: "b2b_copy",        label: "Copy",                 icon: HUB_ICONS.copy },
     { id: "b2b_timeline",    label: "Timeline",             icon: HUB_ICONS.timeline },
     { id: "b2b_leaderboard", label: "Creative Leaderboard", icon: HUB_ICONS.leaderboard },
   ]},
   { group: "B2C", items: [
     { id: "b2c_library",     label: "Library",              icon: HUB_ICONS.library },
+    { id: "b2c_copy",        label: "Copy",                 icon: HUB_ICONS.copy },
     { id: "b2c_timeline",    label: "Timeline",             icon: HUB_ICONS.timeline },
     { id: "b2c_leaderboard", label: "Creative Leaderboard", icon: HUB_ICONS.leaderboard },
   ]},
@@ -1285,6 +1289,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           {inHub && canHub(hubView) && (
             hubView === "b2b_leaderboard" ? (tomsiClient && <CreativeLeaderboard key="hub-b2b" startDate={dateStart} endDate={dateEnd} clientId={tomsiClient.id} />)
             : hubView === "b2c_leaderboard" ? <CreativeLeaderboard key="hub-b2c" startDate={dateStart} endDate={dateEnd} />
+            : hubView.endsWith("_copy") ? <CopyHub key={hubView} scope={hubView.startsWith("b2b") ? "b2b" : "b2c"} />
             : <CreativeHub key={hubView.slice(0, 3)} scope={hubView.startsWith("b2b") ? "b2b" : "b2c"} tab={hubView.endsWith("_timeline") ? "timeline" : "library"} clients={publicClients} />
           )}
 

@@ -153,7 +153,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `metrics`, `agent-stats`, `heatmap`, `report` | Core reporting reads |
 | `ad-spend/*`, `b2b-ad-spend/*` | Ad spend sync — `sync-all` fetches + stores every ad level in one call |
 | `campaign-overview`, `campaign-exclusions`, `client-ad-breakdown` | Campaign views |
-| `creative-hub`, `creative-hub/folders`, `creative-hub/push-names`, `creative-leaderboard` | **Creative & Copy Hub** — one record per creative, filed in a category / folder that gives it its code (`AI/SLOP/001`), ads bound by id in `creative_hub_links`; media + copy pulled live from Meta and cached in `creative_hub_meta`, run dates from `ad_campaigns`, prompt / script / tags in `creative_hub_entries`. Split B2B (Tomsi Media) / B2C (clients). Needs `META_ACCESS_TOKEN`; renaming ads in Meta needs `META_MANAGEMENT_TOKEN`. See `NOTES.md` 2026-10-01/02. |
+| `creative-hub`, `creative-hub/folders`, `creative-hub/copy` (+ `copy/import`), `creative-hub/push-names`, `creative-leaderboard` | **Creative & Copy Hub** — one record per creative, filed in a category / folder that gives it its code (`AI/SLOP/001`), ads bound by id in `creative_hub_links`; media + copy pulled live from Meta and cached in `creative_hub_meta`, run dates from `ad_campaigns`, prompt / script / tags in `creative_hub_entries`. Split B2B (Tomsi Media) / B2C (clients). Needs `META_ACCESS_TOKEN`; renaming ads in Meta needs `META_MANAGEMENT_TOKEN`. See `NOTES.md` 2026-10-01/02. |
 | `csm-dashboard`, `client-csm-status`, `client-touchpoints`, `client-windows` | CSM health tracking |
 | `zip-*` (`zip-lookup`, `zip-data`, `zip-radius`, `zip-neighborhoods`, `zip-performance`) | In-dashboard zip/territory features (uses `src/lib/census.ts` + `zip-score.ts`) |
 | `calendar` | Calendar panel — fetches each user's private Google Calendar iCal feed server-side and parses it with `src/lib/ics.ts`. Feed URLs are secrets: stored in `calendar_feeds`, never returned to the browser. |
@@ -315,6 +315,7 @@ Never commit `.env*` — they're gitignored. Production values live in Railway.
 | Dashboard UI (nav + all views) | `src/components/DashboardView.tsx` |
 | Database schema | `supabase/schema.sql` (+ `supabase/migrations/`) |
 | Creative & Copy Hub (library, timeline, detail drawer) | `src/components/CreativeHub.tsx`, `src/lib/creative-hub.ts`, `src/lib/creative-key.ts` |
+| Creative & Copy Hub — Copy sets | `src/components/CopyHub.tsx`, `src/app/api/creative-hub/copy/` |
 | Per-user feature access | `src/lib/feature-access.ts` (+ `src/middleware.ts`, Settings > Users) |
 | Health Tracker (log, diet plan, gym split, Whoop tab) | `src/components/HealthTracker.tsx`, `src/lib/health-tracker.ts` |
 | Whoop OAuth, token refresh, day assembly | `src/lib/whoop.ts`, `src/app/api/whoop/` |

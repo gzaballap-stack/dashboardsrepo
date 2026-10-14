@@ -1,3 +1,17 @@
+## 2026-10-14 — Creative hub: Copy page
+
+New **Copy** page under B2B and B2C in the hub (`b2b_copy` / `b2c_copy`,
+`src/components/CopyHub.tsx`). A **copy set** is one combination of texts an
+ad rotates through — up to 5 primary texts, 5 headlines, 5 descriptions, plus
+button and link — labelled with its campaign. Table `creative_hub_copy_sets`
+(migration `add_creative_copy_sets.sql`, applied to V1 and V2). Routes:
+`/api/creative-hub/copy` (GET/POST/DELETE) and `/api/creative-hub/copy/import?ad_id=`,
+which reads every text off a live ad's creative in Meta (`asset_feed_spec`
+bodies / titles / descriptions, falling back to `object_story_spec`) so a set
+can be started from an ad that is already running ("Pull the texts off an
+ad…" in the editor). Copy buttons per text, per group and for the whole set.
+Sets are not yet linked to creatives — that's a later step if wanted.
+
 ## 2026-10-08 — Revenue-goal numbers on the Custom Area Breakdown doc
 
 The sales-call doc gets a section with the prospect's own numbers: average

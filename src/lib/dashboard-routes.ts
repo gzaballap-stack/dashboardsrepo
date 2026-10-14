@@ -77,9 +77,11 @@ export const CLIENTS_VIEW_ROUTES: Record<string, { slug: string; label: string }
 // Tomsi Media's own ads, B2C is the clients'.
 export const HUB_VIEW_ROUTES: Record<string, { slug: string; label: string }> = {
   b2b_library:     { slug: "b2b-library",              label: "B2B Library" },
+  b2b_copy:        { slug: "b2b-copy",                 label: "B2B Copy" },
   b2b_timeline:    { slug: "b2b-timeline",             label: "B2B Timeline" },
   b2b_leaderboard: { slug: "b2b-creative-leaderboard", label: "B2B Creative Leaderboard" },
   b2c_library:     { slug: "b2c-library",              label: "B2C Library" },
+  b2c_copy:        { slug: "b2c-copy",                 label: "B2C Copy" },
   b2c_timeline:    { slug: "b2c-timeline",             label: "B2C Timeline" },
   b2c_leaderboard: { slug: "b2c-creative-leaderboard", label: "B2C Creative Leaderboard" },
 };
