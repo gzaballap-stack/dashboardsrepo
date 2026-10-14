@@ -1,12 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, validateWebhookSecret } from '@/lib/api-auth';
 import { buildMetaReport, renderMarkdown } from '@/lib/meta-report';
+import { buildBriefReport } from '@/lib/meta-report-brief';
 import { getFunnelStats } from '@/lib/b2b-funnel';
 import { createServiceClient } from '@/lib/supabase';
 
 // Meta B2B prospecting report, built on demand.
 //   GET ?format=md|json   (default md)   → the report
 //   GET ?download=1                      → same, as a file download
+//   GET ?mode=full                       → the full media-buying brief for a chat with no context
+//   GET ?mode=update                     → the 7-day update for a chat that already has the brief
+//   (no mode = the original L30/L7/L3 report)
 // Auth: a signed-in dashboard user, or `Authorization: Bearer <ADMIN_WEBHOOK_SECRET>`.
 // The "Download report" button on the TM Dashboard calls this; paste the .md
 // into Hormozi AI (or a chat here) for the media-buying read.
@@ -34,11 +38,20 @@ export async function GET(req: Request) {
     .split(',').map(s => s.trim()).filter(Boolean);
 
   try {
-    const report = await buildMetaReport({
-      token, campaigns,
-      funnelFor: (since, until, tz) => getFunnelStats(service, since, until, tz),
-    });
     const download = url.searchParams.get('download') === '1';
+    const mode = url.searchParams.get('mode');
+    const funnelFor = (since: string, until: string, tz: string) => getFunnelStats(service, since, until, tz);
+
+    if (mode === 'full' || mode === 'update') {
+      const { markdown } = await buildBriefReport({ token, campaigns, funnelFor, service, mode });
+      const name = mode === 'full' ? 'b2b-full-brief' : 'b2b-update';
+      return new NextResponse(markdown, { headers: {
+        'Content-Type': 'text/markdown; charset=utf-8',
+        ...(download ? { 'Content-Disposition': `attachment; filename="${name}-${new Date().toISOString().slice(0, 10)}.md"` } : {}),
+      } });
+    }
+
+    const report = await buildMetaReport({ token, campaigns, funnelFor });
     if (url.searchParams.get('format') === 'json') {
       return new NextResponse(JSON.stringify(report, null, 2), { headers: {
         'Content-Type': 'application/json; charset=utf-8',

@@ -1140,16 +1140,23 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           )}
           {showWeekly && <WeeklyBreakdown onClose={() => setShowWeekly(false)} />}
 
-          {/* Tomsi Media: Meta B2B report download (L30 / L7 / L3, ad set + ad tables, flags, creative map) */}
+          {/* Tomsi Media: the two paste-ready AI reports. "Full brief" = everything a
+              chat with no context needs; "Update" = the last 7 days for a chat that
+              already has the brief. Both download as Markdown. */}
           {topSection === "tomsi_media" && (
-            <a href="/api/meta-b2b-report?download=1" title="Download the Meta B2B prospecting report (Markdown)"
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0"
-              style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.162)", color: "#111" }}>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16" />
-              </svg>
-              Meta report
-            </a>
+            <div className="flex items-center rounded-lg overflow-hidden flex-shrink-0" style={{ border: "1px solid rgba(0,0,0,0.162)", background: "#fff" }}>
+              <a href="/api/meta-b2b-report?mode=full&download=1" title="Full media-buying brief — paste into a new AI chat that knows nothing about us"
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium" style={{ color: "#111" }}>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16" />
+                </svg>
+                Full brief
+              </a>
+              <a href="/api/meta-b2b-report?mode=update&download=1" title="7-day update — paste into a chat that already has the full brief"
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium" style={{ color: "#111", borderLeft: "1px solid rgba(0,0,0,0.162)" }}>
+                Update
+              </a>
+            </div>
           )}
 
           {/* Tomsi Media date range selector (the Sales Tracker has its own) */}
