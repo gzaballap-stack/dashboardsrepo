@@ -719,6 +719,7 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copyOpen, setCopyOpen] = useState(false);   // the copy set starts folded
   const blank = () => ({
     name: creative?.name ?? "", category: entry?.category ?? creative?.category ?? defaultCategory, folder_id: entry?.folder_id ?? creative?.folder_id ?? defaultFolder,
     tags: entry?.tags ?? "", kind: entry?.kind ?? "", campaign_label: entry?.campaign_label ?? "", launch_date: entry?.launch_date ?? "",
@@ -966,13 +967,17 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
               )}
               {creative.copy_set ? (
                 <section className="rounded-xl p-3 space-y-3" style={{ background: "#f7f7f7" }}>
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <button onClick={() => setCopyOpen(o => !o)} className="w-full flex items-center gap-2 flex-wrap text-left">
+                    <svg className="w-3 h-3 flex-shrink-0" style={{ transform: copyOpen ? "rotate(90deg)" : "none", transition: "transform 150ms ease", color: "#949494" }} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
                     <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Copy set</span>
                     <span className="text-sm font-semibold" style={{ color: "#111111" }}>{creative.copy_set.name}</span>
                     {creative.copy_set.campaign_label && <Chip>{creative.copy_set.campaign_label}</Chip>}
-                    <button onClick={() => setEditing(true)} className="ml-auto text-[10px] font-semibold" style={{ color: "#767676" }}>Change</button>
-                  </div>
-                  {([["Primary texts", creative.copy_set.bodies], ["Headlines", creative.copy_set.headlines], ["Descriptions", creative.copy_set.descriptions]] as const).filter(([, l]) => l.length).map(([label, list]) => (
+                    <span className="text-[10px] ml-auto" style={{ color: "#949494" }}>
+                      {creative.copy_set.bodies.length} primary · {creative.copy_set.headlines.length} headline{creative.copy_set.headlines.length === 1 ? "" : "s"} · {creative.copy_set.descriptions.length} description{creative.copy_set.descriptions.length === 1 ? "" : "s"}
+                    </span>
+                  </button>
+                  {copyOpen && <div className="flex justify-end -mt-1"><button onClick={() => setEditing(true)} className="text-[10px] font-semibold" style={{ color: "#767676" }}>Change set</button></div>}
+                  {copyOpen && ([["Primary texts", creative.copy_set.bodies], ["Headlines", creative.copy_set.headlines], ["Descriptions", creative.copy_set.descriptions]] as const).filter(([, l]) => l.length).map(([label, list]) => (
                     <div key={label}>
                       <div className="text-[10px] font-semibold mb-1" style={{ color: "#949494" }}>{label} · {list.length}</div>
                       <div className="space-y-1.5">
