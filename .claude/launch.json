@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/gonzalozaballa/AIs/tomsimedia-site", "run", "dev", "--", "-p", "3100"],
+      "port": 3100
     }
   ]
 }
