@@ -160,10 +160,23 @@ export async function GET(req: Request) {
   } catch { /* outcomes stay at zero rather than failing the library */ }
 
   // ── Our side: entries, folders, and which ad belongs to which entry ──
-  const [{ data: entryRows, error: eErr }, folders] = await Promise.all([
+  const [{ data: entryRows, error: eErr }, folders, { data: setRows }] = await Promise.all([
     service.from('creative_hub_entries').select('*').eq('scope', scope),
     loadFolders(service, scope),
+    service.from('creative_hub_copy_sets').select('id, name, campaign_label, bodies, headlines, descriptions').eq('scope', scope),
   ]);
+  type CopySet = { id: string; name: string; campaign_label: string | null; bodies: string[]; headlines: string[]; descriptions: string[] };
+  const copySets = (setRows ?? []) as CopySet[];
+  const setById = new Map(copySets.map(s => [s.id, s]));
+  // Which set an ad's live copy belongs to: its primary text (or headline)
+  // appears in exactly one set. Offered as a suggestion, never applied.
+  const norm = (t: string | null | undefined) => (t ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const suggestSet = (m: HubMeta | null) => {
+    if (!m) return null;
+    const body = norm(m.primary_text), head = norm(m.headline);
+    const hits = copySets.filter(s => (body && s.bodies.some(b => norm(b) === body)) || (head && s.headlines.some(h => norm(h) === head)));
+    return hits.length === 1 ? hits[0].id : null;
+  };
   if (eErr) return NextResponse.json({ error: eErr.message }, { status: 500 });
   const entryList = (entryRows ?? []) as Entry[];
   const entryById = new Map(entryList.map(e => [e.id, e]));
@@ -253,6 +266,7 @@ export async function GET(req: Request) {
     const rep = lead.get(key)!;
     // Prefer the representative ad; fall back to any sibling Meta did answer for.
     const m = usable(meta.get(rep.ad_id)) ?? list.map(a => usable(meta.get(a.ad_id))).find(Boolean) ?? null;
+    const copySet = entry?.copy_set_id ? setById.get(entry.copy_set_id) ?? null : null;
     const runs = toRuns(days);
     const first = runs.length ? runs[0].start : null;
     const last = runs.length ? runs[runs.length - 1].end : null;
@@ -271,6 +285,8 @@ export async function GET(req: Request) {
       fb_name: fbName,
       // Every ad in Meta is already called "<code> <name>".
       names_match: list.every(a => a.ad_name === fbName),
+      copy_set: copySet,
+      suggested_copy_set_id: copySet ? null : suggestSet(m),
       entry,
       kind: entry?.kind ?? inferKind(name, m?.format ?? null),
       first,
@@ -311,6 +327,7 @@ export async function GET(req: Request) {
         key, code: entry.code, name: entry.name, names: [entry.name],
         category: entry.category, folder_id: entry.folder_id, seq: entry.seq,
         fb_name: facebookName(entry), names_match: true,
+        copy_set: entry.copy_set_id ? setById.get(entry.copy_set_id) ?? null : null, suggested_copy_set_id: null,
         entry, kind: entry.kind,
         first: null, last: null, days: 0, runs: [], live: false,
         spend: 0, impressions: 0, link_clicks: 0, meta_leads: 0,
@@ -354,6 +371,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     scope, today, creatives, campaigns, folders,
+    copy_sets: copySets.map(s => ({ id: s.id, name: s.name, campaign_label: s.campaign_label })),
     categories: CATEGORIES,
     can_rename: canRenameInMeta(),
     meta_error: metaError,
@@ -378,7 +396,14 @@ export async function POST(req: Request) {
     try { return await pushAdNames(service, saved.filter(e => e.code), currentNames); } catch { return []; }
   };
 
-  // ── Bulk filing: several creatives into one category / folder ──
+  // A copy set to attach — '' clears it. Checked once, up front.
+  const copySetWanted = 'copy_set_id' in body ? (typeof body.copy_set_id === 'string' && body.copy_set_id ? body.copy_set_id : null) : undefined;
+  if (copySetWanted) {
+    const { data: cs } = await service.from('creative_hub_copy_sets').select('id').eq('id', copySetWanted).eq('scope', scope).maybeSingle();
+    if (!cs) return NextResponse.json({ error: 'That copy set no longer exists.' }, { status: 400 });
+  }
+
+  // ── Bulk: several creatives into one category / folder, or onto one copy set ──
   if (Array.isArray(body.assign)) {
     const saved: Entry[] = [];
     for (const item of body.assign as { id?: string; name?: string }[]) {
@@ -393,10 +418,15 @@ export async function POST(req: Request) {
         entry = made;
       }
       if (!entry) continue;
-      const filing = await resolveFiling(service, scope, folders, filingWanted, entry);
-      if ('error' in filing) return NextResponse.json({ error: filing.error }, { status: 400 });
+      const change: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (filingWanted.category) {
+        const filing = await resolveFiling(service, scope, folders, filingWanted, entry);
+        if ('error' in filing) return NextResponse.json({ error: filing.error }, { status: 400 });
+        Object.assign(change, filing);
+      }
+      if (copySetWanted !== undefined) change.copy_set_id = copySetWanted;
       const { data, error } = await service.from('creative_hub_entries')
-        .update({ ...filing, updated_at: new Date().toISOString() }).eq('id', entry.id).select().single();
+        .update(change).eq('id', entry.id).select().single();
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       saved.push(data as Entry);
     }
@@ -423,6 +453,7 @@ export async function POST(req: Request) {
     const v = body[f];
     row[f] = typeof v === 'string' && v.trim() ? v.trim() : null;
   }
+  if (copySetWanted !== undefined) row.copy_set_id = copySetWanted;
   if ('category' in body || 'folder_id' in body) {
     const filing = await resolveFiling(service, scope, folders,
       { category: filingWanted.category ?? current?.category ?? null, folder_id: 'folder_id' in body ? filingWanted.folder_id : current?.folder_id ?? null },

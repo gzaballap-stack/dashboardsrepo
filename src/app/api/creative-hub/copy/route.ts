@@ -22,9 +22,18 @@ export async function GET(req: Request) {
   if (service instanceof NextResponse) return service;
   const scope = new URL(req.url).searchParams.get('scope');
   if (!isScope(scope)) return NextResponse.json({ error: "scope must be 'b2b' or 'b2c'" }, { status: 400 });
-  const { data, error } = await service.from('creative_hub_copy_sets').select('*').eq('scope', scope).order('updated_at', { ascending: false });
+  const [{ data, error }, { data: users }] = await Promise.all([
+    service.from('creative_hub_copy_sets').select('*').eq('scope', scope).order('updated_at', { ascending: false }),
+    service.from('creative_hub_entries').select('copy_set_id, code, name').eq('scope', scope).not('copy_set_id', 'is', null),
+  ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ sets: data ?? [], limit: LIMIT });
+  // Which creatives run each set.
+  const usedBy = new Map<string, string[]>();
+  for (const u of users ?? []) {
+    const label = u.code ? `${u.code} ${u.name}` : (u.name as string);
+    usedBy.set(u.copy_set_id as string, [...(usedBy.get(u.copy_set_id as string) ?? []), label]);
+  }
+  return NextResponse.json({ sets: (data ?? []).map(s => ({ ...s, used_by: usedBy.get(s.id as string) ?? [] })), limit: LIMIT });
 }
 
 export async function POST(req: Request) {

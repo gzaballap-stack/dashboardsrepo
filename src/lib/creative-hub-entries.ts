@@ -22,6 +22,7 @@ export const ENTRY_FIELDS = [
 export type Entry = {
   id: string; scope: Scope; pool_key: string; name: string; updated_at: string;
   code: string | null; category: string | null; folder_id: string | null; seq: number | null;
+  copy_set_id: string | null;
 } & Record<(typeof ENTRY_FIELDS)[number], string | null>;
 
 export type Folder = { id: string; scope: Scope; category: string; name: string; slug: string; sort: number };

@@ -11,7 +11,7 @@ type Run = { start: string; end: string };
 
 type Entry = {
   id: string; name: string; code: string | null; category: string | null; folder_id: string | null; seq: number | null;
-  tags: string | null; kind: string | null; campaign_label: string | null; launch_date: string | null;
+  copy_set_id: string | null; tags: string | null; kind: string | null; campaign_label: string | null; launch_date: string | null;
   headline: string | null; primary_text: string | null; prompt: string | null; script: string | null;
   background_notes: string | null; notes: string | null; media_url: string | null;
 };
@@ -28,12 +28,15 @@ type AdRun = {
 };
 
 type Folder = { id: string; category: string; name: string; slug: string };
+type CopySetRef = { id: string; name: string; campaign_label: string | null };
+type CopySetFull = CopySetRef & { bodies: string[]; headlines: string[]; descriptions: string[] };
 type Category = { code: string; label: string };
 
 type Creative = {
   key: string; code: string | null; name: string; names: string[]; entry: Entry | null; kind: string | null;
   category: string | null; folder_id: string | null; seq: number | null;
   fb_name: string; names_match: boolean;
+  copy_set: CopySetFull | null; suggested_copy_set_id: string | null;
   first: string | null; last: string | null; days: number; runs: Run[]; live: boolean;
   spend: number; meta_leads: number; leads: number; appts: number; shows: number; closes: number;
   cost_per_lead: number; cost_per_appt: number;
@@ -48,7 +51,7 @@ type Campaign = {
 
 type HubData = {
   today: string; creatives: Creative[]; campaigns: Campaign[]; folders: Folder[]; categories: Category[];
-  can_rename: boolean; meta_error: string | null;
+  copy_sets: CopySetRef[]; can_rename: boolean; meta_error: string | null;
 };
 
 const UNFILED = "__unfiled__";
@@ -175,6 +178,7 @@ export default function CreativeHub({ scope, tab, clients }: {
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [fileTo, setFileTo] = useState<{ category: string; folder_id: string }>({ category: "", folder_id: "" });
+  const [copySetTo, setCopySetTo] = useState("");
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -222,7 +226,7 @@ export default function CreativeHub({ scope, tab, clients }: {
       } else if (view !== "all" && statusOf(c) !== view) return false;
       if (!q) return true;
       const hay = [c.code, c.name, ...c.names, c.kind, c.entry?.tags, c.entry?.campaign_label, c.entry?.script, c.entry?.prompt, c.entry?.notes,
-        c.entry?.headline ?? c.meta?.headline, c.entry?.primary_text ?? c.meta?.primary_text,
+        c.copy_set?.name, ...(c.copy_set?.headlines ?? []), ...(c.copy_set?.bodies ?? []), c.meta?.headline, c.meta?.primary_text,
         ...c.ads.map(a => a.campaign_name), ...c.clients.map(cl => cl.name)];
       return hay.some(h => h?.toLowerCase().includes(q));
     });
@@ -238,6 +242,18 @@ export default function CreativeHub({ scope, tab, clients }: {
 
   // File every selected creative into the chosen category / folder. Creatives
   // that only exist as an ad name get a record first.
+  // Attach one copy set to every selected creative.
+  async function attachCopySet() {
+    if (!data || !copySetTo) return;
+    setBusy("Attaching…"); setNotice("");
+    try {
+      const picked = data.creatives.filter(c => selected.has(c.key));
+      await postJson("/api/creative-hub", { scope, copy_set_id: copySetTo, assign: picked.map(c => (c.entry ? { id: c.entry.id } : { name: c.name })) });
+      setSelected(new Set());
+      await load();
+    } catch (e) { setNotice((e as Error).message); } finally { setBusy(""); }
+  }
+
   async function fileSelected() {
     if (!data || !fileTo.category) return;
     setBusy("Filing…"); setNotice("");
@@ -435,6 +451,7 @@ export default function CreativeHub({ scope, tab, clients }: {
                       <div className="text-[11px] truncate" style={{ color: "#767676" }}>
                         {[c.kind, ranLabel(c)].filter(Boolean).join(" · ")}
                       </div>
+                      {c.copy_set && <div className="text-[10px] truncate" style={{ color: "#4a4a4a" }} title={c.copy_set.name}>✎ {c.copy_set.name}</div>}
                       {c.days > 0 && (
                         <div className="text-[11px]" style={{ color: "#4a4a4a" }}>
                           {fmt$(c.spend)} · {c.leads} leads · {c.appts} {apptWord.toLowerCase()}
@@ -481,6 +498,15 @@ export default function CreativeHub({ scope, tab, clients }: {
             className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy || !fileTo.category || (folders.some(f => f.category === fileTo.category) && !fileTo.folder_id) ? 0.5 : 1 }}>
             {busy || "Apply"}
           </button>
+          {(data.copy_sets ?? []).length > 0 && (<>
+            <span style={{ color: "#e0e0e0" }}>|</span>
+            <span className="text-xs" style={{ color: "#6b6b6b" }}>Copy set</span>
+            <select value={copySetTo} onChange={e => setCopySetTo(e.target.value)} className="px-2.5 py-1.5 rounded-lg text-xs font-medium outline-none max-w-[200px]" style={INPUT}>
+              <option value="">Choose…</option>
+              {data.copy_sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <button onClick={attachCopySet} disabled={!!busy || !copySetTo} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy || !copySetTo ? 0.5 : 1 }}>Attach</button>
+          </>)}
           <button onClick={() => setSelected(new Set())} className="text-xs font-semibold" style={{ color: "#767676" }}>Clear</button>
         </div>
       )}
@@ -497,6 +523,7 @@ export default function CreativeHub({ scope, tab, clients }: {
           apptWord={apptWord}
           folders={folders}
           categories={categories}
+          copySets={data.copy_sets ?? []}
           canRename={data.can_rename}
           defaultCategory={view === "folders" && activeCat && activeCat !== UNFILED ? activeCat : ""}
           defaultFolder={view === "folders" && folderSel && folderSel !== "root" ? folderSel : ""}
@@ -654,8 +681,6 @@ function Timeline({ data, scope, showClient, onOpen }: {
 // ── Detail drawer ───────────────────────────────────────────────────────────
 
 const FORM_FIELDS: { id: keyof Entry; label: string; hint?: string; rows?: number }[] = [
-  { id: "headline", label: "Headline", hint: "Leave empty to use what Facebook has." },
-  { id: "primary_text", label: "Primary text", hint: "Leave empty to use what Facebook has.", rows: 6 },
   { id: "script", label: "Script", hint: "What is said — talking head or voiceover.", rows: 8 },
   { id: "prompt", label: "Prompt", hint: "The prompt used to generate the image or video.", rows: 8 },
   { id: "background_notes", label: "Background", hint: "What's in the shot: location, props, actions.", rows: 3 },
@@ -681,9 +706,9 @@ function TextBlock({ label, text, source, onAdd }: { label: string; text: string
   );
 }
 
-function Drawer({ creative, scope, apptWord, folders, categories, canRename, defaultCategory, defaultFolder, onFoldersChanged, onClose, onSaved, onNotice }: {
+function Drawer({ creative, scope, apptWord, folders, categories, copySets, canRename, defaultCategory, defaultFolder, onFoldersChanged, onClose, onSaved, onNotice }: {
   creative: Creative | null; scope: Scope; apptWord: string;
-  folders: Folder[]; categories: Category[]; canRename: boolean;
+  folders: Folder[]; categories: Category[]; copySets: CopySetRef[]; canRename: boolean;
   defaultCategory: string; defaultFolder: string;
   onFoldersChanged: () => Promise<void>;
   onClose: () => void; onSaved: (key: string) => Promise<void>; onNotice: (s: string) => void;
@@ -697,7 +722,7 @@ function Drawer({ creative, scope, apptWord, folders, categories, canRename, def
   const blank = () => ({
     name: creative?.name ?? "", category: entry?.category ?? creative?.category ?? defaultCategory, folder_id: entry?.folder_id ?? creative?.folder_id ?? defaultFolder,
     tags: entry?.tags ?? "", kind: entry?.kind ?? "", campaign_label: entry?.campaign_label ?? "", launch_date: entry?.launch_date ?? "",
-    headline: entry?.headline ?? "", primary_text: entry?.primary_text ?? "", script: entry?.script ?? "", prompt: entry?.prompt ?? "",
+    copy_set_id: entry?.copy_set_id ?? "", script: entry?.script ?? "", prompt: entry?.prompt ?? "",
     background_notes: entry?.background_notes ?? "", notes: entry?.notes ?? "", media_url: entry?.media_url ?? "",
   });
   const [form, setForm] = useState(blank);
@@ -870,6 +895,14 @@ function Drawer({ creative, scope, apptWord, folders, categories, canRename, def
                       className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
                     <span className="text-[10px]" style={{ color: "#949494" }}>Comma-separated. What it&apos;s made of and what angle it takes — searchable.</span>
                   </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Copy set</span>
+                    <select value={form.copy_set_id} onChange={e => set("copy_set_id", e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT}>
+                      <option value="">None — show what Facebook has</option>
+                      {copySets.map(s => <option key={s.id} value={s.id}>{s.name}{s.campaign_label ? ` · ${s.campaign_label}` : ""}</option>)}
+                    </select>
+                    <span className="text-[10px]" style={{ color: "#949494" }}>The combination of primary texts, headlines and descriptions this creative runs with. Sets live on the Copy page.</span>
+                  </label>
                   <label className="block">
                     <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Type</span>
                     <input value={form.kind} onChange={e => set("kind", e.target.value)} list="creative-kinds" placeholder={creative?.kind ?? "e.g. Talking head"}
@@ -897,9 +930,9 @@ function Drawer({ creative, scope, apptWord, folders, categories, canRename, def
                     <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>{f.label}</span>
                     {f.rows
                       ? <textarea value={form[f.id as keyof typeof form]} onChange={e => set(f.id as keyof typeof form, e.target.value)} rows={f.rows}
-                          placeholder={f.id === "primary_text" ? m?.primary_text ?? "" : ""} className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...INPUT, lineHeight: 1.5 }} />
+                          className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...INPUT, lineHeight: 1.5 }} />
                       : <input value={form[f.id as keyof typeof form]} onChange={e => set(f.id as keyof typeof form, e.target.value)}
-                          placeholder={f.id === "headline" ? m?.headline ?? "" : ""} className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />}
+                          className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />}
                     {f.hint && <span className="text-[10px]" style={{ color: "#949494" }}>{f.hint}</span>}
                   </label>
                 ))}
@@ -931,8 +964,38 @@ function Drawer({ creative, scope, apptWord, folders, categories, canRename, def
               {(entry?.tags) && (
                 <div className="flex gap-1 flex-wrap">{entry.tags.split(",").map(t => t.trim()).filter(Boolean).map(t => <Chip key={t}>{t}</Chip>)}</div>
               )}
-              <TextBlock label="Headline" text={entry?.headline ?? m?.headline ?? null} source={entry?.headline ? undefined : "from Facebook"} onAdd={() => setEditing(true)} />
-              <TextBlock label="Primary text" text={entry?.primary_text ?? m?.primary_text ?? null} source={entry?.primary_text ? undefined : "from Facebook"} onAdd={() => setEditing(true)} />
+              {creative.copy_set ? (
+                <section className="rounded-xl p-3 space-y-3" style={{ background: "#f7f7f7" }}>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Copy set</span>
+                    <span className="text-sm font-semibold" style={{ color: "#111111" }}>{creative.copy_set.name}</span>
+                    {creative.copy_set.campaign_label && <Chip>{creative.copy_set.campaign_label}</Chip>}
+                    <button onClick={() => setEditing(true)} className="ml-auto text-[10px] font-semibold" style={{ color: "#767676" }}>Change</button>
+                  </div>
+                  {([["Primary texts", creative.copy_set.bodies], ["Headlines", creative.copy_set.headlines], ["Descriptions", creative.copy_set.descriptions]] as const).filter(([, l]) => l.length).map(([label, list]) => (
+                    <div key={label}>
+                      <div className="text-[10px] font-semibold mb-1" style={{ color: "#949494" }}>{label} · {list.length}</div>
+                      <div className="space-y-1.5">
+                        {list.map((t, i) => (
+                          <div key={i} className="rounded-lg px-3 py-2 text-sm whitespace-pre-wrap flex gap-2 items-start" style={{ background: "#ffffff", color: "#111111", lineHeight: 1.5 }}>
+                            <span className="text-[10px] font-bold pt-0.5" style={{ color: "#c2c2c2" }}>{i + 1}</span><span className="flex-1 min-w-0">{t}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              ) : (<>
+                {creative.suggested_copy_set_id && copySets.find(s => s.id === creative.suggested_copy_set_id) && (
+                  <div className="rounded-xl p-3 text-xs flex items-center gap-3 flex-wrap" style={{ background: "rgba(217,119,6,0.10)", color: "#92400e" }}>
+                    This ad&apos;s copy matches the set <b>{copySets.find(s => s.id === creative.suggested_copy_set_id)!.name}</b>.
+                    <button onClick={async () => { set("copy_set_id", creative.suggested_copy_set_id!); try { await postJson("/api/creative-hub", { id: entry?.id, scope, name: creative.name, copy_set_id: creative.suggested_copy_set_id, assign: entry ? undefined : [{ name: creative.name }] }); await onSaved(creative.key); } catch (e) { setErr((e as Error).message); } }}
+                      className="px-2.5 py-1 rounded-md text-[11px] font-semibold" style={{ background: "#111111", color: "#ffffff" }}>Attach it</button>
+                  </div>
+                )}
+                <TextBlock label="Headline" text={m?.headline ?? null} source="from Facebook" onAdd={() => setEditing(true)} />
+                <TextBlock label="Primary text" text={m?.primary_text ?? null} source="from Facebook" onAdd={() => setEditing(true)} />
+              </>)}
               <TextBlock label="Script" text={entry?.script ?? null} onAdd={() => setEditing(true)} />
               <TextBlock label="Prompt" text={entry?.prompt ?? null} onAdd={() => setEditing(true)} />
               <TextBlock label="Background" text={entry?.background_notes ?? null} onAdd={() => setEditing(true)} />

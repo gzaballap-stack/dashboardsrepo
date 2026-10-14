@@ -10,7 +10,13 @@ which reads every text off a live ad's creative in Meta (`asset_feed_spec`
 bodies / titles / descriptions, falling back to `object_story_spec`) so a set
 can be started from an ad that is already running ("Pull the texts off an
 ad…" in the editor). Copy buttons per text, per group and for the whole set.
-Sets are not yet linked to creatives — that's a later step if wanted.
+**Creatives carry a copy set** (`creative_hub_entries.copy_set_id`, migration
+`add_creative_copy_set_link.sql`, applied to V1 and V2) instead of their own
+headline / primary text — those two override fields are gone from the editor
+(columns kept, unused). The creative drawer shows the set's texts; with no set
+it shows what Facebook has, plus a one-click suggestion when the live copy
+matches exactly one set. Bulk bar: tick creatives → "Copy set … Attach"
+(`POST { scope, copy_set_id, assign }`). The Copy page shows "Runs on …" per set.
 
 ## 2026-10-08 — Revenue-goal numbers on the Custom Area Breakdown doc
 

@@ -10,6 +10,7 @@ type Scope = "b2b" | "b2c";
 type CopySet = {
   id: string; name: string; campaign_label: string | null; notes: string | null;
   bodies: string[]; headlines: string[]; descriptions: string[]; cta: string | null; link: string | null; updated_at: string;
+  used_by: string[];
 };
 type AdOption = { ad_id: string; label: string };
 
@@ -94,6 +95,7 @@ export default function CopyHub({ scope }: { scope: Scope }) {
               <div className="text-[11px]" style={{ color: "#767676" }}>
                 {s.bodies.length} primary · {s.headlines.length} headline{s.headlines.length === 1 ? "" : "s"} · {s.descriptions.length} description{s.descriptions.length === 1 ? "" : "s"}
               </div>
+              {s.used_by?.length > 0 && <div className="text-[10px] truncate" style={{ color: "#4a4a4a" }} title={s.used_by.join(", ")}>Runs on {s.used_by.length} creative{s.used_by.length === 1 ? "" : "s"}: {s.used_by.join(", ")}</div>}
               {s.headlines[0] && <div className="text-xs font-semibold truncate" style={{ color: "#111111" }}>{s.headlines[0]}</div>}
               <div className="text-xs flex-1" style={{ color: "#4a4a4a", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.5 }}>
                 {s.bodies[0] ?? <span style={{ color: "#b8b8b8" }}>No primary text yet</span>}
@@ -290,6 +292,12 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
                 {set.cta && <span><b>Button:</b> {set.cta.replace(/_/g, " ").toLowerCase()}</span>}
                 {set.link && <span><b>Link:</b> <a href={set.link} target="_blank" rel="noreferrer" style={{ color: "#111111" }}>{set.link}</a></span>}
               </div>
+            )}
+            {set.used_by?.length > 0 && (
+              <section>
+                <h3 className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#949494" }}>Runs on</h3>
+                <div className="flex gap-1.5 flex-wrap">{set.used_by.map(u => <Chip key={u}>{u}</Chip>)}</div>
+              </section>
             )}
             {set.notes && <section><h3 className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#949494" }}>Notes</h3><div className="text-sm whitespace-pre-wrap rounded-xl p-3" style={{ background: "#f7f7f7", color: "#111111" }}>{set.notes}</div></section>}
           </>)}
