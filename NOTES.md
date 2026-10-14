@@ -18,7 +18,12 @@ on top of `buildMetaReport`.
   last 12 weeks), headline, primary text, script, prompt, background, notes ·
   funnel page rates · ad set /
   campaign switches. Older ads with no Hub record are in the scoreboard only
-  (under $100 lifetime = one summed line). ~12.5k words on 2026-10-14.
+  (under $100 lifetime = one summed line). First cut was ~12.5k words; trimmed
+  the same day to ~8k: standard headline / primary text printed once, weekly
+  life as one line not a table, switches as dates only, flags as one column,
+  ads that did not serve in L7 left out of the ad table, older ads rolled up
+  by campaign ("Earlier campaigns"), L3 summary only in the update. What is
+  left is mostly the 28 scripts and prompts — the part the owner asked for.
 - **Update** = last 7 days for a chat that already has the brief: switches
   on/off, new ads, new Hub creatives (with script/prompt), notes edited, what is
   delivering, L7 vs prior 7 bullets, L7/L3 summary, L7 ad sets, L7 ad table

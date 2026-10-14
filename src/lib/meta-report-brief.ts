@@ -19,7 +19,7 @@ import { getTomsiClientId } from './tomsi';
 import { rollupFunnelByAd, EMPTY_AD_FUNNEL, type AdFunnel } from './ad-funnel';
 import { B2B_BRIEF } from './b2b-brief';
 import {
-  buildMetaReport, accountSummary, WINDOWS, RULES, LANDING_TO_BOOKING_KPI,
+  buildMetaReport, accountSummary, RULES, LANDING_TO_BOOKING_KPI,
   type BuildOptions, type MetaReport, type AdRow, type StatusEvent, type WindowDays,
 } from './meta-report';
 
@@ -30,7 +30,6 @@ const GRAPH = 'https://graph.facebook.com/v19.0';
 const UPDATE_DAYS = 7;
 const TRAJECTORY_MIN_SPEND = 100;   // creatives below this get a one-line life, not a weekly table
 const MAX_WEEKS = 12;
-const MINOR_SPEND = 100;          // ads with no Hub record and less than this lifetime spend are summed, not listed
 
 // ── Meta extras ───────────────────────────────────────────────────────────
 
@@ -74,7 +73,7 @@ type Budgeted = { id: string; name: string; status: string; daily: number | null
 
 type Extras = {
   monthly: { month: string; spend: number; impressions: number; clicks: number; leads: number }[];
-  lifetime: Map<string, Lifetime & { name: string; adset: string }>;
+  lifetime: Map<string, Lifetime & { name: string; adset: string; campaign: string }>;
   weekly: Map<string, Week[]>;
   campaigns: Budgeted[];
   adsets: (Budgeted & { campaign_id: string })[];
@@ -94,11 +93,11 @@ async function fetchExtras(acct: string, token: string): Promise<Extras> {
       `/${acct}/adsets`, { fields: 'id,name,effective_status,daily_budget,lifetime_budget,campaign_id,optimization_goal,targeting{age_min,age_max,geo_locations,targeting_automation}' }, token)),
   ]);
 
-  const life = new Map<string, Lifetime & { name: string; adset: string }>();
+  const life = new Map<string, Lifetime & { name: string; adset: string; campaign: string }>();
   for (const r of lifetime) {
     if (!r.ad_id) continue;
     life.set(r.ad_id, {
-      name: r.ad_name ?? '', adset: r.adset_name ?? r.campaign_name ?? '', spend: num(r.spend), impressions: num(r.impressions), reach: num(r.reach), clicks: num(r.inline_link_clicks),
+      name: r.ad_name ?? '', adset: r.adset_name ?? r.campaign_name ?? '', campaign: r.campaign_name ?? '', spend: num(r.spend), impressions: num(r.impressions), reach: num(r.reach), clicks: num(r.inline_link_clicks),
       leads: leadsOf(r.actions), plays: first(r.video_play_actions), views3s: act(r.actions, 'video_view'),
       thruplays: first(r.video_thruplay_watched_actions), avgWatch: first(r.video_avg_time_watched_actions), p100: first(r.video_p100_watched_actions),
     });
@@ -154,7 +153,6 @@ const money0 = (n: number | null | undefined) => money(n, 0);
 const pct = (n: number | null | undefined, dp = 1) => n == null || !Number.isFinite(n) ? '—' : `${n.toFixed(dp)}%`;
 const int = (n: number) => Math.round(n).toLocaleString('en-US');
 const div = (a: number, b: number) => (b > 0 ? a / b : null);
-const yn = (b: boolean | null) => (b == null ? 'N/A' : b ? 'TRUE' : 'FALSE');
 const table = (head: string[], rows: string[][]) => {
   const esc = (s: string) => s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
   return [`| ${head.join(' | ')} |`, `| ${head.map(() => '---').join(' | ')} |`, ...rows.map(r => `| ${r.map(esc).join(' | ')} |`)].join('\n');
@@ -250,16 +248,24 @@ function adsetTables(r: MetaReport, windows: readonly WindowDays[]): string {
 
 function adTable(r: MetaReport): string {
   const parts: string[] = [];
+  // Only ads that actually served in the window; the rest would be rows of dashes.
+  const served = r.ads.filter(a => a.windows[7].impressions > 0 || a.windows[7].spend > 0);
+  const idle = r.ads.length - served.length;
+  if (idle) parts.push(`${idle} ad${idle === 1 ? '' : 's'} from the last 30 days did not serve in L7 and ${idle === 1 ? 'is' : 'are'} left out of this table (they are in the creative library and the on/off history).`);
+  if (!served.length) { parts.push('No ad served in the last 7 days.'); return parts.join('\n'); }
   parts.push(`Control = best ad in L7: link CTR ${pct(r.control.best_ctr_link_7d, 2)}, cost per kept demo ${money(r.control.best_cost_per_kept_demo_7d)}.`);
+  const flagList = (f: AdRow['flags']) => {
+    const on = [f.over_eval_floor && 'Over_eval_floor', f.zero_demo_kill === true && 'Zero_demo_kill', f.ctr_half_control && 'CTR_half_control', f.early_ctr_trash && 'Early_CTR_trash', f.perf_vs_control_bad === true && 'Perf_vs_control_bad'].filter(Boolean);
+    const na = f.zero_demo_kill == null ? ' (demo flags N/A)' : '';
+    return (on.length ? on.join(', ') : 'none') + na;
+  };
   parts.push(table(
-    ['Campaign', 'Ad set', 'Ad name', 'Ad ID', 'Now', 'First served', 'Spend', 'Impr.', 'Link clicks', 'CTR (link)', 'CPC', 'Leads', 'CPL', 'Kept demos', 'Cost per kept demo',
-      'Over_eval_floor', 'Zero_demo_kill', 'CTR_half_control', 'Early_CTR_trash', 'Perf_vs_control_bad'],
-    r.ads.map(a => { const m = a.windows[7]; const f = a.flags; return [
-      a.campaign_name, a.adset_name, a.ad_name, a.ad_id, a.status ?? '—', a.first_served ?? '—',
-      money(m.spend), int(m.impressions), int(m.link_clicks), pct(m.ctr_link, 2), money(m.cpc_link), int(m.leads), money(m.cost_per_lead), int(m.kept_demos), money(m.cost_per_kept_demo),
-      yn(f.over_eval_floor), yn(f.zero_demo_kill), yn(f.ctr_half_control), yn(f.early_ctr_trash), yn(f.perf_vs_control_bad)]; }),
+    ['Ad set', 'Ad name', 'Ad ID', 'Now', 'Spend', 'Impr.', 'CTR (link)', 'CPC', 'Leads', 'CPL', 'Kept demos', 'Cost per kept demo', 'Flags'],
+    served.map(a => { const m = a.windows[7]; return [
+      a.adset_name, a.ad_name, a.ad_id, a.status ?? '—',
+      money(m.spend), int(m.impressions), pct(m.ctr_link, 2), money(m.cpc_link), int(m.leads), money(m.cost_per_lead), int(m.kept_demos), money(m.cost_per_kept_demo), flagList(a.flags)]; }),
   ));
-  parts.push(`Flag rules: Over_eval_floor = spend ≥ $${RULES.evalFloorSpend} OR impressions ≥ ${int(RULES.evalFloorImpressions)} · Zero_demo_kill = spend ≥ $${RULES.zeroDemoKillSpend} AND kept demos = 0 · ` +
+  parts.push(`Flags listed = the ones that fired. Flag rules: Over_eval_floor = spend ≥ $${RULES.evalFloorSpend} OR impressions ≥ ${int(RULES.evalFloorImpressions)} · Zero_demo_kill = spend ≥ $${RULES.zeroDemoKillSpend} AND kept demos = 0 · ` +
     `CTR_half_control = link CTR < ${RULES.ctrHalfControl * 100}% of best ad in L7 · Early_CTR_trash = impressions ≥ ${RULES.earlyCtrTrashImpressions} AND link CTR < ${RULES.earlyCtrTrash * 100}% of best ad · ` +
     `Perf_vs_control_bad = spend ≥ $${RULES.perfVsControlSpend} AND cost per kept demo ≥ ${RULES.perfVsControlMultiple}× best ad. All on L7 numbers.` +
     (r.kept_demo_source === 'none' ? ' **Zero_demo_kill and Perf_vs_control_bad are N/A this run: no per-ad kept-demo data.**' : ''));
@@ -269,7 +275,7 @@ function adTable(r: MetaReport): string {
 // One creative = a Hub entry (with every ad linked to it) or, for ads with no
 // entry, the ad itself. Lifetime numbers are summed across its ads.
 type CreativeGroup = {
-  key: string; title: string; entry: HubEntry | null; ads: { id: string; name: string; row: AdRow | null }[];
+  key: string; title: string; entry: HubEntry | null; campaign: string; ads: { id: string; name: string; row: AdRow | null }[];
   life: Lifetime; funnel: AdFunnel; weeks: Week[]; firstDay: string | null; lastDay: string | null; isVideo: boolean;
 };
 
@@ -292,7 +298,7 @@ function groupCreatives(r: MetaReport, x: Extras, hub: Hub, funnelByAd: Map<stri
     let g = groups.get(key);
     if (!g) {
       // Old ads with no Hub record repeat names ("Ad 2" in three campaigns) — carry the ad set.
-      g = { key, title: entry ? `${entry.code ? entry.code + ' — ' : ''}${entry.name}` : `${name}${adset ? ` · ${adset}` : ''}`, entry, ads: [], life: blank(), funnel: { ...EMPTY_AD_FUNNEL }, weeks: [], firstDay: null, lastDay: null, isVideo: false };
+      g = { key, title: entry ? `${entry.code ? entry.code + ' — ' : ''}${entry.name}` : `${name}${adset ? ` · ${adset}` : ''}`, entry, campaign: lt?.campaign || row?.campaign_name || '', ads: [], life: blank(), funnel: { ...EMPTY_AD_FUNNEL }, weeks: [], firstDay: null, lastDay: null, isVideo: false };
       groups.set(key, g);
     }
     g.ads.push({ id, name, row });
@@ -320,68 +326,87 @@ function groupCreatives(r: MetaReport, x: Extras, hub: Hub, funnelByAd: Map<stri
   // Entries with no ad at all (drafts) still belong in the library, for their scripts.
   for (const e of hub.entries) {
     if (![...groups.values()].some(g => g.entry?.id === e.id)) {
-      groups.set(`e:${e.id}`, { key: `e:${e.id}`, title: `${e.code ? e.code + ' — ' : ''}${e.name}`, entry: e, ads: [], life: blank(), funnel: { ...EMPTY_AD_FUNNEL }, weeks: [], firstDay: null, lastDay: null, isVideo: /video|head|ugc|voice/i.test(e.kind ?? '') });
+      groups.set(`e:${e.id}`, { key: `e:${e.id}`, title: `${e.code ? e.code + ' — ' : ''}${e.name}`, entry: e, campaign: '', ads: [], life: blank(), funnel: { ...EMPTY_AD_FUNNEL }, weeks: [], firstDay: null, lastDay: null, isVideo: /video|head|ugc|voice/i.test(e.kind ?? '') });
     }
   }
   return [...groups.values()].sort((a, b) => b.life.spend - a.life.spend || a.title.localeCompare(b.title));
 }
 
-function creativeLibrary(r: MetaReport, groups: CreativeGroup[], today: string): string {
+// The copy is the same on nearly every remodeler ad, so it is printed once and a
+// creative only repeats it when its own differs.
+function standardCopy(r: MetaReport): { headline: string | null; primary: string | null } {
+  const mode = (vals: (string | null)[]) => {
+    const n = new Map<string, number>();
+    for (const v of vals) if (v) n.set(v, (n.get(v) ?? 0) + 1);
+    return [...n.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  };
+  return { headline: mode(r.ads.map(a => a.creative.headline)), primary: mode(r.ads.map(a => a.creative.primary_text)) };
+}
+
+const shortDate = (local: string) => local.replace(/,\s*\d{4}.*$/, '').replace(/^(\w{3}) (\d+)$/, '$1 $2');
+
+function creativeLibrary(r: MetaReport, x: Extras, groups: CreativeGroup[], today: string): string {
   const parts: string[] = [];
-  parts.push(`One block per creative, biggest lifetime spend first. "GHL" numbers are real CRM outcomes attributed to the ad (first touch; a demo counts whether it later showed or not); "Meta leads" is Meta's own count. Week-by-week tables show how long a creative worked before it faded or was turned off (only for creatives that spent ≥ $${TRAJECTORY_MIN_SPEND}). Prompts and scripts are what the creative was made from — model new creatives on the ones that worked.`);
+  const std = standardCopy(r);
+  parts.push(`One block per creative, biggest lifetime spend first. "GHL" = real CRM outcomes attributed to the ad (first touch; a demo counts whether it later showed or not); "Meta leads" = Meta's count. "Weeks" shows how long a creative worked before it faded or was turned off: week start · spend · Meta leads. Prompts and scripts are what each creative was made from — model new ones on what worked.`);
+  if (std.headline || std.primary) parts.push(`\n**Standard copy on every ad unless noted** — headline: "${std.headline ?? '—'}" · primary text: "${std.primary ?? '—'}"`);
 
-  const summary = groups.filter(g => g.life.spend > 0 && (g.entry || g.life.spend >= MINOR_SPEND)).map(g => {
-    const cpl = div(g.life.spend, g.funnel.leads || g.life.leads);
-    return [g.title, g.entry?.kind ?? (g.isVideo ? 'Video' : 'Image'), g.firstDay ?? '—', g.lastDay ?? '—', g.firstDay && g.lastDay ? String(daysBetween(g.firstDay, g.lastDay)) : '—',
-      money0(g.life.spend), pct(div(g.life.clicks * 100, g.life.impressions), 2), int(g.life.leads), int(g.funnel.leads), money(cpl), int(g.funnel.appts), money(div(g.life.spend, g.funnel.appts)), int(g.funnel.shows), int(g.funnel.closes),
-      g.isVideo ? `${pct(div(g.life.views3s * 100, g.life.impressions), 0)} / ${pct(div(g.life.thruplays * 100, g.life.views3s), 0)} / ${g.life.avgWatch ? g.life.avgWatch.toFixed(0) + 's' : '—'}` : '—'];
-  });
-  parts.push('\n### Lifetime scoreboard');
-  parts.push(table(['Creative', 'Kind', 'First', 'Last', 'Days', 'Spend', 'CTR', 'Meta leads', 'GHL leads', 'CPL', 'Demos (GHL)', 'Cost/demo', 'Shown', 'Closed', 'Hook / hold / avg watch'], summary));
+  const scored = groups.filter(g => g.entry && g.life.spend > 0);
+  parts.push('\n### Scoreboard (lifetime)');
+  parts.push(table(['Creative', 'Kind', 'Days live', 'Spend', 'CTR', 'Meta leads', 'GHL leads', 'CPL', 'Demos', 'Cost/demo', 'Hook / hold / watch'],
+    scored.map(g => [g.title, g.entry?.kind ?? (g.isVideo ? 'Video' : 'Image'), g.firstDay && g.lastDay ? String(daysBetween(g.firstDay, g.lastDay)) : '—',
+      money0(g.life.spend), pct(div(g.life.clicks * 100, g.life.impressions), 2), int(g.life.leads), int(g.funnel.leads), money(div(g.life.spend, g.funnel.leads || g.life.leads), 0),
+      int(g.funnel.appts), money(div(g.life.spend, g.funnel.appts), 0),
+      g.isVideo && g.life.plays ? `${pct(div(g.life.views3s * 100, g.life.impressions), 0)} / ${pct(div(g.life.thruplays * 100, g.life.views3s), 0)} / ${g.life.avgWatch.toFixed(0)}s` : '—'])));
 
-  const minor = groups.filter(g => !g.entry && g.life.spend < MINOR_SPEND && g.life.spend > 0);
-  if (minor.length) {
-    const spend = minor.reduce((t, g) => t + g.life.spend, 0), leads = minor.reduce((t, g) => t + g.life.leads, 0);
-    parts.push(`\nNot listed above: ${minor.length} older ads with no Hub record and under $${MINOR_SPEND} lifetime spend each (${money0(spend)} and ${int(leads)} Meta leads in total).`);
+  // Everything that predates the Hub, rolled up by campaign: the eras, not the ads.
+  const eras = new Map<string, { spend: number; impressions: number; clicks: number; leads: number; first: string; last: string; ads: number }>();
+  for (const g of groups.filter(g => !g.entry && g.life.spend > 0)) {
+    const k = g.campaign || 'Unknown campaign';
+    const e = eras.get(k) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, first: g.firstDay ?? '', last: g.lastDay ?? '', ads: 0 };
+    e.spend += g.life.spend; e.impressions += g.life.impressions; e.clicks += g.life.clicks; e.leads += g.life.leads; e.ads++;
+    if (g.firstDay && (!e.first || g.firstDay < e.first)) e.first = g.firstDay;
+    if (g.lastDay && g.lastDay > e.last) e.last = g.lastDay;
+    eras.set(k, e);
   }
-  parts.push('\nFull detail follows for every creative with a Hub record (script / prompt / notes). Older ads without one appear in the scoreboard only.');
+  if (eras.size) {
+    parts.push('\n### Earlier campaigns (ads with no Hub record, rolled up)');
+    parts.push(table(['Campaign', 'Ran', 'Ads', 'Spend', 'CTR', 'Meta leads', 'CPL'],
+      [...eras.entries()].sort((a, b) => a[1].first.localeCompare(b[1].first)).map(([k, e]) => [k, `${e.first || '?'} → ${e.last || '?'}`, String(e.ads), money0(e.spend), pct(div(e.clicks * 100, e.impressions), 2), int(e.leads), money(div(e.spend, e.leads), 0)])));
+  }
 
   for (const g of groups.filter(g => g.entry)) {
-    const e = g.entry;
+    const e = g.entry!;
     parts.push(`\n### ${g.title}`);
     const meta: string[] = [];
-    if (e?.kind) meta.push(e.kind);
-    if (e?.category) meta.push(`category ${e.category}`);
-    if (e?.tags) meta.push(`tags: ${e.tags}`);
-    if (g.ads.length) meta.push(`ads: ${g.ads.map(a => `${a.name} (${a.id}${a.row?.status ? ', ' + a.row.status : ''})`).join('; ')}`);
-    else meta.push('not launched yet — no ad in Meta');
+    if (e.kind) meta.push(e.kind);
+    if (e.tags) meta.push(`tags: ${e.tags}`);
+    meta.push(g.ads.length ? `ads: ${g.ads.map(a => `${a.id}${a.row?.status ? ' ' + a.row.status : ''}`).join(', ')}` : 'not launched — no ad in Meta');
     parts.push(meta.join(' · '));
 
     if (g.life.spend > 0) {
       const alive = g.ads.some(a => a.row?.status === 'ACTIVE' && (a.row?.windows[3].impressions ?? 0) > 0);
-      parts.push(`Life: ${g.firstDay ?? '?'} → ${g.lastDay ?? '?'}${g.firstDay && g.lastDay ? ` (${daysBetween(g.firstDay, g.lastDay)} days)` : ''}${alive ? ' · **still delivering**' : g.lastDay && g.lastDay < shiftDays(today, -3) ? ' · stopped' : ''}. ` +
-        `Lifetime: ${money0(g.life.spend)} spend · ${int(g.life.impressions)} impressions · CTR ${pct(div(g.life.clicks * 100, g.life.impressions), 2)} · CPC ${money(div(g.life.spend, g.life.clicks))} · Meta leads ${int(g.life.leads)}` +
-        ` · GHL: ${int(g.funnel.leads)} leads (${money(div(g.life.spend, g.funnel.leads))}), ${int(g.funnel.appts)} demos (${money(div(g.life.spend, g.funnel.appts))}), ${int(g.funnel.shows)} shown, ${int(g.funnel.closes)} closed.`);
-      if (g.isVideo && g.life.plays > 0) {
-        parts.push(`Video: hook rate ${pct(div(g.life.views3s * 100, g.life.impressions), 1)} (3-second views ÷ impressions) · hold rate ${pct(div(g.life.thruplays * 100, g.life.views3s), 0)} (ThruPlays ÷ 3-second views) · average watch ${g.life.avgWatch.toFixed(1)}s · watched to the end ${int(g.life.p100)}.`);
-      }
-      const hist = g.ads.flatMap(a => (a.row?.status_history ?? []).map(ev => ({ ad: a.name, ev }))).sort((p, q) => p.ev.at.localeCompare(q.ev.at));
-      if (hist.length) parts.push(`On/off: ${hist.map(h => `${eventLine(h.ev)}${g.ads.length > 1 ? ` [${h.ad}]` : ''}`).join(' → ')}.`);
+      parts.push(`Ran ${g.firstDay ?? '?'} → ${g.lastDay ?? '?'}${g.firstDay && g.lastDay ? ` (${daysBetween(g.firstDay, g.lastDay)} days)` : ''}${alive ? ', **still delivering**' : g.lastDay && g.lastDay < shiftDays(today, -3) ? ', stopped' : ''}. ` +
+        `${money0(g.life.spend)} · CTR ${pct(div(g.life.clicks * 100, g.life.impressions), 2)} · CPC ${money(div(g.life.spend, g.life.clicks))} · Meta leads ${int(g.life.leads)}` +
+        ` · GHL ${int(g.funnel.leads)} leads / ${int(g.funnel.appts)} demos / ${int(g.funnel.shows)} shown / ${int(g.funnel.closes)} closed` +
+        (g.isVideo && g.life.plays > 0 ? ` · video: hook ${pct(div(g.life.views3s * 100, g.life.impressions), 0)}, hold ${pct(div(g.life.thruplays * 100, g.life.views3s), 0)}, avg watch ${g.life.avgWatch.toFixed(0)}s` : '') + '.');
+      const hist = g.ads.flatMap(a => (a.row?.status_history ?? []).filter(ev => ev.event === 'on' || ev.event === 'off')).sort((p, q) => p.at.localeCompare(q.at));
+      if (hist.length) parts.push(`Switches: ${hist.map(ev => `${ev.event.toUpperCase()} ${shortDate(ev.local)}`).join(', ')}.`);
       if (g.life.spend >= TRAJECTORY_MIN_SPEND && g.weeks.length > 1) {
-        const weeks = g.weeks.slice(-MAX_WEEKS);
-        parts.push(table(['Week of', 'Spend', 'Impr.', 'CTR', 'Meta leads', 'CPL'], weeks.map(w => [w.start, money0(w.spend), int(w.impressions), pct(div(w.clicks * 100, w.impressions), 2), int(w.leads), money(div(w.spend, w.leads))])));
+        parts.push(`Weeks: ${g.weeks.slice(-MAX_WEEKS).map(w => `${w.start.slice(5)} ${money0(w.spend)}/${w.leads}`).join(' · ')}.`);
       }
     }
 
-    const headline = e?.headline ?? g.ads.find(a => a.row?.creative.headline)?.row?.creative.headline ?? null;
-    const primary = e?.primary_text ?? g.ads.find(a => a.row?.creative.primary_text)?.row?.creative.primary_text ?? null;
-    if (headline) parts.push(`Headline: "${headline}"`);
-    if (primary) parts.push(`Primary text: "${primary}"`);
-    if (e?.script) parts.push(`**Script:**\n${quote(e.script)}`);
-    if (e?.prompt) parts.push(`**Prompt:**\n${quote(e.prompt)}`);
-    if (e?.background_notes) parts.push(`Background: ${e.background_notes}`);
-    if (e?.notes) parts.push(`**Notes / decisions:** ${e.notes}`);
+    const headline = e.headline ?? g.ads.find(a => a.row?.creative.headline)?.row?.creative.headline ?? null;
+    const primary = e.primary_text ?? g.ads.find(a => a.row?.creative.primary_text)?.row?.creative.primary_text ?? null;
+    if (headline && headline !== std.headline) parts.push(`Headline: "${headline}"`);
+    if (primary && primary !== std.primary) parts.push(`Primary text: "${primary}"`);
+    if (e.script) parts.push(`**Script:**\n${quote(e.script)}`);
+    if (e.prompt) parts.push(`**Prompt:**\n${quote(e.prompt)}`);
+    if (e.background_notes) parts.push(`Background: ${e.background_notes}`);
+    if (e.notes) parts.push(`**Notes / decisions:** ${e.notes}`);
   }
+  void x;
   return parts.join('\n');
 }
 
@@ -474,14 +499,14 @@ export function renderFull(r: MetaReport, x: Extras, hub: Hub, groups: CreativeG
   p.push(liveNow(r, x, hub));
   p.push(`\n## ${sec.history}. Account history`);
   p.push(history(x));
-  p.push(`\n## ${sec.funnel}. Funnel summary — last 30 / 7 / 3 days`);
-  for (const w of WINDOWS) p.push('```\n' + accountSummary(r, w) + '\n```');
+  p.push(`\n## ${sec.funnel}. Funnel summary — last 30 / 7 days`);
+  for (const w of [30, 7] as const) p.push('```\n' + accountSummary(r, w) + '\n```');
   p.push(`\n## ${sec.adsets}. Ad sets`);
   p.push(adsetTables(r, [30, 7]));
   p.push(`\n## ${sec.ads}. Ad level — last 7 days (${r.windows[7].since} → ${r.windows[7].until})`);
   p.push(adTable(r));
   p.push(`\n## ${sec.library}. Creative library — every creative, its script and its life`);
-  p.push(creativeLibrary(r, groups, r.today));
+  p.push(creativeLibrary(r, x, groups, r.today));
   p.push(`\n## ${sec.pages}. Funnel pages`);
   p.push(funnelPages(r, [30, 7]));
   p.push(`\n## ${sec.onoff}. Ad set / campaign switches`);
