@@ -1,3 +1,19 @@
+## 2026-10-14 — Read-only link for the Meta reports (AI can fetch it)
+
+Same idea as the Health Tracker's share link. **Link** button next to Full
+brief / Update on the TM Dashboard → creates one token; the two URLs are
+`/api/meta-b2b-report?mode=full&token=…` and `…?mode=update&token=…`. The
+report route accepts the token in place of a session (it already bypasses the
+middleware); a wrong token is 404, no token is 401 as before. Turn off deletes
+the row; turning on again rotates the token. Table `share_links (key, token)`
+— `supabase/migrations/add_share_links.sql`, applied to **V1 and V2** via
+`node scripts/migrate-share-links.mjs <v1|v2>`. Routes: `meta-b2b-report/share`
+(GET / PATCH, session only). Component `ReportShare.tsx`.
+
+Verified on V2 (token → past auth; wrong token → 404; none → 401). V2 has no
+`b2b_events` table so the report itself 502s there — a long-standing V2 gap,
+not new. The V1 link is for the owner to create from the button.
+
 ## 2026-10-14 — Two AI-ready Meta reports: full brief + 7-day update
 
 The TM Dashboard's "Meta report" button is now two: **Full brief** and

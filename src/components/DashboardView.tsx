@@ -27,6 +27,7 @@ import { hasFeature, type FeatureId } from "@/lib/feature-access";
 import { pathForRoute, routeForSlug, type DashRoute } from "@/lib/dashboard-routes";
 import CampaignOverview from "./CampaignOverview";
 import WeeklyBreakdown from "./WeeklyBreakdown";
+import ReportShare from "./ReportShare";
 import DateRangePicker, { fmtRange } from "./DateRangePicker";
 import CreativeLeaderboard from "./CreativeLeaderboard";
 import CSMDashboard from "./CSMDashboard";
@@ -448,6 +449,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   // B2B dashboard: the tile whose "where this comes from" panel is open.
   const [statOpen, setStatOpen] = useState<{ label: string; value: string } | null>(null);
   const [showWeekly, setShowWeekly] = useState(false);
+  const [showReportShare, setShowReportShare] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   // Who is signed in and what they're allowed to open. `allowed_views: null`
@@ -1156,6 +1158,16 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                 className="flex items-center gap-2 px-3 py-2 text-sm font-medium" style={{ color: "#111", borderLeft: "1px solid rgba(0,0,0,0.162)" }}>
                 Update
               </a>
+              <div className="relative">
+                <button onClick={() => setShowReportShare(v => !v)} title="Read-only link an AI can fetch (no sign-in)"
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium" style={{ color: "#111", borderLeft: "1px solid rgba(0,0,0,0.162)", background: showReportShare ? "rgba(0,0,0,0.05)" : "transparent" }}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                  Link
+                </button>
+                {showReportShare && <ReportShare onClose={() => setShowReportShare(false)} />}
+              </div>
             </div>
           )}
 

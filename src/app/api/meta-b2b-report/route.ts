@@ -11,7 +11,9 @@ import { createServiceClient } from '@/lib/supabase';
 //   GET ?mode=full                       → the full media-buying brief for a chat with no context
 //   GET ?mode=update                     → the 7-day update for a chat that already has the brief
 //   (no mode = the original L30/L7/L3 report)
-// Auth: a signed-in dashboard user, or `Authorization: Bearer <ADMIN_WEBHOOK_SECRET>`.
+// Auth: a signed-in dashboard user, `Authorization: Bearer <ADMIN_WEBHOOK_SECRET>`,
+// or `?token=` = the read-only share link (share/route.ts) — what a Claude
+// project fetches. The token only opens the report, nothing else.
 // The "Download report" button on the TM Dashboard calls this; paste the .md
 // into Hormozi AI (or a chat here) for the media-buying read.
 //
@@ -21,9 +23,15 @@ import { createServiceClient } from '@/lib/supabase';
 export const maxDuration = 120;
 
 export async function GET(req: Request) {
+  const url = new URL(req.url);
   let service;
   if (validateWebhookSecret(req)) {
     service = createServiceClient();
+  } else if (url.searchParams.get('token')) {
+    const svc = createServiceClient();
+    const { data } = await svc.from('share_links').select('key').eq('key', 'b2b_report').eq('token', url.searchParams.get('token')!).maybeSingle();
+    if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    service = svc;
   } else {
     const ctx = await getAuthContext();
     if (isAuthError(ctx)) return ctx;
@@ -33,7 +41,6 @@ export async function GET(req: Request) {
   const token = process.env.META_ACCESS_TOKEN;
   if (!token) return NextResponse.json({ error: 'META_ACCESS_TOKEN is not set — add it to the environment variables.' }, { status: 503 });
 
-  const url = new URL(req.url);
   const campaigns = (url.searchParams.get('campaigns') ?? process.env.META_REPORT_CAMPAIGNS ?? '')
     .split(',').map(s => s.trim()).filter(Boolean);
 
