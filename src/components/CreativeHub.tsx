@@ -92,7 +92,7 @@ function NewFolderModal({ ask, scope, categoryLabel, onClose }: { ask: FolderAsk
       <div className="w-full max-w-md rounded-2xl p-5 space-y-4" style={{ ...CARD, boxShadow: "0 24px 60px -12px rgba(0,0,0,0.35)" }} onClick={e => e.stopPropagation()}>
         <div>
           <div className="text-base font-semibold" style={{ color: "#111111" }}>New folder in {categoryLabel}</div>
-          <div className="text-xs mt-0.5" style={{ color: "#767676" }}>A style, an angle or a batch — whatever you'd group creatives by.</div>
+          <div className="text-xs mt-0.5" style={{ color: "#767676" }}>A style, an angle or a batch — whatever you&apos;d group creatives by.</div>
         </div>
         <label className="block">
           <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Folder name</span>
