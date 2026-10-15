@@ -151,17 +151,30 @@ type HubEntry = {
   launch_date: string | null; headline: string | null; primary_text: string | null; prompt: string | null;
   script: string | null; background_notes: string | null; notes: string | null; created_at: string; updated_at: string;
 };
-type Hub = { entries: HubEntry[]; linkToEntry: Map<string, string> };
+type HubChange = { id: string; happened_on: string; note: string; entry_id: string | null; campaign_id: string | null };
+type Hub = { entries: HubEntry[]; linkToEntry: Map<string, string>; changes: HubChange[] };
 
 async function fetchHub(service: Service): Promise<Hub> {
-  const [{ data: entries }, { data: links }] = await Promise.all([
+  const [{ data: entries }, { data: links }, { data: changes }] = await Promise.all([
     service.from('creative_hub_entries').select('id,name,code,category,kind,tags,launch_date,headline,primary_text,prompt,script,background_notes,notes,created_at,updated_at').eq('scope', 'b2b'),
     service.from('creative_hub_links').select('ad_id,entry_id'),
+    // The timeline's change log: what was done, when, to which creative or campaign.
+    service.from('creative_hub_changes').select('id,happened_on,note,entry_id,campaign_id').eq('scope', 'b2b').order('happened_on', { ascending: false }),
   ]);
   const ids = new Set((entries ?? []).map(e => e.id as string));
   const linkToEntry = new Map<string, string>();
   for (const l of links ?? []) if (ids.has(l.entry_id as string)) linkToEntry.set(l.ad_id as string, l.entry_id as string);
-  return { entries: (entries ?? []) as HubEntry[], linkToEntry };
+  return { entries: (entries ?? []) as HubEntry[], linkToEntry, changes: (changes ?? []) as HubChange[] };
+}
+
+// The change log as text: date, what, and which creative / campaign it was about.
+function changeLines(changes: HubChange[], hub: Hub, r: MetaReport): string[] {
+  const entryTitle = new Map(hub.entries.map(e => [e.id, `${e.code ? e.code + ' ' : ''}${e.name}`]));
+  const campTitle = new Map(r.campaigns.map(c => [c.id, c.name]));
+  return changes.map(ch => {
+    const about = ch.entry_id ? entryTitle.get(ch.entry_id) ?? 'a creative' : ch.campaign_id ? `campaign "${campTitle.get(ch.campaign_id) ?? ch.campaign_id}"` : 'whole account';
+    return `- ${ch.happened_on} · ${about} — ${ch.note.replace(/\s+/g, ' ').trim()}`;
+  });
 }
 
 // ── Formatting helpers ────────────────────────────────────────────────────
@@ -392,7 +405,7 @@ function standardCopy(r: MetaReport): { headline: string | null; primary: string
 
 const shortDate = (local: string) => local.replace(/,\s*\d{4}.*$/, '').replace(/^(\w{3}) (\d+)$/, '$1 $2');
 
-function creativeLibrary(r: MetaReport, x: Extras, groups: CreativeGroup[], today: string): string {
+function creativeLibrary(r: MetaReport, x: Extras, groups: CreativeGroup[], today: string, hub: Hub): string {
   const parts: string[] = [];
   const std = standardCopy(r);
   parts.push(`One block per creative, biggest lifetime spend first. "GHL" = real CRM outcomes attributed to the ad (first touch; a demo counts whether it later showed or not); "Meta leads" = Meta's count. "Weeks" shows how long a creative worked before it faded or was turned off: week start · spend · Meta leads. Prompts and scripts are what each creative was made from — model new ones on what worked.`);
@@ -452,6 +465,8 @@ function creativeLibrary(r: MetaReport, x: Extras, groups: CreativeGroup[], toda
     if (e.prompt) parts.push(`**Prompt:**\n${quote(e.prompt)}`);
     if (e.background_notes) parts.push(`Background: ${e.background_notes}`);
     if (e.notes) parts.push(`**Notes / decisions:** ${e.notes}`);
+    const mine = hub.changes.filter(ch => ch.entry_id === e.id);
+    if (mine.length) parts.push(`**Timeline:**\n${mine.map(ch => `- ${ch.happened_on} — ${ch.note.replace(/\s+/g, ' ').trim()}`).join('\n')}`);
   }
   void x;
   return parts.join('\n');
@@ -537,6 +552,9 @@ function changes(r: MetaReport, hub: Hub, groups: CreativeGroup[], since: string
 
   const newEntries = hub.entries.filter(e => e.created_at >= sinceIso);
   if (newEntries.length) parts.push(`\n**New creatives in the Hub:** ${newEntries.map(e => `${e.code ? e.code + ' ' : ''}${e.name}`).join(', ')} — scripts / prompts below.`);
+  const logged = hub.changes.filter(ch => ch.happened_on >= since);
+  parts.push(`\n**Logged in the timeline since ${since}:**`);
+  parts.push(logged.length ? changeLines(logged, hub, r).join('\n') : '- Nothing logged. (Every change should be logged there — ask for the note if the owner mentions a change that is missing.)');
   const noted = hub.entries.filter(e => e.notes && e.updated_at >= sinceIso && e.created_at < sinceIso);
   if (noted.length) parts.push(`\n**Notes updated:**\n${noted.map(e => `- ${e.code ? e.code + ' ' : ''}${e.name}: ${e.notes}`).join('\n')}`);
 
@@ -572,7 +590,7 @@ function header(r: MetaReport, title: string): string {
 }
 
 export function renderFull(r: MetaReport, x: Extras, hub: Hub, groups: CreativeGroup[]): string {
-  const sec = { brief: 1, now: 2, changes: 3, history: 4, funnel: 5, adsets: 6, ads: 7, library: 8, copy: 9, pages: 10, onoff: 11 };
+  const sec = { brief: 1, now: 2, changes: 3, timeline: 4, history: 5, funnel: 6, adsets: 7, ads: 8, library: 9, copy: 10, pages: 11, onoff: 12 };
   const since = shiftDays(r.today, -(UPDATE_DAYS - 1));
   const p: string[] = [];
   p.push(header(r, 'Tomsi Media B2B — full media-buying brief'));
@@ -586,6 +604,11 @@ export function renderFull(r: MetaReport, x: Extras, hub: Hub, groups: CreativeG
   p.push(changes(r, hub, groups, since));
   p.push('\nLast 7 days vs the 7 before:');
   p.push(r.summary.map(s => `- ${s}`).join('\n'));
+  p.push(`\n## ${sec.timeline}. Timeline — every change logged in the last 90 days`);
+  const recent = hub.changes.filter(ch => ch.happened_on >= shiftDays(r.today, -90));
+  p.push(recent.length
+    ? 'What was done, when and why, as the owner logged it (newest first). Judge your earlier recommendations against this before making new ones.\n' + changeLines(recent, hub, r).join('\n')
+    : 'Nothing logged in the last 90 days.');
   p.push(`\n## ${sec.history}. Account history`);
   p.push(history(x));
   p.push(`\n## ${sec.funnel}. Funnel summary — last 30 / 7 / 3 days`);
@@ -595,7 +618,7 @@ export function renderFull(r: MetaReport, x: Extras, hub: Hub, groups: CreativeG
   p.push(`\n## ${sec.ads}. Ad level — last 7 days (${r.windows[7].since} → ${r.windows[7].until})`);
   p.push(adTable(r));
   p.push(`\n## ${sec.library}. Creative library — every creative, its script and its life`);
-  p.push(creativeLibrary(r, x, groups, r.today));
+  p.push(creativeLibrary(r, x, groups, r.today, hub));
   p.push(`\n## ${sec.copy}. Copy performance — which words worked`);
   p.push(copyPerformance(x));
   p.push(`\n## ${sec.pages}. Funnel pages`);
