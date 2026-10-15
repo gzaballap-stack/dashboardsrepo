@@ -1026,6 +1026,19 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
     if (hasAds) await onSaved(creative!.key); else { await onSaved(""); onClose(); }
   }
 
+  // A copy of this creative, filed next to it with the next number — the
+  // starting point for a variation. Opens straight into editing.
+  async function duplicate() {
+    if (!creative) return;
+    setSaving(true); setErr("");
+    try {
+      const json = await postJson("/api/creative-hub", entry ? { scope, duplicate_of: entry.id } : { scope, duplicate_name: creative.name });
+      const e = json.entry as Entry & { pool_key: string };
+      onNotice(`Duplicated as ${e.code ? e.code + " " : ""}${e.name}.`);
+      await onSaved(e.code ? e.code.toLowerCase() : e.pool_key);
+    } catch (e) { setErr((e as Error).message); } finally { setSaving(false); }
+  }
+
   async function renameInMeta() {
     if (!entry) return;
     setSaving(true); setErr("");
@@ -1084,7 +1097,10 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
             {creative && <button onClick={() => { setForm(blank()); setEditing(false); setErr(""); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: "#4a4a4a", border: "1px solid rgba(0,0,0,0.162)" }}>Cancel</button>}
             <button onClick={save} disabled={saving || !form.name.trim()} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: saving || !form.name.trim() ? 0.5 : 1 }}>{saving ? "Saving…" : "Save"}</button>
           </>) : (
-            <button onClick={() => setEditing(true)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff" }}>Edit</button>
+            <>
+              {creative && <button onClick={duplicate} disabled={saving} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: "#111111", border: "1px solid rgba(0,0,0,0.162)", opacity: saving ? 0.6 : 1 }} title="Make a copy to build a variation on">Duplicate</button>}
+              <button onClick={() => setEditing(true)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff" }}>Edit</button>
+            </>
           )}
           <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg" style={{ color: "#767676" }}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>

@@ -21,6 +21,7 @@ import {
  * GET    ?scope=b2b|b2c[&client_id=]   → { creatives, campaigns, folders, … }
  * POST   { scope, name, …fields, id?, category?, folder_id? } → create or update an entry
  * POST   { scope, assign: [{ id? | name }], category, folder_id }  → file several at once
+ * POST   { scope, duplicate_of: entry id | duplicate_name }        → a copy filed next to it
  * DELETE ?id=                          → remove an entry (the ad data stays)
  *
  * Ads are matched to an entry by a saved link (ad id), then by the code at the
@@ -431,6 +432,40 @@ export async function POST(req: Request) {
       saved.push(data as Entry);
     }
     return NextResponse.json({ entries: saved, renamed: await maybeRename(saved) });
+  }
+
+  // ── Duplicate: same script, prompt, tags, copy set and folder; next number;
+  // no ads attached. For making a variation of something that works. ──
+  if (typeof body.duplicate_of === 'string' || typeof body.duplicate_name === 'string') {
+    let source: Entry | null = null;
+    if (typeof body.duplicate_of === 'string' && body.duplicate_of) {
+      const { data } = await service.from('creative_hub_entries').select('*').eq('id', body.duplicate_of).eq('scope', scope).maybeSingle();
+      source = (data as Entry | null) ?? null;
+    } else if (typeof body.duplicate_name === 'string' && body.duplicate_name.trim()) {
+      const made = await ensureEntry(service, scope, body.duplicate_name);
+      if ('error' in made) return NextResponse.json({ error: made.error }, { status: 400 });
+      source = made;
+    }
+    if (!source) return NextResponse.json({ error: 'That creative no longer exists.' }, { status: 404 });
+
+    // "<name> v2", then "v3", … — names must be unique in a scope. ("(copy)"
+    // would not do: copy suffixes are folded away when names are matched.)
+    const base = source.name.replace(/\s+v\d+\s*$/i, '');
+    let name = '';
+    for (let n = 2; n < 100; n++) {
+      name = `${base} v${n}`;
+      const { data: taken } = await service.from('creative_hub_entries').select('id').eq('scope', scope).eq('pool_key', creativeKey(name, scope === 'b2b')).maybeSingle();
+      if (!taken) break;
+    }
+    const row: Record<string, unknown> = { scope, name, pool_key: creativeKey(name, scope === 'b2b'), copy_set_id: source.copy_set_id };
+    for (const f of ENTRY_FIELDS) if (f !== 'launch_date') row[f] = source[f];
+    if (source.category) {
+      const filing = await resolveFiling(service, scope, folders, { category: source.category, folder_id: source.folder_id }, null);
+      if (!('error' in filing)) Object.assign(row, filing);
+    }
+    const { data, error } = await service.from('creative_hub_entries').insert(row).select().single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ entry: data });
   }
 
   // ── One entry: create or update ──
