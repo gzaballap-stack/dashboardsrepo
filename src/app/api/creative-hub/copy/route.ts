@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { hubAuth, isScope, type Service } from '@/lib/creative-hub-entries';
 import { rollupFunnelByAd, type AdFunnel } from '@/lib/ad-funnel';
+import { fetchTextRows, perfForText, type TextRow, type TextPerf } from '@/lib/copy-performance';
 
 /**
  * Copy sets — the texts an ad rotates through (Advantage+ creative takes up to
@@ -8,7 +9,9 @@ import { rollupFunnelByAd, type AdFunnel } from '@/lib/ad-funnel';
  *
  * GET    ?scope=b2b|b2c                → { sets } — each set carries `performance`: lifetime
  *                                        results of every ad whose primary text (or, failing
- *                                        that, headline) is one of the set's texts
+ *                                        that, headline) is one of the set's texts — and `texts`:
+ *                                        Meta's own per-text split (bodies / headlines /
+ *                                        descriptions, aligned by index with the set's lists)
  * POST   { id?, scope, name, … }       → create or update
  * DELETE ?id=
  */
@@ -32,14 +35,16 @@ async function adResults(service: Service, scope: 'b2b' | 'b2c') {
   const clientIds = (clientRows ?? []).filter(c => (scope === 'b2b' ? c.is_internal : !c.is_internal)).map(c => c.id as string);
   type Acc = { spend: number; impressions: number; link_clicks: number; meta_leads: number; first: string; last: string };
   const ads = new Map<string, Acc>();
+  const campaignIds = new Set<string>();
   if (clientIds.length) {
     const PAGE = 1000;
     for (let offset = 0; ; offset += PAGE) {
       const { data } = await service.from('ad_campaigns')
-        .select('report_date, ad_id, spend, impressions, link_clicks, leads')
+        .select('report_date, ad_id, campaign_id, spend, impressions, link_clicks, leads')
         .eq('level', 'ad').in('client_id', clientIds).neq('ad_id', '')
         .order('report_date').order('id').range(offset, offset + PAGE - 1);
       for (const r of data ?? []) {
+        if (r.campaign_id) campaignIds.add(r.campaign_id as string);
         const a = ads.get(r.ad_id as string) ?? { spend: 0, impressions: 0, link_clicks: 0, meta_leads: 0, first: r.report_date as string, last: r.report_date as string };
         a.spend += Number(r.spend) || 0; a.impressions += (r.impressions as number) ?? 0; a.link_clicks += (r.link_clicks as number) ?? 0; a.meta_leads += (r.leads as number) ?? 0;
         if ((r.report_date as string) > a.last) a.last = r.report_date as string;
@@ -49,13 +54,23 @@ async function adResults(service: Service, scope: 'b2b' | 'b2c') {
     }
   }
   const ids = [...ads.keys()];
-  const [{ data: meta }, funnel] = await Promise.all([
+  const [{ data: meta }, funnel, textRows] = await Promise.all([
     ids.length ? service.from('creative_hub_meta').select('ad_id, primary_text, headline').in('ad_id', ids) : Promise.resolve({ data: [] as { ad_id: string; primary_text: string | null; headline: string | null }[] }),
     rollupFunnelByAd(service, { table: 'events', level: 'ad', model: 'first', client_id: clientIds.length === 1 ? clientIds[0] : null, bookedIncludesResolved: scope === 'b2b' })
       .catch(() => new Map<string, AdFunnel>()),
+    fetchTextRows(process.env.META_ACCESS_TOKEN, [...campaignIds]),
   ]);
   const texts = new Map((meta ?? []).map(m => [m.ad_id as string, { body: norm(m.primary_text as string), headline: norm(m.headline as string) }]));
-  return { ads, texts, funnel };
+  return { ads, texts, funnel, textRows };
+}
+
+// Meta's own split: what each individual text did across every ad that rotated it.
+function textsFor(set: { bodies: string[]; headlines: string[]; descriptions: string[] }, rows: TextRow[]): { bodies: TextPerf[]; headlines: TextPerf[]; descriptions: TextPerf[] } {
+  return {
+    bodies: set.bodies.map(t => perfForText(rows, 'body', t)),
+    headlines: set.headlines.map(t => perfForText(rows, 'title', t)),
+    descriptions: set.descriptions.map(t => perfForText(rows, 'description', t)),
+  };
 }
 
 function performanceFor(set: { bodies: string[]; headlines: string[] }, r: Awaited<ReturnType<typeof adResults>>): CopyPerformance {
@@ -106,6 +121,7 @@ export async function GET(req: Request) {
       ...s,
       used_by: usedBy.get(s.id as string) ?? [],
       performance: performanceFor({ bodies: (s.bodies as string[]) ?? [], headlines: (s.headlines as string[]) ?? [] }, results),
+      texts: textsFor({ bodies: (s.bodies as string[]) ?? [], headlines: (s.headlines as string[]) ?? [], descriptions: (s.descriptions as string[]) ?? [] }, results.textRows),
     })),
     limit: LIMIT,
   });

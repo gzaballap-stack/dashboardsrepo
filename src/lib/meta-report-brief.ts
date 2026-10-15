@@ -18,6 +18,7 @@ import type { createServiceClient } from './supabase';
 import { getTomsiClientId } from './tomsi';
 import { rollupFunnelByAd, EMPTY_AD_FUNNEL, type AdFunnel } from './ad-funnel';
 import { B2B_BRIEF } from './b2b-brief';
+import { fetchTextRows, rankTexts, type TextRow } from './copy-performance';
 import {
   buildMetaReport, accountSummary, LANDING_TO_BOOKING_KPI,
   type BuildOptions, type MetaReport, type AdRow, type StatusEvent, type WindowDays,
@@ -78,6 +79,7 @@ type Extras = {
   campaigns: Budgeted[];
   adsets: (Budgeted & { campaign_id: string })[];
   copyByAd: Map<string, { body: string; title: string }>;   // every ad's primary text + headline
+  textRows: TextRow[];                                       // Meta's per-text split, every campaign
 };
 
 async function fetchExtras(acct: string, token: string): Promise<Extras> {
@@ -95,6 +97,7 @@ async function fetchExtras(acct: string, token: string): Promise<Extras> {
     safe(graph<{ id: string; creative?: { title?: string; body?: string; object_story_spec?: { link_data?: { message?: string; name?: string }; video_data?: { message?: string; title?: string } }; asset_feed_spec?: { bodies?: { text?: string }[]; titles?: { text?: string }[] } } }>(
       `/${acct}/ads`, { fields: 'id,creative{title,body,object_story_spec,asset_feed_spec}' }, token)),
   ]);
+  const textRows = await fetchTextRows(token, campaigns.map(c => c.id));
   const copyByAd = new Map<string, { body: string; title: string }>();
   for (const a of adCreatives) {
     const c = a.creative ?? {}; const oss = c.object_story_spec ?? {}; const afs = c.asset_feed_spec ?? {};
@@ -126,7 +129,7 @@ async function fetchExtras(acct: string, token: string): Promise<Extras> {
   return {
     monthly: monthly.filter(r => r.date_start).map(r => ({ month: r.date_start!.slice(0, 7), spend: num(r.spend), impressions: num(r.impressions), clicks: num(r.inline_link_clicks), leads: leadsOf(r.actions) })),
     lifetime: life, weekly: weeks,
-    copyByAd,
+    copyByAd, textRows,
     campaigns: campaigns.map(c => ({ id: c.id, name: c.name, status: c.effective_status ?? '—', daily: cents(c.daily_budget), lifetime: cents(c.lifetime_budget), extra: [c.objective, c.bid_strategy].filter(Boolean).join(' · ') })),
     adsets: adsets.map(s => ({
       id: s.id, name: s.name, status: s.effective_status ?? '—', campaign_id: s.campaign_id, daily: cents(s.daily_budget), lifetime: cents(s.lifetime_budget),
@@ -469,13 +472,22 @@ function copyPerformance(x: Extras): string {
     g.set(key, a);
   }
   const rows = [...g.values()].filter(a => a.spend >= 50).sort((p, q) => q.spend - p.spend);
-  if (!rows.length) return 'No copy history available.';
-  return [
-    'Every ad that ever ran, grouped by the words on it (primary text + headline), lifetime. Copies ran in different periods on different creatives, so treat this as evidence, not a split test: to settle it, run two copies on the same creative in the same week.',
-    table(['Primary text (start)', 'Headline', 'Ran', 'Ads', 'Spend', 'CTR', 'CPC', 'Leads (Meta)', 'CPL'],
+  const parts: string[] = [];
+  if (rows.length) {
+    parts.push('**By ad copy** — every ad that ever ran, grouped by the words on it (first primary text + headline), lifetime. Copies ran in different periods on different creatives, so treat this as evidence, not a split test: to settle it, run two copies on the same creative in the same week.');
+    parts.push(table(['Primary text (start)', 'Headline', 'Ran', 'Ads', 'Spend', 'CTR', 'CPC', 'Leads (Meta)', 'CPL'],
       rows.map(a => [a.body.slice(0, 90) + (a.body.length > 90 ? '…' : ''), a.title || '—', a.first && a.last ? `${a.first.slice(0, 7)} → ${a.last.slice(0, 7)}` : '—', String(a.ads),
-        money0(a.spend), pct(div(a.clicks * 100, a.impressions), 2), money(div(a.spend, a.clicks)), int(a.leads), money(div(a.spend, a.leads), 0)])),
-  ].join('\n');
+        money0(a.spend), pct(div(a.clicks * 100, a.impressions), 2), money(div(a.spend, a.clicks)), int(a.leads), money(div(a.spend, a.leads), 0)])));
+  }
+  // Meta's own per-text split: ads that rotate several texts report each text separately.
+  for (const [kind, label] of [['body', 'primary text'], ['title', 'headline'], ['description', 'description']] as const) {
+    const ranked = rankTexts(x.textRows, kind).filter(t => t.spend >= 20);
+    if (!ranked.length) continue;
+    parts.push(`\n**By individual ${label}** — Meta's own split for ads that rotate several texts (an ad with five primary texts reports each one separately). Lifetime, every campaign.`);
+    parts.push(table([label.charAt(0).toUpperCase() + label.slice(1), 'Ads', 'Spend', 'Impr.', 'CTR', 'CPC', 'Leads (Meta)', 'CPL'],
+      ranked.slice(0, 12).map(t => [t.text.replace(/\s+/g, ' ').slice(0, 100) + (t.text.length > 100 ? '…' : ''), String(t.ads), money0(t.spend), int(t.impressions), pct(t.ctr, 2), money(t.cpc), int(t.leads), t.leads ? money(t.cost_per_lead, 0) : '—'])));
+  }
+  return parts.length ? parts.join('\n') : 'No copy history available.';
 }
 
 function funnelPages(r: MetaReport, windows: readonly WindowDays[]): string {

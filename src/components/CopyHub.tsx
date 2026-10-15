@@ -13,7 +13,29 @@ type CopySet = {
   used_by: string[];
   // Lifetime results of every ad carrying one of this set's primary texts.
   performance?: { ads: number; spend: number; ctr: number; cpc: number; meta_leads: number; leads: number; appts: number; shows: number; closes: number; cost_per_lead: number; cost_per_appt: number; first: string | null; last: string | null };
+  // Meta's per-text split, aligned by index with bodies / headlines / descriptions.
+  texts?: { bodies: TextPerf[]; headlines: TextPerf[]; descriptions: TextPerf[] };
 };
+type TextPerf = { ads: number; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; leads: number; cost_per_lead: number };
+
+// What one text did on its own, across every ad that rotated it (Meta's split).
+function TextStats({ p }: { p?: TextPerf }) {
+  if (!p || !p.ads) return <div className="text-[10px] mt-1.5" style={{ color: "#b8b8b8" }}>Not run yet</div>;
+  const items: [string, string][] = [
+    ["Spend", fmt$(p.spend)], ["Impr", p.impressions.toLocaleString()], ["CTR", `${p.ctr.toFixed(2)}%`], ["CPC", fmt$(p.cpc, 2)],
+    ["Leads", String(p.leads)], ["CPL", p.cost_per_lead ? fmt$(p.cost_per_lead) : "—"], ["Ads", String(p.ads)],
+  ];
+  return (
+    <div className="flex flex-wrap mt-2 pt-2" style={{ gap: "4px 12px", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+      {items.map(([l, v]) => (
+        <div key={l} className="flex items-baseline gap-1">
+          <span className="text-[10px] uppercase font-semibold" style={{ color: "#949494" }}>{l}</span>
+          <span className="text-xs font-semibold" style={{ color: "#111111" }}>{v}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 const fmt$ = (n: number, dp = 0) => `$${n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
 
 // Same numbers the creative cards show, for the words instead of the picture.
@@ -222,7 +244,6 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
           <div className="min-w-0 mr-auto">
             <div className="text-base font-semibold truncate" style={{ color: "#111111" }}>{set?.name ?? "New copy set"}</div>
             {set && <div className="flex items-center gap-1.5 mt-1 flex-wrap">{set.campaign_label && <Chip>{set.campaign_label}</Chip>}{set.cta && <Chip>{set.cta.replace(/_/g, " ").toLowerCase()}</Chip>}</div>}
-            {set && !editing && <div className="mt-2"><PerfRow p={set.performance} scope={scope} big /></div>}
           </div>
           {!editing && set && <CopyButton text={all(set)} label="Copy everything" />}
           {editing ? (<>
@@ -307,10 +328,13 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
                   ? <button onClick={() => setEditing(true)} className="text-xs" style={{ color: "#949494" }}>+ Add {g.single}</button>
                   : <div className="space-y-2">
                       {set[g.id].map((t, i) => (
-                        <div key={i} className="rounded-xl p-3 flex gap-3 items-start" style={{ background: "#f7f7f7" }}>
-                          <span className="text-[10px] font-bold pt-0.5" style={{ color: "#c2c2c2" }}>{i + 1}</span>
-                          <div className="text-sm whitespace-pre-wrap flex-1 min-w-0" style={{ color: "#111111", lineHeight: 1.55 }}>{t}</div>
-                          <CopyButton text={t} />
+                        <div key={i} className="rounded-xl p-3" style={{ background: "#f7f7f7" }}>
+                          <div className="flex gap-3 items-start">
+                            <span className="text-[10px] font-bold pt-0.5" style={{ color: "#c2c2c2" }}>{i + 1}</span>
+                            <div className="text-sm whitespace-pre-wrap flex-1 min-w-0" style={{ color: "#111111", lineHeight: 1.55 }}>{t}</div>
+                            <CopyButton text={t} />
+                          </div>
+                          <TextStats p={set.texts?.[g.id]?.[i]} />
                         </div>
                       ))}
                     </div>}
