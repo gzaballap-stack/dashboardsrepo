@@ -11,7 +11,34 @@ type CopySet = {
   id: string; name: string; campaign_label: string | null; notes: string | null;
   bodies: string[]; headlines: string[]; descriptions: string[]; cta: string | null; link: string | null; updated_at: string;
   used_by: string[];
+  // Lifetime results of every ad carrying one of this set's primary texts.
+  performance?: { ads: number; spend: number; ctr: number; cpc: number; meta_leads: number; leads: number; appts: number; shows: number; closes: number; cost_per_lead: number; cost_per_appt: number; first: string | null; last: string | null };
 };
+const fmt$ = (n: number, dp = 0) => `$${n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
+
+// Same numbers the creative cards show, for the words instead of the picture.
+function PerfRow({ p, scope, big = false }: { p: CopySet["performance"]; scope: Scope; big?: boolean }) {
+  if (!p || !p.ads) return <div className="text-[10px]" style={{ color: "#b8b8b8" }}>No ad has run with these texts yet</div>;
+  const appt = scope === "b2b" ? "Demos" : "Appts";
+  const items: [string, string][] = [
+    ["Spend", fmt$(p.spend)], ["CTR", `${p.ctr.toFixed(2)}%`], ["CPC", fmt$(p.cpc, 2)],
+    ["Leads", String(p.leads || p.meta_leads)], ["CPL", p.cost_per_lead ? fmt$(p.cost_per_lead) : "—"],
+    [appt, String(p.appts)], [`Cost/${appt.toLowerCase().replace(/s$/, "")}`, p.cost_per_appt ? fmt$(p.cost_per_appt) : "—"],
+  ];
+  return (
+    <div>
+      <div className="flex flex-wrap" style={{ gap: big ? "8px 18px" : "4px 12px" }}>
+        {items.map(([l, v]) => (
+          <div key={l} className="flex items-baseline gap-1">
+            <span className="text-[10px] uppercase font-semibold" style={{ color: "#949494" }}>{l}</span>
+            <span className={big ? "text-sm font-semibold" : "text-xs font-semibold"} style={{ color: "#111111" }}>{v}</span>
+          </div>
+        ))}
+      </div>
+      <div className="text-[10px] mt-1" style={{ color: "#949494" }}>{p.ads} ad{p.ads === 1 ? "" : "s"}{p.first ? ` · ${p.first} → ${p.last}` : ""} · lifetime</div>
+    </div>
+  );
+}
 type AdOption = { ad_id: string; label: string };
 
 const CARD = {
@@ -97,9 +124,10 @@ export default function CopyHub({ scope }: { scope: Scope }) {
               </div>
               {s.used_by?.length > 0 && <div className="text-[10px] truncate" style={{ color: "#4a4a4a" }} title={s.used_by.join(", ")}>Runs on {s.used_by.length} creative{s.used_by.length === 1 ? "" : "s"}: {s.used_by.join(", ")}</div>}
               {s.headlines[0] && <div className="text-xs font-semibold truncate" style={{ color: "#111111" }}>{s.headlines[0]}</div>}
-              <div className="text-xs flex-1" style={{ color: "#4a4a4a", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.5 }}>
+              <div className="text-xs flex-1" style={{ color: "#4a4a4a", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", lineHeight: 1.5 }}>
                 {s.bodies[0] ?? <span style={{ color: "#b8b8b8" }}>No primary text yet</span>}
               </div>
+              <div className="pt-2 mt-auto" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}><PerfRow p={s.performance} scope={scope} /></div>
             </button>
           ))}
         </div>
@@ -194,6 +222,7 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
           <div className="min-w-0 mr-auto">
             <div className="text-base font-semibold truncate" style={{ color: "#111111" }}>{set?.name ?? "New copy set"}</div>
             {set && <div className="flex items-center gap-1.5 mt-1 flex-wrap">{set.campaign_label && <Chip>{set.campaign_label}</Chip>}{set.cta && <Chip>{set.cta.replace(/_/g, " ").toLowerCase()}</Chip>}</div>}
+            {set && !editing && <div className="mt-2"><PerfRow p={set.performance} scope={scope} big /></div>}
           </div>
           {!editing && set && <CopyButton text={all(set)} label="Copy everything" />}
           {editing ? (<>
