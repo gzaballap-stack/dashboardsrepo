@@ -372,7 +372,8 @@ export default function CreativeHub({ scope, tab, clients }: {
         ...c.ads.map(a => a.campaign_name), ...c.clients.map(cl => cl.name)];
       return hay.some(h => h?.toLowerCase().includes(q));
     });
-    if (sort === "code") list.sort((a, b) => (a.code ?? "\uffff").localeCompare(b.code ?? "\uffff") || b.spend - a.spend);
+    // Numeric-aware, so H10B1 sorts after H9B1.
+    if (sort === "code") list.sort((a, b) => (a.code ?? "\uffff").localeCompare(b.code ?? "\uffff", undefined, { numeric: true }) || b.spend - a.spend);
     if (sort === "spend") list.sort((a, b) => b.spend - a.spend);
     if (sort === "cost") list.sort((a, b) => (a.appts > 0 ? a.cost_per_appt : Infinity) - (b.appts > 0 ? b.cost_per_appt : Infinity) || b.spend - a.spend);
     return list;
@@ -494,7 +495,8 @@ export default function CreativeHub({ scope, tab, clients }: {
           )}
           {cat && cat !== UNFILED && (
             <span className="text-[10px] ml-auto" style={{ color: "#949494" }}>
-              Codes here look like <b>{cat}{folderSel && folderSel !== "root" ? `/${folders.find(f => f.id === folderSel)?.slug}` : catFolders.length ? `/${catFolders[0].slug}` : ""}/001</b>
+              Codes here look like <b>{cat}{folderSel && folderSel !== "root" ? `/${folders.find(f => f.id === folderSel)?.slug}` : catFolders.length ? `/${catFolders[0].slug}` : ""}/{cat === "TH" ? "H1B1" : "001"}</b>
+              {cat === "TH" && <> — titled “Hook 1 Body 1”</>}
             </span>
           )}
           {cat === UNFILED && countIn(UNFILED) > 0 && (

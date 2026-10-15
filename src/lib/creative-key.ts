@@ -49,17 +49,32 @@ export const CATEGORY_CODES = CATEGORIES.map(c => c.code) as readonly string[];
 export const categoryLabel = (code: string | null | undefined) =>
   CATEGORIES.find(c => c.code === code)?.label ?? code ?? 'Uncategorised';
 
-const CODE_RE = new RegExp(`^(${CATEGORY_CODES.join('|')})(?:/([A-Z0-9][A-Z0-9-]*))?/(\\d{1,3})([a-z])?(?![\\w/-])`, 'i');
+// The last part of a code is a running number (001), or for talking heads the
+// hook and body they're made of (H6B3). A trailing letter marks a variant (H6B3b).
+const CODE_RE = new RegExp(`^(${CATEGORY_CODES.join('|')})(?:/([A-Z0-9][A-Z0-9-]*))?/(\\d{1,3}|H\\d{1,3}B\\d{1,3})([a-z])?(?![\\w/-])`, 'i');
 
 /** "AI/SLOP/001 Dog Driving" → "AI/SLOP/001"; null when the name carries no code. */
 export function codeOf(name: string): string | null {
   const m = name.trim().match(CODE_RE);
   if (!m) return null;
-  return buildCode(m[1].toUpperCase(), m[2]?.toUpperCase() ?? null, Number(m[3])) + (m[4] ?? '').toLowerCase();
+  const tail = /^\d/.test(m[3]) ? Number(m[3]) : m[3].toUpperCase();
+  return buildCode(m[1].toUpperCase(), m[2]?.toUpperCase() ?? null, tail) + (m[4] ?? '').toLowerCase();
 }
 
-export function buildCode(category: string, folderSlug: string | null, seq: number): string {
-  return [category, folderSlug, String(seq).padStart(3, '0')].filter(Boolean).join('/');
+export function buildCode(category: string, folderSlug: string | null, tail: number | string): string {
+  return [category, folderSlug, typeof tail === 'number' ? String(tail).padStart(3, '0') : tail].filter(Boolean).join('/');
+}
+
+/**
+ * The last part of a creative's code. Talking heads titled "Hook 6 Body 3" read
+ * as H6B3, so the code says what was recorded; everything else gets its number.
+ */
+export function codeTail(category: string, name: string, seq: number): number | string {
+  if (category === 'TH') {
+    const m = name.match(/hook\s*(\d{1,3})\D{0,3}body\s*(\d{1,3})/i);
+    if (m) return `H${Number(m[1])}B${Number(m[2])}`;
+  }
+  return seq;
 }
 
 /** The folder part of a code, from its name: "Realistic images" → "REALISTIC" (first word, 12 chars max). */

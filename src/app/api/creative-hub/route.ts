@@ -421,7 +421,7 @@ export async function POST(req: Request) {
       if (!entry) continue;
       const change: Record<string, unknown> = { updated_at: new Date().toISOString() };
       if (filingWanted.category) {
-        const filing = await resolveFiling(service, scope, folders, filingWanted, entry);
+        const filing = await resolveFiling(service, scope, folders, filingWanted, entry, entry.name);
         if ('error' in filing) return NextResponse.json({ error: filing.error }, { status: 400 });
         Object.assign(change, filing);
       }
@@ -460,7 +460,7 @@ export async function POST(req: Request) {
     const row: Record<string, unknown> = { scope, name, pool_key: creativeKey(name, scope === 'b2b'), copy_set_id: source.copy_set_id };
     for (const f of ENTRY_FIELDS) if (f !== 'launch_date') row[f] = source[f];
     if (source.category) {
-      const filing = await resolveFiling(service, scope, folders, { category: source.category, folder_id: source.folder_id }, null);
+      const filing = await resolveFiling(service, scope, folders, { category: source.category, folder_id: source.folder_id }, null, name);
       if (!('error' in filing)) Object.assign(row, filing);
     }
     const { data, error } = await service.from('creative_hub_entries').insert(row).select().single();
@@ -489,10 +489,12 @@ export async function POST(req: Request) {
     row[f] = typeof v === 'string' && v.trim() ? v.trim() : null;
   }
   if (copySetWanted !== undefined) row.copy_set_id = copySetWanted;
-  if ('category' in body || 'folder_id' in body) {
+  // A new title can change a talking head's code (Hook 6 Body 3 → H6B3), so a
+  // rename re-files in place even when the request doesn't mention the folder.
+  if ('category' in body || 'folder_id' in body || (current?.category && name !== current.name)) {
     const filing = await resolveFiling(service, scope, folders,
       { category: filingWanted.category ?? current?.category ?? null, folder_id: 'folder_id' in body ? filingWanted.folder_id : current?.folder_id ?? null },
-      current);
+      current, name);
     if ('error' in filing) return NextResponse.json({ error: filing.error }, { status: 400 });
     Object.assign(row, filing);
   }

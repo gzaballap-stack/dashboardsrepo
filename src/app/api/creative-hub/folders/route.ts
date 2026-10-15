@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { CATEGORY_CODES, buildCode, folderSlug } from '@/lib/creative-key';
-import type { Folder } from '@/lib/creative-hub-entries';
+import { CATEGORY_CODES, folderSlug } from '@/lib/creative-key';
+import { codeFor, type Folder } from '@/lib/creative-hub-entries';
 import { hubAuth, isScope, loadFolders, type Entry } from '@/lib/creative-hub-entries';
 
 /**
@@ -38,13 +38,13 @@ export async function POST(req: Request) {
 
   let moved = 0;
   if (body.move_root) {
-    const { data: root } = await service.from('creative_hub_entries').select('id, seq')
+    const { data: root } = await service.from('creative_hub_entries').select('id, seq, name')
       .eq('scope', body.scope).eq('category', body.category).is('folder_id', null).order('seq');
     let seq = 0;
-    for (const e of (root ?? []) as Pick<Entry, 'id' | 'seq'>[]) {
+    for (const e of (root ?? []) as Pick<Entry, 'id' | 'seq' | 'name'>[]) {
       seq += 1;
       await service.from('creative_hub_entries')
-        .update({ folder_id: folder.id, seq, code: buildCode(body.category, slug, seq), updated_at: new Date().toISOString() })
+        .update({ folder_id: folder.id, seq, code: await codeFor(service, body.scope, body.category, slug, e.name, seq, e.id), updated_at: new Date().toISOString() })
         .eq('id', e.id);
       moved += 1;
     }
@@ -86,11 +86,11 @@ export async function PATCH(req: Request) {
   // the hub flags for renaming.
   let recoded = 0;
   if (slug) {
-    const { data: inside } = await service.from('creative_hub_entries').select('id, seq').eq('folder_id', folder.id);
+    const { data: inside } = await service.from('creative_hub_entries').select('id, seq, name').eq('folder_id', folder.id);
     for (const e of inside ?? []) {
       if (!e.seq) continue;
       await service.from('creative_hub_entries')
-        .update({ code: buildCode(folder.category, slug, e.seq as number), updated_at: new Date().toISOString() })
+        .update({ code: await codeFor(service, folder.scope, folder.category, slug, e.name as string, e.seq as number, e.id as string), updated_at: new Date().toISOString() })
         .eq('id', e.id);
       recoded += 1;
     }

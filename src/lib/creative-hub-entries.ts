@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from './supabase';
 import { getAuthContext, isAuthError, validateWebhookSecret } from './api-auth';
-import { CATEGORY_CODES, buildCode, creativeKey } from './creative-key';
+import { CATEGORY_CODES, buildCode, codeTail, creativeKey } from './creative-key';
 
 export type Service = ReturnType<typeof createServiceClient>;
 export type Scope = 'b2b' | 'b2c';
@@ -45,26 +45,47 @@ export async function loadFolders(service: Service, scope: Scope): Promise<Folde
 }
 
 /**
+ * `code` if nobody else has it, else the same with a variant letter — H6B3b,
+ * H6B3c… (two takes of the same hook and body). `self` is the entry being coded.
+ */
+export async function uniqueCode(service: Service, scope: Scope, code: string, self: string | null): Promise<string> {
+  for (const suffix of ['', ...'bcdefghijklmnopqrstuvwxyz']) {
+    const candidate = code + suffix;
+    let q = service.from('creative_hub_entries').select('id').eq('scope', scope).eq('code', candidate);
+    if (self) q = q.neq('id', self);
+    const { data } = await q.limit(1);
+    if (!data?.length) return candidate;
+  }
+  return code;
+}
+
+/** The code an entry gets at a position: category, folder and its number / H#B#. */
+export async function codeFor(service: Service, scope: Scope, category: string, folderSlug: string | null, name: string, seq: number, self: string | null) {
+  return uniqueCode(service, scope, buildCode(category, folderSlug, codeTail(category, name, seq)), self);
+}
+
+/**
  * The next free number in a folder (or at a category's root), and the code it
  * makes. Numbers are never reused: a deleted creative leaves a gap.
  */
-export async function nextCode(service: Service, scope: Scope, category: string, folder: Folder | null): Promise<{ seq: number; code: string }> {
+export async function nextCode(service: Service, scope: Scope, category: string, folder: Folder | null, name: string, self: string | null): Promise<{ seq: number; code: string }> {
   let q = service.from('creative_hub_entries').select('seq').eq('scope', scope).eq('category', category);
   q = folder ? q.eq('folder_id', folder.id) : q.is('folder_id', null);
   const { data } = await q.order('seq', { ascending: false }).limit(1);
   const seq = ((data?.[0]?.seq as number | null) ?? 0) + 1;
-  return { seq, code: buildCode(category, folder?.slug ?? null, seq) };
+  return { seq, code: await codeFor(service, scope, category, folder?.slug ?? null, name, seq, self) };
 }
 
 /**
  * Resolve the filing a request asks for. Returns the columns to write, or an
  * error message. `current` is the entry as stored, so an unchanged filing keeps
- * its number.
+ * its number; `name` is the title being saved (talking-head codes follow it).
  */
 export async function resolveFiling(
   service: Service, scope: Scope, folders: Folder[],
   wanted: { category: string | null; folder_id: string | null },
-  current: { category: string | null; folder_id: string | null; seq: number | null; code: string | null } | null,
+  current: { id?: string; category: string | null; folder_id: string | null; seq: number | null; code: string | null } | null,
+  name: string,
 ): Promise<{ category: string | null; folder_id: string | null; seq: number | null; code: string | null } | { error: string }> {
   const category = wanted.category || null;
   if (category && !CATEGORY_CODES.includes(category)) return { error: `Unknown category "${category}".` };
@@ -74,10 +95,13 @@ export async function resolveFiling(
   if (wanted.folder_id && !folder) return { error: 'That folder no longer exists.' };
   if (folder && folder.category !== category) return { error: `Folder "${folder.name}" belongs to another category.` };
 
+  const self = current?.id ?? null;
   if (current && current.category === category && (current.folder_id ?? null) === (folder?.id ?? null) && current.seq && current.code) {
-    return { category, folder_id: folder?.id ?? null, seq: current.seq, code: current.code };
+    // Same place: keep the number. The code is rebuilt in case the title changed
+    // the hook/body it reads as; otherwise it comes out unchanged.
+    return { category, folder_id: folder?.id ?? null, seq: current.seq, code: await codeFor(service, scope, category, folder?.slug ?? null, name, current.seq, self) };
   }
-  const next = await nextCode(service, scope, category, folder);
+  const next = await nextCode(service, scope, category, folder, name, self);
   return { category, folder_id: folder?.id ?? null, ...next };
 }
 
