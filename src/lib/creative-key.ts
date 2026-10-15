@@ -50,10 +50,11 @@ export const categoryLabel = (code: string | null | undefined) =>
   CATEGORIES.find(c => c.code === code)?.label ?? code ?? 'Uncategorised';
 
 // The last part of a code is a running number (001), for talking heads the
-// hook and body they're made of (H6B3, a second take H6B3b), or whatever was
-// typed by hand — letters and numbers, up to 12.
-export const CODE_TAIL_RE = /^[A-Za-z0-9]{1,12}$/;
-const CODE_RE = new RegExp(`^(${CATEGORY_CODES.join('|')})(?:/([A-Z0-9][A-Z0-9-]*))?/([A-Za-z0-9]{1,12})(?![\\w/-])`, 'i');
+// hook and body they're made of (H6B3, a second take H6B3b, a second version
+// of the hook H9.2B3), or whatever was typed by hand — letters, numbers and
+// dots between them, up to 12.
+export const CODE_TAIL_RE = /^(?=.{1,12}$)[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*$/;
+const CODE_RE = new RegExp(`^(${CATEGORY_CODES.join('|')})(?:/([A-Z0-9][A-Z0-9-]*))?/([A-Za-z0-9]+(?:\\.[A-Za-z0-9]+)*)(?![\\w/-])`, 'i');
 
 /** "AI/SLOP/001 Dog Driving" → "AI/SLOP/001"; null when the name carries no code. */
 export function codeOf(name: string): string | null {
@@ -74,8 +75,12 @@ export function buildCode(category: string, folderSlug: string | null, tail: num
 export function codeTail(category: string, name: string, seq: number, manual?: string | null): number | string {
   if (manual) return manual;
   if (category === 'TH') {
-    const m = name.match(/hook\s*(\d{1,3})\D{0,3}body\s*(\d{1,3})/i);
-    if (m) return `H${Number(m[1])}B${Number(m[2])}`;
+    // "Hook 9.2 Body 3" → H9.2B3: a dotted number is a version of that hook / body.
+    const m = name.match(/hook\s*(\d{1,3}(?:\.\d{1,2})?)\D{0,3}body\s*(\d{1,3}(?:\.\d{1,2})?)/i);
+    if (m) {
+      const n = (v: string) => v.replace(/^0+(?=\d)/, '');
+      return `H${n(m[1])}B${n(m[2])}`;
+    }
   }
   return seq;
 }

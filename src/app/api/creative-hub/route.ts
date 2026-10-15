@@ -495,7 +495,7 @@ export async function POST(req: Request) {
   let manualTail: string | null | undefined;
   if ('code_tail' in body) {
     const v = typeof body.code_tail === 'string' ? body.code_tail.replace(/\s+/g, '') : '';
-    if (v && !CODE_TAIL_RE.test(v)) return NextResponse.json({ error: 'Codes use letters and numbers only, up to 12 — e.g. H6B3 or 014.' }, { status: 400 });
+    if (v && !CODE_TAIL_RE.test(v)) return NextResponse.json({ error: 'Codes use letters, numbers and dots, up to 12 — e.g. H6B3, H9.2B1 or 014.' }, { status: 400 });
     const cat = filingWanted.category ?? current?.category ?? null;
     const auto = cat ? String(codeTail(cat, name, current?.seq ?? 0)) : '';
     manualTail = !v || v.toLowerCase() === auto.toLowerCase() || (/^\d+$/.test(v) && Number(v) === current?.seq) ? null : v;

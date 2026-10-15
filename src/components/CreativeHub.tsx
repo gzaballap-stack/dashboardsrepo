@@ -582,7 +582,8 @@ export default function CreativeHub({ scope, tab, clients }: {
               const isSel = selected.has(c.key);
               return (
                 <div key={c.key} className="relative rounded-2xl overflow-hidden transition-transform duration-150 hover:-translate-y-0.5" style={{ ...CARD, outline: isSel ? "2px solid #111111" : "none" }}>
-                  <button onClick={() => setOpenKey(c.key)} className="text-left w-full">
+                  {/* A div, not a button: the code chip inside is itself editable. */}
+                  <div role="button" tabIndex={0} onClick={() => setOpenKey(c.key)} onKeyDown={e => { if (e.key === "Enter") setOpenKey(c.key); }} className="text-left w-full cursor-pointer">
                     <div className="relative">
                       <Thumb c={c} className="w-full aspect-[4/5]" />
                       <div className="absolute top-2 left-2"><Chip color={st.color} bg="#ffffff">● {st.label}</Chip></div>
@@ -596,7 +597,18 @@ export default function CreativeHub({ scope, tab, clients }: {
                     </div>
                     <div className="p-3 space-y-1.5">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        {c.code
+                        {c.code && c.entry?.category
+                          // Click the last part to change the code right here; clear it to go back to automatic.
+                          ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 inline-flex items-center" style={{ background: "#111111", color: "#ffffff", letterSpacing: "0.02em" }}>
+                              {c.code.slice(0, c.code.lastIndexOf("/") + 1)}
+                              <InlineEdit value={c.code.slice(c.code.lastIndexOf("/") + 1)} title="Click to change the code" allowEmpty
+                                className="text-[10px] font-bold" style={{ color: "#ffffff" }} inputStyle={{ width: 64, color: "#111111" }}
+                                onSave={async v => {
+                                  await postJson("/api/creative-hub", { id: c.entry!.id, scope, name: c.name, code_tail: v, current_names: currentNames(c) });
+                                  await load();
+                                }} />
+                            </span>
+                          : c.code
                           ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: "#111111", color: "#ffffff", letterSpacing: "0.02em" }}>{c.code}</span>
                           : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: "rgba(217,119,6,0.12)", color: "#92400e" }}>No code</span>}
                         {c.code && !c.names_match && <span title="Facebook still has the old name" className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "#d97706" }} />}
@@ -619,7 +631,7 @@ export default function CreativeHub({ scope, tab, clients }: {
                         {!OUR_FIELDS.some(f => c.entry?.[f.id]) && !c.entry?.tags && <span className="text-[10px]" style={{ color: "#b8b8b8" }}>No script or prompt yet</span>}
                       </div>
                     </div>
-                  </button>
+                  </div>
                   {/* Select for bulk filing */}
                   <button onClick={e => { e.stopPropagation(); toggle(c.key); }} aria-label={isSel ? "Unselect" : "Select"}
                     className="absolute top-2 right-2 w-6 h-6 rounded-md flex items-center justify-center"
