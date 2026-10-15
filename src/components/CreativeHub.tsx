@@ -69,45 +69,38 @@ type FolderAsk = { category: string; hasFolders: boolean; rootCount: number; onD
 // The in-app dialog for naming a new folder. When the category already holds
 // creatives at its root and this is its first folder, it offers to move them
 // all in — a category either has folders or it doesn't.
-// Rename a folder (the code part stays, so nothing renumbers), or delete it
-// when it's empty.
-function FolderSettingsModal({ folder, count, onClose, onChanged }: { folder: Folder; count: number; onClose: () => void; onChanged: (deleted: boolean) => Promise<void> }) {
+// The folder's name in the breadcrumb: click it to edit in place. The code
+// part stays, so renaming never renumbers anything.
+function FolderName({ folder, count, onChanged }: { folder: Folder; count: number; onChanged: (deleted: boolean) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
   const [name, setName] = useState(folder.name);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
   async function save() {
-    if (!name.trim() || name.trim() === folder.name) { onClose(); return; }
-    setBusy(true); setErr("");
-    try { await postJson("/api/creative-hub/folders", { id: folder.id, name: name.trim() }, "PATCH"); await onChanged(false); onClose(); }
-    catch (e) { setErr((e as Error).message); setBusy(false); }
+    const v = name.trim();
+    setEditing(false);
+    if (!v || v === folder.name) { setName(folder.name); return; }
+    setBusy(true);
+    try { await postJson("/api/creative-hub/folders", { id: folder.id, name: v }, "PATCH"); await onChanged(false); }
+    catch { setName(folder.name); }
+    finally { setBusy(false); }
   }
   async function remove() {
-    setBusy(true); setErr("");
-    try { const r = await fetch(`/api/creative-hub/folders?id=${folder.id}`, { method: "DELETE" }); const j = await r.json(); if (!r.ok || j.error) throw new Error(j.error ?? "Could not delete."); await onChanged(true); onClose(); }
-    catch (e) { setErr((e as Error).message); setBusy(false); }
+    setBusy(true);
+    try { const r = await fetch(`/api/creative-hub/folders?id=${folder.id}`, { method: "DELETE" }); if (r.ok) await onChanged(true); }
+    finally { setBusy(false); }
+  }
+  if (editing) {
+    return (
+      <input autoFocus value={name} onChange={e => setName(e.target.value)} onBlur={save}
+        onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") { setName(folder.name); setEditing(false); } }}
+        className="px-2 py-0.5 rounded-md text-sm font-semibold outline-none" style={{ ...INPUT, minWidth: 160 }} />
+    );
   }
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl p-5 space-y-4" style={{ ...CARD, boxShadow: "0 24px 60px -12px rgba(0,0,0,0.35)" }} onClick={e => e.stopPropagation()}>
-        <div className="text-base font-semibold" style={{ color: "#111111" }}>Rename folder</div>
-        <label className="block">
-          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Folder name</span>
-          <input autoFocus value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") onClose(); }}
-            className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
-          <span className="text-[10px]" style={{ color: "#949494" }}>Codes keep their <b>{folder.category}/{folder.slug}/…</b> part, so nothing gets renumbered or renamed in Facebook.</span>
-        </label>
-        {err && <div className="text-xs" style={{ color: "#b91c1c" }}>{err}</div>}
-        <div className="flex items-center gap-2">
-          {count === 0
-            ? <button onClick={remove} disabled={busy} className="text-xs font-semibold" style={{ color: "#b91c1c" }}>Delete folder</button>
-            : <span className="text-[10px]" style={{ color: "#949494" }}>{count} creative{count === 1 ? "" : "s"} inside — move them out to delete it.</span>}
-          <div className="ml-auto flex gap-2">
-            <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: "#4a4a4a", border: "1px solid rgba(0,0,0,0.162)" }}>Cancel</button>
-            <button onClick={save} disabled={busy || !name.trim()} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "Saving…" : "Save"}</button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <span className="flex items-center gap-2">
+      <button onClick={() => setEditing(true)} className="font-semibold rounded-md px-1 -mx-1" style={{ color: "#111111", opacity: busy ? 0.5 : 1 }} title="Click to rename">{name}</button>
+      {count === 0 && <button onClick={remove} disabled={busy} className="text-[10px] font-semibold" style={{ color: "#b91c1c" }} title="This folder is empty">Delete</button>}
+    </span>
   );
 }
 
@@ -267,7 +260,6 @@ export default function CreativeHub({ scope, tab, clients }: {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [folderAsk, setFolderAsk] = useState<FolderAsk | null>(null);
-  const [folderEdit, setFolderEdit] = useState<Folder | null>(null);
 
   const apptWord = scope === "b2b" ? "Demos" : "Appts";
 
@@ -429,10 +421,10 @@ export default function CreativeHub({ scope, tab, clients }: {
           </>)}
           {folderSel && (<>
             <span style={{ color: "#c2c2c2" }}>›</span>
-            <span className="font-semibold" style={{ color: "#111111" }}>{folderSel === "root" ? "Needs a folder" : folders.find(f => f.id === folderSel)?.name}</span>
-            {folderSel !== "root" && folders.some(f => f.id === folderSel) && (
-              <button onClick={() => setFolderEdit(folders.find(f => f.id === folderSel)!)} className="text-[10px] font-semibold" style={{ color: "#767676" }} title="Rename this folder">✎ Rename</button>
-            )}
+            {folderSel === "root" || !folders.some(f => f.id === folderSel)
+              ? <span className="font-semibold" style={{ color: "#111111" }}>Needs a folder</span>
+              : <FolderName key={folderSel} folder={folders.find(f => f.id === folderSel)!} count={(data?.creatives ?? []).filter(c => c.folder_id === folderSel).length}
+                  onChanged={async deleted => { await load(); if (deleted) setFolderSel(""); }} />}
           </>)}
           {cat && cat !== UNFILED && (
             <button onClick={newFolder} className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ color: "#111111", border: "1px dashed rgba(0,0,0,0.25)" }}>+ New folder</button>
@@ -622,10 +614,6 @@ export default function CreativeHub({ scope, tab, clients }: {
         />
       )}
 
-      {folderEdit && (
-        <FolderSettingsModal folder={folderEdit} count={(data?.creatives ?? []).filter(c => c.folder_id === folderEdit.id).length}
-          onClose={() => setFolderEdit(null)} onChanged={async deleted => { await load(); if (deleted) setFolderSel(""); }} />
-      )}
       {folderAsk && (
         <NewFolderModal ask={folderAsk} scope={scope} categoryLabel={categories.find(c => c.code === folderAsk.category)?.label ?? folderAsk.category} onClose={() => setFolderAsk(null)} />
       )}
