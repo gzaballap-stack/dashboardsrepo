@@ -217,11 +217,74 @@ function Thumb({ c, className = "" }: { c: Creative; className?: string }) {
 
 // A folder box, Airbnb-wishlist style: the first four pictures inside it as a
 // 2×2 collage, then the name and how many creatives it holds.
-function FolderBox({ label, sub, items, onClick, dashed }: {
+// Click-to-edit text: shows as plain text, turns into a box on click, saves on
+// Enter or when you click away, Esc cancels.
+function InlineEdit({ value, onSave, className = "", style, inputStyle, title, prefix, suffix }: {
+  value: string; onSave: (v: string) => Promise<void>; className?: string; style?: React.CSSProperties;
+  inputStyle?: React.CSSProperties; title?: string; prefix?: string; suffix?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [v, setV] = useState(value);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  async function save() {
+    setEditing(false);
+    const next = v.trim();
+    if (!next || next === value) { setV(value); return; }
+    setBusy(true); setErr("");
+    try { await onSave(next); } catch (e) { setErr((e as Error).message); setV(value); } finally { setBusy(false); }
+  }
+  if (editing) {
+    return (
+      <span className="inline-flex items-center gap-0.5">
+        {prefix && <span className={className} style={style}>{prefix}</span>}
+        <input autoFocus value={v} onChange={e => setV(e.target.value)} onBlur={save} onClick={e => e.stopPropagation()}
+          onKeyDown={e => { if (e.key === "Enter") save(); if (e.key === "Escape") { setV(value); setEditing(false); } }}
+          className={`px-1.5 py-0.5 rounded-md outline-none ${className}`} style={{ ...INPUT, ...style, ...inputStyle }} />
+        {suffix && <span className={className} style={style}>{suffix}</span>}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex flex-col">
+      <button onClick={e => { e.stopPropagation(); setV(value); setEditing(true); }} title={title ?? "Click to edit"}
+        className={`text-left rounded-md px-1 -mx-1 hover:bg-black/5 ${className}`} style={{ ...style, opacity: busy ? 0.5 : 1 }}>
+        {prefix}{value}{suffix}
+      </button>
+      {err && <span className="text-[10px]" style={{ color: "#b91c1c" }}>{err}</span>}
+    </span>
+  );
+}
+
+function FolderBox({ label, sub, items, onClick, dashed, edit }: {
   label: string; sub: string; items: Creative[]; onClick: () => void; dashed?: boolean;
+  // A real folder: its name and code can be edited right on the box.
+  edit?: { category: string; slug: string; onRename: (v: string) => Promise<void>; onRecode: (v: string) => Promise<void> };
 }) {
   // Creatives that have a picture first, so the box isn't four grey tiles.
   const pics = [...items].sort((a, b) => Number(!!(b.meta?.thumbnail_url || b.meta?.image_url)) - Number(!!(a.meta?.thumbnail_url || a.meta?.image_url))).slice(0, 4);
+  if (edit) {
+    return (
+      <div className="text-left group">
+        <button onClick={onClick} className="block w-full" title="Open folder">
+          <div className="grid grid-cols-2 rounded-2xl overflow-hidden aspect-square transition-transform duration-150 group-hover:-translate-y-0.5"
+            style={{ gap: 2, background: "#ffffff", border: "1px solid rgba(0,0,0,0.07)", boxShadow: CARD.boxShadow }}>
+            {[0, 1, 2, 3].map(i => pics[i]
+              ? <Thumb key={pics[i].key} c={pics[i]} className="w-full h-full" />
+              : <div key={i} style={{ background: "#9a9a9a" }} />)}
+          </div>
+        </button>
+        <div className="mt-2">
+          <InlineEdit value={label} onSave={edit.onRename} title="Click to rename" className="text-sm font-semibold" style={{ color: "#111111" }} inputStyle={{ width: "100%" }} />
+        </div>
+        <div className="text-xs flex items-center gap-1 flex-wrap" style={{ color: "#767676" }}>
+          <span>{sub}</span><span>·</span>
+          <InlineEdit value={edit.slug} onSave={edit.onRecode} title="Click to change the code" prefix={`${edit.category}/`}
+            className="text-xs font-semibold" style={{ color: "#4a4a4a" }} inputStyle={{ width: 90, textTransform: "uppercase" }} />
+        </div>
+      </div>
+    );
+  }
   return (
     <button onClick={onClick} className="text-left group">
       <div className="grid grid-cols-2 rounded-2xl overflow-hidden aspect-square transition-transform duration-150 group-hover:-translate-y-0.5"
@@ -459,8 +522,17 @@ export default function CreativeHub({ scope, tab, clients }: {
           {catFolders.map(f => {
             const items = (data.creatives ?? []).filter(c => c.folder_id === f.id);
             return (
-              <FolderBox key={f.id} label={f.name} items={items} sub={`${items.length} creative${items.length === 1 ? "" : "s"} · ${cat}/${f.slug}`}
-                onClick={() => { setFolderSel(f.id); setSelected(new Set()); }} />
+              <FolderBox key={f.id} label={f.name} items={items} sub={`${items.length} creative${items.length === 1 ? "" : "s"}`}
+                onClick={() => { setFolderSel(f.id); setSelected(new Set()); }}
+                edit={{
+                  category: cat, slug: f.slug,
+                  onRename: async name => { await postJson("/api/creative-hub/folders", { id: f.id, name }, "PATCH"); await load(); },
+                  onRecode: async code => {
+                    const j = await postJson("/api/creative-hub/folders", { id: f.id, code }, "PATCH");
+                    await load();
+                    if (j.recoded) setNotice(`${j.recoded} creative${j.recoded === 1 ? "" : "s"} recoded to ${cat}/${j.folder.slug}/…`);
+                  },
+                }} />
             );
           })}
           {rootCount > 0 && (
