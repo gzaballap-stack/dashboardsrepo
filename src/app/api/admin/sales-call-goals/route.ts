@@ -14,6 +14,32 @@ const GHL_FIELD_IDS = {
   revenue_goal:    'ZlYCAvDygY4tHTrJYIWX',
 } as const;
 
+// Derived figures written back onto the contact (created 2026-10-15) so
+// follow-up messages can merge them in.
+const GHL_RESULT_FIELD_IDS = {
+  jobs_needed:         'TMHY1ekMsGqStJED1rQg',
+  appointments_needed: 'LuToUyWcpagw4jw3JnvF',
+  revenue_gap:         'nAWoS45udkztxLqfYqR0',
+} as const;
+
+async function writeResultsToContact(contactId: string, values: Record<keyof typeof GHL_RESULT_FIELD_IDS, string>): Promise<boolean> {
+  const key = process.env.GHL_API_KEY_B2B;
+  if (!key) return false;
+  try {
+    const res = await fetch(`https://services.leadconnectorhq.com/contacts/${encodeURIComponent(contactId)}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${key}`, Version: '2021-07-28', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customFields: (Object.keys(GHL_RESULT_FIELD_IDS) as (keyof typeof GHL_RESULT_FIELD_IDS)[])
+          .map(k => ({ id: GHL_RESULT_FIELD_IDS[k], field_value: values[k] })),
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 // Read the contact straight from GHL so Make only has to send the contact id.
 async function fetchContactFields(contactId: string): Promise<Partial<Record<keyof typeof GHL_FIELD_IDS, string>> | null> {
   const key = process.env.GHL_API_KEY_B2B;
@@ -104,6 +130,16 @@ export async function POST(req: Request) {
   });
   const changed = !previous || GOAL_TAGS.some(t => previous![t] !== rendered[t]);
 
+  // Plain values (no doc markers) onto the contact — only once the math is real.
+  let contact_updated = false;
+  if (contact_id && result.complete) {
+    contact_updated = await writeResultsToContact(contact_id, {
+      jobs_needed:         result.doc.jobs_needed,
+      appointments_needed: result.doc.appointments_needed,
+      revenue_gap:         result.doc.revenue_gap,
+    });
+  }
+
   if (doc_id && result.complete) {
     await service.from('sales_call_doc_fills').upsert(
       { doc_id, contact_id, rendered, filled_at: new Date().toISOString() },
@@ -120,6 +156,7 @@ export async function POST(req: Request) {
     doc_id,
     doc_url: doc_id ? `https://docs.google.com/document/d/${doc_id}/edit` : null,
     first_fill: !previous,
+    contact_updated,
     changed,
     ...result.doc,
     numbers: result.numbers,

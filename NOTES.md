@@ -201,6 +201,10 @@ qualified appointments needed. Everything derived is computed in
 - GHL workflow "One Call: Client's Numbers Submitted" must point at the
   **numbers** webhook above — not the territory one, which would mint a second
   doc with a 35-mile default radius.
+- **2026-10-15 —** the route also writes the derived figures back onto the
+  contact as plain text (`jobs_needed` `TMHY1ekMs…`, `appointments_needed`
+  `LuToUyWc…`, `revenue_gap` `nAWoS45u…`, created via the API) for use in
+  follow-up messages. Only once all three inputs are present.
 - **2026-10-10 — numbers can be changed after the first fill.** The route
   remembers what it last wrote into each doc (`sales_call_doc_fills`, keyed by
   doc id, applied to V1 and V2 via `scripts/migrate-sales-call-doc-fills.mjs`).
