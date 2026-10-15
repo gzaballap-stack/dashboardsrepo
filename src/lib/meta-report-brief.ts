@@ -77,11 +77,12 @@ type Extras = {
   weekly: Map<string, Week[]>;
   campaigns: Budgeted[];
   adsets: (Budgeted & { campaign_id: string })[];
+  copyByAd: Map<string, { body: string; title: string }>;   // every ad's primary text + headline
 };
 
 async function fetchExtras(acct: string, token: string): Promise<Extras> {
   const base = 'spend,impressions,inline_link_clicks,actions';
-  const [monthly, lifetime, weekly, campaigns, adsets] = await Promise.all([
+  const [monthly, lifetime, weekly, campaigns, adsets, adCreatives] = await Promise.all([
     safe(graph<Insight>(`/${acct}/insights`, { date_preset: 'maximum', time_increment: 'monthly', fields: base }, token)),
     safe(graph<Insight>(`/${acct}/insights`, { level: 'ad', date_preset: 'maximum',
       fields: `ad_id,ad_name,adset_name,campaign_name,reach,${base},video_play_actions,video_thruplay_watched_actions,video_avg_time_watched_actions,video_p100_watched_actions` }, token)),
@@ -91,7 +92,16 @@ async function fetchExtras(acct: string, token: string): Promise<Extras> {
     safe(graph<{ id: string; name: string; effective_status?: string; daily_budget?: string; lifetime_budget?: string; campaign_id: string; optimization_goal?: string;
       targeting?: { age_min?: number; age_max?: number; geo_locations?: { countries?: string[] }; targeting_automation?: { advantage_audience?: number } } }>(
       `/${acct}/adsets`, { fields: 'id,name,effective_status,daily_budget,lifetime_budget,campaign_id,optimization_goal,targeting{age_min,age_max,geo_locations,targeting_automation}' }, token)),
+    safe(graph<{ id: string; creative?: { title?: string; body?: string; object_story_spec?: { link_data?: { message?: string; name?: string }; video_data?: { message?: string; title?: string } }; asset_feed_spec?: { bodies?: { text?: string }[]; titles?: { text?: string }[] } } }>(
+      `/${acct}/ads`, { fields: 'id,creative{title,body,object_story_spec,asset_feed_spec}' }, token)),
   ]);
+  const copyByAd = new Map<string, { body: string; title: string }>();
+  for (const a of adCreatives) {
+    const c = a.creative ?? {}; const oss = c.object_story_spec ?? {}; const afs = c.asset_feed_spec ?? {};
+    const body = (c.body ?? oss.link_data?.message ?? oss.video_data?.message ?? afs.bodies?.[0]?.text ?? '').replace(/\s+/g, ' ').trim();
+    const title = (c.title ?? oss.link_data?.name ?? oss.video_data?.title ?? afs.titles?.[0]?.text ?? '').replace(/\s+/g, ' ').trim();
+    copyByAd.set(a.id, { body, title });
+  }
 
   const life = new Map<string, Lifetime & { name: string; adset: string; campaign: string }>();
   for (const r of lifetime) {
@@ -116,6 +126,7 @@ async function fetchExtras(acct: string, token: string): Promise<Extras> {
   return {
     monthly: monthly.filter(r => r.date_start).map(r => ({ month: r.date_start!.slice(0, 7), spend: num(r.spend), impressions: num(r.impressions), clicks: num(r.inline_link_clicks), leads: leadsOf(r.actions) })),
     lifetime: life, weekly: weeks,
+    copyByAd,
     campaigns: campaigns.map(c => ({ id: c.id, name: c.name, status: c.effective_status ?? '—', daily: cents(c.daily_budget), lifetime: cents(c.lifetime_budget), extra: [c.objective, c.bid_strategy].filter(Boolean).join(' · ') })),
     adsets: adsets.map(s => ({
       id: s.id, name: s.name, status: s.effective_status ?? '—', campaign_id: s.campaign_id, daily: cents(s.daily_budget), lifetime: cents(s.lifetime_budget),
@@ -439,6 +450,34 @@ function creativeLibrary(r: MetaReport, x: Extras, groups: CreativeGroup[], toda
   return parts.join('\n');
 }
 
+// Lifetime results grouped by the words on the ad (primary text + headline),
+// across every ad that ever ran. Copies ran in different periods on different
+// creatives, so this is evidence, not a clean split test — the note says so.
+function copyPerformance(x: Extras): string {
+  type Acc = { body: string; title: string; spend: number; impressions: number; clicks: number; leads: number; ads: number; first: string; last: string };
+  const g = new Map<string, Acc>();
+  for (const [id, lt] of x.lifetime) {
+    const c = x.copyByAd.get(id);
+    if (!c || lt.spend <= 0) continue;
+    const key = `${c.body}||${c.title}`;
+    const weeks = x.weekly.get(id)?.filter(w => w.spend > 0) ?? [];
+    const a = g.get(key) ?? { body: c.body, title: c.title, spend: 0, impressions: 0, clicks: 0, leads: 0, ads: 0, first: '', last: '' };
+    a.spend += lt.spend; a.impressions += lt.impressions; a.clicks += lt.clicks; a.leads += lt.leads; a.ads++;
+    const f = weeks[0]?.start ?? '', l = weeks[weeks.length - 1]?.end ?? '';
+    if (f && (!a.first || f < a.first)) a.first = f;
+    if (l && l > a.last) a.last = l;
+    g.set(key, a);
+  }
+  const rows = [...g.values()].filter(a => a.spend >= 50).sort((p, q) => q.spend - p.spend);
+  if (!rows.length) return 'No copy history available.';
+  return [
+    'Every ad that ever ran, grouped by the words on it (primary text + headline), lifetime. Copies ran in different periods on different creatives, so treat this as evidence, not a split test: to settle it, run two copies on the same creative in the same week.',
+    table(['Primary text (start)', 'Headline', 'Ran', 'Ads', 'Spend', 'CTR', 'CPC', 'Leads (Meta)', 'CPL'],
+      rows.map(a => [a.body.slice(0, 90) + (a.body.length > 90 ? '…' : ''), a.title || '—', a.first && a.last ? `${a.first.slice(0, 7)} → ${a.last.slice(0, 7)}` : '—', String(a.ads),
+        money0(a.spend), pct(div(a.clicks * 100, a.impressions), 2), money(div(a.spend, a.clicks)), int(a.leads), money(div(a.spend, a.leads), 0)])),
+  ].join('\n');
+}
+
 function funnelPages(r: MetaReport, windows: readonly WindowDays[]): string {
   if (!r.funnel) return 'Funnel page tracking not connected for this run.';
   const k = LANDING_TO_BOOKING_KPI;
@@ -517,7 +556,7 @@ function header(r: MetaReport, title: string): string {
 }
 
 export function renderFull(r: MetaReport, x: Extras, hub: Hub, groups: CreativeGroup[]): string {
-  const sec = { brief: 1, now: 2, changes: 3, history: 4, funnel: 5, adsets: 6, ads: 7, library: 8, pages: 9, onoff: 10 };
+  const sec = { brief: 1, now: 2, changes: 3, history: 4, funnel: 5, adsets: 6, ads: 7, library: 8, copy: 9, pages: 10, onoff: 11 };
   const since = shiftDays(r.today, -(UPDATE_DAYS - 1));
   const p: string[] = [];
   p.push(header(r, 'Tomsi Media B2B — full media-buying brief'));
@@ -541,6 +580,8 @@ export function renderFull(r: MetaReport, x: Extras, hub: Hub, groups: CreativeG
   p.push(adTable(r));
   p.push(`\n## ${sec.library}. Creative library — every creative, its script and its life`);
   p.push(creativeLibrary(r, x, groups, r.today));
+  p.push(`\n## ${sec.copy}. Copy performance — which words worked`);
+  p.push(copyPerformance(x));
   p.push(`\n## ${sec.pages}. Funnel pages`);
   p.push(funnelPages(r, [30, 7]));
   p.push(`\n## ${sec.onoff}. Ad set / campaign switches`);
