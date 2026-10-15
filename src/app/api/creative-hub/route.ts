@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { rollupFunnelByAd, funnelRates, EMPTY_AD_FUNNEL, type AdFunnel } from '@/lib/ad-funnel';
-import { normaliseName, creativeKey, codeOf, CATEGORIES } from '@/lib/creative-key';
+import { normaliseName, creativeKey, codeOf, codeTail, CATEGORIES, CODE_TAIL_RE } from '@/lib/creative-key';
 import { loadMeta, refreshMeta, metaAgeHours, inferKind, listCampaignAds, REFRESH_HOURS, EXPIRED_HOURS, type HubMeta } from '@/lib/creative-hub';
 import {
   hubAuth, isScope, loadFolders, resolveFiling, ensureEntry, pushAdNames, canRenameInMeta, facebookName,
@@ -489,12 +489,24 @@ export async function POST(req: Request) {
     row[f] = typeof v === 'string' && v.trim() ? v.trim() : null;
   }
   if (copySetWanted !== undefined) row.copy_set_id = copySetWanted;
+
+  // The last part of the code typed by hand. '' (or the automatic value) goes
+  // back to automatic.
+  let manualTail: string | null | undefined;
+  if ('code_tail' in body) {
+    const v = typeof body.code_tail === 'string' ? body.code_tail.replace(/\s+/g, '') : '';
+    if (v && !CODE_TAIL_RE.test(v)) return NextResponse.json({ error: 'Codes use letters and numbers only, up to 12 — e.g. H6B3 or 014.' }, { status: 400 });
+    const cat = filingWanted.category ?? current?.category ?? null;
+    const auto = cat ? String(codeTail(cat, name, current?.seq ?? 0)) : '';
+    manualTail = !v || v.toLowerCase() === auto.toLowerCase() || (/^\d+$/.test(v) && Number(v) === current?.seq) ? null : v;
+    row.code_tail = manualTail;
+  }
   // A new title can change a talking head's code (Hook 6 Body 3 → H6B3), so a
   // rename re-files in place even when the request doesn't mention the folder.
-  if ('category' in body || 'folder_id' in body || (current?.category && name !== current.name)) {
+  if ('category' in body || 'folder_id' in body || 'code_tail' in body || (current?.category && name !== current.name)) {
     const filing = await resolveFiling(service, scope, folders,
       { category: filingWanted.category ?? current?.category ?? null, folder_id: 'folder_id' in body ? filingWanted.folder_id : current?.folder_id ?? null },
-      current, name);
+      current, name, manualTail);
     if ('error' in filing) return NextResponse.json({ error: filing.error }, { status: 400 });
     Object.assign(row, filing);
   }

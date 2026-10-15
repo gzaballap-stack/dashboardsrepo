@@ -22,7 +22,7 @@ export const ENTRY_FIELDS = [
 export type Entry = {
   id: string; scope: Scope; pool_key: string; name: string; updated_at: string;
   code: string | null; category: string | null; folder_id: string | null; seq: number | null;
-  copy_set_id: string | null;
+  copy_set_id: string | null; code_tail: string | null;
 } & Record<(typeof ENTRY_FIELDS)[number], string | null>;
 
 export type Folder = { id: string; scope: Scope; category: string; name: string; slug: string; sort: number };
@@ -59,8 +59,13 @@ export async function uniqueCode(service: Service, scope: Scope, code: string, s
   return code;
 }
 
-/** The code an entry gets at a position: category, folder and its number / H#B#. */
-export async function codeFor(service: Service, scope: Scope, category: string, folderSlug: string | null, name: string, seq: number, self: string | null) {
+/**
+ * The code an entry gets at a position: category, folder and its number / H#B#
+ * — or the last part typed by hand (`manual`), which is used as is; a clash
+ * with another creative then fails on save rather than being lettered away.
+ */
+export async function codeFor(service: Service, scope: Scope, category: string, folderSlug: string | null, name: string, seq: number, self: string | null, manual: string | null = null) {
+  if (manual) return buildCode(category, folderSlug, manual);
   return uniqueCode(service, scope, buildCode(category, folderSlug, codeTail(category, name, seq)), self);
 }
 
@@ -84,8 +89,9 @@ export async function nextCode(service: Service, scope: Scope, category: string,
 export async function resolveFiling(
   service: Service, scope: Scope, folders: Folder[],
   wanted: { category: string | null; folder_id: string | null },
-  current: { id?: string; category: string | null; folder_id: string | null; seq: number | null; code: string | null } | null,
+  current: { id?: string; category: string | null; folder_id: string | null; seq: number | null; code: string | null; code_tail?: string | null } | null,
   name: string,
+  manual?: string | null,   // a hand-typed last part; undefined = keep whatever the entry has
 ): Promise<{ category: string | null; folder_id: string | null; seq: number | null; code: string | null } | { error: string }> {
   const category = wanted.category || null;
   if (category && !CATEGORY_CODES.includes(category)) return { error: `Unknown category "${category}".` };
@@ -96,12 +102,14 @@ export async function resolveFiling(
   if (folder && folder.category !== category) return { error: `Folder "${folder.name}" belongs to another category.` };
 
   const self = current?.id ?? null;
+  const tail = manual !== undefined ? manual : current?.code_tail ?? null;
   if (current && current.category === category && (current.folder_id ?? null) === (folder?.id ?? null) && current.seq && current.code) {
     // Same place: keep the number. The code is rebuilt in case the title changed
     // the hook/body it reads as; otherwise it comes out unchanged.
-    return { category, folder_id: folder?.id ?? null, seq: current.seq, code: await codeFor(service, scope, category, folder?.slug ?? null, name, current.seq, self) };
+    return { category, folder_id: folder?.id ?? null, seq: current.seq, code: await codeFor(service, scope, category, folder?.slug ?? null, name, current.seq, self, tail) };
   }
   const next = await nextCode(service, scope, category, folder, name, self);
+  if (tail) next.code = await codeFor(service, scope, category, folder?.slug ?? null, name, next.seq, self, tail);
   return { category, folder_id: folder?.id ?? null, ...next };
 }
 

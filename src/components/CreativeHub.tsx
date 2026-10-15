@@ -219,9 +219,10 @@ function Thumb({ c, className = "" }: { c: Creative; className?: string }) {
 // 2×2 collage, then the name and how many creatives it holds.
 // Click-to-edit text: shows as plain text, turns into a box on click, saves on
 // Enter or when you click away, Esc cancels.
-function InlineEdit({ value, onSave, className = "", style, inputStyle, title, prefix, suffix }: {
+function InlineEdit({ value, onSave, className = "", style, inputStyle, title, prefix, suffix, allowEmpty }: {
   value: string; onSave: (v: string) => Promise<void>; className?: string; style?: React.CSSProperties;
   inputStyle?: React.CSSProperties; title?: string; prefix?: string; suffix?: string;
+  allowEmpty?: boolean;   // an empty value is a real answer (e.g. "back to automatic")
 }) {
   const [editing, setEditing] = useState(false);
   const [v, setV] = useState(value);
@@ -230,7 +231,7 @@ function InlineEdit({ value, onSave, className = "", style, inputStyle, title, p
   async function save() {
     setEditing(false);
     const next = v.trim();
-    if (!next || next === value) { setV(value); return; }
+    if ((!next && !allowEmpty) || next === value) { setV(value); return; }
     setBusy(true); setErr("");
     try { await onSave(next); } catch (e) { setErr((e as Error).message); setV(value); } finally { setBusy(false); }
   }
@@ -1081,7 +1082,19 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
         <div className="sticky top-0 z-10 flex items-center gap-3 px-5 py-3 flex-wrap" style={{ background: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
           <div className="min-w-0 mr-auto">
             <div className="text-base font-semibold truncate flex items-center gap-2" style={{ color: "#111111" }}>
-              {creative?.code && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ background: "#111111", color: "#ffffff" }}>{creative.code}</span>}
+              {creative?.code && (entry?.category
+                // Click the last part to type a code by hand; clear it to go back to automatic.
+                ? <span className="text-[11px] font-bold px-1.5 py-0.5 rounded inline-flex items-center" style={{ background: "#111111", color: "#ffffff" }}>
+                    {creative.code.slice(0, creative.code.lastIndexOf("/") + 1)}
+                    <InlineEdit value={creative.code.slice(creative.code.lastIndexOf("/") + 1)} title="Click to change the code" allowEmpty
+                      className="text-[11px] font-bold" style={{ color: "#ffffff" }} inputStyle={{ width: 80, color: "#111111" }}
+                      onSave={async v => {
+                        const json = await postJson("/api/creative-hub", { id: entry.id, scope, name: creative.name, code_tail: v, current_names: currentNames(creative) });
+                        const e = json.entry as Entry & { pool_key: string };
+                        await onSaved(e.code ? e.code.toLowerCase() : e.pool_key);
+                      }} />
+                  </span>
+                : <span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ background: "#111111", color: "#ffffff" }}>{creative.code}</span>)}
               {creative?.name ?? "New creative"}
             </div>
             {creative && (

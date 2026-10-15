@@ -49,16 +49,18 @@ export const CATEGORY_CODES = CATEGORIES.map(c => c.code) as readonly string[];
 export const categoryLabel = (code: string | null | undefined) =>
   CATEGORIES.find(c => c.code === code)?.label ?? code ?? 'Uncategorised';
 
-// The last part of a code is a running number (001), or for talking heads the
-// hook and body they're made of (H6B3). A trailing letter marks a variant (H6B3b).
-const CODE_RE = new RegExp(`^(${CATEGORY_CODES.join('|')})(?:/([A-Z0-9][A-Z0-9-]*))?/(\\d{1,3}|H\\d{1,3}B\\d{1,3})([a-z])?(?![\\w/-])`, 'i');
+// The last part of a code is a running number (001), for talking heads the
+// hook and body they're made of (H6B3, a second take H6B3b), or whatever was
+// typed by hand — letters and numbers, up to 12.
+export const CODE_TAIL_RE = /^[A-Za-z0-9]{1,12}$/;
+const CODE_RE = new RegExp(`^(${CATEGORY_CODES.join('|')})(?:/([A-Z0-9][A-Z0-9-]*))?/([A-Za-z0-9]{1,12})(?![\\w/-])`, 'i');
 
 /** "AI/SLOP/001 Dog Driving" → "AI/SLOP/001"; null when the name carries no code. */
 export function codeOf(name: string): string | null {
   const m = name.trim().match(CODE_RE);
   if (!m) return null;
-  const tail = /^\d/.test(m[3]) ? Number(m[3]) : m[3].toUpperCase();
-  return buildCode(m[1].toUpperCase(), m[2]?.toUpperCase() ?? null, tail) + (m[4] ?? '').toLowerCase();
+  const tail = /^\d+$/.test(m[3]) ? Number(m[3]) : m[3];
+  return buildCode(m[1].toUpperCase(), m[2]?.toUpperCase() ?? null, tail);
 }
 
 export function buildCode(category: string, folderSlug: string | null, tail: number | string): string {
@@ -69,7 +71,8 @@ export function buildCode(category: string, folderSlug: string | null, tail: num
  * The last part of a creative's code. Talking heads titled "Hook 6 Body 3" read
  * as H6B3, so the code says what was recorded; everything else gets its number.
  */
-export function codeTail(category: string, name: string, seq: number): number | string {
+export function codeTail(category: string, name: string, seq: number, manual?: string | null): number | string {
+  if (manual) return manual;
   if (category === 'TH') {
     const m = name.match(/hook\s*(\d{1,3})\D{0,3}body\s*(\d{1,3})/i);
     if (m) return `H${Number(m[1])}B${Number(m[2])}`;

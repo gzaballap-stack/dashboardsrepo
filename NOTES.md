@@ -1,3 +1,13 @@
+## 2026-10-15 — Creative hub: codes typed by hand
+
+Click the last part of the code in a creative's header to type it
+(`creative_hub_entries.code_tail`, migration `add_creative_code_tail.sql`,
+applied to V1 and V2). A hand-typed part sticks through title changes and
+folder recodes; clearing it — or typing the automatic value — goes back to
+automatic. Letters and numbers, up to 12; a clash with another creative is
+refused. Ad names in Meta may start with any such code (`codeOf` accepts any
+alphanumeric last part).
+
 ## 2026-10-15 — Creative hub: talking-head codes read as hook/body
 
 Talking heads (category `TH`) titled "Hook X Body Y" are coded
