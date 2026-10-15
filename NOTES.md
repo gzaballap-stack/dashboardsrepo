@@ -1,3 +1,24 @@
+## 2026-10-15 — Copy performance: per text, in the Copy Hub and the brief
+
+- `src/lib/copy-performance.ts`: Meta's `body_asset` / `title_asset` /
+  `description_asset` insight breakdowns per campaign (lifetime, 15-min memory
+  cache) = what each individual text did across every ad that rotated it. Ads
+  Meta does not split (one text each) are credited whole to their own texts
+  (`addSingleTextAds`), using `creative_hub_meta` texts in the hub and the
+  ads' creatives in the brief.
+- **Copy Hub:** each set's card keeps the set-level strip (ads whose primary
+  text is one of the set's); opening a set shows the numbers **under every
+  primary text, headline and description** (spend, impressions, CTR, CPC,
+  Meta leads, CPL, ad count). CRM leads/demos are not split per text — Meta
+  can't say which text a lead saw inside a rotating ad.
+- **Full brief, section 9 "Copy performance":** by ad copy (first primary
+  text + headline, lifetime, with dates) and by individual text. Also the
+  stamped link `/api/meta-b2b-report/STAMP?…` (2026-10-15): Claude's fetch
+  tool caches by URL for ~15 min and drops the query string, so the AI puts a
+  fresh stamp in the path on every fetch; `no-store` headers added too.
+- Verified against V1 on 2026-10-15: Copy Set 1 "Attention Remodelers" text
+  $7,972 / 143 Meta leads / $56 CPL vs Copy Set 2 "$1 down" $2,772 / 36 / $77.
+
 ## 2026-10-15 — Creative hub: codes typed by hand
 
 Click the last part of the code in a creative's header to type it
