@@ -63,16 +63,59 @@ async function postJson(url: string, body: unknown, method = "POST") {
   return json;
 }
 
-// Ask for a folder name and create it. When the category already holds
-// creatives at its root and this is its first folder, they all move in — a
-// category either has folders or it doesn't.
-async function createFolder(scope: Scope, category: string, hasFolders: boolean, rootCount: number): Promise<Folder | null> {
-  const name = window.prompt("Folder name (e.g. Slop, Realistic, Billboard):")?.trim();
-  if (!name) return null;
-  const moveRoot = !hasFolders && rootCount > 0
-    && window.confirm(`Move the ${rootCount} creative${rootCount === 1 ? "" : "s"} already in this category into “${name}”? They will be renumbered.`);
-  const json = await postJson("/api/creative-hub/folders", { scope, category, name, move_root: moveRoot });
-  return json.folder as Folder;
+// What a "new folder" request needs to know; the modal below does the asking.
+type FolderAsk = { category: string; hasFolders: boolean; rootCount: number; onDone: (f: Folder) => void | Promise<void> };
+
+// The in-app dialog for naming a new folder. When the category already holds
+// creatives at its root and this is its first folder, it offers to move them
+// all in — a category either has folders or it doesn't.
+function NewFolderModal({ ask, scope, categoryLabel, onClose }: { ask: FolderAsk; scope: Scope; categoryLabel: string; onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [moveRoot, setMoveRoot] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const offerMove = !ask.hasFolders && ask.rootCount > 0;
+  const slug = name.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim().split(" ")[0]?.slice(0, 12) ?? "";
+
+  async function create() {
+    if (!name.trim()) return;
+    setBusy(true); setErr("");
+    try {
+      const json = await postJson("/api/creative-hub/folders", { scope, category: ask.category, name: name.trim(), move_root: offerMove && moveRoot });
+      await ask.onDone(json.folder as Folder);
+      onClose();
+    } catch (e) { setErr((e as Error).message); setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl p-5 space-y-4" style={{ ...CARD, boxShadow: "0 24px 60px -12px rgba(0,0,0,0.35)" }} onClick={e => e.stopPropagation()}>
+        <div>
+          <div className="text-base font-semibold" style={{ color: "#111111" }}>New folder in {categoryLabel}</div>
+          <div className="text-xs mt-0.5" style={{ color: "#767676" }}>A style, an angle or a batch — whatever you'd group creatives by.</div>
+        </div>
+        <label className="block">
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Folder name</span>
+          <input autoFocus value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") onClose(); }}
+            placeholder="e.g. Slop, Realistic, Billboard" className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
+          <span className="text-[10px]" style={{ color: "#949494" }}>
+            {slug ? <>Codes in it will look like <b>{ask.category}/{slug}/001</b>. The first word becomes the code and can&apos;t change later; the name can.</> : "The first word of the name goes into the code."}
+          </span>
+        </label>
+        {offerMove && (
+          <label className="flex items-start gap-2 text-xs" style={{ color: "#111111" }}>
+            <input type="checkbox" checked={moveRoot} onChange={e => setMoveRoot(e.target.checked)} className="mt-0.5" />
+            <span>Move the {ask.rootCount} creative{ask.rootCount === 1 ? "" : "s"} already in {categoryLabel} into this folder (they get new numbers). A category either has folders or it doesn&apos;t.</span>
+          </label>
+        )}
+        {err && <div className="text-xs" style={{ color: "#b91c1c" }}>{err}</div>}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: "#4a4a4a", border: "1px solid rgba(0,0,0,0.162)" }}>Cancel</button>
+          <button onClick={create} disabled={busy || !name.trim()} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "Creating…" : "Create folder"}</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Names the ads currently have in Meta, so a rename only touches wrong ones.
@@ -181,6 +224,7 @@ export default function CreativeHub({ scope, tab, clients }: {
   const [copySetTo, setCopySetTo] = useState("");
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
+  const [folderAsk, setFolderAsk] = useState<FolderAsk | null>(null);
 
   const apptWord = scope === "b2b" ? "Demos" : "Appts";
 
@@ -276,12 +320,9 @@ export default function CreativeHub({ scope, tab, clients }: {
     }
   }
 
-  async function newFolder() {
+  function newFolder() {
     if (activeCat === UNFILED) return;
-    try {
-      const f = await createFolder(scope, activeCat, catFolders.length > 0, rootCount);
-      if (f) { await load(); setFolderSel(f.id); }
-    } catch (e) { setNotice((e as Error).message); }
+    setFolderAsk({ category: activeCat, hasFolders: catFolders.length > 0, rootCount, onDone: async f => { await load(); setFolderSel(f.id); } });
   }
 
   async function renameAll() {
@@ -528,10 +569,15 @@ export default function CreativeHub({ scope, tab, clients }: {
           defaultCategory={view === "folders" && activeCat && activeCat !== UNFILED ? activeCat : ""}
           defaultFolder={view === "folders" && folderSel && folderSel !== "root" ? folderSel : ""}
           onFoldersChanged={load}
+          onAskFolder={setFolderAsk}
           onClose={() => { setOpenKey(null); setCreating(false); }}
           onSaved={async key => { setCreating(false); await load(); setOpenKey(key); }}
           onNotice={setNotice}
         />
+      )}
+
+      {folderAsk && (
+        <NewFolderModal ask={folderAsk} scope={scope} categoryLabel={categories.find(c => c.code === folderAsk.category)?.label ?? folderAsk.category} onClose={() => setFolderAsk(null)} />
       )}
     </div>
   );
@@ -815,11 +861,12 @@ function TextBlock({ label, text, source, onAdd }: { label: string; text: string
   );
 }
 
-function Drawer({ creative, scope, apptWord, folders, categories, copySets, canRename, defaultCategory, defaultFolder, onFoldersChanged, onClose, onSaved, onNotice }: {
+function Drawer({ creative, scope, apptWord, folders, categories, copySets, canRename, defaultCategory, defaultFolder, onFoldersChanged, onAskFolder, onClose, onSaved, onNotice }: {
   creative: Creative | null; scope: Scope; apptWord: string;
   folders: Folder[]; categories: Category[]; copySets: CopySetRef[]; canRename: boolean;
   defaultCategory: string; defaultFolder: string;
   onFoldersChanged: () => Promise<void>;
+  onAskFolder: (ask: FolderAsk) => void;
   onClose: () => void; onSaved: (key: string) => Promise<void>; onNotice: (s: string) => void;
 }) {
   const entry = creative?.entry ?? null;
@@ -879,12 +926,10 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
     } catch (e) { setErr((e as Error).message); } finally { setSaving(false); }
   }
 
-  async function addFolder() {
+  function addFolder() {
     if (!form.category) return;
-    try {
-      const f = await createFolder(scope, form.category, folders.some(x => x.category === form.category), 0);
-      if (f) { await onFoldersChanged(); set("folder_id", f.id); }
-    } catch (e) { setErr((e as Error).message); }
+    onAskFolder({ category: form.category, hasFolders: folders.some(x => x.category === form.category), rootCount: 0,
+      onDone: async f => { await onFoldersChanged(); set("folder_id", f.id); } });
   }
 
   const m = creative?.meta ?? null;
