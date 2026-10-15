@@ -28,7 +28,9 @@ export default function ReportShare({ onClose }: { onClose: () => void }) {
   // One link: the full brief is regenerated on every fetch and carries the
   // week's changes, so an AI that can open a URL never needs the update.
   const links = token ? [
-    { label: "Full brief (live)", url: `${origin}/api/meta-b2b-report?mode=full&token=${token}` },
+    // "STAMP" is for the AI to replace with the current date-time on every fetch — its
+    // fetch tool caches by URL, so a new path each time guarantees a fresh copy.
+    { label: "Full brief (live)", url: `${origin}/api/meta-b2b-report/STAMP?mode=full&token=${token}` },
   ] : [];
 
   const BTN: React.CSSProperties = { padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "rgba(0,0,0,0.06)", border: "1px solid rgba(0,0,0,0.12)", color: "#111", cursor: "pointer" };
@@ -56,7 +58,9 @@ export default function ReportShare({ onClose }: { onClose: () => void }) {
           ))}
           <p className="text-[11px] leading-relaxed" style={{ color: "#767676" }}>
             Anyone with the link can read the report. Put it in your Claude project&apos;s instructions
-            (&quot;fetch this first&quot;); it is rebuilt with live numbers every time it is opened.
+            (&quot;fetch this first&quot;); it is rebuilt with live numbers every time it is opened. Leave
+            the word STAMP in: the instructions tell the AI to swap it for the current time on every
+            fetch, so it never gets a cached copy.
             The Update download is only for chats that can&apos;t open links. Turning the link off kills it
             for good; turning it on again makes a new one.
           </p>

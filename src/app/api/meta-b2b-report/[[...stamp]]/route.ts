@@ -12,6 +12,10 @@ import { createServiceClient } from '@/lib/supabase';
 //   GET ?mode=update                     → the 7-day update for a chat that already has the brief
 //   (no mode = the original L30/L7/L3 report)
 //   GET ?asof=YYYY-MM-DD                 → build the report as it would have read on that day
+//   GET /api/meta-b2b-report/<anything>  → same report. The path segment is ignored; it exists so
+//                                          an AI's fetch tool (which caches by URL and may drop the
+//                                          query string) can be given a fresh URL each time, e.g.
+//                                          /api/meta-b2b-report/20261015-1536?mode=full&token=…
 // Auth: a signed-in dashboard user, `Authorization: Bearer <ADMIN_WEBHOOK_SECRET>`,
 // or `?token=` = the read-only share link (share/route.ts) — what a Claude
 // project fetches. The token only opens the report, nothing else.
