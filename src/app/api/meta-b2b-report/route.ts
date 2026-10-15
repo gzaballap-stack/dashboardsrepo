@@ -57,6 +57,9 @@ export async function GET(req: Request) {
       const name = mode === 'full' ? 'b2b-full-brief' : 'b2b-update';
       return new NextResponse(markdown, { headers: {
         'Content-Type': 'text/markdown; charset=utf-8',
+        // The brief is rebuilt on every request; nothing in between may serve a stale copy.
+        'Cache-Control': 'no-store, no-cache, max-age=0, must-revalidate',
+        'Pragma': 'no-cache',
         ...(download ? { 'Content-Disposition': `attachment; filename="${name}-${new Date().toISOString().slice(0, 10)}.md"` } : {}),
       } });
     }
