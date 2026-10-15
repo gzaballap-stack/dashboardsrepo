@@ -1,3 +1,17 @@
+## 2026-10-15 — Creative hub: talking-head codes read as hook/body
+
+Talking heads (category `TH`) titled "Hook X Body Y" are coded
+`TH/<folder>/HXBY` instead of a running number (`codeTail` in
+`src/lib/creative-key.ts`); a second take of the same combination gets a
+variant letter (`H6B3b`, `uniqueCode` in `creative-hub-entries.ts`). The code
+follows the title: renaming re-files in place. `seq` is still kept for
+ordering and as the fallback number for titles that don't match. Code sort is
+numeric-aware (H10 after H9). All 22 B2B talking heads on V1 were recoded
+(FEB26: H1B1–H5B1, H2B2, H2B3; OCT26: H6–H10 × B1–B3). Also added that day:
+Hook 6–10 × Body 3 (from the owner's Body 3 script), Duplicate (→ "<title> v2",
+same folder, next number, no ads attached), and in-place editing of a folder's
+name and code on its box (changing the code recodes everything inside).
+
 ## 2026-10-14 — Brief: booked demos per ad, the OS control rule, "OS verdict", as-of date
 
 - `FunnelStats.demos_by_ad` (sales_call_booked by ad id) joins `kept_demos_by_ad`.
