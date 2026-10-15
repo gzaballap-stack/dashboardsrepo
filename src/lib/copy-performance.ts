@@ -58,6 +58,31 @@ export async function fetchTextRows(token: string | undefined, campaignIds: stri
   return out;
 }
 
+/**
+ * Meta only splits by text for ads that rotate several (Advantage+ creative).
+ * An ordinary ad with one primary text and one headline reports nothing per
+ * text, so its whole result is credited to the texts it carries. Call this
+ * with every ad's lifetime numbers and texts; ads Meta already split are skipped.
+ */
+export function addSingleTextAds(
+  rows: TextRow[],
+  ads: Iterable<[string, { spend: number; impressions: number; clicks: number; leads: number; campaign_id?: string }]>,
+  textsByAd: Map<string, { body?: string | null; title?: string | null; description?: string | null }>,
+): TextRow[] {
+  const split = new Set(rows.map(r => r.ad_id));
+  const out = [...rows];
+  for (const [ad_id, a] of ads) {
+    if (split.has(ad_id) || a.spend <= 0) continue;
+    const t = textsByAd.get(ad_id);
+    if (!t) continue;
+    for (const [kind, text] of [['body', t.body], ['title', t.title], ['description', t.description]] as const) {
+      if (!text) continue;
+      out.push({ campaign_id: a.campaign_id ?? '', ad_id, kind, text, spend: a.spend, impressions: a.impressions, clicks: a.clicks, leads: a.leads });
+    }
+  }
+  return out;
+}
+
 /** Results of one exact text (whitespace / case-insensitive) across every ad that carried it. */
 export function perfForText(rows: TextRow[], kind: TextKind, text: string): TextPerf {
   const want = normText(text);

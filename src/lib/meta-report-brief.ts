@@ -18,7 +18,7 @@ import type { createServiceClient } from './supabase';
 import { getTomsiClientId } from './tomsi';
 import { rollupFunnelByAd, EMPTY_AD_FUNNEL, type AdFunnel } from './ad-funnel';
 import { B2B_BRIEF } from './b2b-brief';
-import { fetchTextRows, rankTexts, type TextRow } from './copy-performance';
+import { fetchTextRows, rankTexts, addSingleTextAds, type TextRow } from './copy-performance';
 import {
   buildMetaReport, accountSummary, LANDING_TO_BOOKING_KPI,
   type BuildOptions, type MetaReport, type AdRow, type StatusEvent, type WindowDays,
@@ -97,7 +97,7 @@ async function fetchExtras(acct: string, token: string): Promise<Extras> {
     safe(graph<{ id: string; creative?: { title?: string; body?: string; object_story_spec?: { link_data?: { message?: string; name?: string }; video_data?: { message?: string; title?: string } }; asset_feed_spec?: { bodies?: { text?: string }[]; titles?: { text?: string }[] } } }>(
       `/${acct}/ads`, { fields: 'id,creative{title,body,object_story_spec,asset_feed_spec}' }, token)),
   ]);
-  const textRows = await fetchTextRows(token, campaigns.map(c => c.id));
+  const splitRows = await fetchTextRows(token, campaigns.map(c => c.id));
   const copyByAd = new Map<string, { body: string; title: string }>();
   for (const a of adCreatives) {
     const c = a.creative ?? {}; const oss = c.object_story_spec ?? {}; const afs = c.asset_feed_spec ?? {};
@@ -105,6 +105,7 @@ async function fetchExtras(acct: string, token: string): Promise<Extras> {
     const title = (c.title ?? oss.link_data?.name ?? oss.video_data?.title ?? afs.titles?.[0]?.text ?? '').replace(/\s+/g, ' ').trim();
     copyByAd.set(a.id, { body, title });
   }
+
 
   const life = new Map<string, Lifetime & { name: string; adset: string; campaign: string }>();
   for (const r of lifetime) {
@@ -125,6 +126,9 @@ async function fetchExtras(acct: string, token: string): Promise<Extras> {
   for (const list of weeks.values()) list.sort((a, b) => a.start.localeCompare(b.start));
 
   const cents = (s: string | undefined) => (s ? Number(s) / 100 : null);
+
+  // Ads Meta does not split by text count whole under their single primary text / headline.
+  const textRows = addSingleTextAds(splitRows, [...life].map(([id, l]) => [id, { spend: l.spend, impressions: l.impressions, clicks: l.clicks, leads: l.leads }]), copyByAd);
 
   return {
     monthly: monthly.filter(r => r.date_start).map(r => ({ month: r.date_start!.slice(0, 7), spend: num(r.spend), impressions: num(r.impressions), clicks: num(r.inline_link_clicks), leads: leadsOf(r.actions) })),
@@ -483,7 +487,7 @@ function copyPerformance(x: Extras): string {
   for (const [kind, label] of [['body', 'primary text'], ['title', 'headline'], ['description', 'description']] as const) {
     const ranked = rankTexts(x.textRows, kind).filter(t => t.spend >= 20);
     if (!ranked.length) continue;
-    parts.push(`\n**By individual ${label}** — Meta's own split for ads that rotate several texts (an ad with five primary texts reports each one separately). Lifetime, every campaign.`);
+    parts.push(`\n**By individual ${label}** — each text on its own, lifetime, every campaign. Ads that rotate several texts are split the way Meta reports them; an ad with a single text counts whole under that text.`);
     parts.push(table([label.charAt(0).toUpperCase() + label.slice(1), 'Ads', 'Spend', 'Impr.', 'CTR', 'CPC', 'Leads (Meta)', 'CPL'],
       ranked.slice(0, 12).map(t => [t.text.replace(/\s+/g, ' ').slice(0, 100) + (t.text.length > 100 ? '…' : ''), String(t.ads), money0(t.spend), int(t.impressions), pct(t.ctr, 2), money(t.cpc), int(t.leads), t.leads ? money(t.cost_per_lead, 0) : '—'])));
   }

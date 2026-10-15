@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { hubAuth, isScope, type Service } from '@/lib/creative-hub-entries';
 import { rollupFunnelByAd, type AdFunnel } from '@/lib/ad-funnel';
-import { fetchTextRows, perfForText, type TextRow, type TextPerf } from '@/lib/copy-performance';
+import { fetchTextRows, perfForText, addSingleTextAds, type TextRow, type TextPerf } from '@/lib/copy-performance';
 
 /**
  * Copy sets — the texts an ad rotates through (Advantage+ creative takes up to
@@ -55,13 +55,16 @@ async function adResults(service: Service, scope: 'b2b' | 'b2c') {
   }
   const ids = [...ads.keys()];
   const [{ data: meta }, funnel, textRows] = await Promise.all([
-    ids.length ? service.from('creative_hub_meta').select('ad_id, primary_text, headline').in('ad_id', ids) : Promise.resolve({ data: [] as { ad_id: string; primary_text: string | null; headline: string | null }[] }),
+    ids.length ? service.from('creative_hub_meta').select('ad_id, primary_text, headline, description').in('ad_id', ids) : Promise.resolve({ data: [] as { ad_id: string; primary_text: string | null; headline: string | null; description: string | null }[] }),
     rollupFunnelByAd(service, { table: 'events', level: 'ad', model: 'first', client_id: clientIds.length === 1 ? clientIds[0] : null, bookedIncludesResolved: scope === 'b2b' })
       .catch(() => new Map<string, AdFunnel>()),
     fetchTextRows(process.env.META_ACCESS_TOKEN, [...campaignIds]),
   ]);
   const texts = new Map((meta ?? []).map(m => [m.ad_id as string, { body: norm(m.primary_text as string), headline: norm(m.headline as string) }]));
-  return { ads, texts, funnel, textRows };
+  // Ads Meta does not split by text (one text each) count whole, under their own texts.
+  const rawTexts = new Map((meta ?? []).map(m => [m.ad_id as string, { body: m.primary_text as string | null, title: m.headline as string | null, description: m.description as string | null }]));
+  const allRows = addSingleTextAds(textRows, [...ads].map(([id, a]) => [id, { spend: a.spend, impressions: a.impressions, clicks: a.link_clicks, leads: a.meta_leads }]), rawTexts);
+  return { ads, texts, funnel, textRows: allRows };
 }
 
 // Meta's own split: what each individual text did across every ad that rotated it.
