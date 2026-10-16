@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
+import { maybeSyncPostCallStatus } from '@/lib/post-call-status';
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
+
+  // Post-call outcomes come from a GHL field, polled hourly in the background.
+  maybeSyncPostCallStatus();
 
   const { searchParams } = new URL(req.url);
   const start_date = searchParams.get('start_date');
@@ -11,7 +15,7 @@ export async function GET(req: Request) {
 
   let eventsQ = ctx.service
     .from('b2b_events')
-    .select('event_type, revenue, occurred_at, ghl_contact_id, booked_by, progress_pct, external_id');
+    .select('event_type, revenue, occurred_at, ghl_contact_id, booked_by, progress_pct, external_id, post_call_status');
 
   if (start_date) eventsQ = eventsQ.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsQ = eventsQ.lte('occurred_at', `${end_date}T23:59:59.999Z`);
@@ -220,6 +224,11 @@ export async function GET(req: Request) {
   const atLeast = (m: Map<string, number>, th: number) => [...m.values()].filter(v => v >= th).length;
   const pct = (num: number, den: number) => den > 0 ? (num / den) * 100 : 0;
 
+  // Post-call outcome of shown demos (GHL "Post-Call Status?" field).
+  const shownRows = (events ?? []).filter(e => e.event_type === 'sales_call_shown') as { post_call_status?: string | null }[];
+  const no_closes  = shownRows.filter(e => e.post_call_status === 'No Close').length;
+  const follow_ups = shownRows.filter(e => e.post_call_status === 'Follow Up').length;
+
   const closes       = count('close');
   const cash         = totalRevenue('close');
   const leads        = count('lead');
@@ -233,6 +242,7 @@ export async function GET(req: Request) {
     sales_calls_booked: count('sales_call_booked'),
     sales_calls_shown:  count('sales_call_shown'),
     closes,
+    no_closes, follow_ups,
     cash_collected:     cash,
     spam_leads:         count('spam_lead'),
     spam_appointments:  count('spam_appointment'),

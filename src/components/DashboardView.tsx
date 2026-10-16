@@ -74,6 +74,7 @@ type Metrics = {
 type Cohort = { booked: number; show_rate: number; close_rate: number };
 type B2bKpis = {
   leads?: number;
+  no_closes?: number; follow_ups?: number;
   cash_collected: number; self_booked: number; team_booked: number;
   booking_leads: number; non_booking_leads: number;
   landing_visits: number; calendar_visits: number; bookings: number;
@@ -1371,6 +1372,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                 b2b_leads: b2bKpis?.leads ?? metrics.new_leads,
                 landing_visits: b2bKpis?.landing_visits ?? 0, calendar_visits: b2bKpis?.calendar_visits ?? 0,
                 bookings: b2bKpis?.bookings ?? 0, precall_views: b2bKpis?.precall_views ?? 0, vsl_views: b2bKpis?.vsl_views ?? 0,
+                no_closes: b2bKpis?.no_closes ?? 0, follow_ups: b2bKpis?.follow_ups ?? 0,
               };
               const EVEN = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 } as React.CSSProperties;
               return (
@@ -1397,6 +1399,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     <KpiCard onStat={openStat} label="CP Demo Shown" value={metrics.shows > 0 ? fmt$(metrics.ad_spend / metrics.shows) : "—"} />
                     <KpiCard onStat={openStat} label="CAC" value={metrics.closes > 0 ? fmt$(metrics.ad_spend / metrics.closes) : "—"} />
                     <KpiCard onStat={openStat} label="Close Rate" value={metrics.shows > 0 ? fmtPct(metrics.close_rate) : "—"} accent />
+                    <KpiCard onStat={openStat} label="No Closes" value={fmtInt(b2bKpis?.no_closes ?? 0)} />
+                    <KpiCard onStat={openStat} label="Follow Ups" value={fmtInt(b2bKpis?.follow_ups ?? 0)} />
                     <KpiCard onStat={openStat} label="Cash Collected" value={cash > 0 ? fmt$(cash) : "—"} accent />
                     <KpiCard onStat={openStat} label="ROAS" value={metrics.ad_spend > 0 && cash > 0 ? `${(cash / metrics.ad_spend).toFixed(2)}x` : "—"} accent />
                     {/* ROI needs revenue generated — arrives with the payment tracker. */}

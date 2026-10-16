@@ -4,6 +4,7 @@ import { validateWebhookSecret } from '@/lib/api-auth';
 import { getTomsiClientId } from '@/lib/tomsi';
 import { fetchGhlAttribution } from '@/lib/ghl-attribution';
 import { hasAttribution, type Attribution } from '@/lib/attribution';
+import { syncPostCallStatus } from '@/lib/post-call-status';
 
 /**
  * Guarded data-cleanup endpoint.
@@ -515,5 +516,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: false, deleted_b2b: b2b.length, deleted_mirror: mir.length });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close, remove_stray_closes, remove_test_zaballa` }, { status: 400 });
+  // ---- op 14: read the GHL "Post-Call Status?" field now (the dashboard does this hourly) ----
+  if (op === 'sync_post_call_status') {
+    if (dryRun) return NextResponse.json({ op, dry_run: true, note: 'Reads the field for every demo shown in the last 90 days and stores Close / No Close / Follow Up. Run with --apply.' });
+    const result = await syncPostCallStatus(service);
+    return NextResponse.json({ op, dry_run: false, ...result });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close, remove_stray_closes, remove_test_zaballa, sync_post_call_status` }, { status: 400 });
 }

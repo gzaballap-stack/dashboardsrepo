@@ -320,6 +320,7 @@ create table if not exists b2b_events (
   lead_phone      text,
   lead_email      text,
   ghl_contact_id  text,
+  post_call_status text,          -- Close / No Close / Follow Up (GHL field, hourly sync)
   external_id     text,
   revenue         numeric not null default 0,
   raw             jsonb,

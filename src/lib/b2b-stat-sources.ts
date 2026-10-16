@@ -14,6 +14,7 @@ export type SrcEvent = {
   revenue?: number | null; ghl_contact_id?: string | null; campaign_name?: string | null; ad_id?: string | null; ad_name?: string | null;
   booked_by?: string | null; progress_pct?: number | null;
   external_id?: string | null;
+  post_call_status?: string | null;
 };
 export type SrcData = { events: SrcEvent[]; b2b: SrcEvent[]; spend: { spend_date: string; amount: number }[]; excluded_spend: number; ad_names?: Record<string, string> };
 
@@ -24,6 +25,7 @@ export type StatNumbers = {
   dials: number; pickups: number; conversations: number; callbacks: number; speed_to_lead_min: number;
   self_booked: number; team_booked: number; booking_leads: number; non_booking_leads: number; b2b_leads: number;
   landing_visits: number; calendar_visits: number; bookings: number; precall_views: number; vsl_views: number;
+  no_closes?: number; follow_ups?: number;
 };
 
 export type SourceRow = { when: string | null; who: string; detail?: string };
@@ -227,6 +229,16 @@ export const B2B_STAT_SOURCES: Record<string, StatSource> = {
     what: 'Of the demos that showed, how many closed.',
     origin: GHL, formula: n => `${n.closes} closes ÷ ${n.shows} shows = ${pct(n.closes, n.shows)}`,
     parts: d => [closes(d), shows(d)],
+  },
+  'No Closes': {
+    what: 'Demos that showed and you marked "No Close" in the Post-Call Status field in GoHighLevel. Checked every hour.',
+    origin: GHL, formula: n => `${n.no_closes ?? 0} shown demos marked No Close`,
+    parts: d => [person('Marked No Close', bb(d, 'sales_call_shown').filter(e => e.post_call_status === 'No Close'))],
+  },
+  'Follow Ups': {
+    what: 'Demos that showed and you marked "Follow Up" in the Post-Call Status field in GoHighLevel. Checked every hour.',
+    origin: GHL, formula: n => `${n.follow_ups ?? 0} shown demos marked Follow Up`,
+    parts: d => [person('Marked Follow Up', bb(d, 'sales_call_shown').filter(e => e.post_call_status === 'Follow Up'))],
   },
   'Cash Collected': {
     what: 'Money collected from closes in this period.',

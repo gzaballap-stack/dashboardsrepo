@@ -1539,3 +1539,18 @@ can never block or fail an event insert.
   forwards it, and the webhook upserts on it. Watch viewers key on the contact
   or that visitor id, so anonymous watches count too. One footer snippet now
   serves all three pages (picks the event by path).
+
+## 2026-10-16 — Post-call status (No Close / Follow Up) polled from GHL
+
+- The user fills a GHL contact field **"Post-Call Status?"**
+  (`DWkVhnxJV4Q8ufLrScZ1`: Close / No Close / Follow Up) after each demo. No
+  workflow or Make: `src/lib/post-call-status.ts` reads it straight from the
+  Tomsi sub-account (`GHL_API_KEY_B2B`) for every contact with a
+  `sales_call_shown` in the last 90 days and stores it in
+  `b2b_events.post_call_status` on that row. Runs **hourly in the background**,
+  triggered by B2B dashboard reads (`/api/b2b-metrics`); manual run:
+  `node scripts/run-cleanup.mjs sync_post_call_status --apply`.
+- Tiles **No Closes** / **Follow Ups** on the TM Overview (with stat sources).
+  Closes and cash still come from the close workflow — the field never creates
+  money.
+- Migration `add_post_call_status.sql` applied to V1 (V2 has no `b2b_events`).
