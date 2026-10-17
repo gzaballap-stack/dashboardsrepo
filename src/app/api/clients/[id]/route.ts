@@ -11,6 +11,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const updates: Record<string, unknown> = {};
   for (const k of allowed) if (k in body) updates[k] = body[k];
   // status is the source of truth; only 'live' counts as live.
+  if ('status' in updates && !['live', 'paused', 'offline', 'setup'].includes(updates.status as string)) {
+    return NextResponse.json({ error: 'status must be live, paused, offline or setup' }, { status: 400 });
+  }
   if ('status' in updates) updates.is_live = updates.status === 'live';
   if ('service' in updates && !['facebook_ads', 'sms', 'both', null].includes(updates.service as string | null)) {
     return NextResponse.json({ error: 'service must be facebook_ads, sms, both or null' }, { status: 400 });

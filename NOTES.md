@@ -13,6 +13,10 @@
   column, checked to the three values), applied to **V1 and V2** on
   2026-10-17 by `scripts/migrate-client-service.mjs`. Every client starts as
   "Not set" (V1: 11 clients) — the owner fills them in.
+- **New status "Setup"** (being onboarded, not live yet) beside Live / Paused /
+  Offline. Only "live" counts as live anywhere else, so Setup clients stay out
+  of live rollups and stale alerts like Paused. Status is now a dropdown too.
+  No schema change: the column had no check constraint.
 - **Column headers sort the list** (click again to reverse): Client A–Z;
   Status live → paused → offline; Service Both → Facebook Ads → SMS → not set.
   Ties fall back to the name. The service dropdown is styled like the month

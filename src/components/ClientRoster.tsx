@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type Status = "live" | "paused" | "offline";
+type Status = "live" | "paused" | "offline" | "setup";
 type Service = "facebook_ads" | "sms" | "both";
 type Client = { id: string; name: string; is_live?: boolean; status?: Status; service?: Service | null };
 
@@ -17,14 +17,17 @@ const serviceLabel = (s: Service | null | undefined) => SERVICES.find(x => x.id 
 // Column sort orders. Status: live first. Service: Both first, then Facebook
 // Ads, then SMS, with "not set" last. Ties fall back to the name.
 type SortKey = "name" | "status" | "service";
-const STATUS_RANK: Record<Status, number> = { live: 0, paused: 1, offline: 2 };
+const STATUS_RANK: Record<Status, number> = { live: 0, paused: 1, offline: 2, setup: 3 };
 const SERVICE_RANK = (s: Service | null | undefined) => (s === "both" ? 0 : s === "facebook_ads" ? 1 : s === "sms" ? 2 : 3);
 
-const STATUS_ORDER: Status[] = ["live", "paused", "offline"];
+// Setup = being onboarded, not live yet: counted apart, and like paused it is
+// kept out of live rollups and stale alerts (only "live" is live).
+const STATUS_ORDER: Status[] = ["live", "paused", "offline", "setup"];
 const STATUS_STYLE = {
   live:    { label: "Live",    color: "#15803d", bg: "rgba(21,128,61,0.10)", dot: "#15803d" },
   paused:  { label: "Paused",  color: "#b45309", bg: "rgba(180,83,9,0.10)",  dot: "#f59e0b" },
   offline: { label: "Offline", color: "#b91c1c", bg: "rgba(185,28,28,0.10)", dot: "#94a3b8" },
+  setup:   { label: "Setup",   color: "#1d4ed8", bg: "rgba(29,78,216,0.10)", dot: "#3b82f6" },
 } as const;
 const statusOf = (c: Client): Status => c.status ?? (c.is_live ? "live" : "offline");
 
@@ -82,8 +85,7 @@ export default function ClientRoster() {
     setSaving(false);
   }
 
-  async function cycleStatus(c: Client) {
-    const next = STATUS_ORDER[(STATUS_ORDER.indexOf(statusOf(c)) + 1) % STATUS_ORDER.length];
+  async function setStatus(c: Client, next: Status) {
     setToggling(c.id);
     const res = await fetch(`/api/clients/${c.id}`, {
       method: "PATCH",
@@ -142,10 +144,11 @@ export default function ClientRoster() {
   );
 
   const statusCounts: { id: Status | null; label: string; color: string; n: number }[] = [
-    { id: "live",    label: "Live",    color: "#15803d", n: byService.filter(c => statusOf(c) === "live").length },
-    { id: "paused",  label: "Paused",  color: "#b45309", n: byService.filter(c => statusOf(c) === "paused").length },
-    { id: "offline", label: "Offline", color: "#b91c1c", n: byService.filter(c => statusOf(c) === "offline").length },
-    { id: null,      label: "Total",   color: "#111111", n: byService.length },
+    ...STATUS_ORDER.map(st => ({
+      id: st as Status | null, label: STATUS_STYLE[st].label, color: STATUS_STYLE[st].color,
+      n: byService.filter(c => statusOf(c) === st).length,
+    })),
+    { id: null, label: "Total", color: "#111111", n: byService.length },
   ];
   const serviceCounts: { id: Service | "none" | null; label: string; n: number }[] = [
     ...SERVICES.map(s => ({ id: s.id as Service | "none" | null, label: s.label, n: byStatus.filter(c => c.service === s.id).length })),
@@ -244,14 +247,20 @@ export default function ClientRoster() {
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <button
-                    onClick={() => cycleStatus(c)}
+                  <select
+                    value={statusOf(c)}
+                    onChange={e => setStatus(c, e.target.value as Status)}
                     disabled={toggling === c.id}
-                    title="Click to change status"
-                    className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
-                    style={{ color: STATUS_STYLE[statusOf(c)].color, background: STATUS_STYLE[statusOf(c)].bg, opacity: toggling === c.id ? 0.5 : 1 }}>
-                    {STATUS_STYLE[statusOf(c)].label}
-                  </button>
+                    aria-label={`Status for ${c.name}`}
+                    title="Change status"
+                    className="outline-none"
+                    style={{
+                      padding: "6px 8px", borderRadius: 9, fontSize: 12.5, fontWeight: 600, fontFamily: "inherit",
+                      color: STATUS_STYLE[statusOf(c)].color, background: STATUS_STYLE[statusOf(c)].bg,
+                      border: "1px solid transparent", opacity: toggling === c.id ? 0.5 : 1, cursor: "pointer",
+                    }}>
+                    {STATUS_ORDER.map(st => <option key={st} value={st}>{STATUS_STYLE[st].label}</option>)}
+                  </select>
                 </td>
                 <td className="px-4 py-3">
                   <select
