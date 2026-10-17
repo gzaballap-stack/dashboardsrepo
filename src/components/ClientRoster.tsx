@@ -14,6 +14,12 @@ const SERVICES: { id: Service; label: string }[] = [
 ];
 const serviceLabel = (s: Service | null | undefined) => SERVICES.find(x => x.id === s)?.label ?? "Not set";
 
+// Column sort orders. Status: live first. Service: Both first, then Facebook
+// Ads, then SMS, with "not set" last. Ties fall back to the name.
+type SortKey = "name" | "status" | "service";
+const STATUS_RANK: Record<Status, number> = { live: 0, paused: 1, offline: 2 };
+const SERVICE_RANK = (s: Service | null | undefined) => (s === "both" ? 0 : s === "facebook_ads" ? 1 : s === "sms" ? 2 : 3);
+
 const STATUS_ORDER: Status[] = ["live", "paused", "offline"];
 const STATUS_STYLE = {
   live:    { label: "Live",    color: "#15803d", bg: "rgba(21,128,61,0.10)", dot: "#15803d" },
@@ -49,6 +55,7 @@ export default function ClientRoster() {
   // the service bar reads how the live clients split.
   const [statusFilter, setStatusFilter] = useState<Status | null>(null);
   const [serviceFilter, setServiceFilter] = useState<Service | "none" | null>(null);
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "name", desc: false });
 
   useEffect(() => {
     fetch("/api/clients")
@@ -115,7 +122,24 @@ export default function ClientRoster() {
   const matchesStatus = (c: Client) => statusFilter === null || statusOf(c) === statusFilter;
   const byService = clients.filter(matchesService);   // what the status bar counts
   const byStatus = clients.filter(matchesStatus);     // what the service bar counts
-  const shown = clients.filter(c => matchesStatus(c) && matchesService(c));
+  const byName = (a: Client, b: Client) => a.name.localeCompare(b.name);
+  const shown = clients.filter(c => matchesStatus(c) && matchesService(c)).sort((a, b) => {
+    const d = sort.key === "status" ? STATUS_RANK[statusOf(a)] - STATUS_RANK[statusOf(b)]
+      : sort.key === "service" ? SERVICE_RANK(a.service) - SERVICE_RANK(b.service)
+      : byName(a, b);
+    return (sort.desc ? -d : d) || byName(a, b);
+  });
+  const sortBy = (key: SortKey) => setSort(prev => ({ key, desc: prev.key === key ? !prev.desc : false }));
+  const th = (k: SortKey, label: string) => (
+    <th key={k} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>
+      <button onClick={() => sortBy(k)} title={`Sort by ${label.toLowerCase()}`}
+        className="uppercase tracking-wider font-semibold flex items-center gap-1"
+        style={{ color: sort.key === k ? "#111111" : "#949494" }}>
+        {label}
+        <span style={{ fontSize: 9, opacity: sort.key === k ? 1 : 0.35 }}>{sort.key === k && sort.desc ? "▼" : "▲"}</span>
+      </button>
+    </th>
+  );
 
   const statusCounts: { id: Status | null; label: string; color: string; n: number }[] = [
     { id: "live",    label: "Live",    color: "#15803d", n: byService.filter(c => statusOf(c) === "live").length },
@@ -202,9 +226,9 @@ export default function ClientRoster() {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "#fafafa" }}>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Client</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Status</th>
-              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Service</th>
+              {th("name", "Client")}
+              {th("status", "Status")}
+              {th("service", "Service")}
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -236,11 +260,11 @@ export default function ClientRoster() {
                     disabled={toggling === c.id}
                     aria-label={`Service for ${c.name}`}
                     title="Change service"
-                    className="px-2.5 py-1 rounded-full text-xs font-semibold outline-none"
+                    className="outline-none"
                     style={{
+                      padding: "6px 8px", borderRadius: 9, fontSize: 12.5, fontWeight: 600, fontFamily: "inherit",
                       color: c.service ? "#111111" : "#949494",
-                      background: c.service ? "rgba(0,0,0,0.06)" : "transparent",
-                      border: c.service ? "1px solid transparent" : "1px dashed rgba(0,0,0,0.2)",
+                      background: "#ffffff", border: "1px solid rgba(0,0,0,0.14)",
                       opacity: toggling === c.id ? 0.5 : 1, cursor: "pointer",
                     }}>
                     <option value="">{serviceLabel(null)}</option>

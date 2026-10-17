@@ -13,6 +13,10 @@
   column, checked to the three values), applied to **V1 and V2** on
   2026-10-17 by `scripts/migrate-client-service.mjs`. Every client starts as
   "Not set" (V1: 11 clients) — the owner fills them in.
+- **Column headers sort the list** (click again to reverse): Client A–Z;
+  Status live → paused → offline; Service Both → Facebook Ads → SMS → not set.
+  Ties fall back to the name. The service dropdown is styled like the month
+  pickers on Profit and Loss (owner's request).
 - Checked in a local preview with sample clients; not checked signed in.
 
 ## 2026-10-15 — Copy performance: per text, in the Copy Hub and the brief
