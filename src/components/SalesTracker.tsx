@@ -652,7 +652,7 @@ export default function SalesTracker() {
                 <th style={{ ...TH, ...NUM }}>Min</th>
                 <th style={TH}>Outcome</th>
                 <th style={TH}>My emotions</th>
-                <th style={TH}>Recording</th>
+                <th style={TH}>Conclusion</th>
                 <th style={TH} />
               </tr></thead>
               <tbody>
@@ -685,7 +685,7 @@ export default function SalesTracker() {
 
 // One call: the summary row, and — when opened — its conclusion and notes.
 function FragmentRow({ c, expanded, onToggle, onEdit }: { c: Call; expanded: boolean; onToggle: () => void; onEdit: () => void }) {
-  const hasText = !!(c.conclusion || c.notes || c.contact);
+  const hasText = !!(c.conclusion || c.notes || c.contact || c.recording_url);
   return (
     <>
       <tr onClick={onToggle} style={{ cursor: "pointer", background: expanded ? "rgba(0,0,0,0.025)" : undefined }}>
@@ -696,11 +696,9 @@ function FragmentRow({ c, expanded, onToggle, onEdit }: { c: Call; expanded: boo
         <td style={{ ...TD, ...NUM }}>{c.call_minutes ?? ""}</td>
         <td style={TD}><Badge outcome={c.outcome} /></td>
         <td style={{ ...TD, color: MUTED }}>{c.emotions}</td>
-        <td style={TD}>
-          {c.recording_url && (
-            <a href={c.recording_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-              style={{ color: "#2f5da8", fontWeight: 600, fontSize: 12.5 }}>Watch</a>
-          )}
+        {/* One line of the conclusion; click the row for the whole thing. */}
+        <td style={{ ...TD, color: MUTED, maxWidth: 320 }}>
+          <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.conclusion}</span>
         </td>
         <td style={{ ...TD, textAlign: "right" }}>
           <button onClick={e => { e.stopPropagation(); onEdit(); }} style={{ fontSize: 12.5, fontWeight: 600, color: MUTED }}>Edit</button>
@@ -713,6 +711,10 @@ function FragmentRow({ c, expanded, onToggle, onEdit }: { c: Call; expanded: boo
             {c.conclusion && <Note label="Conclusion" text={c.conclusion} />}
             {c.notes && <Note label="Notes" text={c.notes} />}
             {c.contact && <Note label="Contact" text={c.contact} />}
+            {c.recording_url && (
+              <a href={c.recording_url} target="_blank" rel="noopener noreferrer"
+                style={{ display: "inline-block", marginTop: 10, color: "#2f5da8", fontWeight: 600, fontSize: 12.5 }}>Watch recording</a>
+            )}
           </td>
         </tr>
       )}
