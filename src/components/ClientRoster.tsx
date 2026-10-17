@@ -58,7 +58,8 @@ export default function ClientRoster() {
   // the service bar reads how the live clients split.
   const [statusFilter, setStatusFilter] = useState<Status | null>(null);
   const [serviceFilter, setServiceFilter] = useState<Service | "none" | null>(null);
-  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "name", desc: false });
+  // Opens sorted by status, live first; ties A–Z.
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "status", desc: false });
 
   useEffect(() => {
     fetch("/api/clients")

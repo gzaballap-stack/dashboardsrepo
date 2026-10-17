@@ -22,7 +22,7 @@
   Best-effort inside `/api/webhooks`; B2B and ad-spend syncs don't do it.
 - The status and service counts sit in one card above the table, two rows of
   equal-width chips (owner found the loose rows untidy).
-- **Column headers sort the list** (click again to reverse): Client A–Z;
+- **Column headers sort the list** (click again to reverse; opens on Status, live first): Client A–Z;
   Status live → paused → offline; Service Both → Facebook Ads → SMS → not set.
   Ties fall back to the name. The service dropdown is styled like the month
   pickers on Profit and Loss (owner's request).
