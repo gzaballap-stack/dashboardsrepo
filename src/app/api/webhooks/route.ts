@@ -172,6 +172,13 @@ export async function POST(req: Request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+    // A client still in Setup goes live the moment real data arrives for it.
+    // Best-effort — never fail the webhook over it.
+    try {
+      await service.from('clients').update({ status: 'live', is_live: true })
+        .eq('id', client_id).eq('status', 'setup');
+    } catch { /* roster status is secondary */ }
+
     // Keep the funnel whole: a booked demo / show / no-show / close without a
     // lead gets one synthesised; a real lead supersedes any synthesised one.
     // Best-effort — never fail the webhook over it.

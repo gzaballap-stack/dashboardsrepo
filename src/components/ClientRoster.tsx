@@ -183,38 +183,30 @@ export default function ClientRoster() {
         )}
       </div>
 
-      {/* Status and service bars — click a figure to filter the list */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs font-semibold uppercase tracking-wider w-16" style={{ color: "#949494" }}>Status</span>
-          {statusCounts.map(sc => {
-            const on = statusFilter === sc.id;
-            return (
-              <button key={sc.label} onClick={() => setStatusFilter(sc.id)} aria-pressed={on}
-                className="text-center px-3 py-2 rounded-xl transition-colors"
-                style={{ background: on ? "rgba(0,0,0,0.06)" : "transparent", outline: on ? "1px solid rgba(0,0,0,0.12)" : "none", minWidth: 68 }}>
-                <p className="text-2xl font-bold" style={{ color: sc.color }}>{sc.n}</p>
-                <p className="text-xs mt-0.5" style={{ color: "#767676" }}>{sc.label}</p>
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs font-semibold uppercase tracking-wider w-16" style={{ color: "#949494" }}>Service</span>
-          {serviceCounts.map(sc => {
-            const on = serviceFilter === sc.id;
-            return (
-              <button key={sc.label} onClick={() => setServiceFilter(sc.id)} aria-pressed={on}
-                className="text-center px-3 py-2 rounded-xl transition-colors"
-                style={{ background: on ? "rgba(0,0,0,0.06)" : "transparent", outline: on ? "1px solid rgba(0,0,0,0.12)" : "none", minWidth: 68 }}>
-                <p className="text-2xl font-bold" style={{ color: sc.id === "none" ? "#949494" : "#111111" }}>{sc.n}</p>
-                <p className="text-xs mt-0.5" style={{ color: "#767676" }}>{sc.label}</p>
-              </button>
-            );
-          })}
-        </div>
+      {/* Status and service counts — one card, two rows; click a figure to filter the list */}
+      <div className="rounded-2xl" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
+        {([
+          { name: "Status", items: statusCounts.map(sc => ({ key: sc.label, label: sc.label, n: sc.n, color: sc.color, on: statusFilter === sc.id, pick: () => setStatusFilter(sc.id) })) },
+          { name: "Service", items: serviceCounts.map(sc => ({ key: sc.label, label: sc.label, n: sc.n, color: sc.id === "none" ? "#949494" : "#111111", on: serviceFilter === sc.id, pick: () => setServiceFilter(sc.id) })) },
+        ]).map((row, i) => (
+          <div key={row.name} className="flex items-center gap-2 px-3 py-2" style={{ borderTop: i ? "1px solid rgba(0,0,0,0.06)" : "none" }}>
+            <span className="text-xs font-semibold uppercase tracking-wider flex-shrink-0" style={{ color: "#949494", width: 64 }}>{row.name}</span>
+            <div className="flex flex-1 gap-1">
+              {row.items.map(it => (
+                <button key={it.key} onClick={it.pick} aria-pressed={it.on}
+                  className="flex-1 flex items-baseline justify-center gap-1.5 py-2 rounded-xl transition-colors"
+                  style={{ background: it.on ? "rgba(0,0,0,0.06)" : "transparent", minWidth: 0 }}
+                  onMouseEnter={e => { if (!it.on) e.currentTarget.style.background = "rgba(0,0,0,0.03)"; }}
+                  onMouseLeave={e => { if (!it.on) e.currentTarget.style.background = "transparent"; }}>
+                  <span className="text-lg font-bold leading-none" style={{ color: it.color }}>{it.n}</span>
+                  <span className="text-xs truncate" style={{ color: it.on ? "#111111" : "#767676" }}>{it.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
         {(statusFilter || serviceFilter) && (
-          <p className="text-xs" style={{ color: "#767676" }}>
+          <p className="text-xs px-4 py-2" style={{ color: "#767676", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
             Showing {shown.length} of {clients.length}
             {statusFilter ? ` · ${statusCounts.find(x => x.id === statusFilter)?.label}` : ""}
             {serviceFilter ? ` · ${serviceCounts.find(x => x.id === serviceFilter)?.label}` : ""}

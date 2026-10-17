@@ -17,6 +17,11 @@
   Offline. Only "live" counts as live anywhere else, so Setup clients stay out
   of live rollups and stale alerts like Paused. Status is now a dropdown too.
   No schema change: the column had no check constraint.
+- **Setup → Live happens on its own:** the first event the client webhook
+  stores for a client in Setup (lead, dial, booking…) flips them to Live.
+  Best-effort inside `/api/webhooks`; B2B and ad-spend syncs don't do it.
+- The status and service counts sit in one card above the table, two rows of
+  equal-width chips (owner found the loose rows untidy).
 - **Column headers sort the list** (click again to reverse): Client A–Z;
   Status live → paused → offline; Service Both → Facebook Ads → SMS → not set.
   Ties fall back to the name. The service dropdown is styled like the month
