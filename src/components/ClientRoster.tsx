@@ -2,15 +2,25 @@
 
 import { useEffect, useState } from "react";
 
-type Client = { id: string; name: string; is_live?: boolean; status?: "live" | "paused" | "offline" };
+type Status = "live" | "paused" | "offline";
+type Service = "facebook_ads" | "sms" | "both";
+type Client = { id: string; name: string; is_live?: boolean; status?: Status; service?: Service | null };
 
-const STATUS_ORDER: ("live"|"paused"|"offline")[] = ["live", "paused", "offline"];
+// What we run for a client. Null = not set yet.
+const SERVICES: { id: Service; label: string }[] = [
+  { id: "facebook_ads", label: "Facebook Ads" },
+  { id: "sms",          label: "SMS" },
+  { id: "both",         label: "Both" },
+];
+const serviceLabel = (s: Service | null | undefined) => SERVICES.find(x => x.id === s)?.label ?? "Not set";
+
+const STATUS_ORDER: Status[] = ["live", "paused", "offline"];
 const STATUS_STYLE = {
   live:    { label: "Live",    color: "#15803d", bg: "rgba(21,128,61,0.10)", dot: "#15803d" },
   paused:  { label: "Paused",  color: "#b45309", bg: "rgba(180,83,9,0.10)",  dot: "#f59e0b" },
   offline: { label: "Offline", color: "#b91c1c", bg: "rgba(185,28,28,0.10)", dot: "#94a3b8" },
 } as const;
-const statusOf = (c: Client): "live"|"paused"|"offline" => c.status ?? (c.is_live ? "live" : "offline");
+const statusOf = (c: Client): Status => c.status ?? (c.is_live ? "live" : "offline");
 
 function Input({ value, onChange, placeholder = "", className = "" }: {
   value: string; onChange: (v: string) => void; placeholder?: string; className?: string;
@@ -35,6 +45,10 @@ export default function ClientRoster() {
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [linkedNote, setLinkedNote] = useState<string | null>(null);
+  // Filters. Each bar's counts respect the other bar's pick, so "Live" then
+  // the service bar reads how the live clients split.
+  const [statusFilter, setStatusFilter] = useState<Status | null>(null);
+  const [serviceFilter, setServiceFilter] = useState<Service | "none" | null>(null);
 
   useEffect(() => {
     fetch("/api/clients")
@@ -74,6 +88,18 @@ export default function ClientRoster() {
     setToggling(null);
   }
 
+  async function setService(c: Client, service: Service | null) {
+    setToggling(c.id);
+    const res = await fetch(`/api/clients/${c.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ service }),
+    });
+    const d = await res.json();
+    if (d.client) setClients(prev => prev.map(x => x.id === c.id ? { ...x, service: d.client.service ?? null } : x));
+    setToggling(null);
+  }
+
   async function handleDelete(id: string) {
     await fetch("/api/clients", {
       method: "DELETE",
@@ -84,9 +110,24 @@ export default function ClientRoster() {
     setConfirmDelete(null);
   }
 
-  const live = clients.filter(c => statusOf(c) === "live");
-  const paused = clients.filter(c => statusOf(c) === "paused");
-  const offline = clients.filter(c => statusOf(c) === "offline");
+  const matchesService = (c: Client) =>
+    serviceFilter === null || (serviceFilter === "none" ? !c.service : c.service === serviceFilter);
+  const matchesStatus = (c: Client) => statusFilter === null || statusOf(c) === statusFilter;
+  const byService = clients.filter(matchesService);   // what the status bar counts
+  const byStatus = clients.filter(matchesStatus);     // what the service bar counts
+  const shown = clients.filter(c => matchesStatus(c) && matchesService(c));
+
+  const statusCounts: { id: Status | null; label: string; color: string; n: number }[] = [
+    { id: "live",    label: "Live",    color: "#15803d", n: byService.filter(c => statusOf(c) === "live").length },
+    { id: "paused",  label: "Paused",  color: "#b45309", n: byService.filter(c => statusOf(c) === "paused").length },
+    { id: "offline", label: "Offline", color: "#b91c1c", n: byService.filter(c => statusOf(c) === "offline").length },
+    { id: null,      label: "Total",   color: "#111111", n: byService.length },
+  ];
+  const serviceCounts: { id: Service | "none" | null; label: string; n: number }[] = [
+    ...SERVICES.map(s => ({ id: s.id as Service | "none" | null, label: s.label, n: byStatus.filter(c => c.service === s.id).length })),
+    { id: "none", label: "Not set", n: byStatus.filter(c => !c.service).length },
+    { id: null,   label: "All",     n: byStatus.length },
+  ];
 
   if (loading) return <p className="text-sm py-8 text-center" style={{ color: "#949494" }}>Loading…</p>;
 
@@ -94,7 +135,7 @@ export default function ClientRoster() {
     <div className="space-y-6 max-w-2xl mx-auto w-full">
       <div>
         <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Client Roster</h2>
-        <p className="text-sm mt-0.5" style={{ color: "#767676" }}>Add clients and manage their live status.</p>
+        <p className="text-sm mt-0.5" style={{ color: "#767676" }}>Add clients, set their status and the service they are on.</p>
       </div>
 
       {/* Add form */}
@@ -115,24 +156,45 @@ export default function ClientRoster() {
         )}
       </div>
 
-      {/* Stats */}
-      <div className="flex items-center gap-6">
-        <div className="text-center">
-          <p className="text-2xl font-bold" style={{ color: "#15803d" }}>{live.length}</p>
-          <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Live</p>
+      {/* Status and service bars — click a figure to filter the list */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-semibold uppercase tracking-wider w-16" style={{ color: "#949494" }}>Status</span>
+          {statusCounts.map(sc => {
+            const on = statusFilter === sc.id;
+            return (
+              <button key={sc.label} onClick={() => setStatusFilter(sc.id)} aria-pressed={on}
+                className="text-center px-3 py-2 rounded-xl transition-colors"
+                style={{ background: on ? "rgba(0,0,0,0.06)" : "transparent", outline: on ? "1px solid rgba(0,0,0,0.12)" : "none", minWidth: 68 }}>
+                <p className="text-2xl font-bold" style={{ color: sc.color }}>{sc.n}</p>
+                <p className="text-xs mt-0.5" style={{ color: "#767676" }}>{sc.label}</p>
+              </button>
+            );
+          })}
         </div>
-        <div className="text-center">
-          <p className="text-2xl font-bold" style={{ color: "#b45309" }}>{paused.length}</p>
-          <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Paused</p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-xs font-semibold uppercase tracking-wider w-16" style={{ color: "#949494" }}>Service</span>
+          {serviceCounts.map(sc => {
+            const on = serviceFilter === sc.id;
+            return (
+              <button key={sc.label} onClick={() => setServiceFilter(sc.id)} aria-pressed={on}
+                className="text-center px-3 py-2 rounded-xl transition-colors"
+                style={{ background: on ? "rgba(0,0,0,0.06)" : "transparent", outline: on ? "1px solid rgba(0,0,0,0.12)" : "none", minWidth: 68 }}>
+                <p className="text-2xl font-bold" style={{ color: sc.id === "none" ? "#949494" : "#111111" }}>{sc.n}</p>
+                <p className="text-xs mt-0.5" style={{ color: "#767676" }}>{sc.label}</p>
+              </button>
+            );
+          })}
         </div>
-        <div className="text-center">
-          <p className="text-2xl font-bold" style={{ color: "#b91c1c" }}>{offline.length}</p>
-          <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Offline</p>
-        </div>
-        <div className="text-center">
-          <p className="text-2xl font-bold" style={{ color: "#111111" }}>{clients.length}</p>
-          <p className="text-xs mt-0.5" style={{ color: "#767676" }}>Total</p>
-        </div>
+        {(statusFilter || serviceFilter) && (
+          <p className="text-xs" style={{ color: "#767676" }}>
+            Showing {shown.length} of {clients.length}
+            {statusFilter ? ` · ${statusCounts.find(x => x.id === statusFilter)?.label}` : ""}
+            {serviceFilter ? ` · ${serviceCounts.find(x => x.id === serviceFilter)?.label}` : ""}
+            {" — "}
+            <button onClick={() => { setStatusFilter(null); setServiceFilter(null); }} className="underline">show all</button>
+          </p>
+        )}
       </div>
 
       {/* Table */}
@@ -142,13 +204,14 @@ export default function ClientRoster() {
             <tr style={{ background: "#fafafa" }}>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Client</th>
               <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Status</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Service</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>
-            {clients.length === 0 ? (
-              <tr><td colSpan={3} className="px-4 py-8 text-center text-sm" style={{ color: "#949494" }}>No clients yet. Add one above.</td></tr>
-            ) : clients.map((c, i) => (
+            {shown.length === 0 ? (
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-sm" style={{ color: "#949494" }}>{clients.length ? "No clients match this filter." : "No clients yet. Add one above."}</td></tr>
+            ) : shown.map((c, i) => (
               <tr key={c.id} style={{ background: i % 2 === 0 ? "#ffffff" : "#fafafa", borderTop: "1px solid rgba(0,0,0,0.054)" }}>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -165,6 +228,24 @@ export default function ClientRoster() {
                     style={{ color: STATUS_STYLE[statusOf(c)].color, background: STATUS_STYLE[statusOf(c)].bg, opacity: toggling === c.id ? 0.5 : 1 }}>
                     {STATUS_STYLE[statusOf(c)].label}
                   </button>
+                </td>
+                <td className="px-4 py-3">
+                  <select
+                    value={c.service ?? ""}
+                    onChange={e => setService(c, (e.target.value || null) as Service | null)}
+                    disabled={toggling === c.id}
+                    aria-label={`Service for ${c.name}`}
+                    title="Change service"
+                    className="px-2.5 py-1 rounded-full text-xs font-semibold outline-none"
+                    style={{
+                      color: c.service ? "#111111" : "#949494",
+                      background: c.service ? "rgba(0,0,0,0.06)" : "transparent",
+                      border: c.service ? "1px solid transparent" : "1px dashed rgba(0,0,0,0.2)",
+                      opacity: toggling === c.id ? 0.5 : 1, cursor: "pointer",
+                    }}>
+                    <option value="">{serviceLabel(null)}</option>
+                    {SERVICES.map(sv => <option key={sv.id} value={sv.id}>{sv.label}</option>)}
+                  </select>
                 </td>
                 <td className="px-4 py-3 text-right">
                   {confirmDelete === c.id ? (

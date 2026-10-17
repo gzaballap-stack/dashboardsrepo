@@ -1,3 +1,20 @@
+## 2026-10-17 — Client Roster: service (Facebook Ads / SMS / Both) and filters
+
+- **Each client now has a service** — Facebook Ads, SMS, Both, or not set —
+  picked from a dropdown beside their status on the Client Roster
+  (`clients.service`, nullable, `PATCH /api/clients/:id`). Nothing else reads
+  it yet; it is a roster label only.
+- **Two count bars above the list, both clickable filters:** Status (Live /
+  Paused / Offline / Total) and Service (Facebook Ads / SMS / Both / Not set /
+  All). Each bar's counts respect the other bar's pick — click Live and the
+  service bar reads how the live clients split. "Showing X of Y — show all"
+  appears under the bars while a filter is on.
+- **Schema:** `supabase/migrations/add_client_service.sql` (one nullable
+  column, checked to the three values), applied to **V1 and V2** on
+  2026-10-17 by `scripts/migrate-client-service.mjs`. Every client starts as
+  "Not set" (V1: 11 clients) — the owner fills them in.
+- Checked in a local preview with sample clients; not checked signed in.
+
 ## 2026-10-15 — Copy performance: per text, in the Copy Hub and the brief
 
 - `src/lib/copy-performance.ts`: Meta's `body_asset` / `title_asset` /
