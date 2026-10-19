@@ -1605,5 +1605,6 @@ can never block or fail an event insert.
   client workflows move one client at a time with Make left running until each
   is confirmed, then the spend schedule moves to a Railway cron and the funnel
   snippets post direct.
-- Open: the real per-message rate, whether the blast workflow fires per
+- Rate set to **0.0075 per segment** (`SMS_COST_PER_MESSAGE` on Railway v1 + v2
+  and `.env.local`, 2026-10-19). Open: whether the blast workflow fires per
   contact or per blast, and the client names on the SMS workflows.
