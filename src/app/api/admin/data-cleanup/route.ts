@@ -523,5 +523,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: false, ...result });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close, remove_stray_closes, remove_test_zaballa, sync_post_call_status` }, { status: 400 });
+  // ---- op 15: every funnel test row (Oct 2026) — the test contact, test names, and the test browsers' visitor keys ----
+  if (op === 'remove_funnel_tests') {
+    const CONTACTS = ['LCEMMvD7gEFcc3PuuY6w'];                       // "Test Zaballa" / "John Testington"
+    const NAMES = ['%zaballa%', '%testington%'];
+    const VISITORS = ['vmvbigg67jk9fk5mk', 'vmv8ku6dy5zjv6ee2'];      // the user's and Claude's test browsers
+    const tomsiId = await getTomsiClientId(service);
+    if (!tomsiId) return NextResponse.json({ error: 'Tomsi Media client not found' }, { status: 500 });
+    const ors = [
+      ...CONTACTS.map(c => `ghl_contact_id.eq.${c}`), ...CONTACTS.map(c => `external_id.ilike.%${c}%`),
+      ...NAMES.map(n => `lead_name.ilike.${n}`), ...VISITORS.map(v => `external_id.ilike.%${v}%`),
+    ].join(',');
+    const pick = async (table: 'b2b_events' | 'events') => {
+      let q = service.from(table).select('id, event_type, lead_name, occurred_at').or(ors);
+      if (table === 'events') q = q.eq('client_id', tomsiId);
+      const { data } = await q;
+      return data ?? [];
+    };
+    const b2b = await pick('b2b_events'), mir = await pick('events');
+    const total = b2b.length + mir.length;
+    if (total > MAX_CHANGES) return NextResponse.json({ error: `Too many rows (${total} > ${MAX_CHANGES}); aborting for safety.` }, { status: 400 });
+    const summary = (rows: typeof b2b) => rows.reduce((a, r) => { a[r.event_type] = (a[r.event_type] ?? 0) + 1; return a; }, {} as Record<string, number>);
+    if (dryRun) return NextResponse.json({ op, dry_run: true, would_delete_b2b: summary(b2b), would_delete_mirror: summary(mir), total });
+    if (b2b.length) await service.from('b2b_events').delete().in('id', b2b.map(r => r.id));
+    if (mir.length) await service.from('events').delete().in('id', mir.map(r => r.id));
+    return NextResponse.json({ op, dry_run: false, deleted_b2b: b2b.length, deleted_mirror: mir.length });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close, remove_stray_closes, remove_test_zaballa, sync_post_call_status, remove_funnel_tests` }, { status: 400 });
 }
