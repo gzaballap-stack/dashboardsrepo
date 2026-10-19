@@ -149,7 +149,7 @@ No preview environments. Check Railway dashboard for build logs.
 
 | Group | Purpose |
 |---|---|
-| `webhooks/*` | Ingestion from Make (dials, leads, appts, status, claims, ad-campaigns, b2b) |
+| `webhooks/*` | Ingestion from Make (dials, leads, appts, status, claims, ad-campaigns, b2b). `webhooks/sms` is posted **straight from GHL** (no Make): `sms_sent` → `sms_sends`, `sms_reply` → a `lead` on the SMS channel. See `NOTES.md` 2026-10-19 |
 | `metrics`, `agent-stats`, `heatmap`, `report` | Core reporting reads |
 | `ad-spend/*`, `b2b-ad-spend/*` | Ad spend sync — `sync-all` fetches + stores every ad level in one call |
 | `campaign-overview`, `campaign-exclusions`, `client-ad-breakdown` | Campaign views |
@@ -297,6 +297,7 @@ Census fetching in `src/lib/census.ts` (needs `CENSUS_API_KEY`).
 | `GHL_API_KEY` | GoHighLevel Private Integration token for the **client** account — reads per-contact ad attribution |
 | `GHL_API_KEY_B2B` | Private Integration token for the **Tomsi Media** sub-account (`jdBERcRjjBJ8dkPT9AOu`). B2B attribution — live in the B2B webhook and via `pull_b2b_attribution`. See `NOTES.md` 2026-09-28 |
 | `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` | Health Tracker Whoop connection (personal developer app). Optional `WHOOP_REDIRECT_URI` to override the forwarded-host callback URL. Unset = the Whoop tab says "not set up" |
+| `SMS_COST_PER_MESSAGE` | Per-message rate the SMS channel multiplies by messages sent (default `0.01`). See `NOTES.md` 2026-10-19 |
 | `META_MANAGEMENT_TOKEN` | Optional. A Meta system-user token with `ads_management` — lets the Creative Hub rename ads in Meta to `<code> <title>`. Unset = buttons explain how to do it by hand |
 | `META_ACCESS_TOKEN` | Creative & Copy Hub previews (all client accounts) and the Meta B2B report (`meta-b2b-report`) — the long-lived token the Make spend scenarios use. Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_DEMO_EVENT` (legacy `META_KEPT_INTRO_EVENT` still works) |
 

@@ -15,6 +15,9 @@ export async function GET(req: Request) {
   const live_only = searchParams.get('live_only') === 'true';
   const start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
+  // Channel: "ads" = everything except SMS (the default view), "sms" = leads that
+  // came in as SMS positive replies and what followed them. Absent = all, as before.
+  const channel = searchParams.get('channel');
 
   let liveClientIds: string[] | null = null;
   if (live_only && !client_id) {
@@ -36,6 +39,8 @@ export async function GET(req: Request) {
   else if (notInternal) eventsBase = eventsBase.or(notInternal);
   if (start_date) eventsBase = eventsBase.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsBase = eventsBase.lte('occurred_at', `${end_date}T23:59:59.999Z`);
+  if (channel === 'sms') eventsBase = eventsBase.eq('ad_platform', 'sms');
+  else if (channel === 'ads') eventsBase = eventsBase.or('ad_platform.is.null,ad_platform.neq.sms');
 
   // Paginate to overcome Supabase's default 1,000-row cap
   const PAGE = 1000;
@@ -57,6 +62,26 @@ export async function GET(req: Request) {
   if (start_date) spendQuery = spendQuery.gte('spend_date', start_date);
   if (end_date)   spendQuery = spendQuery.lte('spend_date', end_date);
 
+  // SMS channel: the "spend" is messages sent × the per-message rate, so every
+  // cost KPI (CPL, cost per appointment, CPS…) is the SMS cost, not ad spend.
+  if (channel === 'sms') {
+    let smsQ = ctx.service.from('sms_sends').select('client_id, sent_date, messages');
+    if (client_id) smsQ = smsQ.eq('client_id', client_id);
+    else if (liveClientIds) smsQ = smsQ.in('client_id', liveClientFilter(liveClientIds));
+    else if (notInternal) smsQ = smsQ.or(notInternal);
+    if (start_date) smsQ = smsQ.gte('sent_date', start_date);
+    if (end_date)   smsQ = smsQ.lte('sent_date', end_date);
+    const { data: smsRows, error: smsErr } = await smsQ;
+    if (smsErr) return NextResponse.json({ error: smsErr.message }, { status: 500 });
+    const sms_sent = (smsRows ?? []).reduce((n, r) => n + (Number(r.messages) || 0), 0);
+    const rate = Number(process.env.SMS_COST_PER_MESSAGE ?? '0.01') || 0;
+    const sms_cost = sms_sent * rate;
+    return NextResponse.json({
+      ...calculateMetrics(allEvents, [{ amount: sms_cost }], 0),
+      channel: 'sms', sms_sent, sms_cost, sms_cost_per_message: rate,
+    });
+  }
+
   const { data: spendRows, error: spendError } = await spendQuery;
   if (spendError) return NextResponse.json({ error: spendError.message }, { status: 500 });
 
@@ -65,5 +90,5 @@ export async function GET(req: Request) {
     client_ids: client_id ? null : liveClientIds,
   });
 
-  return NextResponse.json(calculateMetrics(allEvents, spendRows ?? [], excludedSpend));
+  return NextResponse.json({ ...calculateMetrics(allEvents, spendRows ?? [], excludedSpend), channel: channel === 'ads' ? 'ads' : 'all' });
 }

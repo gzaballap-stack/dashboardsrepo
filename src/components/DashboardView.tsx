@@ -34,7 +34,8 @@ import CSMDashboard from "./CSMDashboard";
 import CreativeHub from "./CreativeHub";
 import CopyHub from "./CopyHub";
 
-type Client = { id: string; name: string; is_live?: boolean; is_internal?: boolean };
+type Client = { id: string; name: string; is_live?: boolean; is_internal?: boolean; service?: 'facebook_ads' | 'sms' | 'both' | null };
+type Channel = 'ads' | 'sms';
 
 type Metrics = {
   new_leads: number;
@@ -69,6 +70,9 @@ type Metrics = {
   total_cp_appt?: number;
   spam_leads?: number;
   spam_appointments?: number;
+  sms_sent?: number;
+  sms_cost?: number;
+  sms_cost_per_message?: number;
 };
 
 type Cohort = { booked: number; show_rate: number; close_rate: number };
@@ -437,6 +441,9 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const [view, setView] = useState<View>(() => (initialRoute?.view as View) ?? "dashboard");
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
+  // Clients dashboard: Facebook Ads (default) or SMS. Filters the client list by
+  // the service set on the Client Roster, and switches the KPIs to the SMS set.
+  const [channel, setChannel] = useState<Channel>("ads");
   const [preset, setPreset] = useState<Preset>("this_month");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -624,12 +631,13 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
     else if (selectedClientId) params.set("client_id", selectedClientId);
     if (start) params.set("start_date", start);
     if (end) params.set("end_date", end);
+    if (!internalId) params.set("channel", channel);
     fetch(`/api/metrics?${params}`)
       .then(r => r.json())
       .then(d => { if (alive) { setMetrics(d); setMetricsLoading(false); } })
       .catch(() => { if (alive) setMetricsLoading(false); });
     return () => { alive = false; };
-  }, [view, selectedClientId, preset, customStart, customEnd, topSection, tomsiPreset, clients]);
+  }, [view, selectedClientId, preset, customStart, customEnd, topSection, tomsiPreset, clients, channel]);
 
   // Tomsi dashboard extras: cash collected and self/team-booked demos live in B2B tracking.
   useEffect(() => {
@@ -668,6 +676,10 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const inTomsi = topSection === "tomsi_media";
   const tomsiClient = clients.find(c => c.is_internal);
   const publicClients = clients.filter(c => !c.is_internal);
+  // Facebook Ads shows ads + both + not-set clients; SMS shows sms + both.
+  const channelClients = publicClients.filter(c => channel === "sms"
+    ? (c.service === "sms" || c.service === "both")
+    : (c.service !== "sms"));
   const lockClientId = inTomsi ? tomsiClient?.id : undefined;
   const viewClients = inTomsi ? (tomsiClient ? [tomsiClient] : []) : publicClients;
   const viewPreset = inTomsi ? tomsiPreset : preset;
@@ -1231,11 +1243,22 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           {topSection !== "tomsi_media" && (inHub ? hubIsLeaderboard : (view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "recordings") && !view.startsWith("admin_")) && (
             <>
               {view === "dashboard" && !inHub && (
-                <Select value={selectedClientId} onChange={v => setSelectedClientId(v)}>
-                  <option value="">All Clients</option>
-                  <option value="__live__">Live Clients</option>
-                  {publicClients.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_live === false ? " (offline)" : ""}</option>)}
-                </Select>
+                <>
+                  <div className="flex rounded-lg overflow-hidden flex-shrink-0" style={{ border: "1px solid rgba(0,0,0,0.12)" }}>
+                    {([["ads", "Facebook Ads"], ["sms", "SMS"]] as [Channel, string][]).map(([id, label]) => (
+                      <button key={id} onClick={() => { setChannel(id); setSelectedClientId(""); }}
+                        className="px-3 py-2 text-sm font-medium"
+                        style={channel === id ? { background: "#000", color: "#fff" } : { background: "#fff", color: "#4a4a4a" }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <Select value={selectedClientId} onChange={v => setSelectedClientId(v)}>
+                    <option value="">All Clients</option>
+                    <option value="__live__">Live Clients</option>
+                    {channelClients.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_live === false ? " (offline)" : ""}</option>)}
+                  </Select>
+                </>
               )}
 
               <div className="relative" ref={presetRef}>
@@ -1506,21 +1529,45 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
               <div className="space-y-8 max-w-7xl">
                 <section>
                   <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>KPIs</h2>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                    <KpiCard label="New Leads" value={fmtInt(metrics.new_leads)} />
-                    <KpiCard label="Booked Appointments" value={fmtInt(metrics.booked_appointments)} />
-                    <KpiCard label="Appt Booking Rate" value={fmtPct(metrics.appt_booking_rate)} />
-                    <KpiCard label="Appts To Take Place" value={fmtInt(metrics.appts_to_take_place)} />
-                    <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
-                    <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
-                    <KpiCard label="Ad Spend" value={fmt$(metrics.ad_spend)} />
-                    <KpiCard label="CPL" value={fmt$(metrics.cpl)} />
-                    <KpiCard label="CP Appointment" value={fmt$(metrics.cp_appt)} />
-                    <KpiCard label="CPS" value={fmt$(metrics.cps)} />
-                    <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
-                  </div>
+                  {channel === "sms" ? (
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+                        <KpiCard label="SMS Sent" value={fmtInt(metrics.sms_sent ?? 0)} />
+                        <KpiCard label="New Leads" value={fmtInt(metrics.new_leads)} />
+                        <KpiCard label="Booked Appointments" value={fmtInt(metrics.booked_appointments)} />
+                        <KpiCard label="Appt Booking Rate" value={fmtPct(metrics.appt_booking_rate)} />
+                        <KpiCard label="Appts To Take Place" value={fmtInt(metrics.appts_to_take_place)} />
+                        <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
+                        <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-3">
+                        <KpiCard label="Cost per SMS Sent" value={`$${(metrics.sms_cost_per_message ?? 0).toFixed(3)}`} />
+                        <KpiCard label="CPL" value={metrics.new_leads > 0 ? fmt$(metrics.cpl) : "—"} />
+                        <KpiCard label="CP Appointment" value={metrics.booked_appointments > 0 ? fmt$(metrics.cp_appt) : "—"} />
+                        <KpiCard label="CPS" value={metrics.shows > 0 ? fmt$(metrics.cps) : "—"} />
+                        <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
+                        <KpiCard label="Total SMS Cost" value={fmt$(metrics.sms_cost ?? 0)} />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                        <KpiCard label="New Leads" value={fmtInt(metrics.new_leads)} />
+                        <KpiCard label="Booked Appointments" value={fmtInt(metrics.booked_appointments)} />
+                        <KpiCard label="Appt Booking Rate" value={fmtPct(metrics.appt_booking_rate)} />
+                        <KpiCard label="Appts To Take Place" value={fmtInt(metrics.appts_to_take_place)} />
+                        <KpiCard label="Shows" value={fmtInt(metrics.shows)} accent />
+                        <KpiCard label="No Shows" value={fmtInt(metrics.no_shows)} />
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
+                        <KpiCard label="Ad Spend" value={fmt$(metrics.ad_spend)} />
+                        <KpiCard label="CPL" value={fmt$(metrics.cpl)} />
+                        <KpiCard label="CP Appointment" value={fmt$(metrics.cp_appt)} />
+                        <KpiCard label="CPS" value={fmt$(metrics.cps)} />
+                        <KpiCard label="Show Rate" value={fmtPct(metrics.show_pct)} accent />
+                      </div>
+                    </>
+                  )}
                   {metrics.closes > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
                       <KpiCard label="Closed Jobs" value={fmtInt(metrics.closes)} accent />

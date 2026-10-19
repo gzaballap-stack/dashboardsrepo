@@ -1584,3 +1584,26 @@ can never block or fail an event insert.
   Closes and cash still come from the close workflow — the field never creates
   money.
 - Migration `add_post_call_status.sql` applied to V1 (V2 has no `b2b_events`).
+
+## 2026-10-19 — SMS channel on the Clients dashboard (direct from GHL, no Make)
+
+- **Toggle Facebook Ads / SMS** beside the client dropdown on the Clients
+  dashboard. The client list follows the roster service: Facebook Ads = ads,
+  both and not-set clients; SMS = sms and both. The KPI block switches.
+- **Channel = `events.ad_platform`.** SMS positive replies are stored as normal
+  `lead` rows with `utm_source` / `ad_platform` / `utm_medium` = `sms`;
+  bookings, shows and closes that follow inherit it (`utm_source` counts as
+  attribution for inheritance). `/api/metrics?channel=ads` excludes SMS rows,
+  `channel=sms` keeps only them, no param = everything (unchanged).
+- **SMS sent** lives in the new `sms_sends` table (migration `add_sms_sends.sql`,
+  applied to V1 and V2 on 2026-10-19). SMS cost = messages × `SMS_COST_PER_MESSAGE`
+  (env, default 0.01) and stands in for ad spend in every SMS cost KPI.
+- **`/api/webhooks/sms` is called by GHL's own Webhook action** with header
+  `Authorization: Bearer <ADMIN_WEBHOOK_SECRET>` and custom data `event_type`
+  (`sms_sent` | `sms_reply`), `client_name`, optional `messages` (blast size).
+  First piece of the plan to retire Make: new integrations go direct; existing
+  client workflows move one client at a time with Make left running until each
+  is confirmed, then the spend schedule moves to a Railway cron and the funnel
+  snippets post direct.
+- Open: the real per-message rate, whether the blast workflow fires per
+  contact or per blast, and the client names on the SMS workflows.

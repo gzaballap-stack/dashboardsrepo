@@ -508,3 +508,17 @@ create table if not exists b2b_ads (
 
 create index if not exists b2b_ads_date on b2b_ads(spend_date desc);
 alter table b2b_ads enable row level security;
+
+-- SMS blasts sent per client (SMS service line). See migrations/add_sms_sends.sql.
+CREATE TABLE IF NOT EXISTS sms_sends (
+  id           uuid primary key default gen_random_uuid(),
+  client_id    uuid not null references clients(id) on delete cascade,
+  sent_date    date not null,
+  occurred_at  timestamptz not null default now(),
+  messages     integer not null default 1,
+  external_id  text unique,
+  ghl_contact_id text,
+  raw          jsonb,
+  created_at   timestamptz not null default now()
+);
+CREATE INDEX IF NOT EXISTS sms_sends_client_date_idx ON sms_sends (client_id, sent_date);
