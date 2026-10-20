@@ -1608,3 +1608,17 @@ can never block or fail an event insert.
 - Rate set to **0.0075 per segment** (`SMS_COST_PER_MESSAGE` on Railway v1 + v2
   and `.env.local`, 2026-10-19). Open: whether the blast workflow fires per
   contact or per blast, and the client names on the SMS workflows.
+
+## 2026-10-20 — RLS switched on for the nine open tables (Supabase advisor email)
+
+- Supabase's security advisor (email of 17 Oct) flagged `rls_disabled_in_public`
+  and "sensitive data publicly accessible" on **both** projects: `calendar_feeds`,
+  `lift_entries`, `lift_settings`, `sales_call_doc_fills`, `sms_sends`,
+  `task_templates`, `tasks`, `whoop_connections`, `whoop_days` had no RLS, and the
+  `anon` role holds full grants — so the public key shipped in the page could
+  read/write them (Whoop tokens and calendar feed URLs included).
+- Fix: `enable_rls_everywhere.sql` — RLS on, no policies (closed). Applied to V1
+  and V2 on 2026-10-20. The app only touches tables through the service-role
+  key (bypasses RLS); the browser client is auth-only, verified by grep. Every
+  other table already had RLS on with zero policies, same pattern.
+- **Rule for new tables: always `ENABLE ROW LEVEL SECURITY` in the migration.**
