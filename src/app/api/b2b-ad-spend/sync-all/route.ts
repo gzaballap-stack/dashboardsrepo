@@ -6,7 +6,8 @@ import { getTomsiClientId } from '@/lib/tomsi';
 
 // Single-shot sync: fetches ad-level data from Meta, aggregates to adset + campaign,
 // and upserts all three tables in one request. Replaces the 6-module Make blueprint.
-// Body: { date, platform, meta_token, account_id? }
+// Body: { date, platform, meta_token?, account_id? }
+// The server's META_ACCESS_TOKEN wins over a token in the body (see ad-spend/sync-all).
 
 const DEFAULT_ACCOUNT = 'act_1080664784142903';
 
@@ -17,7 +18,8 @@ async function syncOne(req: Request) {
     }
 
     const payload = await req.json();
-    const { date, platform, meta_token, account_id } = payload;
+    const { date, platform, account_id } = payload;
+    const meta_token = process.env.META_ACCESS_TOKEN || payload.meta_token;
 
     if (!date || !platform)    return NextResponse.json({ error: 'date and platform required' }, { status: 400 });
     if (!meta_token)           return NextResponse.json({ error: 'meta_token required' }, { status: 400 });

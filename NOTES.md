@@ -1622,3 +1622,24 @@ can never block or fail an event insert.
   key (bypasses RLS); the browser client is auth-only, verified by grep. Every
   other table already had RLS on with zero policies, same pattern.
 - **Rule for new tables: always `ENABLE ROW LEVEL SECURITY` in the migration.**
+
+## 2026-10-25 — Ad spend synced by the app, not Make (Railway key rotation)
+
+- Railway security incident (21 Oct): every key in Railway rotated — V1 Supabase
+  now on the new publishable/secret keys (legacy JWT keys **disabled** on V1;
+  V2 still on legacy), new Meta system-user token (`ads_read`, `read_insights`,
+  never expires), GHL keys rotated, old Supabase access token replaced.
+- Revoking the old Meta token broke all 13 Make spend scenarios — each one
+  carries its own `meta_token` in the request body. Spend stopped on 24 Oct
+  evening.
+- Fix: `ad-spend/sync-all` and `b2b-ad-spend/sync-all` now use the server's
+  `META_ACCESS_TOKEN` over any token in the body, and the client sync falls back
+  to the new `clients.meta_account_id` (migration `add_clients_meta_account_id.sql`,
+  applied to **V1 only** — the new access token can't reach V2's project; V2
+  doesn't run the schedule, so nothing reads it there yet). V1 filled for the 11
+  clients with a Meta account, matched by campaign id.
+- New `/api/cron/sync-spend` (admin secret): every non-offline, non-internal
+  client with a `meta_account_id`, then the Tomsi B2B account. Scheduled by
+  **pg_cron on V1** (`sync-spend`, 3× a day) via `pg_net`, secret read from Vault.
+- Next: turn off the Make "CCM - Meta Spend → …" scenarios once the schedule is
+  confirmed; then move the GHL funnel scenarios to direct webhooks.

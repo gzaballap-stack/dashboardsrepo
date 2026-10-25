@@ -7,7 +7,10 @@ import { resolveClientId } from '@/lib/client-lookup';
 // Single-shot client sync: fetches ad-level data from Meta once, aggregates to
 // adset + campaign levels server-side, and upserts ad_spend + ad_campaigns
 // (all three levels) in one request. Replaces the 3-module per-client Make blueprint.
-// Body: { client_name, date, platform, meta_token, account_id }
+// Body: { client_name, date, platform, meta_token?, account_id? }
+// The server's META_ACCESS_TOKEN wins over a token in the body, and the account
+// falls back to clients.meta_account_id — so callers (the in-app schedule, or a
+// leftover Make scenario holding a revoked token) need neither.
 
 async function syncOne(req: Request) {
   try {
@@ -16,12 +19,12 @@ async function syncOne(req: Request) {
     }
 
     const payload = await req.json();
-    const { client_name, date, platform, meta_token, account_id } = payload;
+    const { client_name, date, platform } = payload;
+    const meta_token = process.env.META_ACCESS_TOKEN || payload.meta_token;
 
     if (!client_name)  return NextResponse.json({ error: 'client_name required' }, { status: 400 });
     if (!date || !platform) return NextResponse.json({ error: 'date and platform required' }, { status: 400 });
     if (!meta_token)   return NextResponse.json({ error: 'meta_token required' }, { status: 400 });
-    if (!account_id)   return NextResponse.json({ error: 'account_id required' }, { status: 400 });
     if (!['meta', 'google', 'local_services'].includes(platform)) {
       return NextResponse.json({ error: 'invalid platform' }, { status: 400 });
     }
@@ -31,6 +34,13 @@ async function syncOne(req: Request) {
     // ── Resolve client_id from name ─────────────────────────────────────
     const client_id = await resolveClientId(service, client_name);
     if (!client_id) return NextResponse.json({ error: `Client "${client_name}" not found` }, { status: 400 });
+
+    let account_id = payload.account_id as string | undefined;
+    if (!account_id) {
+      const { data } = await service.from('clients').select('meta_account_id').eq('id', client_id).maybeSingle();
+      account_id = data?.meta_account_id ?? undefined;
+    }
+    if (!account_id)   return NextResponse.json({ error: 'account_id required' }, { status: 400 });
 
     // ── Fetch ad-level insights from Meta ───────────────────────────────
     const params = new URLSearchParams({
