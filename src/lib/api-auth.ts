@@ -26,7 +26,12 @@ export function isAuthError(val: unknown): val is NextResponse {
 
 // Validates a webhook request against the shared secret
 export function validateWebhookSecret(req: Request): boolean {
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) return false;
-  return authHeader.slice(7) === process.env.ADMIN_WEBHOOK_SECRET;
+  const secret = process.env.ADMIN_WEBHOOK_SECRET;
+  if (!secret) return false;
+  // Senders vary: Make writes "Bearer <secret>", GHL's webhook action may pad
+  // the value or change the case of "Bearer", and some tools send the bare
+  // secret. Compare the secret itself, not the decoration around it.
+  const raw = (req.headers.get('authorization') ?? '').trim();
+  const token = raw.replace(/^bearer\s+/i, '').trim();
+  return token.length > 0 && token === secret;
 }
