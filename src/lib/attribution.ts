@@ -39,33 +39,53 @@ export function hasAttribution(attr: Attribution): boolean {
 //
 // Practical upside: GHL only needs the attribution custom-data fields on the
 // New Lead workflow, not on all six.
+//
+// Matched on the GHL contact id first, then on the phone number. The phone
+// fallback is what makes the SMS channel work: SMS blasts and replies run in a
+// separate GHL sub-account, so the person who replied and the person the
+// setters then dial / book are two different contact records — same phone,
+// different ids. Without it every SMS lead's calls and bookings looked like ads.
+export const phoneKey = (phone: string | null | undefined): string | null => {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  return digits.length >= 10 ? digits.slice(-10) : null;
+};
+
 export async function inheritAttribution(
   service: Service,
   opts: {
     table: 'events' | 'b2b_events';
     client_id?: string | null;
     ghl_contact_id?: string | null;
+    lead_phone?: string | null;
     attr: Attribution;
   },
 ): Promise<Attribution> {
   // An event that knows its own origin always wins.
   if (hasAttribution(opts.attr)) return opts.attr;
-  if (!opts.ghl_contact_id) return opts.attr;
 
-  let q = service
-    .from(opts.table)
-    .select(ATTRIBUTION_FIELDS.join(','))
-    .eq('ghl_contact_id', opts.ghl_contact_id)
-    .or('campaign_id.not.is.null,utm_campaign.not.is.null,utm_source.not.is.null')
-    .order('occurred_at', { ascending: true })
-    .limit(1);
+  const phone = opts.table === 'events' ? phoneKey(opts.lead_phone) : null;
+  if (!opts.ghl_contact_id && !phone) return opts.attr;
 
-  if (opts.table === 'events' && opts.client_id) q = q.eq('client_id', opts.client_id);
+  const lookup = async (match: (q: ReturnType<typeof base>) => ReturnType<typeof base>) => {
+    const { data, error } = await match(base());
+    return error || !data?.length ? null : (data[0] as unknown as Attribution);
+  };
+  const base = () => {
+    let q = service
+      .from(opts.table)
+      .select(ATTRIBUTION_FIELDS.join(','))
+      .or('campaign_id.not.is.null,utm_campaign.not.is.null,utm_source.not.is.null')
+      .order('occurred_at', { ascending: true })
+      .limit(1);
+    if (opts.table === 'events' && opts.client_id) q = q.eq('client_id', opts.client_id);
+    return q;
+  };
 
-  const { data, error } = await q;
-  if (error || !data?.length) return opts.attr;
+  const source =
+    (opts.ghl_contact_id ? await lookup(q => q.eq('ghl_contact_id', opts.ghl_contact_id!)) : null) ??
+    (phone ? await lookup(q => q.like('lead_phone', `%${phone}`)) : null);
+  if (!source) return opts.attr;
 
-  const source = data[0] as unknown as Attribution;
   const merged = { ...opts.attr };
   for (const f of ATTRIBUTION_FIELDS) merged[f] = merged[f] ?? source[f] ?? null;
   return merged;

@@ -103,6 +103,7 @@ export async function POST(req: Request) {
       table: 'events',
       client_id,
       ghl_contact_id: payload.ghl_contact_id ?? null,
+      lead_phone: payload.lead_phone ?? null,
       attr: pickAttribution(payload),
     });
 

@@ -1,4 +1,5 @@
 import { createServiceClient } from './supabase';
+import { phoneKey } from './attribution';
 
 type Service = ReturnType<typeof createServiceClient>;
 
@@ -27,12 +28,15 @@ export async function ensureLeadForContact(
   if (!client_id || !ghl_contact_id) return;
   if (!FUNNEL_DOWNSTREAM.has(event_type)) return;
 
+  // Same contact id, or the same phone number — an SMS reply and the booking
+  // that follows are two GHL contact records for one person (see lib/attribution).
+  const phone = phoneKey(opts.lead_phone);
   const { data: existing } = await service
     .from('events')
     .select('id')
     .eq('client_id', client_id)
-    .eq('ghl_contact_id', ghl_contact_id)
     .eq('event_type', 'lead')
+    .or(`ghl_contact_id.eq.${ghl_contact_id}${phone ? `,lead_phone.like.*${phone}` : ''}`)
     .limit(1);
   if (existing && existing.length) return;
 

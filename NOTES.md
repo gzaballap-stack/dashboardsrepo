@@ -1690,3 +1690,18 @@ refused for scenario reads):
   once per reply message, so one person replying 4 times = 4 leads
   (D and B Construction, 26 Oct: 6 rows for 2 people).
 - Fixed to `external_id is null or not like 'auto-lead:%'`.
+
+## 2026-10-26 — SMS channel: calls and bookings now follow the SMS lead
+
+- SMS blasts/replies run in a separate GHL sub-account (`IkXBO1I9L3kHUpwhGjP8`),
+  so the person who replied and the contact the setters dial/book are two
+  contact records with the same phone. Inheritance matched on contact id only,
+  so every SMS lead's dials and bookings were filed under ads ("manual", from
+  the hourly GHL refresh) — 10 dials on 26 Oct.
+- `inheritAttribution` / `inheritZip` callers now pass `lead_phone`; when the
+  contact id finds nothing, the earliest attributed event for the same client
+  with the same last-10-digit phone is used. `ensureLeadForContact` also checks
+  by phone, so a booking for an SMS person no longer synthesises a second
+  ("manual") lead.
+- `admin/backfill-ghl-attribution` with `only_missing` now skips rows whose
+  `ad_platform` is `sms`, so the hourly refresh can't re-file them as ads.

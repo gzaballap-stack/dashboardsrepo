@@ -47,7 +47,9 @@ export async function POST(req: Request) {
     .order('occurred_at', { ascending: false })
     .limit(limit);
 
-  if (onlyMissing) q = q.is('campaign_id', null);
+  // Never overwrite the SMS channel: GHL's own attribution for those contacts
+  // says "manual", which would re-file an SMS lead's calls and bookings as ads.
+  if (onlyMissing) q = q.is('campaign_id', null).or('ad_platform.is.null,ad_platform.neq.sms');
 
   const { data: rows, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
