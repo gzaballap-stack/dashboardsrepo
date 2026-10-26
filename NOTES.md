@@ -1643,3 +1643,40 @@ can never block or fail an event insert.
   **pg_cron on V1** (`sync-spend`, 3× a day) via `pg_net`, secret read from Vault.
 - Next: turn off the Make "CCM - Meta Spend → …" scenarios once the schedule is
   confirmed; then move the GHL funnel scenarios to direct webhooks.
+
+## 2026-10-26 — Make retired: GHL posts straight to the app
+
+Every live Make scenario now has an in-app replacement (inventory read from the
+Make API, team 875675 — `MAKE_TEAM_ID` in `.env.local` is the org id and is
+refused for scenario reads):
+
+| Make scenario | Replacement |
+|---|---|
+| CCM - New Lead / Appointment Booked / Show / No Show / All Dials / Callback Booked | GHL Webhook → `/api/webhooks/ghl/<lead\|appointment_booked\|show\|no_show\|dial\|callback_booked>?token=…` |
+| CCM - B2B New Lead / Sales Call Booked / Sales Call Shown / Close (+ Intro Booked/Shown) | `/api/webhooks/ghl/b2b-<lead\|sales_call_booked\|sales_call_shown\|close\|intro_booked\|intro_shown>?token=…` |
+| CCM - B2B Cash Collected | none — `cash_collected` was never a valid B2B event; the scenario never ran |
+| CCM - Funnel Engagement (public hook in the funnel-page snippet) | `/api/webhooks/engagement` — public, CORS, engagement event types only |
+| CCM - Sales Call Territory Scoring | `/api/webhooks/ghl/territory?token=…` (onboard → worst zip onto the contact → doc from template → doc link onto the contact) |
+| CCM - Sales Call Numbers (fill the doc) | `/api/webhooks/ghl/sales-call-numbers?token=…` |
+| CCM - Meta Spend → × 11, CCM - B2B Meta Spend | `/api/cron/sync-spend` (pg_cron, 2026-10-25) |
+| CCM - Attribution Refresh (GHL), hourly | pg_cron `attribution-refresh` on V1 → `admin/backfill-ghl-attribution` |
+| CCM - Agency Onboarding → Dashboard | none — it posted to `/api/webhooks` with no `event_type`; never ran |
+| CCM - Meta B2B Report → Slack, Clipio Webhook | already off |
+
+- `src/lib/ghl-direct.ts` builds exactly the bodies the Make scenarios posted
+  (same custom-data names: `client_name`, `appointment_id`, `lead_id`,
+  `Phone Call Start Time`, `Call Duration`, `revenue`, `cash_collected`,
+  `booked_by`), plus attribution custom data and `postal_code` when present.
+- Auth is a URL token (`DIRECT_WEBHOOK_TOKEN`, Railway V1) so a GHL workflow
+  only changes its URL. SMS workflows can use `/api/webhooks/ghl/sms?token=…`
+  instead of the Authorization header — needed before `ADMIN_WEBHOOK_SECRET` is
+  rotated.
+- Switching a workflow from the Make hook to its app URL moves that flow
+  outright — GHL stops posting to Make — so there is no double counting.
+- Google Docs: no Google credentials in the app. `scripts/google-docs-bridge.gs`
+  is an Apps Script web app (Execute as: Me) the app calls with
+  `GOOGLE_DOCS_SCRIPT_URL`; it checks the same token.
+- `scripts/onboard-client.mjs` sets `clients.meta_account_id` instead of cloning
+  a Make spend scenario.
+- V2 has no unique constraint on `events.external_id`, so appointment upserts
+  fail there (pre-existing drift; V1 has `events_external_id_unique`).
