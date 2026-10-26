@@ -1680,3 +1680,13 @@ refused for scenario reads):
   a Make spend scenario.
 - V2 has no unique constraint on `events.external_id`, so appointment upserts
   fail there (pre-existing drift; V1 has `events_external_id_unique`).
+
+## 2026-10-26 — Lead dedupe never matched leads without an external_id
+
+- The "a contact is a lead once" check in `/api/webhooks` filtered
+  `external_id not like 'auto-lead:%'`, which in Postgres also drops rows whose
+  external_id is NULL — i.e. almost every real lead. So a re-fired lead webhook
+  always inserted again. Showed up on the SMS channel: the reply workflow fires
+  once per reply message, so one person replying 4 times = 4 leads
+  (D and B Construction, 26 Oct: 6 rows for 2 people).
+- Fixed to `external_id is null or not like 'auto-lead:%'`.

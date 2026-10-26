@@ -147,7 +147,9 @@ export async function POST(req: Request) {
         .eq('client_id', client_id)
         .eq('ghl_contact_id', payload.ghl_contact_id)
         .eq('event_type', 'lead')
-        .not('external_id', 'like', 'auto-lead:%')
+        // NULL must count as a real lead: `not like` alone drops NULL rows, so
+        // a contact whose first lead had no external_id was never deduped.
+        .or('external_id.is.null,external_id.not.like.auto-lead:%')
         .limit(1);
       if (dupe && dupe.length) {
         await removeSyntheticLead(service, client_id, payload.ghl_contact_id);
