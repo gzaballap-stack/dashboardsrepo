@@ -550,5 +550,33 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: false, deleted_b2b: b2b.length, deleted_mirror: mir.length });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close, remove_stray_closes, remove_test_zaballa, sync_post_call_status, remove_funnel_tests` }, { status: 400 });
+  // ---- op 16: SMS blasts before tracking went live (user's figures, 2026-10-26) ----
+  // Thu 22 Oct: D and B Construction 2,000 sent / 0 leads; The Home Design Center 2,000 / 2.
+  // Fri 23 Oct: D and B Construction 3,000 sent / 6 leads; The Home Design Center 3,000 / 0.
+  if (op === 'backfill_sms_oct22_23') {
+    const DAYS: { date: string; client: string; messages: number; leads: number }[] = [
+      { date: '2026-10-22', client: '63fed211-6b44-4dcc-bd49-7f7cae9265f2', messages: 2000, leads: 0 },
+      { date: '2026-10-22', client: 'e5f786d2-af75-4850-a824-714859efab39', messages: 2000, leads: 2 },
+      { date: '2026-10-23', client: '63fed211-6b44-4dcc-bd49-7f7cae9265f2', messages: 3000, leads: 6 },
+      { date: '2026-10-23', client: 'e5f786d2-af75-4850-a824-714859efab39', messages: 3000, leads: 0 },
+    ];
+    const sends = DAYS.map(d => ({
+      client_id: d.client, sent_date: d.date, occurred_at: `${d.date}T16:00:00.000Z`, messages: d.messages,
+      external_id: `manual-blast:${d.client}:${d.date}`, raw: { source: 'manual backfill 2026-10-26' },
+    }));
+    const leads = DAYS.flatMap(d => Array.from({ length: d.leads }, (_, i) => ({
+      client_id: d.client, event_type: 'lead', occurred_at: `${d.date}T16:00:00.000Z`,
+      external_id: `manual-sms-lead:${d.client}:${d.date}:${i + 1}`,
+      lead_name: 'SMS reply (backfilled)', utm_source: 'sms', utm_medium: 'sms', ad_platform: 'sms',
+      raw: { source: 'manual backfill 2026-10-26' },
+    })));
+    if (dryRun) return NextResponse.json({ op, dry_run: true, would_upsert_sends: sends.map(x => ({ date: x.sent_date, messages: x.messages })), would_upsert_leads: leads.length });
+    const { error: e1 } = await service.from('sms_sends').upsert(sends, { onConflict: 'external_id' });
+    if (e1) return NextResponse.json({ error: e1.message }, { status: 500 });
+    const { error: e2 } = leads.length ? await service.from('events').upsert(leads, { onConflict: 'external_id' }) : { error: null };
+    if (e2) return NextResponse.json({ error: e2.message }, { status: 500 });
+    return NextResponse.json({ op, dry_run: false, sends: sends.length, leads: leads.length });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close, remove_stray_closes, remove_test_zaballa, sync_post_call_status, remove_funnel_tests, backfill_sms_oct22_23` }, { status: 400 });
 }
