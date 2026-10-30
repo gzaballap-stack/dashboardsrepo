@@ -1247,14 +1247,34 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
             <>
               {view === "dashboard" && !inHub && (
                 <>
-                  <div className="flex rounded-lg overflow-hidden flex-shrink-0" style={{ border: "1px solid rgba(0,0,0,0.12)" }}>
-                    {([["ads", "Facebook Ads"], ["sms", "SMS"]] as [Channel, string][]).map(([id, label]) => (
-                      <button key={id} onClick={() => { setChannel(id); setSelectedClientId(""); }}
-                        className="px-3 py-2 text-sm font-medium"
-                        style={channel === id ? { background: "#000", color: "#fff" } : { background: "#fff", color: "#4a4a4a" }}>
-                        {label}
-                      </button>
-                    ))}
+                  {/* Channel switch: a segmented control on a soft track, the active
+                      option lifted on a white card so it reads as the selected tab. */}
+                  <div className="flex items-center gap-0.5 rounded-lg p-1 flex-shrink-0"
+                    style={{ background: "rgba(0,0,0,0.055)", border: "1px solid rgba(0,0,0,0.06)" }}>
+                    {([["ads", "Facebook Ads"], ["sms", "SMS"]] as [Channel, string][]).map(([id, label]) => {
+                      const active = channel === id;
+                      return (
+                        <button key={id} onClick={() => { setChannel(id); setSelectedClientId(""); }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap"
+                          style={active
+                            ? { background: "#ffffff", color: "#000000", boxShadow: "0 1px 2px rgba(0,0,0,0.08), 0 1px 6px rgba(0,0,0,0.06)" }
+                            : { background: "transparent", color: "#6b6b6b" }}
+                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#000000"; }}
+                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#6b6b6b"; }}
+                        >
+                          {id === "ads" ? (
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                              <path d="M13.5 22v-8.2h2.8l.4-3.2h-3.2V8.5c0-.9.3-1.6 1.6-1.6h1.7V4.1c-.3 0-1.3-.1-2.5-.1-2.5 0-4.1 1.5-4.1 4.2v2.4H7.4v3.2h2.8V22h3.3z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M21 12a8 8 0 0 1-8 8H8l-4 3v-6.5A8 8 0 1 1 21 12z" />
+                            </svg>
+                          )}
+                          {label}
+                        </button>
+                      );
+                    })}
                   </div>
                   <Select value={selectedClientId} onChange={v => setSelectedClientId(v)}>
                     <option value="">All Clients</option>
