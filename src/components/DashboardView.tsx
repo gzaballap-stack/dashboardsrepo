@@ -1240,7 +1240,10 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           )}
 
           {/* Dashboard, raw data, and agent/recording views filters */}
-          {topSection !== "tomsi_media" && (inHub ? hubIsLeaderboard : (view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "recordings") && !view.startsWith("admin_")) && (
+          {/* Only where these filters apply: the Clients dashboard views and the hub
+              leaderboard. Other sections (Payments, Clients, Settings…) keep the last
+              `view` around, so without this the bar followed you there. */}
+          {(topSection === "clients_dashboard" || inHub) && (inHub ? hubIsLeaderboard : (view === "dashboard" || isRaw || isAgentView || view === "goals" || view === "recordings") && !view.startsWith("admin_")) && (
             <>
               {view === "dashboard" && !inHub && (
                 <>
