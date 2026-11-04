@@ -1,3 +1,36 @@
+## 2026-11-04 — SMS replies read by Claude and tagged in GHL (replaces the VA)
+
+- **What it does:** every inbound text on a B2C SMS blast is posted by GHL to
+  `/api/webhooks/ghl/sms?token=…` with `event_type = sms_inbound` and
+  `message = {{message.body}}`. The app asks Claude (`claude-opus-5-5`, low
+  effort, structured output — `src/lib/sms-intent.ts`) for one intent:
+  `interested · question · later · not_interested · wrong_number · stop ·
+  unclear`, then puts exactly one `sms-<intent>` tag on the contact in GHL
+  (the other intent tags are removed first) and, for `interested`, creates the
+  same SMS lead `sms_reply` always created. Confidence under 0.5, or a
+  classifier failure, adds `sms-needs-review` so a human looks.
+- **Replies are sent by GHL, not the app:** one workflow per tag ("Tag added:
+  sms-interested" → send text / book / notify), so the copy stays editable in
+  GHL and the app never texts a consumer. The classifier also drafts a
+  `suggested_reply` per message (stored, not sent) for a later auto-reply step.
+- **Table `sms_replies`** (migration `add_sms_replies.sql`, script
+  `scripts/migrate-sms-replies.mjs <v1|v2>`): message, intent, confidence,
+  reason, suggested reply, tag applied, whether a lead was created, raw
+  payload; deduped on `external_id` (custom data `message_id`, else
+  contact + message hash + day). **Not applied yet** — V1 needs an explicit run
+  (production), V2's project can't be reached by the current Supabase access
+  token (same as 2026-10-25). The webhook still classifies and tags when the
+  table is missing; only the stored row is lost (logged).
+- **Env:** `ANTHROPIC_API_KEY` (set in `.env.local`; must also be on Railway)
+  and `GHL_API_KEY_SMS` — a Private Integration token for the SMS sub-account
+  (`IkXBO1I9L3kHUpwhGjP8`) with contacts read/write; falls back to `GHL_API_KEY`.
+- `sms_reply` (the VA-judged positive reply) keeps working unchanged, so the
+  old workflow can run alongside until the AI tags are trusted. `dry_run = true`
+  in custom data classifies without storing or tagging.
+- Tested the classifier on nine sample replies (yes / who is this / STOP /
+  maybe in spring / already redone / wrong number / 👍 / how much / Thursday
+  after 5): all filed as expected, 2–4 s each, 👍 at 0.55 confidence.
+
 ## 2026-10-17 — Client Roster: service (Facebook Ads / SMS / Both) and filters
 
 - **Each client now has a service** — Facebook Ads, SMS, Both, or not set —

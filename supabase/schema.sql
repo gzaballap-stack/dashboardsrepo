@@ -522,3 +522,30 @@ CREATE TABLE IF NOT EXISTS sms_sends (
   created_at   timestamptz not null default now()
 );
 CREATE INDEX IF NOT EXISTS sms_sends_client_date_idx ON sms_sends (client_id, sent_date);
+
+-- Every inbound SMS reply, classified by Claude and tagged in GHL. See migrations/add_sms_replies.sql.
+CREATE TABLE IF NOT EXISTS sms_replies (
+  id               uuid primary key default gen_random_uuid(),
+  client_id        uuid not null references clients(id) on delete cascade,
+  external_id      text unique,
+  occurred_at      timestamptz not null default now(),
+  ghl_contact_id   text,
+  lead_name        text,
+  lead_phone       text,
+  message          text not null,
+  outbound_message text,
+  intent           text not null,   -- interested | question | later | not_interested | wrong_number | stop | unclear | needs_review
+  confidence       numeric,
+  reason           text,
+  suggested_reply  text,
+  tag              text,
+  tagged           boolean not null default false,
+  tag_error        text,
+  lead_created     boolean not null default false,
+  needs_review     boolean not null default false,
+  raw              jsonb,
+  created_at       timestamptz not null default now()
+);
+CREATE INDEX IF NOT EXISTS sms_replies_client_time_idx ON sms_replies (client_id, occurred_at desc);
+CREATE INDEX IF NOT EXISTS sms_replies_contact_idx ON sms_replies (ghl_contact_id);
+ALTER TABLE sms_replies ENABLE ROW LEVEL SECURITY;

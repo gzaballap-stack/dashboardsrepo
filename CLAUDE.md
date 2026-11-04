@@ -149,7 +149,7 @@ No preview environments. Check Railway dashboard for build logs.
 
 | Group | Purpose |
 |---|---|
-| `webhooks/*` | Ingestion from Make (dials, leads, appts, status, claims, ad-campaigns, b2b). `webhooks/sms` is posted **straight from GHL** (no Make): `sms_sent` → `sms_sends`, `sms_reply` → a `lead` on the SMS channel. See `NOTES.md` 2026-10-19 |
+| `webhooks/*` | Ingestion from Make (dials, leads, appts, status, claims, ad-campaigns, b2b). `webhooks/sms` is posted **straight from GHL** (no Make): `sms_sent` → `sms_sends`, `sms_reply` → a `lead` on the SMS channel, `sms_inbound` → Claude reads the reply (`src/lib/sms-intent.ts`), tags the contact `sms-<intent>` in GHL, stores it in `sms_replies` and creates the lead if interested. See `NOTES.md` 2026-10-19 and 2026-11-04 |
 | `webhooks/ghl/[event]`, `webhooks/engagement` | **GHL → app direct (Make retired 2026-10-26).** One URL per GHL workflow with `?token=<DIRECT_WEBHOOK_TOKEN>`; builds the same body Make used to send and hands it to the routes above. Engagement is public (funnel-page snippet). Docs via the Apps Script bridge (`GOOGLE_DOCS_SCRIPT_URL`). See `NOTES.md` 2026-10-26 |
 | `cron/sync-spend` | Meta spend for every client with `clients.meta_account_id` + B2B, 3× a day via pg_cron on V1 |
 | `metrics`, `agent-stats`, `heatmap`, `report` | Core reporting reads |
@@ -180,7 +180,7 @@ Already built: `src/app/api/ai-campaign-chat/route.ts`. `POST { context, message
 
 - The route pulls the relevant client/campaign data into `context` — the model
   never touches Supabase directly.
-- Requires `ANTHROPIC_API_KEY` in the environment. **Currently unset** — the route
+- Requires `ANTHROPIC_API_KEY` in the environment (set locally since 2026-11-04; check Railway). Without it the route
   returns a 503 with a "add the key" message until it's filled in `.env.local`
   (local) **and** Railway env vars (both V1 and V2).
 - Get a key at console.anthropic.com (usage-billed, no monthly fee). Haiku is
@@ -295,8 +295,9 @@ Census fetching in `src/lib/census.ts` (needs `CENSUS_API_KEY`).
 | `MAKE_API_KEY` / `MAKE_TEAM_ID` / `MAKE_REGION` | Make.com API (blueprint updates, scenario listing) |
 | `RAILWAY_TOKEN` | Railway API |
 | `CENSUS_API_KEY` | Census data for zip features |
-| `ANTHROPIC_API_KEY` | AI Campaign Chat (unset by default) |
+| `ANTHROPIC_API_KEY` | AI Campaign Chat and the SMS reply classifier (`webhooks/sms` `sms_inbound`) |
 | `GHL_API_KEY` | GoHighLevel Private Integration token for the **client** account — reads per-contact ad attribution |
+| `GHL_API_KEY_SMS` | Private Integration token for the **SMS** sub-account (`IkXBO1I9L3kHUpwhGjP8`), contacts read/write — the app tags each reply's contact with its intent. Falls back to `GHL_API_KEY`. See `NOTES.md` 2026-11-04 |
 | `GHL_API_KEY_B2B` | Private Integration token for the **Tomsi Media** sub-account (`jdBERcRjjBJ8dkPT9AOu`). B2B attribution — live in the B2B webhook and via `pull_b2b_attribution`. See `NOTES.md` 2026-09-28 |
 | `WHOOP_CLIENT_ID` / `WHOOP_CLIENT_SECRET` | Health Tracker Whoop connection (personal developer app). Optional `WHOOP_REDIRECT_URI` to override the forwarded-host callback URL. Unset = the Whoop tab says "not set up" |
 | `DIRECT_WEBHOOK_TOKEN` | Token in the GHL workflow URLs (`/api/webhooks/ghl/…?token=`) and the Apps Script docs bridge |
