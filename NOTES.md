@@ -20,6 +20,13 @@ The owner disliked clients appearing on their own under PROFIT. Replaced by:
 
 ## 2026-11-05 — Profit and Loss clients ↔ Client Roster: one record, shown by company
 
+> Same day, owner's correction: **no separate Company field.** The Client
+> name *is* the company name (renaming it renames every month); the panel is
+> six boxes — Client name, Contact name, Email, Phone, Website, Client Roster
+> record — with Notes underneath. Display name = roster name if linked, else
+> the client name. `pnl_clients.company` stays in the database but is no
+> longer shown or used.
+
 The owner wants every client-facing part of the dashboard to point at one
 client record (a credit tracker — appointments, credits, charges per client —
 is coming and must hang off the same record). Decisions taken with the owner:

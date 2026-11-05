@@ -53,7 +53,7 @@ type Profile = {
 };
 
 type ClientForm = {
-  name: string; contact_name: string; company: string; email: string;
+  name: string; contact_name: string; email: string;
   phone: string; website: string; notes: string;
   client_id: string;              // "" = not on the roster
 };
@@ -589,11 +589,10 @@ const FIELD: React.CSSProperties = {
 
 const FORM_FIELDS: { id: keyof ClientForm; label: string; type?: string; placeholder?: string }[] = [
   { id: "name", label: "Client name" },
-  { id: "company", label: "Company" },
   { id: "contact_name", label: "Contact name" },
-  { id: "email", label: "Email", type: "email" },
-  { id: "phone", label: "Phone", type: "tel" },
-  { id: "website", label: "Website" },
+  { id: "email", label: "Email (optional)", type: "email" },
+  { id: "phone", label: "Phone (optional)", type: "tel" },
+  { id: "website", label: "Website (optional)" },
 ];
 
 // A client's details and their whole payment history, all time. Saving a new
@@ -612,7 +611,7 @@ function ClientPanel({ name, display, profile, roster, lines, months, otherKeys,
 }) {
   const stored: ClientForm = useMemo(() => ({
     name,
-    contact_name: profile?.contact_name ?? "", company: profile?.company ?? "",
+    contact_name: profile?.contact_name ?? "",
     email: profile?.email ?? "", phone: profile?.phone ?? "",
     website: profile?.website ?? "", notes: profile?.notes ?? "",
     client_id: profile?.client_id ?? "",
@@ -680,21 +679,19 @@ function ClientPanel({ name, display, profile, roster, lines, months, otherKeys,
                 <input type={f.type ?? "text"} value={form[f.id]} onChange={e => set(f.id, e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") submit(); }} style={FIELD} />
                 {f.id === "name" && (
-                  <span style={{ fontSize: 11, fontWeight: 400, color: FAINT }}>Changing it renames this client on every month.</span>
+                  <span style={{ fontSize: 11, fontWeight: 400, color: FAINT }}>The company name. Changing it renames this client on every month.</span>
                 )}
               </label>
             ))}
+            <label style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, display: "flex", flexDirection: "column", gap: 5 }}>
+              Client Roster record
+              <select value={form.client_id} onChange={e => set("client_id", e.target.value)} style={{ ...FIELD, cursor: "pointer" }}>
+                <option value="">Not on the roster</option>
+                {roster.map(c => <option key={c.id} value={c.id}>{c.name} — {STATUS_LABEL[c.status]}</option>)}
+              </select>
+              <span style={{ fontSize: 11, fontWeight: 400, color: FAINT }}>Linked, the roster name is used everywhere.</span>
+            </label>
           </div>
-          <label style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, display: "flex", flexDirection: "column", gap: 5, marginTop: 12 }}>
-            Client Roster record
-            <select value={form.client_id} onChange={e => set("client_id", e.target.value)} style={{ ...FIELD, cursor: "pointer" }}>
-              <option value="">Not on the roster</option>
-              {roster.map(c => <option key={c.id} value={c.id}>{c.name} — {STATUS_LABEL[c.status]}</option>)}
-            </select>
-            <span style={{ fontSize: 11, fontWeight: 400, color: FAINT }}>
-              Linked, the roster name shows here and in every month; leads and appointments stay tied to that record for later.
-            </span>
-          </label>
           <label style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, display: "flex", flexDirection: "column", gap: 5, marginTop: 12 }}>
             Notes
             <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={3}
@@ -784,12 +781,13 @@ export default function ProfitLoss() {
   const rosterById = useMemo(() => new Map(roster.map(c => [c.id, c])), [roster]);
   const rosterByKey = useMemo(() => new Map(roster.map(c => [clientKey(c.name), c])), [roster]);
   // What a client is called everywhere: the roster record's name if linked
-  // (by id, or by matching name), else the company, else the name on the lines.
+  // (by id, or by matching name), else the name on the lines — which the
+  // owner keeps as the company name.
   const displayOf = useCallback((label: string) => {
     const key = clientKey(label);
     const p = profiles[key];
     const r = (p?.client_id ? rosterById.get(p.client_id) : undefined) ?? rosterByKey.get(key);
-    return r?.name ?? (p?.company?.trim() || p?.name || label.trim());
+    return r?.name ?? label.trim();
   }, [profiles, rosterById, rosterByKey]);
 
   const load = useCallback(async (pickMonth: boolean) => {
