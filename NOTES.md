@@ -1,3 +1,33 @@
+## 2026-11-05 — Profit and Loss: dollars or euros; bring lines back from an earlier month
+
+- **Read the sheet in USD or EUR** (switch in the header, remembered per
+  browser). **Each line keeps the currency it was typed in and the USD→EUR
+  rate of the day it was entered** (`pnl_lines.currency`,
+  `pnl_lines.usd_eur_rate` = EUR per 1 USD), so switching never rewrites
+  history: September converts at September's rate, not today's. Today's rate
+  comes from the ECB reference via frankfurter.dev (`src/lib/fx.ts`, cached a
+  day, no key); if it can't be reached the newest stored rate is used; failing
+  that the line is saved without one and shown as typed ("no rate").
+- Per line: a $/€ button sets the unit it was typed in (click to flip — the
+  rate stays, it belongs to the day); a muted "≈ €…" shows the other currency
+  when it differs from the view. New lines default to the currency on show.
+- **Existing lines (all typed in dollars) get their own month's rate** — the
+  ECB rate for the 15th of that month — from `scripts/migrate-pnl-currency.mjs`,
+  which also adds the columns. **Run by the owner** on V1 (the code session's
+  V1 writes are blocked) and by the V2 data session / SQL editor on V2 (the
+  session's Supabase token only reaches V1). Until it runs, the page still
+  loads: the API falls back to the old shape and everything reads as dollars.
+- **Bring back from an earlier month:** a button on every month (and the
+  empty-month card) opens a picker listing that month's clients, expenses and
+  personal lines not already in this month — clients and expenses ticked by
+  default, personal unticked — and adds the ticked ones with their amounts.
+  Any earlier month can be chosen as the source. Copied lines are new
+  entries, so they take today's rate. The old whole-month copy
+  (`action: copy` with `from`) still exists for callers without `ids`.
+- Checked in a local preview against the sheet's figures (USD ↔ EUR totals,
+  a euro line, flipping a line's currency, picking 12 of 13 lines). Not
+  checked signed in.
+
 ## 2026-11-04 — SMS replies read by Claude and tagged in GHL (replaces the VA)
 
 - **What it does:** every inbound text on a B2C SMS blast is posted by GHL to
