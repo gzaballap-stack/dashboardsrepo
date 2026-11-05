@@ -74,7 +74,8 @@ export async function POST(req: Request) {
         .from('pnl_lines').select('kind, label, amount, leisure, position')
         .eq('user_id', ctx.userId).in('id', ids));
     } else {
-      // A whole month's clients and business costs, into a month that is still empty.
+      // A whole month's lines into a month that is still empty — with
+      // names_only, every amount is left at 0 for the owner to fill in.
       const from = String(body.from ?? '');
       if (!MONTH.test(from)) return NextResponse.json({ error: 'from must be YYYY-MM-01' }, { status: 400 });
       const { count } = await ctx.service
@@ -83,7 +84,9 @@ export async function POST(req: Request) {
       if (count) return NextResponse.json({ error: 'That month already has lines' }, { status: 409 });
       ({ data: source } = await ctx.service
         .from('pnl_lines').select('kind, label, amount, leisure, position')
-        .eq('user_id', ctx.userId).eq('month', from).in('kind', ['revenue', 'expense']));
+        .eq('user_id', ctx.userId).eq('month', from)
+        .in('kind', body.names_only ? ['revenue', 'expense', 'personal'] : ['revenue', 'expense']));
+      if (body.names_only && source) source = source.map(l => ({ ...l, amount: 0 }));
     }
     if (!source?.length) return NextResponse.json({ lines: [] });
 

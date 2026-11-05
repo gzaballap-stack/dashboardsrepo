@@ -1,3 +1,23 @@
+## 2026-11-05 — Profit and Loss: an empty month starts from last month's names (one button)
+
+The owner disliked clients appearing on their own under PROFIT. Replaced by:
+
+- **One button on an empty month — "Start from <last month>'s names".** It
+  copies every line of the nearest earlier month (clients, business expenses,
+  personal, necessary/leisure kept) **with the amounts blank** (`action: copy`
+  with `names_only: true` → amount 0; the whole-month copy still refuses a
+  month that already has lines). A $0 amount shows as an empty box ("—"),
+  and $0 lines never count as a paying client.
+- **Gone:** the automatic blank rows for live roster clients, the ↻ repeating
+  expenses (UI, `/api/profit-loss/recurring`, `add_pnl_recurring.sql`,
+  `migrate-pnl-recurring.mjs`). If `pnl_recurring` was already created on a
+  database it is simply unused. `scripts/migrate-pnl-links.mjs` now applies
+  only the roster link.
+- Still there: type-ahead client names (roster + past clients), the roster
+  link and company display, euro entry on expenses.
+- Checked in a local preview: 22 names from September land in October blank,
+  totals $0, button disappears. Not checked signed in.
+
 ## 2026-11-05 — Profit and Loss clients ↔ Client Roster: one record, shown by company
 
 The owner wants every client-facing part of the dashboard to point at one

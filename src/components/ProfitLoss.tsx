@@ -65,10 +65,6 @@ type RosterStatus = "live" | "paused" | "offline" | "setup";
 type RosterClient = { id: string; name: string; status: RosterStatus };
 const STATUS_LABEL: Record<RosterStatus, string> = { live: "Live", setup: "Setup", paused: "Paused", offline: "Offline" };
 
-// An expense that comes up every month (rent, GHL…): offered blank on each
-// month until an amount is typed. Keyed by name, not by month.
-type Recurring = { id: string; kind: Kind; label: string; leisure: boolean };
-
 const CARD = "#ffffff";
 const BORDER = "1px solid rgba(0,0,0,0.07)";
 const SHADOW = "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)";
@@ -192,20 +188,18 @@ const BTN_QUIET: React.CSSProperties = {
 
 // One editable line. Saves on blur (or Enter); the parent re-keys the row when
 // the saved values change, so local state never drifts from what is stored.
-function Row({ line, euro, onPatch, onRemove, move, repeat, shownAs }: {
+function Row({ line, euro, onPatch, onRemove, move, shownAs }: {
   line: Line;
   // Set when this line may be typed in euros: today's EUR-per-USD rate (null = unknown).
   euro?: { rate: number | null };
   onPatch: (id: string, patch: Partial<Pick<Line, "label" | "amount" | "leisure">> & { currency?: Currency }) => void;
   onRemove: (id: string) => void;
   move?: { title: string; onMove: () => void };
-  // Shown on expenses: whether this one comes back every month.
-  repeat?: { on: boolean; toggle: () => void };
   // A client whose roster / company name differs from the name on the line.
   shownAs?: string;
 }) {
   const [label, setLabel] = useState(line.label);
-  const [amount, setAmount] = useState(String(line.amount));
+  const [amount, setAmount] = useState(line.amount ? String(line.amount) : "");
   const [bad, setBad] = useState(false);
   const [cur, setCur] = useState<Currency>("USD");   // what the figure being typed is in
 
@@ -251,19 +245,11 @@ function Row({ line, euro, onPatch, onRemove, move, repeat, shownAs }: {
         <span style={{ fontSize: 13, color: FAINT }}>$</span>
       )}
       <input value={amount} onChange={e => { setAmount(e.target.value); setBad(false); }} onBlur={commitAmount} onKeyDown={blurOnEnter}
-        aria-label={`Amount for ${line.label || "line"}${cur === "EUR" ? " in euros" : ""}`} inputMode="decimal" className="pnl-input"
+        aria-label={`Amount for ${line.label || "line"}${cur === "EUR" ? " in euros" : ""}`} inputMode="decimal" className="pnl-input" placeholder="—"
         style={{
           ...INPUT, width: 78, textAlign: "right", fontVariantNumeric: "tabular-nums",
           ...(bad ? { borderColor: BAD, color: BAD } : null),
         }} />
-      {repeat && (
-        <button onClick={repeat.toggle} title={repeat.on ? "Repeats every month — click to stop" : "Repeat every month"}
-          aria-label={`${repeat.on ? "Stop repeating" : "Repeat monthly"}: ${line.label || "line"}`} aria-pressed={repeat.on}
-          className={repeat.on ? undefined : "pnl-ghost"}
-          style={{ padding: 5, borderRadius: 7, color: repeat.on ? INK : FAINT, lineHeight: 0 }}>
-          <RepeatIcon />
-        </button>
-      )}
       {move && (
         <button onClick={move.onMove} title={move.title} aria-label={move.title} className="pnl-ghost"
           style={{ padding: 5, borderRadius: 7, color: FAINT, lineHeight: 0 }}>
@@ -336,70 +322,6 @@ function AddRow({ placeholder, euro, suggestions = [], onAdd }: {
         style={{ ...BTN_QUIET, padding: "7px 10px", opacity: busy ? 0.5 : 1 }}>
         Add
       </button>
-    </div>
-  );
-}
-
-const RepeatIcon = () => (
-  <svg width={14} height={14} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M17 2l4 4-4 4M3 11V9a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 01-4 4H3" />
-  </svg>
-);
-
-// A line that is expected this month but hasn't been entered: a roster client,
-// or a repeating expense. Nothing is stored until an amount is typed.
-function GhostRow({ label, hint, euro, onCreate, onDismiss }: {
-  label: string;
-  hint?: string;
-  euro?: { rate: number | null };
-  onCreate: (amount: number, currency: Currency) => Promise<boolean>;
-  onDismiss?: { title: string; run: () => void };
-}) {
-  const [amount, setAmount] = useState("");
-  const [cur, setCur] = useState<Currency>("USD");
-  const [bad, setBad] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  const commit = async () => {
-    if (busy || !amount.trim()) return;
-    const value = parseAmount(amount);
-    if (value === null) { setBad(true); return; }
-    setBusy(true);
-    const ok = await onCreate(value, cur);
-    setBusy(false);
-    if (!ok) setBad(true);
-  };
-
-  return (
-    <div className="pnl-row" style={{ display: "flex", alignItems: "center", gap: 4, opacity: busy ? 0.5 : 1 }}>
-      <span style={{ ...INPUT, flex: 1, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={hint}>
-        {label}
-        {hint && <span style={{ fontSize: 10.5, color: FAINT }}> · {hint}</span>}
-      </span>
-      {euro ? (
-        <button onClick={() => setCur(other(cur))} aria-label={`Typing ${cur === "EUR" ? "euros" : "dollars"} for ${label}`}
-          title={cur === "EUR" ? "Typing euros — saved as dollars at today's rate. Click for dollars." : "Click to type this in euros (saved as dollars at today's rate)"}
-          style={{ fontSize: 13, color: cur === "EUR" ? INK : FAINT, fontWeight: 600, width: 14, textAlign: "center" }}>
-          {SYMBOL[cur]}
-        </button>
-      ) : (
-        <span style={{ fontSize: 13, color: FAINT }}>$</span>
-      )}
-      <input value={amount} onChange={e => { setAmount(e.target.value); setBad(false); }} onBlur={commit}
-        onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
-        placeholder="—" aria-label={`Amount for ${label}${cur === "EUR" ? " in euros" : ""}`} inputMode="decimal" className="pnl-input"
-        style={{
-          ...INPUT, width: 78, textAlign: "right", fontVariantNumeric: "tabular-nums", background: "rgba(0,0,0,0.025)",
-          ...(bad ? { borderColor: BAD, color: BAD } : null),
-        }} />
-      {onDismiss ? (
-        <button onClick={onDismiss.run} title={onDismiss.title} aria-label={`${onDismiss.title}: ${label}`} className="pnl-ghost"
-          style={{ padding: 5, borderRadius: 7, color: FAINT, lineHeight: 0 }}>
-          <RepeatIcon />
-        </button>
-      ) : (
-        <span style={{ width: 24 }} />
-      )}
     </div>
   );
 }
@@ -853,7 +775,6 @@ export default function ProfitLoss() {
   const [scope, setScope] = useState<number | "all">("all");
   // Clients from the Client Roster, and the expenses marked "repeats monthly".
   // Both are optional extras: without them the sheet still works.
-  const [recurring, setRecurring] = useState<Recurring[]>([]);
   const [todayRate, setTodayRate] = useState<number | null>(null);   // EUR per 1 USD
   const euro = { rate: todayRate };
   const [clientRange, setClientRange] = useState<{ from: string; to: string } | null>(null);
@@ -901,8 +822,6 @@ export default function ProfitLoss() {
         .filter((c: RosterClient & { is_internal?: boolean }) => !c.is_internal)
         .map((c: RosterClient & { is_live?: boolean }) => ({ id: c.id, name: c.name, status: c.status ?? (c.is_live ? "live" : "offline") }))))
       .catch(() => {});
-    fetch("/api/profit-loss/recurring").then(res => (res.ok ? res.json() : { items: [] }))
-      .then(body => setRecurring(body.items ?? [])).catch(() => {});
   }, []);
 
   // Client details are an extra: if they can't be read, the sheet still works.
@@ -975,40 +894,6 @@ export default function ProfitLoss() {
   const totals = useMemo(() => totalsOf(current), [current]);
   const ofKind = (kind: Kind, leisure = false) =>
     current.filter(l => l.kind === kind && (kind !== "personal" || l.leisure === leisure));
-
-  // Live roster clients with no line yet this month: they are offered blank,
-  // and a line is only created once an amount is typed.
-  const ghostClients = useMemo(() => {
-    const have = new Set(current.filter(l => l.kind === "revenue").map(l => clientKey(l.label)));
-    return roster
-      .filter(c => c.status === "live")
-      .map(c => ({ ...c, label: Object.values(profiles).find(p => p.client_id === c.id)?.name ?? c.name }))
-      .filter(c => !have.has(clientKey(c.label)));
-  }, [roster, profiles, current]);
-
-  // Repeating expenses with no line yet this month, likewise offered blank.
-  const ghostExpenses = (kind: Kind, leisure: boolean) => {
-    const have = new Set(current.filter(l => l.kind === kind).map(l => clientKey(l.label)));
-    return recurring.filter(r => r.kind === kind && r.leisure === leisure && !have.has(clientKey(r.label)));
-  };
-
-  const repeatOf = (l: Line) => recurring.find(r => r.kind === l.kind && clientKey(r.label) === clientKey(l.label)) ?? null;
-
-  // Marks an expense as repeating every month (or stops it). The flag lives on
-  // the name, not the month, so it holds for every month from now on.
-  const toggleRepeat = async (kind: Kind, label: string, leisure: boolean) => {
-    const existing = recurring.find(r => r.kind === kind && clientKey(r.label) === clientKey(label));
-    try {
-      if (existing) {
-        await send("DELETE", `/api/profit-loss/recurring?id=${encodeURIComponent(existing.id)}`);
-        setRecurring(prev => prev.filter(r => r.id !== existing.id));
-      } else {
-        const { item } = await send("POST", "/api/profit-loss/recurring", { kind, label, leisure });
-        setRecurring(prev => [...prev, item]);
-      }
-      setError(null);
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not save"); }
-  };
 
   const years = useMemo(() => [...new Set(monthRows.map(r => partsOf(r.month).year))], [monthRows]);
   const scoped = useMemo(
@@ -1094,6 +979,24 @@ export default function ProfitLoss() {
       retention: base ? kept / base : null,
     };
   }, [all, monthRows, from, to]);
+
+  // The nearest earlier month with lines. An empty month can start from its
+  // names — clients, expenses, personal — with every amount left blank.
+  const previous = useMemo(
+    () => [...monthRows].reverse().find(r => r.month < month)?.month ?? null,
+    [monthRows, month],
+  );
+  const [starting, setStarting] = useState(false);
+  const startFromPrevious = async () => {
+    if (!previous || starting) return;
+    setStarting(true);
+    try {
+      const { lines: copied } = await send("POST", "/api/profit-loss", { action: "copy", from: previous, to: month, names_only: true });
+      setLines(prev => [...(prev ?? []), ...(copied as Line[]).map(l => ({ ...l, amount: Number(l.amount) }))]);
+      setError(null);
+    } catch (e) { failed(e); }
+    setStarting(false);
+  };
 
   // Offered as you type a client: the roster (with status), then anyone who
   // has paid before but isn't on the roster. Shown by display name; `value`
@@ -1188,18 +1091,8 @@ export default function ProfitLoss() {
           move={kind === "personal"
             ? { title: leisure ? "Move to Necessary" : "Move to Leisure", onMove: () => patchLine(l.id, { leisure: !leisure }) }
             : undefined}
-          repeat={kind === "revenue" ? undefined : { on: !!repeatOf(l), toggle: () => toggleRepeat(kind, l.label, leisure) }} />
+          />
       ))}
-      {kind === "revenue"
-        ? ghostClients.map(c => (
-          <GhostRow key={`ghost:${c.id}`} label={c.name} hint="live"
-            onCreate={(amount, currency) => addClientLine(c.label, amount).then(ok => ok && currency === "USD")} />
-        ))
-        : ghostExpenses(kind, leisure).map(r => (
-          <GhostRow key={`ghost:${r.id}`} label={r.label} hint="monthly" euro={euro}
-            onCreate={(amount, currency) => addLine(kind, leisure, r.label, amount, currency)}
-            onDismiss={{ title: "Stop repeating", run: () => toggleRepeat(kind, r.label, leisure) }} />
-        ))}
       {kind === "revenue"
         ? <ClientAddRow suggestions={clientSuggestions} onAdd={addClientLine} />
         : <AddRow placeholder={placeholder} euro={euro} suggestions={expenseSuggestions(kind)}
@@ -1260,6 +1153,19 @@ export default function ProfitLoss() {
             </span>
           )}
         </div>
+
+        {current.length === 0 && previous && (
+          <div style={{ background: CARD, border: BORDER, borderRadius: 16, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <p style={{ fontSize: 13, color: MUTED, flex: 1, minWidth: 200 }}>
+              Nothing logged for {monthName(month)} yet.
+            </p>
+            <button onClick={startFromPrevious} disabled={starting}
+              style={{ padding: "9px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "#000000", color: "#ffffff", opacity: starting ? 0.5 : 1 }}
+              title={`Lists ${monthName(previous)}'s clients and expenses here with the amounts left blank`}>
+              {starting ? "Setting up…" : `Start from ${monthName(previous, true)}'s names`}
+            </button>
+          </div>
+        )}
 
         <div style={TILE_GRID}>
           <Tile label="Revenue" value={money(totals.revenue)} />

@@ -1,6 +1,4 @@
-// Profit and Loss: the repeating-expenses table and the client → Client Roster
-// link. Runs both migration files; each is IF NOT EXISTS / idempotent, so it
-// is safe to run again and covers anyone who skipped migrate-pnl-recurring.
+// Profit and Loss: the client → Client Roster link. Idempotent, safe to re-run.
 //
 //   node scripts/migrate-pnl-links.mjs v1
 //   node scripts/migrate-pnl-links.mjs v2
@@ -50,15 +48,11 @@ async function runSQL(sql, label) {
 
 console.log(`Target: ${target} (${PROJECT_REF})\n`);
 
-await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_pnl_recurring.sql'), 'utf-8'),
-  'Repeating expenses table');
 await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_pnl_roster_link.sql'), 'utf-8'),
   'Client profile → roster link');
 
 const check = await runSQL(`
   select
-    (select count(*) from information_schema.tables
-      where table_schema = 'public' and table_name = 'pnl_recurring') as recurring_table,
     (select count(*) from information_schema.columns
       where table_schema = 'public' and table_name = 'pnl_clients' and column_name = 'client_id') as link_column,
     (select count(*) from pnl_clients) as profiles,
