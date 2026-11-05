@@ -21,6 +21,8 @@ import { createPortal } from "react-dom";
    ──────────────────────────────────────────────────────────────────────────── */
 
 type Kind = "revenue" | "expense" | "personal";
+// Amounts are kept in dollars. An expense can be typed in euros; it is turned
+// into dollars at today's rate as it is saved, and only the dollars are kept.
 type Currency = "USD" | "EUR";
 
 type Line = {
@@ -31,8 +33,6 @@ type Line = {
   amount: number;
   leisure: boolean;
   position: number;
-  currency: Currency;             // the unit the amount was typed in
-  usd_eur_rate: number | null;    // EUR per 1 USD on the day it was entered
 };
 
 type Totals = {
@@ -76,35 +76,12 @@ const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 
-const SYMBOL: Record<Currency, string> = { USD: "$", EUR: "€" };
-const other = (c: Currency): Currency => (c === "USD" ? "EUR" : "USD");
-
-function fmtMoney(n: number, cur: Currency): string {
+function money(n: number): string {
   const whole = Math.abs(n % 1) < 0.005;
   const digits = whole ? 0 : 2;
   const text = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return `${n < 0 ? "−" : ""}${SYMBOL[cur]}${text}`;
+  return `${n < 0 ? "−" : ""}$${text}`;
 }
-
-// A line in the currency being shown, at the rate frozen on the day it was
-// entered — so an old month never moves when today's rate does. A line with
-// no rate on file is shown as typed.
-function valueIn(l: Line, cur: Currency): number {
-  if (l.currency === cur || !l.usd_eur_rate) return l.amount;
-  return cur === "EUR" ? l.amount * l.usd_eur_rate : l.amount / l.usd_eur_rate;
-}
-
-// Rows straight off the API: numbers may arrive as strings, and a database
-// that predates the currency columns sends neither.
-const normalizeLine = (l: Line): Line => ({
-  ...l,
-  amount: Number(l.amount),
-  currency: l.currency === "EUR" ? "EUR" : "USD",
-  usd_eur_rate: l.usd_eur_rate ? Number(l.usd_eur_rate) : null,
-});
-
-const inCurrency = (lines: Line[], cur: Currency): Line[] =>
-  lines.map(l => (l.currency === cur ? l : { ...l, amount: valueIn(l, cur), currency: cur }));
 
 const pct = (v: number | null) => (v === null ? "n/a" : `${v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(1)}%`);
 
@@ -166,8 +143,12 @@ function niceCeil(v: number): number {
   return 10 * pow;
 }
 
-const compactIn = (cur: Currency) => (n: number) =>
-  n >= 1000 ? `${SYMBOL[cur]}${(n / 1000).toFixed(n % 1000 ? 1 : 0)}k` : `${SYMBOL[cur]}${n}`;
+const SYMBOL: Record<Currency, string> = { USD: "$", EUR: "€" };
+const other = (c: Currency): Currency => (c === "USD" ? "EUR" : "USD");
+// euros → dollars at `rate` (EUR per 1 USD), to the cent.
+const toUsd = (eur: number, rate: number) => Math.round((eur / rate) * 100) / 100;
+
+const compact = (n: number) => (n >= 1000 ? `$${(n / 1000).toFixed(n % 1000 ? 1 : 0)}k` : `$${n}`);
 
 /* ── small pieces ─────────────────────────────────────────────────────────── */
 
@@ -201,16 +182,18 @@ const BTN_QUIET: React.CSSProperties = {
 
 // One editable line. Saves on blur (or Enter); the parent re-keys the row when
 // the saved values change, so local state never drifts from what is stored.
-function Row({ line, display, onPatch, onRemove, move }: {
+function Row({ line, euro, onPatch, onRemove, move }: {
   line: Line;
-  display: Currency;
-  onPatch: (id: string, patch: Partial<Pick<Line, "label" | "amount" | "leisure" | "currency">>) => void;
+  // Set when this line may be typed in euros: today's EUR-per-USD rate (null = unknown).
+  euro?: { rate: number | null };
+  onPatch: (id: string, patch: Partial<Pick<Line, "label" | "amount" | "leisure">> & { currency?: Currency }) => void;
   onRemove: (id: string) => void;
   move?: { title: string; onMove: () => void };
 }) {
   const [label, setLabel] = useState(line.label);
   const [amount, setAmount] = useState(String(line.amount));
   const [bad, setBad] = useState(false);
+  const [cur, setCur] = useState<Currency>("USD");   // what the figure being typed is in
 
   const commitLabel = () => {
     const next = label.trim();
@@ -220,6 +203,14 @@ function Row({ line, display, onPatch, onRemove, move }: {
     const next = parseAmount(amount);
     if (next === null) { setBad(true); return; }
     setBad(false);
+    if (cur === "EUR") {
+      // Saved as dollars; the server converts at today's rate and the row
+      // re-keys to the stored figure. Shown converted straight away if the
+      // rate is known.
+      onPatch(line.id, { amount: next, currency: "EUR" });
+      setCur("USD");
+      return;
+    }
     if (next !== line.amount) onPatch(line.id, { amount: next });
   };
   const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -230,19 +221,17 @@ function Row({ line, display, onPatch, onRemove, move }: {
     <div className="pnl-row" style={{ display: "flex", alignItems: "center", gap: 4 }}>
       <input value={label} onChange={e => setLabel(e.target.value)} onBlur={commitLabel} onKeyDown={blurOnEnter}
         aria-label="Name" placeholder="Name" className="pnl-input" style={{ ...INPUT, flex: 1, textOverflow: "ellipsis" }} />
-      {line.currency !== display && (
-        <span title={line.usd_eur_rate ? `At ${line.usd_eur_rate.toFixed(4)} EUR per USD, the rate when this was entered` : "No exchange rate on file for this line"}
-          style={{ fontSize: 11, color: FAINT, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-          {line.usd_eur_rate ? `≈ ${fmtMoney(valueIn(line, display), display)}` : "no rate"}
-        </span>
+      {euro ? (
+        <button onClick={() => setCur(other(cur))} aria-label={`Typing ${cur === "EUR" ? "euros" : "dollars"} for ${line.label || "line"}`}
+          title={cur === "EUR" ? "Typing euros — saved as dollars at today's rate. Click for dollars." : "Click to type this in euros (saved as dollars at today's rate)"}
+          style={{ fontSize: 13, color: cur === "EUR" ? INK : FAINT, fontWeight: 600, width: 14, textAlign: "center" }}>
+          {SYMBOL[cur]}
+        </button>
+      ) : (
+        <span style={{ fontSize: 13, color: FAINT }}>$</span>
       )}
-      <button onClick={() => onPatch(line.id, { currency: other(line.currency) })}
-        title={`Typed in ${line.currency} — click to make it ${other(line.currency)}`} aria-label={`Currency for ${line.label || "line"}: ${line.currency}`}
-        style={{ fontSize: 13, color: line.currency === display ? FAINT : INK, fontWeight: 600, width: 14, textAlign: "center" }}>
-        {SYMBOL[line.currency]}
-      </button>
       <input value={amount} onChange={e => { setAmount(e.target.value); setBad(false); }} onBlur={commitAmount} onKeyDown={blurOnEnter}
-        aria-label={`Amount for ${line.label || "line"} in ${line.currency}`} inputMode="decimal" className="pnl-input"
+        aria-label={`Amount for ${line.label || "line"}${cur === "EUR" ? " in euros" : ""}`} inputMode="decimal" className="pnl-input"
         style={{
           ...INPUT, width: 78, textAlign: "right", fontVariantNumeric: "tabular-nums",
           ...(bad ? { borderColor: BAD, color: BAD } : null),
@@ -265,12 +254,15 @@ function Row({ line, display, onPatch, onRemove, move }: {
   );
 }
 
-function AddRow({ placeholder, currency, onAdd }: {
-  placeholder: string; currency: Currency; onAdd: (label: string, amount: number, currency: Currency) => Promise<boolean>;
+function AddRow({ placeholder, euro, onAdd }: {
+  placeholder: string;
+  euro?: { rate: number | null };
+  onAdd: (label: string, amount: number, currency: Currency) => Promise<boolean>;
 }) {
   const [label, setLabel] = useState("");
   const [amount, setAmount] = useState("");
-  const [cur, setCur] = useState<Currency>(currency);
+  const [cur, setCur] = useState<Currency>("USD");
+  const typed = parseAmount(amount);
   const [bad, setBad] = useState(false);
   const [busy, setBusy] = useState(false);
   const labelRef = useRef<HTMLInputElement>(null);
@@ -291,12 +283,23 @@ function AddRow({ placeholder, currency, onAdd }: {
       <input ref={labelRef} value={label} onChange={e => setLabel(e.target.value)} onKeyDown={onKey}
         placeholder={placeholder} aria-label={placeholder}
         style={{ ...INPUT, flex: 1, background: "rgba(0,0,0,0.035)" }} />
-      <button onClick={() => setCur(other(cur))} title={`Entering ${cur} — click for ${other(cur)}`} aria-label={`New line currency: ${cur}`}
-        style={{ fontSize: 13, color: INK, fontWeight: 600, width: 14, textAlign: "center" }}>
-        {SYMBOL[cur]}
-      </button>
+      {euro && cur === "EUR" && typed ? (
+        <span style={{ fontSize: 11, color: FAINT, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}
+          title={euro.rate ? `Today €1 = $${(1 / euro.rate).toFixed(4)}` : undefined}>
+          {euro.rate ? `≈ ${money(toUsd(typed, euro.rate))}` : "rate pending"}
+        </span>
+      ) : null}
+      {euro ? (
+        <button onClick={() => setCur(other(cur))} aria-label={`New line in ${cur === "EUR" ? "euros" : "dollars"}`}
+          title={cur === "EUR" ? "Typing euros — saved as dollars at today's rate. Click for dollars." : "Click to type in euros (saved as dollars at today's rate)"}
+          style={{ fontSize: 13, color: cur === "EUR" ? INK : FAINT, fontWeight: 600, width: 14, textAlign: "center" }}>
+          {SYMBOL[cur]}
+        </button>
+      ) : (
+        <span style={{ fontSize: 13, color: FAINT }}>$</span>
+      )}
       <input value={amount} onChange={e => { setAmount(e.target.value); setBad(false); }} onKeyDown={onKey}
-        placeholder="0" aria-label={`Amount in ${cur}`} inputMode="decimal"
+        placeholder="0" aria-label={cur === "EUR" ? "Amount in euros" : "Amount"} inputMode="decimal"
         style={{
           ...INPUT, width: 78, textAlign: "right", background: "rgba(0,0,0,0.035)",
           ...(bad ? { borderColor: BAD, color: BAD } : null),
@@ -310,14 +313,14 @@ function AddRow({ placeholder, currency, onAdd }: {
 }
 
 function Section({ title, caption, total, children }: {
-  title: string; caption: string; total: string; children: React.ReactNode;
+  title: string; caption: string; total: number; children: React.ReactNode;
 }) {
   return (
     <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 16, padding: 16, minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 10 }}>
         <h3 style={{ fontSize: 12, fontWeight: 700, color: INK, letterSpacing: "0.08em" }}>{title}</h3>
         <span style={{ fontSize: 12, color: MUTED, flex: 1 }}>{caption}</span>
-        <span style={{ fontSize: 15, fontWeight: 700, color: INK, fontVariantNumeric: "tabular-nums" }}>{total}</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: INK, fontVariantNumeric: "tabular-nums" }}>{money(total)}</span>
       </div>
       {children}
     </div>
@@ -464,18 +467,16 @@ const FORM_FIELDS: { id: keyof ClientForm; label: string; type?: string; placeho
 
 // A client's details and their whole payment history, all time. Saving a new
 // name renames them on every month, so the history stays attached.
-function ClientPanel({ name, profile, lines, currency, months, otherKeys, onSave, onClose, onOpenMonth }: {
+function ClientPanel({ name, profile, lines, months, otherKeys, onSave, onClose, onOpenMonth }: {
   name: string;
   profile: Profile | null;
-  lines: Line[];                 // this client's payment lines, already in `currency`
-  currency: Currency;
+  lines: Line[];                 // this client's payment lines
   months: string[];              // every month logged, oldest first
   otherKeys: Set<string>;
   onSave: (form: ClientForm) => Promise<string | null>;
   onClose: () => void;
   onOpenMonth: (month: string) => void;
 }) {
-  const money = (n: number) => fmtMoney(n, currency);
   const stored: ClientForm = useMemo(() => ({
     name,
     contact_name: profile?.contact_name ?? "", company: profile?.company ?? "",
@@ -577,7 +578,7 @@ function ClientPanel({ name, profile, lines, currency, months, otherKeys, onSave
           </div>
 
           <BarChart title="Payments by month" legend={[]} onPick={onOpenMonth}
-            top={niceCeil(Math.max(...paid.values()))} tick={compactIn(currency)}
+            top={niceCeil(Math.max(...paid.values()))} tick={compact}
             cols={since.map(m => ({
               month: m,
               groups: [[{ value: paid.get(m) ?? 0, color: INK }]],
@@ -676,7 +677,7 @@ function BringBack({ source, sources, candidates, onSource, onAdd, onClose }: {
                       {l.label || "(unnamed)"}
                       {l.kind === "personal" && <span style={{ color: FAINT, fontSize: 11 }}> · {l.leisure ? "leisure" : "necessary"}</span>}
                     </span>
-                    <span style={{ color: MUTED, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(l.amount, l.currency)}</span>
+                    <span style={{ color: MUTED, fontVariantNumeric: "tabular-nums" }}>{money(l.amount)}</span>
                   </label>
                 ))}
               </div>
@@ -716,16 +717,10 @@ export default function ProfitLoss() {
   const [scope, setScope] = useState<number | "all">("all");
   const [picking, setPicking] = useState(false);          // the Bring back panel is open
   const [pickFrom, setPickFrom] = useState<string | null>(null);
+  const [todayRate, setTodayRate] = useState<number | null>(null);   // EUR per 1 USD
+  const euro = { rate: todayRate };
   const [clientRange, setClientRange] = useState<{ from: string; to: string } | null>(null);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
-  // Which currency the sheet is read in. Every line converts at its own rate.
-  const [display, setDisplay] = useState<Currency>(() => {
-    try { return localStorage.getItem("pnl:currency") === "EUR" ? "EUR" : "USD"; } catch { return "USD"; }
-  });
-  const [todayRate, setTodayRate] = useState<number | null>(null);
-  const money = (n: number) => fmtMoney(n, display);
-  const compact = compactIn(display);
-  const pickDisplay = (c: Currency) => { setDisplay(c); try { localStorage.setItem("pnl:currency", c); } catch {} };
   const [editing, setEditing] = useState<string | null>(null);   // clientKey of the open client
 
   const load = useCallback(async (pickMonth: boolean) => {
@@ -733,7 +728,7 @@ export default function ProfitLoss() {
       const res = await fetch("/api/profit-loss");
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Could not load");
-      const loaded: Line[] = (body.lines ?? []).map(normalizeLine);
+      const loaded: Line[] = (body.lines ?? []).map((l: Line) => ({ ...l, amount: Number(l.amount) }));
       setLines(loaded);
       // Open on this month if it has been started, otherwise the latest month that has.
       if (pickMonth && loaded.length && !loaded.some(l => l.month === thisMonth)) {
@@ -780,16 +775,25 @@ export default function ProfitLoss() {
   const addLine = useCallback(async (kind: Kind, leisure: boolean, label: string, amount: number, currency: Currency) => {
     try {
       const { line } = await send("POST", "/api/profit-loss", { month, kind, leisure, label, amount, currency });
-      setLines(prev => [...(prev ?? []), normalizeLine(line)]);
+      setLines(prev => [...(prev ?? []), { ...line, amount: Number(line.amount) }]);
       setError(null);
       return true;
     } catch (e) { failed(e); return false; }
   }, [month, send, failed]);
 
-  const patchLine = useCallback((id: string, patch: Partial<Pick<Line, "label" | "amount" | "leisure" | "currency">>) => {
-    setLines(prev => (prev ?? []).map(l => (l.id === id ? { ...l, ...patch } : l)));
-    send("PATCH", "/api/profit-loss", { id, ...patch }).then(() => setError(null)).catch(failed);
-  }, [send, failed]);
+  // `currency: "EUR"` means the amount was typed in euros: the server stores
+  // the dollar figure at today's rate and the row takes what came back.
+  const patchLine = useCallback((id: string, patch: Partial<Pick<Line, "label" | "amount" | "leisure">> & { currency?: Currency }) => {
+    const { currency, ...local } = patch;
+    if (currency === "EUR" && local.amount !== undefined && todayRate) local.amount = toUsd(local.amount, todayRate);
+    setLines(prev => (prev ?? []).map(l => (l.id === id ? { ...l, ...local } : l)));
+    send("PATCH", "/api/profit-loss", { id, ...patch })
+      .then(({ line }) => {
+        setError(null);
+        if (line) setLines(prev => (prev ?? []).map(l => (l.id === id ? { ...l, amount: Number(line.amount) } : l)));
+      })
+      .catch(failed);
+  }, [send, failed, todayRate]);
 
   const removeLine = useCallback((id: string) => {
     setLines(prev => (prev ?? []).filter(l => l.id !== id));
@@ -797,22 +801,20 @@ export default function ProfitLoss() {
   }, [send, failed]);
 
   const all = useMemo(() => lines ?? [], [lines]);
-  // `all` is as typed (for editing); `view` is in the display currency (for every sum).
-  const view = useMemo(() => inCurrency(all, display), [all, display]);
 
   const monthRows: MonthRow[] = useMemo(() => {
     const byMonth = new Map<string, Line[]>();
-    for (const l of view) {
+    for (const l of all) {
       if (!byMonth.has(l.month)) byMonth.set(l.month, []);
       byMonth.get(l.month)!.push(l);
     }
     return [...byMonth.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([m, ls]) => ({ month: m, ...totalsOf(ls) }));
-  }, [view]);
+  }, [all]);
 
   const current = useMemo(() => all.filter(l => l.month === month), [all, month]);
-  const totals = useMemo(() => totalsOf(view.filter(l => l.month === month)), [view, month]);
+  const totals = useMemo(() => totalsOf(current), [current]);
   const ofKind = (kind: Kind, leisure = false) =>
     current.filter(l => l.kind === kind && (kind !== "personal" || l.leisure === leisure));
 
@@ -823,11 +825,10 @@ export default function ProfitLoss() {
   );
 
   // Adds copies of the chosen lines (from any earlier month) to this month.
-  // They are new entries, so they take today's exchange rate.
   const bringBack = async (ids: string[]) => {
     try {
       const { lines: copied } = await send("POST", "/api/profit-loss", { action: "copy", ids, to: month });
-      setLines(prev => [...(prev ?? []), ...(copied as Line[]).map(normalizeLine)]);
+      setLines(prev => [...(prev ?? []), ...(copied as Line[]).map(l => ({ ...l, amount: Number(l.amount) }))]);
       setError(null);
       return true;
     } catch (e) { failed(e); return false; }
@@ -861,7 +862,7 @@ export default function ProfitLoss() {
     const paid = new Map<string, Map<string, number>>();   // month → client → amount
     const names = new Map<string, string>();
     const firstEver = new Map<string, string>();
-    for (const l of view) {
+    for (const l of all) {
       if (l.kind !== "revenue" || !l.amount) continue;
       const key = clientKey(l.label);
       if (!key) continue;
@@ -925,7 +926,7 @@ export default function ProfitLoss() {
       payingNow: list.filter(c => c.paying).length,
       retention: base ? kept / base : null,
     };
-  }, [view, monthRows, from, to]);
+  }, [all, monthRows, from, to]);
 
   // Time-frame shortcuts. "Last N months" counts back from the latest month logged.
   const frames = useMemo(() => {
@@ -961,7 +962,7 @@ export default function ProfitLoss() {
       return e instanceof Error ? e.message : "Could not save";
     }
   };
-  const rowKey = (l: Line) => `${l.id}:${l.label}:${l.amount}:${l.currency}`;
+  const rowKey = (l: Line) => `${l.id}:${l.label}:${l.amount}`;
 
   if (lines === null) {
     return <p style={{ fontSize: 13, color: MUTED, padding: 24 }}>Loading…</p>;
@@ -970,12 +971,13 @@ export default function ProfitLoss() {
   const list = (kind: Kind, leisure: boolean, placeholder: string) => (
     <>
       {ofKind(kind, leisure).map(l => (
-        <Row key={rowKey(l)} line={l} display={display} onPatch={patchLine} onRemove={removeLine}
+        <Row key={rowKey(l)} line={l} euro={kind === "revenue" ? undefined : euro} onPatch={patchLine} onRemove={removeLine}
           move={kind === "personal"
             ? { title: leisure ? "Move to Necessary" : "Move to Leisure", onMove: () => patchLine(l.id, { leisure: !leisure }) }
             : undefined} />
       ))}
-      <AddRow placeholder={placeholder} currency={display} onAdd={(label, amount, currency) => addLine(kind, leisure, label, amount, currency)} />
+      <AddRow placeholder={placeholder} euro={kind === "revenue" ? undefined : euro}
+        onAdd={(label, amount, currency) => addLine(kind, leisure, label, amount, currency)} />
     </>
   );
 
@@ -993,22 +995,6 @@ export default function ProfitLoss() {
           <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
             Profit is revenue minus expenses. Personal spending is tracked beside it.
           </p>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }} title={todayRate ? `Today 1 USD = €${todayRate.toFixed(4)}. Each line converts at the rate of the day it was entered.` : "Each line converts at the rate of the day it was entered."}>
-          <div style={{ display: "flex", background: "rgba(0,0,0,0.05)", borderRadius: 10, padding: 3 }}>
-            {(["USD", "EUR"] as Currency[]).map(c => (
-              <button key={c} onClick={() => pickDisplay(c)} aria-pressed={display === c}
-                style={{
-                  padding: "6px 11px", borderRadius: 8, fontSize: 12.5, fontWeight: 600,
-                  background: display === c ? "#ffffff" : "transparent",
-                  color: display === c ? INK : MUTED,
-                  boxShadow: display === c ? "0 1px 3px rgba(0,0,0,0.10)" : "none",
-                }}>
-                {SYMBOL[c]} {c}
-              </button>
-            ))}
-          </div>
-          {todayRate && <span style={{ fontSize: 11, color: FAINT, whiteSpace: "nowrap" }}>1 USD = €{todayRate.toFixed(3)}</span>}
         </div>
         <div style={{ display: "flex", background: "rgba(0,0,0,0.05)", borderRadius: 10, padding: 3 }}>
           {TABS.map(t => (
@@ -1042,6 +1028,11 @@ export default function ProfitLoss() {
             <button onClick={() => { setPicking(false); setMonth(thisMonth); }} style={BTN_QUIET}>This month</button>
           )}
           <span style={{ flex: 1 }} />
+          {todayRate && (
+            <span style={{ fontSize: 11, color: FAINT, whiteSpace: "nowrap" }} title="Used when an expense is typed in euros">
+              €1 = {money(Math.round((1 / todayRate) * 1000) / 1000)} today
+            </span>
+          )}
           {previous && !picking && (
             <button onClick={() => { setPickFrom(previous); setPicking(true); }} style={BTN_QUIET}>
               Bring back from {monthName(previous, true)}…
@@ -1076,13 +1067,13 @@ export default function ProfitLoss() {
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: 12, alignItems: "start" }}>
-          <Section title="PROFIT" caption="Clients" total={money(totals.revenue)}>
+          <Section title="PROFIT" caption="Clients" total={totals.revenue}>
             {list("revenue", false, "Add a client")}
           </Section>
-          <Section title="LOSS" caption="Expenses" total={money(totals.expenses)}>
+          <Section title="LOSS" caption="Expenses" total={totals.expenses}>
             {list("expense", false, "Add an expense")}
           </Section>
-          <Section title="PERSONAL" caption="Expenses" total={money(totals.personal)}>
+          <Section title="PERSONAL" caption="Expenses" total={totals.personal}>
             {([["Necessary", false, totals.necessary], ["Leisure", true, totals.leisure]] as const).map(([name, leisure, sum], i) => (
               <div key={name} style={{ marginTop: i ? 16 : 0 }}>
                 <div style={{ display: "flex", alignItems: "baseline", padding: "0 9px 4px", borderBottom: "1px solid rgba(0,0,0,0.06)", marginBottom: 4 }}>
@@ -1328,7 +1319,7 @@ export default function ProfitLoss() {
         <ClientPanel
           name={cs.names.get(editing) ?? profiles[editing]?.name ?? editing}
           profile={profiles[editing] ?? null}
-          lines={view.filter(l => l.kind === "revenue" && clientKey(l.label) === editing)} currency={display}
+          lines={all.filter(l => l.kind === "revenue" && clientKey(l.label) === editing)}
           months={monthRows.map(r => r.month)}
           otherKeys={new Set([...cs.names.keys()].filter(k => k !== editing))}
           onSave={saveClient} onClose={() => setEditing(null)} onOpenMonth={openMonth} />
