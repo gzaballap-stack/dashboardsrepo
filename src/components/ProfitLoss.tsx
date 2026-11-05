@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -272,9 +272,10 @@ function Row({ line, euro, onPatch, onRemove, move, repeat }: {
   );
 }
 
-function AddRow({ placeholder, euro, onAdd }: {
+function AddRow({ placeholder, euro, suggestions = [], onAdd }: {
   placeholder: string;
   euro?: { rate: number | null };
+  suggestions?: Suggestion[];
   onAdd: (label: string, amount: number, currency: Currency) => Promise<boolean>;
 }) {
   const [label, setLabel] = useState("");
@@ -298,9 +299,8 @@ function AddRow({ placeholder, euro, onAdd }: {
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
-      <input ref={labelRef} value={label} onChange={e => setLabel(e.target.value)} onKeyDown={onKey}
-        placeholder={placeholder} aria-label={placeholder}
-        style={{ ...INPUT, flex: 1, background: "rgba(0,0,0,0.035)" }} />
+      <SuggestInput value={label} onChange={setLabel} suggestions={suggestions} inputRef={labelRef}
+        placeholder={placeholder} ariaLabel={placeholder} onSubmit={submit} />
       {euro && cur === "EUR" && typed ? (
         <span style={{ fontSize: 11, color: FAINT, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}
           title={euro.rate ? `Today €1 = $${(1 / euro.rate).toFixed(4)}` : undefined}>
@@ -394,56 +394,115 @@ function GhostRow({ label, hint, euro, onCreate, onDismiss }: {
   );
 }
 
-// Adding a client payment: pick a client rather than type one, so the name
-// matches the Client Roster and the Clients tab. "Someone else…" still allows
-// a one-off name.
-function ClientAddRow({ choices, onAdd }: {
-  choices: { group: string; names: string[] }[];
+type Suggestion = { name: string; hint?: string };
+
+// A name box that offers matches as you type — roster clients, past clients,
+// past expenses — and takes anything new as typed. Arrow keys move, Enter
+// picks the highlighted match (or submits what was typed), Escape closes.
+function SuggestInput({ value, onChange, suggestions, placeholder, ariaLabel, onSubmit, inputRef, style }: {
+  value: string;
+  onChange: (v: string) => void;
+  suggestions: Suggestion[];
+  placeholder: string;
+  ariaLabel: string;
+  onSubmit: () => void;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
+  style?: React.CSSProperties;
+}) {
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(-1);
+  const listId = useId();
+  const q = value.trim().toLowerCase();
+  const matches = useMemo(() => {
+    if (!q) return [];
+    const starts = suggestions.filter(s => s.name.toLowerCase().startsWith(q));
+    const words = suggestions.filter(s => !starts.includes(s) && s.name.toLowerCase().split(/[\s(]+/).some(w => w.startsWith(q)));
+    const within = suggestions.filter(s => !starts.includes(s) && !words.includes(s) && s.name.toLowerCase().includes(q));
+    return [...starts, ...words, ...within].filter(s => s.name.toLowerCase() !== q).slice(0, 8);
+  }, [q, suggestions]);
+  const showing = open && matches.length > 0;
+
+  const pick = (name: string) => { onChange(name); setOpen(false); setHi(-1); };
+  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (showing && e.key === "ArrowDown") { e.preventDefault(); setHi(h => (h + 1) % matches.length); return; }
+    if (showing && e.key === "ArrowUp") { e.preventDefault(); setHi(h => (h <= 0 ? matches.length - 1 : h - 1)); return; }
+    if (e.key === "Escape") { setOpen(false); setHi(-1); return; }
+    if (e.key === "Enter") {
+      if (showing && hi >= 0) { e.preventDefault(); pick(matches[hi].name); return; }
+      setOpen(false);
+      onSubmit();
+    }
+  };
+
+  return (
+    <div style={{ position: "relative", flex: 1, minWidth: 0, display: "flex" }}>
+      <input ref={inputRef} value={value} placeholder={placeholder} aria-label={ariaLabel}
+        role="combobox" aria-expanded={showing} aria-controls={listId} aria-autocomplete="list" autoComplete="off"
+        onChange={e => { onChange(e.target.value); setOpen(true); setHi(-1); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => { setOpen(false); setHi(-1); }, 120)}
+        onKeyDown={onKey}
+        style={{ ...INPUT, flex: 1, background: "rgba(0,0,0,0.035)", ...style }} />
+      {showing && (
+        <ul id={listId} role="listbox" style={{
+          position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, marginTop: 4, padding: 4, listStyle: "none",
+          background: CARD, border: BORDER, borderRadius: 10, boxShadow: "0 12px 32px rgba(0,0,0,0.14)", maxHeight: 240, overflowY: "auto",
+        }}>
+          {matches.map((m, i) => (
+            <li key={m.name} role="option" aria-selected={i === hi}
+              onMouseDown={e => { e.preventDefault(); pick(m.name); }} onMouseEnter={() => setHi(i)}
+              style={{
+                display: "flex", alignItems: "baseline", gap: 8, padding: "7px 9px", borderRadius: 7, cursor: "pointer", fontSize: 13, color: INK,
+                background: i === hi ? "rgba(0,0,0,0.06)" : "transparent",
+              }}>
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
+              {m.hint && <span style={{ fontSize: 11, color: FAINT, whiteSpace: "nowrap" }}>{m.hint}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// Adding a client payment: start typing and roster clients and past clients
+// are offered (so the name matches the Client Roster and the Clients tab);
+// anything else is taken as a new name.
+function ClientAddRow({ suggestions, onAdd }: {
+  suggestions: Suggestion[];
   onAdd: (label: string, amount: number) => Promise<boolean>;
 }) {
-  const OTHER = "\u0000other";
-  const [pick, setPick] = useState("");
-  const [custom, setCustom] = useState("");
+  const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [bad, setBad] = useState(false);
   const [busy, setBusy] = useState(false);
-  const name = pick === OTHER ? custom.trim() : pick;
+  const nameRef = useRef<HTMLInputElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
 
   const submit = async () => {
-    if (busy || !name) return;
+    if (busy || !name.trim()) return;
+    if (!amount.trim()) { amountRef.current?.focus(); return; }
     const value = parseAmount(amount);
     if (value === null) { setBad(true); return; }
     setBusy(true);
-    const ok = await onAdd(name, value);
+    const ok = await onAdd(name.trim(), value);
     setBusy(false);
-    if (ok) { setPick(""); setCustom(""); setAmount(""); }
+    if (ok) { setName(""); setAmount(""); nameRef.current?.focus(); }
   };
-  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") submit(); };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
-      <select value={pick} onChange={e => setPick(e.target.value)} aria-label="Add a client"
-        style={{ ...INPUT, flex: 1, minWidth: 120, background: "rgba(0,0,0,0.035)", color: pick ? INK : MUTED, cursor: "pointer" }}>
-        <option value="">Add a client…</option>
-        {choices.map(g => (
-          <optgroup key={g.group} label={g.group}>
-            {g.names.map(n => <option key={n} value={n}>{n}</option>)}
-          </optgroup>
-        ))}
-        <option value={OTHER}>Someone else…</option>
-      </select>
-      {pick === OTHER && (
-        <input value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={onKey} autoFocus
-          placeholder="Name" aria-label="Client name" style={{ ...INPUT, flex: 1, minWidth: 100, background: "rgba(0,0,0,0.035)" }} />
-      )}
+    <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
+      <SuggestInput value={name} onChange={setName} suggestions={suggestions} inputRef={nameRef}
+        placeholder="Add a client" ariaLabel="Add a client" onSubmit={submit} />
       <span style={{ fontSize: 13, color: FAINT }}>$</span>
-      <input value={amount} onChange={e => { setAmount(e.target.value); setBad(false); }} onKeyDown={onKey}
+      <input ref={amountRef} value={amount} onChange={e => { setAmount(e.target.value); setBad(false); }}
+        onKeyDown={e => { if (e.key === "Enter") submit(); }}
         placeholder="0" aria-label="Amount" inputMode="decimal"
         style={{
           ...INPUT, width: 78, textAlign: "right", background: "rgba(0,0,0,0.035)",
           ...(bad ? { borderColor: BAD, color: BAD } : null),
         }} />
-      <button onClick={submit} disabled={busy || !name} style={{ ...BTN_QUIET, padding: "7px 10px", opacity: busy || !name ? 0.5 : 1 }}>
+      <button onClick={submit} disabled={busy || !name.trim()} style={{ ...BTN_QUIET, padding: "7px 10px", opacity: busy || !name.trim() ? 0.5 : 1 }}>
         Add
       </button>
     </div>
@@ -997,22 +1056,30 @@ export default function ProfitLoss() {
     };
   }, [all, monthRows, from, to]);
 
-  // Who can be picked when adding a client payment: the roster (by status),
-  // then anyone who has paid before but isn't on the roster.
-  const clientChoices = useMemo(() => {
+  // Offered as you type a client: the roster (with status), then anyone who
+  // has paid before but isn't on the roster. Not those already in this month.
+  const clientSuggestions: Suggestion[] = useMemo(() => {
     const have = new Set(current.filter(l => l.kind === "revenue").map(l => clientKey(l.label)));
     const onRoster = new Set(roster.map(c => clientKey(c.name)));
-    const groups: { group: string; names: string[] }[] = (["live", "setup", "paused", "offline"] as RosterStatus[]).map(st => ({
-      group: STATUS_LABEL[st],
-      names: roster.filter(c => c.status === st && !have.has(clientKey(c.name))).map(c => c.name),
-    }));
+    const order: RosterStatus[] = ["live", "setup", "paused", "offline"];
+    const fromRoster = [...roster]
+      .sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status) || a.name.localeCompare(b.name))
+      .filter(c => !have.has(clientKey(c.name)))
+      .map(c => ({ name: c.name, hint: STATUS_LABEL[c.status].toLowerCase() }));
     const past = [...clientStats.names.entries()]
       .filter(([k]) => !onRoster.has(k) && !have.has(k))
-      .map(([, name]) => name)
-      .sort((a, b) => a.localeCompare(b));
-    groups.push({ group: "Paid before, not on the roster", names: past });
-    return groups.filter(g => g.names.length);
+      .map(([, name]) => ({ name, hint: "paid before" }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...fromRoster, ...past];
   }, [roster, current, clientStats.names]);
+
+  // Offered as you type an expense: names used before for that kind.
+  const expenseSuggestions = (kind: Kind): Suggestion[] => {
+    const have = new Set(current.filter(l => l.kind === kind).map(l => clientKey(l.label)));
+    const seen = new Map<string, string>();
+    for (const l of all) if (l.kind === kind && l.label.trim() && !have.has(clientKey(l.label)) && !seen.has(clientKey(l.label))) seen.set(clientKey(l.label), l.label.trim());
+    return [...seen.values()].sort((a, b) => a.localeCompare(b)).map(name => ({ name }));
+  };
 
   // Time-frame shortcuts. "Last N months" counts back from the latest month logged.
   const frames = useMemo(() => {
@@ -1074,8 +1141,8 @@ export default function ProfitLoss() {
             onDismiss={{ title: "Stop repeating", run: () => toggleRepeat(kind, r.label, leisure) }} />
         ))}
       {kind === "revenue"
-        ? <ClientAddRow choices={clientChoices} onAdd={(label, amount) => addLine(kind, false, label, amount, "USD")} />
-        : <AddRow placeholder={placeholder} euro={euro}
+        ? <ClientAddRow suggestions={clientSuggestions} onAdd={(label, amount) => addLine(kind, false, label, amount, "USD")} />
+        : <AddRow placeholder={placeholder} euro={euro} suggestions={expenseSuggestions(kind)}
             onAdd={(label, amount, currency) => addLine(kind, leisure, label, amount, currency)} />}
     </>
   );

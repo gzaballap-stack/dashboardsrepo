@@ -13,11 +13,13 @@
   **Live** clients blank ("AEGIS (Matt) · live"); typing an amount creates
   the line, blank means they didn't pay and they don't count. Setup / Paused /
   Offline clients are not listed automatically (owner's call) but can be added
-  from the **Add a client…** dropdown, which groups the roster by status, then
-  anyone who has paid before but isn't on the roster, then "Someone else…" for
-  a typed name. Names therefore match the roster and the Clients tab. The
+  by typing their name in **Add a client** — see the type-ahead below. Names therefore match the roster and the Clients tab. The
   link is by name only — renaming a client in the roster does not rename old
   lines (the Clients tab's Edit does that).
+- **Adding a client is a type-ahead** (replaced the dropdown the same day,
+  owner's request): type a few letters and roster clients (with their status)
+  and past clients are offered — pick one, or keep typing for a new name.
+  Expense names are suggested from past expenses of that kind the same way.
 - **Repeating expenses** (rent, groceries, transport, GHL…): the ↻ button on
   an expense marks it as coming back every month. Each month then offers it
   **blank** (owner's call — no carried amount) until an amount is typed; ↻ on
