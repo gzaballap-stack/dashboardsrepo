@@ -1,25 +1,38 @@
-## 2026-11-05 — Profit and Loss: expenses typed in euros; bring lines back from an earlier month
+## 2026-11-05 — Profit and Loss: clients from the roster, repeating expenses, euro entry
 
 - **The sheet is dollars only.** An earlier cut this day let the whole sheet be
   read in euros at each line's own historic rate; the owner scrapped it as
-  useless ("I don't want it to track each exchange rate"). No schema change
-  shipped; `pnl_lines` is unchanged.
+  useless. `pnl_lines` is unchanged.
 - **Expenses (business and personal) can be typed in euros.** The $ beside the
   amount is a button on expense lines (not on clients): flip it to € and the
   figure is turned into dollars **once, as it is saved**, at today's ECB
   reference rate (`src/lib/fx.ts`, frankfurter.dev, no key, cached a day;
   `/api/profit-loss/rate` previews it — "€1 = $1.12 today" in the month bar).
-  Only the dollar figure is kept; nothing records that it came from euros.
-  Without a rate the save is refused ("try again in a moment") rather than
-  storing euros as dollars.
-- **Bring back from an earlier month:** a button on every month (and the
-  empty-month card) opens a picker listing that month's clients, expenses and
-  personal lines not already in this month — clients and expenses ticked by
-  default, personal unticked — and adds the ticked ones with their amounts.
-  Any earlier month can be chosen as the source. The old whole-month copy
-  (`action: copy` with `from`) still exists for callers without `ids`.
-- Checked in a local preview against the sheet's figures (a euro expense, a
-  euro edit, picking 12 of 13 lines). Not checked signed in.
+  Only the dollar figure is kept. Without a rate the save is refused.
+- **Clients come from the Client Roster.** Every month lists the roster's
+  **Live** clients blank ("AEGIS (Matt) · live"); typing an amount creates
+  the line, blank means they didn't pay and they don't count. Setup / Paused /
+  Offline clients are not listed automatically (owner's call) but can be added
+  from the **Add a client…** dropdown, which groups the roster by status, then
+  anyone who has paid before but isn't on the roster, then "Someone else…" for
+  a typed name. Names therefore match the roster and the Clients tab. The
+  link is by name only — renaming a client in the roster does not rename old
+  lines (the Clients tab's Edit does that).
+- **Repeating expenses** (rent, groceries, transport, GHL…): the ↻ button on
+  an expense marks it as coming back every month. Each month then offers it
+  **blank** (owner's call — no carried amount) until an amount is typed; ↻ on
+  the blank row or on a line stops it. Stored by name per user in
+  **`pnl_recurring`** (`supabase/migrations/add_pnl_recurring.sql`,
+  `scripts/migrate-pnl-recurring.mjs <v1|v2>`). Until that table exists the
+  page works and the ↻ button says a database update is needed. **V1 is run
+  by the owner** (the session's V1 writes are blocked); V2 by the V2 data
+  session (the session's token only reaches V1).
+- The "Bring back from an earlier month" picker built earlier today was
+  removed in favour of the above; the whole-month `action: copy` endpoint
+  remains for compatibility but nothing in the page calls it.
+- Checked in a local preview: blank roster clients become lines when typed,
+  the dropdown's groups, a euro expense, marking Rent repeating and seeing it
+  offered blank next month. Not checked signed in.
 
 ## 2026-11-04 — SMS replies read by Claude and tagged in GHL (replaces the VA)
 
