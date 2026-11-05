@@ -49,11 +49,13 @@ type Profile = {
   name_key: string; name: string;
   contact_name: string | null; company: string | null; email: string | null;
   phone: string | null; website: string | null; notes: string | null;
+  client_id?: string | null;      // a Client Roster record this client is
 };
 
 type ClientForm = {
   name: string; contact_name: string; company: string; email: string;
   phone: string; website: string; notes: string;
+  client_id: string;              // "" = not on the roster
 };
 
 // Same client typed two ways ("Dave", "dave ") is one client.
@@ -190,7 +192,7 @@ const BTN_QUIET: React.CSSProperties = {
 
 // One editable line. Saves on blur (or Enter); the parent re-keys the row when
 // the saved values change, so local state never drifts from what is stored.
-function Row({ line, euro, onPatch, onRemove, move, repeat }: {
+function Row({ line, euro, onPatch, onRemove, move, repeat, shownAs }: {
   line: Line;
   // Set when this line may be typed in euros: today's EUR-per-USD rate (null = unknown).
   euro?: { rate: number | null };
@@ -199,6 +201,8 @@ function Row({ line, euro, onPatch, onRemove, move, repeat }: {
   move?: { title: string; onMove: () => void };
   // Shown on expenses: whether this one comes back every month.
   repeat?: { on: boolean; toggle: () => void };
+  // A client whose roster / company name differs from the name on the line.
+  shownAs?: string;
 }) {
   const [label, setLabel] = useState(line.label);
   const [amount, setAmount] = useState(String(line.amount));
@@ -231,6 +235,12 @@ function Row({ line, euro, onPatch, onRemove, move, repeat }: {
     <div className="pnl-row" style={{ display: "flex", alignItems: "center", gap: 4 }}>
       <input value={label} onChange={e => setLabel(e.target.value)} onBlur={commitLabel} onKeyDown={blurOnEnter}
         aria-label="Name" placeholder="Name" className="pnl-input" style={{ ...INPUT, flex: 1, textOverflow: "ellipsis" }} />
+      {shownAs && (
+        <span title={`Shows as ${shownAs} (the Client Roster / company name)`}
+          style={{ fontSize: 11, color: FAINT, maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {shownAs}
+        </span>
+      )}
       {euro ? (
         <button onClick={() => setCur(other(cur))} aria-label={`Typing ${cur === "EUR" ? "euros" : "dollars"} for ${line.label || "line"}`}
           title={cur === "EUR" ? "Typing euros — saved as dollars at today's rate. Click for dollars." : "Click to type this in euros (saved as dollars at today's rate)"}
@@ -394,7 +404,7 @@ function GhostRow({ label, hint, euro, onCreate, onDismiss }: {
   );
 }
 
-type Suggestion = { name: string; hint?: string };
+type Suggestion = { name: string; value?: string; hint?: string };   // value: what to store, if not the shown name
 
 // A name box that offers matches as you type — roster clients, past clients,
 // past expenses — and takes anything new as typed. Arrow keys move, Enter
@@ -484,8 +494,10 @@ function ClientAddRow({ suggestions, onAdd }: {
     if (!amount.trim()) { amountRef.current?.focus(); return; }
     const value = parseAmount(amount);
     if (value === null) { setBad(true); return; }
+    // Typed text that is a suggestion's shown name stands for that client.
+    const match = suggestions.find(sg => sg.name.trim().toLowerCase() === name.trim().toLowerCase());
     setBusy(true);
-    const ok = await onAdd(name.trim(), value);
+    const ok = await onAdd(match?.value ?? match?.name ?? name.trim(), value);
     setBusy(false);
     if (ok) { setName(""); setAmount(""); nameRef.current?.focus(); }
   };
@@ -664,9 +676,11 @@ const FORM_FIELDS: { id: keyof ClientForm; label: string; type?: string; placeho
 
 // A client's details and their whole payment history, all time. Saving a new
 // name renames them on every month, so the history stays attached.
-function ClientPanel({ name, profile, lines, months, otherKeys, onSave, onClose, onOpenMonth }: {
-  name: string;
+function ClientPanel({ name, display, profile, roster, lines, months, otherKeys, onSave, onClose, onOpenMonth }: {
+  name: string;                  // as on the lines
+  display: string;               // what shows everywhere (roster name, else company, else name)
   profile: Profile | null;
+  roster: RosterClient[];
   lines: Line[];                 // this client's payment lines
   months: string[];              // every month logged, oldest first
   otherKeys: Set<string>;
@@ -679,6 +693,7 @@ function ClientPanel({ name, profile, lines, months, otherKeys, onSave, onClose,
     contact_name: profile?.contact_name ?? "", company: profile?.company ?? "",
     email: profile?.email ?? "", phone: profile?.phone ?? "",
     website: profile?.website ?? "", notes: profile?.notes ?? "",
+    client_id: profile?.client_id ?? "",
   }), [name, profile]);
   const [form, setForm] = useState<ClientForm>(stored);
   const [busy, setBusy] = useState(false);
@@ -724,9 +739,10 @@ function ClientPanel({ name, profile, lines, months, otherKeys, onSave, onClose,
       }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h3 style={{ fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>{name}</h3>
+            <h3 style={{ fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>{display}</h3>
             <p style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>
-              {[profile?.company, profile?.contact_name].filter(Boolean).join(" · ") || "No details saved yet"}
+              {[display !== name ? `on the sheet as “${name}”` : null, profile?.contact_name,
+                profile?.client_id ? "on the Client Roster" : "not on the Client Roster"].filter(Boolean).join(" · ")}
             </p>
           </div>
           <button onClick={onClose} aria-label="Close" style={{ ...BTN_QUIET, padding: "7px 11px" }}>Close</button>
@@ -747,6 +763,16 @@ function ClientPanel({ name, profile, lines, months, otherKeys, onSave, onClose,
               </label>
             ))}
           </div>
+          <label style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, display: "flex", flexDirection: "column", gap: 5, marginTop: 12 }}>
+            Client Roster record
+            <select value={form.client_id} onChange={e => set("client_id", e.target.value)} style={{ ...FIELD, cursor: "pointer" }}>
+              <option value="">Not on the roster</option>
+              {roster.map(c => <option key={c.id} value={c.id}>{c.name} — {STATUS_LABEL[c.status]}</option>)}
+            </select>
+            <span style={{ fontSize: 11, fontWeight: 400, color: FAINT }}>
+              Linked, the roster name shows here and in every month; leads and appointments stay tied to that record for later.
+            </span>
+          </label>
           <label style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, display: "flex", flexDirection: "column", gap: 5, marginTop: 12 }}>
             Notes
             <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={3}
@@ -827,13 +853,23 @@ export default function ProfitLoss() {
   const [scope, setScope] = useState<number | "all">("all");
   // Clients from the Client Roster, and the expenses marked "repeats monthly".
   // Both are optional extras: without them the sheet still works.
-  const [roster, setRoster] = useState<RosterClient[]>([]);
   const [recurring, setRecurring] = useState<Recurring[]>([]);
   const [todayRate, setTodayRate] = useState<number | null>(null);   // EUR per 1 USD
   const euro = { rate: todayRate };
   const [clientRange, setClientRange] = useState<{ from: string; to: string } | null>(null);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [editing, setEditing] = useState<string | null>(null);   // clientKey of the open client
+  const [roster, setRoster] = useState<RosterClient[]>([]);
+  const rosterById = useMemo(() => new Map(roster.map(c => [c.id, c])), [roster]);
+  const rosterByKey = useMemo(() => new Map(roster.map(c => [clientKey(c.name), c])), [roster]);
+  // What a client is called everywhere: the roster record's name if linked
+  // (by id, or by matching name), else the company, else the name on the lines.
+  const displayOf = useCallback((label: string) => {
+    const key = clientKey(label);
+    const p = profiles[key];
+    const r = (p?.client_id ? rosterById.get(p.client_id) : undefined) ?? rosterByKey.get(key);
+    return r?.name ?? (p?.company?.trim() || p?.name || label.trim());
+  }, [profiles, rosterById, rosterByKey]);
 
   const load = useCallback(async (pickMonth: boolean) => {
     try {
@@ -944,8 +980,11 @@ export default function ProfitLoss() {
   // and a line is only created once an amount is typed.
   const ghostClients = useMemo(() => {
     const have = new Set(current.filter(l => l.kind === "revenue").map(l => clientKey(l.label)));
-    return roster.filter(c => c.status === "live" && !have.has(clientKey(c.name)));
-  }, [roster, current]);
+    return roster
+      .filter(c => c.status === "live")
+      .map(c => ({ ...c, label: Object.values(profiles).find(p => p.client_id === c.id)?.name ?? c.name }))
+      .filter(c => !have.has(clientKey(c.label)));
+  }, [roster, profiles, current]);
 
   // Repeating expenses with no line yet this month, likewise offered blank.
   const ghostExpenses = (kind: Kind, leisure: boolean) => {
@@ -1057,21 +1096,41 @@ export default function ProfitLoss() {
   }, [all, monthRows, from, to]);
 
   // Offered as you type a client: the roster (with status), then anyone who
-  // has paid before but isn't on the roster. Not those already in this month.
+  // has paid before but isn't on the roster. Shown by display name; `value`
+  // is the name their lines carry. Not those already in this month.
   const clientSuggestions: Suggestion[] = useMemo(() => {
     const have = new Set(current.filter(l => l.kind === "revenue").map(l => clientKey(l.label)));
-    const onRoster = new Set(roster.map(c => clientKey(c.name)));
     const order: RosterStatus[] = ["live", "setup", "paused", "offline"];
     const fromRoster = [...roster]
       .sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status) || a.name.localeCompare(b.name))
-      .filter(c => !have.has(clientKey(c.name)))
-      .map(c => ({ name: c.name, hint: STATUS_LABEL[c.status].toLowerCase() }));
+      .map(c => {
+        // A roster client whose lines carry another name keeps that name on new lines.
+        const viaProfile = Object.values(profiles).find(p => p.client_id === c.id);
+        return { name: c.name, value: viaProfile?.name ?? c.name, hint: STATUS_LABEL[c.status].toLowerCase() };
+      })
+      .filter(sg => !have.has(clientKey(sg.value)));
     const past = [...clientStats.names.entries()]
-      .filter(([k]) => !onRoster.has(k) && !have.has(k))
-      .map(([, name]) => ({ name, hint: "paid before" }))
+      .filter(([k]) => !rosterByKey.has(k) && !have.has(k) && !profiles[k]?.client_id)
+      .map(([, name]) => ({ name: displayOf(name), value: name, hint: "paid before" }))
+      .filter(sg => !fromRoster.some(f => clientKey(f.value) === clientKey(sg.value)))
       .sort((a, b) => a.name.localeCompare(b.name));
     return [...fromRoster, ...past];
-  }, [roster, current, clientStats.names]);
+  }, [roster, rosterByKey, profiles, current, clientStats.names, displayOf]);
+
+  // Adding a payment for a roster client that has no profile yet records the
+  // link, so the roster is the one record from the first payment on.
+  const addClientLine = async (label: string, amount: number) => {
+    const ok = await addLine("revenue", false, label, amount, "USD");
+    if (!ok) return false;
+    const key = clientKey(label);
+    const r = rosterByKey.get(key);
+    if (r && !profiles[key]?.client_id) {
+      send("PUT", "/api/profit-loss/clients", { current: label, client_id: r.id })
+        .then(({ client }) => { if (client) setProfiles(prev => ({ ...prev, [client.name_key]: client })); })
+        .catch(() => {});
+    }
+    return true;
+  };
 
   // Offered as you type an expense: names used before for that kind.
   const expenseSuggestions = (kind: Kind): Suggestion[] => {
@@ -1099,7 +1158,7 @@ export default function ProfitLoss() {
     if (!editing) return null;
     const current = clientStats.names.get(editing) ?? profiles[editing]?.name ?? editing;
     try {
-      const { client } = await send("PUT", "/api/profit-loss/clients", { current, ...form });
+      const { client } = await send("PUT", "/api/profit-loss/clients", { current, ...form, client_id: form.client_id || null });
       const saved = client as Profile;
       setProfiles(prev => {
         const next = { ...prev };
@@ -1125,6 +1184,7 @@ export default function ProfitLoss() {
     <>
       {ofKind(kind, leisure).map(l => (
         <Row key={rowKey(l)} line={l} euro={kind === "revenue" ? undefined : euro} onPatch={patchLine} onRemove={removeLine}
+          shownAs={kind === "revenue" && displayOf(l.label) !== l.label.trim() ? displayOf(l.label) : undefined}
           move={kind === "personal"
             ? { title: leisure ? "Move to Necessary" : "Move to Leisure", onMove: () => patchLine(l.id, { leisure: !leisure }) }
             : undefined}
@@ -1133,7 +1193,7 @@ export default function ProfitLoss() {
       {kind === "revenue"
         ? ghostClients.map(c => (
           <GhostRow key={`ghost:${c.id}`} label={c.name} hint="live"
-            onCreate={(amount, currency) => addLine(kind, false, c.name, amount, currency)} />
+            onCreate={(amount, currency) => addClientLine(c.label, amount).then(ok => ok && currency === "USD")} />
         ))
         : ghostExpenses(kind, leisure).map(r => (
           <GhostRow key={`ghost:${r.id}`} label={r.label} hint="monthly" euro={euro}
@@ -1141,7 +1201,7 @@ export default function ProfitLoss() {
             onDismiss={{ title: "Stop repeating", run: () => toggleRepeat(kind, r.label, leisure) }} />
         ))}
       {kind === "revenue"
-        ? <ClientAddRow suggestions={clientSuggestions} onAdd={(label, amount) => addLine(kind, false, label, amount, "USD")} />
+        ? <ClientAddRow suggestions={clientSuggestions} onAdd={addClientLine} />
         : <AddRow placeholder={placeholder} euro={euro} suggestions={expenseSuggestions(kind)}
             onAdd={(label, amount, currency) => addLine(kind, leisure, label, amount, currency)} />}
     </>
@@ -1404,11 +1464,13 @@ export default function ProfitLoss() {
               </thead>
               <tbody>
                 {cs.list.map(c => {
-                  const about = [profiles[c.key]?.company, profiles[c.key]?.contact_name].filter(Boolean).join(" · ");
+                  const shown = displayOf(c.name);
+                  const about = [shown !== c.name ? c.name : null, profiles[c.key]?.contact_name,
+                    profiles[c.key]?.client_id || rosterByKey.has(c.key) ? null : "not on roster"].filter(Boolean).join(" · ");
                   return (
                   <tr key={c.key}>
                     <td style={{ ...TD, textAlign: "left", fontWeight: 600 }}>
-                      <button onClick={() => setEditing(c.key)} style={{ fontWeight: 600, color: INK, textAlign: "left" }}>{c.name}</button>
+                      <button onClick={() => setEditing(c.key)} style={{ fontWeight: 600, color: INK, textAlign: "left" }}>{shown}</button>
                       {c.isNew && (
                         <span style={{ marginLeft: 8, padding: "2px 7px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>New</span>
                       )}
@@ -1462,7 +1524,9 @@ export default function ProfitLoss() {
       {editing && (
         <ClientPanel
           name={cs.names.get(editing) ?? profiles[editing]?.name ?? editing}
+          display={displayOf(cs.names.get(editing) ?? profiles[editing]?.name ?? editing)}
           profile={profiles[editing] ?? null}
+          roster={roster}
           lines={all.filter(l => l.kind === "revenue" && clientKey(l.label) === editing)}
           months={monthRows.map(r => r.month)}
           otherKeys={new Set([...cs.names.keys()].filter(k => k !== editing))}

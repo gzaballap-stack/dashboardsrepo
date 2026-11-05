@@ -1,3 +1,39 @@
+## 2026-11-05 — Profit and Loss clients ↔ Client Roster: one record, shown by company
+
+The owner wants every client-facing part of the dashboard to point at one
+client record (a credit tracker — appointments, credits, charges per client —
+is coming and must hang off the same record). Decisions taken with the owner:
+
+- **The Client Roster is that record.** A Profit and Loss client profile
+  (`pnl_clients`) may point at a roster client via **`client_id`**
+  (`supabase/migrations/add_pnl_roster_link.sql`; the migration also links any
+  profile whose name already equals a roster name). Past clients from the
+  sheet stay **off the roster on purpose** ("not going to give us anything");
+  they keep their P&L profile only.
+- **Shown by company, everywhere on Profit and Loss, past months included:**
+  display name = linked roster client's name → else a roster client with the
+  same name → else the profile's Company → else the name on the lines. Lines
+  keep the name they were typed with (`displayOf` in `ProfitLoss.tsx`); the
+  Clients tab shows the display name with the sheet name underneath, the
+  month view shows a muted hint beside a line whose display differs, and the
+  Edit panel is headed by it. The owner said they would go through the
+  Clients tab themselves and fill in client name + company for each one.
+- **Edit panel gains "Client Roster record"** — a dropdown to link a P&L client
+  to a roster client (or unlink). Saving sends `client_id`; renaming onto
+  another client keeps whichever link exists.
+- **Adding a client payment** offers roster clients by roster name; picking a
+  roster client that has no profile yet records the link at once. A roster
+  client whose old lines carry a person's name keeps that name on new lines
+  (the display is the roster name anyway).
+- Until the column exists the API answers without it (profiles still load;
+  linking says a database update is needed).
+  `scripts/migrate-pnl-links.mjs <v1|v2>` applies this **and** the earlier
+  `pnl_recurring` table in one go; **run by the owner on V1**, V2 by the V2
+  data session.
+- Checked in a local preview: a profile with a company shows the company; a
+  linked profile shows the roster name; the Edit panel preselects the roster
+  record. Not checked signed in.
+
 ## 2026-11-05 — Profit and Loss: clients from the roster, repeating expenses, euro entry
 
 - **The sheet is dollars only.** An earlier cut this day let the whole sheet be
