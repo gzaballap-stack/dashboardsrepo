@@ -1,3 +1,21 @@
+## 2026-11-06 — Roster → Profit and Loss, not the other way; no "Add to roster"
+
+Owner's final call on the client link: **the roster stays as it is and is
+managed on the roster.** Reversed from the day before:
+
+- The "Add N to the roster" button and `clients/sync` are gone; typing a new
+  client on the sheet no longer creates a roster record (a typed name that
+  matches a roster client is still linked).
+- **Every roster client is on the Clients tab** from the moment they are
+  added to the roster — those with no payments yet show "Live/Setup… on the
+  roster · no payments logged" with dashes, open to Edit, and count in no
+  figure until they pay. A name-matched roster client reads as linked in the
+  panel even before a profile exists.
+- The muted "shows as <roster name>" hint beside month lines was removed
+  (owner: "why is Legacy Design repeated?"). The roster name still heads the
+  Clients tab and the panel.
+- Checked in a local preview; not checked signed in.
+
 ## 2026-11-05 — Every paying client gets a Client Roster record; roster opens on Live
 
 Owner's decision (reversing the morning's "leave the roster as is"): **the

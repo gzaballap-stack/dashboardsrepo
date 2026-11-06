@@ -188,15 +188,13 @@ const BTN_QUIET: React.CSSProperties = {
 
 // One editable line. Saves on blur (or Enter); the parent re-keys the row when
 // the saved values change, so local state never drifts from what is stored.
-function Row({ line, euro, onPatch, onRemove, move, shownAs }: {
+function Row({ line, euro, onPatch, onRemove, move }: {
   line: Line;
   // Set when this line may be typed in euros: today's EUR-per-USD rate (null = unknown).
   euro?: { rate: number | null };
   onPatch: (id: string, patch: Partial<Pick<Line, "label" | "amount" | "leisure">> & { currency?: Currency }) => void;
   onRemove: (id: string) => void;
   move?: { title: string; onMove: () => void };
-  // A client whose roster / company name differs from the name on the line.
-  shownAs?: string;
 }) {
   const [label, setLabel] = useState(line.label);
   const [amount, setAmount] = useState(line.amount ? String(line.amount) : "");
@@ -229,12 +227,6 @@ function Row({ line, euro, onPatch, onRemove, move, shownAs }: {
     <div className="pnl-row" style={{ display: "flex", alignItems: "center", gap: 4 }}>
       <input value={label} onChange={e => setLabel(e.target.value)} onBlur={commitLabel} onKeyDown={blurOnEnter}
         aria-label="Name" placeholder="Name" className="pnl-input" style={{ ...INPUT, flex: 1, textOverflow: "ellipsis" }} />
-      {shownAs && (
-        <span title={`Shows as ${shownAs} (the Client Roster / company name)`}
-          style={{ fontSize: 11, color: FAINT, maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {shownAs}
-        </span>
-      )}
       {euro ? (
         <button onClick={() => setCur(other(cur))} aria-label={`Typing ${cur === "EUR" ? "euros" : "dollars"} for ${line.label || "line"}`}
           title={cur === "EUR" ? "Typing euros — saved as dollars at today's rate. Click for dollars." : "Click to type this in euros (saved as dollars at today's rate)"}
@@ -1020,54 +1012,29 @@ export default function ProfitLoss() {
 
   // Adding a payment for a roster client that has no profile yet records the
   // link, so the roster is the one record from the first payment on.
-  // Puts sheet clients on the Client Roster: an existing roster name is
-  // linked, a new one is created. Reloads both lists afterwards.
-  const syncToRoster = async (names: string[] | null, status?: "live" | "offline") => {
-    try {
-      const result = await send("POST", "/api/profit-loss/clients/sync", { names: names ?? undefined, status });
-      const [r, c] = await Promise.all([
-        fetch("/api/clients").then(res => (res.ok ? res.json() : { clients: [] })),
-        fetch("/api/profit-loss/clients").then(res => (res.ok ? res.json() : { clients: [] })),
-      ]);
-      setRoster((r.clients ?? [])
-        .filter((x: RosterClient & { is_internal?: boolean }) => !x.is_internal)
-        .map((x: RosterClient & { is_live?: boolean }) => ({ id: x.id, name: x.name, status: x.status ?? (x.is_live ? "live" : "offline") })));
-      setProfiles(Object.fromEntries((c.clients ?? []).map((x: Profile) => [x.name_key, x])));
-      setError(null);
-      return result as { created: string[]; linked: string[] };
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update the roster");
-      return null;
-    }
-  };
-
   const addClientLine = async (label: string, amount: number) => {
     const ok = await addLine("revenue", false, label, amount, "USD");
     if (!ok) return false;
+    // A typed name that is a roster client's name gets its profile linked at once.
     const key = clientKey(label);
-    if (!profiles[key]?.client_id) {
-      // On the roster already → link; brand new → create as Live (they just paid).
-      void syncToRoster([label], rosterByKey.has(key) ? undefined : "live");
+    const r = rosterByKey.get(key);
+    if (r && !profiles[key]?.client_id) {
+      send("PUT", "/api/profit-loss/clients", { current: label, client_id: r.id })
+        .then(({ client }) => { if (client) setProfiles(prev => ({ ...prev, [client.name_key]: client })); })
+        .catch(() => {});
     }
     return true;
   };
 
-  // Sheet clients with no roster record yet.
-  const offRoster = useMemo(
-    () => [...clientStats.names.entries()].filter(([k]) => !profiles[k]?.client_id && !rosterByKey.has(k)).map(([, n]) => n),
-    [clientStats.names, profiles, rosterByKey],
-  );
-  const [syncing, setSyncing] = useState(false);
-  const addAllToRoster = async () => {
-    if (!offRoster.length || syncing) return;
-    const ok = window.confirm(
-      `Add ${offRoster.length} client${offRoster.length === 1 ? "" : "s"} to the Client Roster?\n\n` +
-      `Anyone who paid in the latest month goes in as Live, everyone else as Offline.\n\n${offRoster.join(", ")}`);
-    if (!ok) return;
-    setSyncing(true);
-    await syncToRoster(offRoster);
-    setSyncing(false);
-  };
+  // Roster clients who haven't paid yet in Profit and Loss: listed on the
+  // Clients tab with nothing paid, so a client added to the roster is on the
+  // sheet from day one. They count in no figure until they pay.
+  const rosterOnly = useMemo(() => {
+    const linked = new Set(Object.values(profiles).filter(p => p.client_id && clientStats.names.has(p.name_key)).map(p => p.client_id));
+    return roster
+      .filter(c => !clientStats.names.has(clientKey(c.name)) && !linked.has(c.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [roster, profiles, clientStats.names]);
 
   // Offered as you type an expense: names used before for that kind.
   const expenseSuggestions = (kind: Kind): Suggestion[] => {
@@ -1121,7 +1088,6 @@ export default function ProfitLoss() {
     <>
       {ofKind(kind, leisure).map(l => (
         <Row key={rowKey(l)} line={l} euro={kind === "revenue" ? undefined : euro} onPatch={patchLine} onRemove={removeLine}
-          shownAs={kind === "revenue" && displayOf(l.label) !== l.label.trim() ? displayOf(l.label) : undefined}
           move={kind === "personal"
             ? { title: leisure ? "Move to Necessary" : "Move to Leisure", onMove: () => patchLine(l.id, { leisure: !leisure }) }
             : undefined}
@@ -1327,7 +1293,7 @@ export default function ProfitLoss() {
       </>))}
 
       {/* ── Clients ── */}
-      {tab === "clients" && (monthRows.length === 0 ? (
+      {tab === "clients" && (monthRows.length === 0 && rosterOnly.length === 0 ? (
         <p style={{ fontSize: 13, color: MUTED, padding: "24px 4px" }}>No client revenue logged yet.</p>
       ) : (<>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -1344,12 +1310,6 @@ export default function ProfitLoss() {
             );
           })}
           <span style={{ flex: 1 }} />
-          {offRoster.length > 0 && (
-            <button onClick={addAllToRoster} disabled={syncing} style={{ ...BTN_QUIET, opacity: syncing ? 0.5 : 1 }}
-              title="Every client who has ever paid gets a Client Roster record">
-              {syncing ? "Adding…" : `Add ${offRoster.length} to the roster`}
-            </button>
-          )}
           <label style={{ fontSize: 12, color: MUTED, display: "flex", alignItems: "center", gap: 6 }}>
             From
             <select value={from} style={SELECT}
@@ -1394,7 +1354,7 @@ export default function ProfitLoss() {
             aria: `${monthName(r.month)}: ${r.paying} paying, ${r.stayed} stayed, ${r.fresh} new, ${r.back} back, ${r.lost ?? 0} lost`,
           }))} />
 
-        {cs.list.length === 0 ? (
+        {cs.list.length === 0 && rosterOnly.length === 0 ? (
           <p style={{ fontSize: 13, color: MUTED, padding: "8px 4px" }}>No client payments in this time frame.</p>
         ) : (
           <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 16, overflowX: "auto" }}>
@@ -1435,6 +1395,26 @@ export default function ProfitLoss() {
                   </tr>
                   );
                 })}
+                {rosterOnly.map(c => (
+                  <tr key={`roster:${c.id}`}>
+                    <td style={{ ...TD, textAlign: "left", fontWeight: 600 }}>
+                      <button onClick={() => setEditing(clientKey(c.name))} style={{ fontWeight: 600, color: INK, textAlign: "left" }}>{c.name}</button>
+                      <div style={{ fontSize: 11.5, fontWeight: 400, color: MUTED, marginTop: 2 }}>
+                        {STATUS_LABEL[c.status]} on the roster · no payments logged
+                      </div>
+                    </td>
+                    <td style={{ ...TD, color: FAINT }}>—</td>
+                    <td style={{ ...TD, color: FAINT }}>—</td>
+                    <td style={{ ...TD, color: FAINT }}>—</td>
+                    <td style={{ ...TD, color: FAINT }}>—</td>
+                    <td style={{ ...TD, color: FAINT }}>—</td>
+                    <td style={{ ...TD, color: FAINT }}>—</td>
+                    <td style={{ ...TD, fontWeight: 600, color: FAINT }}>No</td>
+                    <td style={TD}>
+                      <button onClick={() => setEditing(clientKey(c.name))} aria-label={`Edit ${c.name}`} style={{ ...BTN_QUIET, padding: "5px 11px", fontSize: 12 }}>Edit</button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -1469,9 +1449,15 @@ export default function ProfitLoss() {
 
       {editing && (
         <ClientPanel
-          name={cs.names.get(editing) ?? profiles[editing]?.name ?? editing}
-          display={displayOf(cs.names.get(editing) ?? profiles[editing]?.name ?? editing)}
-          profile={profiles[editing] ?? null}
+          name={cs.names.get(editing) ?? profiles[editing]?.name ?? rosterByKey.get(editing)?.name ?? editing}
+          display={displayOf(cs.names.get(editing) ?? profiles[editing]?.name ?? rosterByKey.get(editing)?.name ?? editing)}
+          profile={(() => {
+            // A roster client matched by name counts as linked, even before a profile exists.
+            const p = profiles[editing] ?? null;
+            const implied = rosterByKey.get(editing)?.id ?? null;
+            if (p?.client_id || !implied) return p;
+            return { ...(p ?? { name_key: editing, name: rosterByKey.get(editing)!.name, contact_name: null, company: null, email: null, phone: null, website: null, notes: null }), client_id: implied };
+          })()}
           roster={roster}
           lines={all.filter(l => l.kind === "revenue" && clientKey(l.label) === editing)}
           months={monthRows.map(r => r.month)}
