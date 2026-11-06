@@ -8,7 +8,7 @@ type Client = { id: string; name: string; is_live?: boolean; status?: Status; se
 
 // What we run for a client. Null = not set yet.
 const SERVICES: { id: Service; label: string }[] = [
-  { id: "facebook_ads", label: "Facebook Ads" },
+  { id: "facebook_ads", label: "FB Ads" },
   { id: "sms",          label: "SMS" },
   { id: "both",         label: "Both" },
 ];
@@ -56,7 +56,8 @@ export default function ClientRoster() {
   const [linkedNote, setLinkedNote] = useState<string | null>(null);
   // Filters. Each bar's counts respect the other bar's pick, so "Live" then
   // the service bar reads how the live clients split.
-  const [statusFilter, setStatusFilter] = useState<Status | null>(null);
+  // Opens on the live clients; Total shows everyone.
+  const [statusFilter, setStatusFilter] = useState<Status | null>("live");
   const [serviceFilter, setServiceFilter] = useState<Service | "none" | null>(null);
   // Opens sorted by status, live first; ties A–Z.
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "status", desc: false });

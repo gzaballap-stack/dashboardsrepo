@@ -1020,17 +1020,53 @@ export default function ProfitLoss() {
 
   // Adding a payment for a roster client that has no profile yet records the
   // link, so the roster is the one record from the first payment on.
+  // Puts sheet clients on the Client Roster: an existing roster name is
+  // linked, a new one is created. Reloads both lists afterwards.
+  const syncToRoster = async (names: string[] | null, status?: "live" | "offline") => {
+    try {
+      const result = await send("POST", "/api/profit-loss/clients/sync", { names: names ?? undefined, status });
+      const [r, c] = await Promise.all([
+        fetch("/api/clients").then(res => (res.ok ? res.json() : { clients: [] })),
+        fetch("/api/profit-loss/clients").then(res => (res.ok ? res.json() : { clients: [] })),
+      ]);
+      setRoster((r.clients ?? [])
+        .filter((x: RosterClient & { is_internal?: boolean }) => !x.is_internal)
+        .map((x: RosterClient & { is_live?: boolean }) => ({ id: x.id, name: x.name, status: x.status ?? (x.is_live ? "live" : "offline") })));
+      setProfiles(Object.fromEntries((c.clients ?? []).map((x: Profile) => [x.name_key, x])));
+      setError(null);
+      return result as { created: string[]; linked: string[] };
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update the roster");
+      return null;
+    }
+  };
+
   const addClientLine = async (label: string, amount: number) => {
     const ok = await addLine("revenue", false, label, amount, "USD");
     if (!ok) return false;
     const key = clientKey(label);
-    const r = rosterByKey.get(key);
-    if (r && !profiles[key]?.client_id) {
-      send("PUT", "/api/profit-loss/clients", { current: label, client_id: r.id })
-        .then(({ client }) => { if (client) setProfiles(prev => ({ ...prev, [client.name_key]: client })); })
-        .catch(() => {});
+    if (!profiles[key]?.client_id) {
+      // On the roster already → link; brand new → create as Live (they just paid).
+      void syncToRoster([label], rosterByKey.has(key) ? undefined : "live");
     }
     return true;
+  };
+
+  // Sheet clients with no roster record yet.
+  const offRoster = useMemo(
+    () => [...clientStats.names.entries()].filter(([k]) => !profiles[k]?.client_id && !rosterByKey.has(k)).map(([, n]) => n),
+    [clientStats.names, profiles, rosterByKey],
+  );
+  const [syncing, setSyncing] = useState(false);
+  const addAllToRoster = async () => {
+    if (!offRoster.length || syncing) return;
+    const ok = window.confirm(
+      `Add ${offRoster.length} client${offRoster.length === 1 ? "" : "s"} to the Client Roster?\n\n` +
+      `Anyone who paid in the latest month goes in as Live, everyone else as Offline.\n\n${offRoster.join(", ")}`);
+    if (!ok) return;
+    setSyncing(true);
+    await syncToRoster(offRoster);
+    setSyncing(false);
   };
 
   // Offered as you type an expense: names used before for that kind.
@@ -1308,6 +1344,12 @@ export default function ProfitLoss() {
             );
           })}
           <span style={{ flex: 1 }} />
+          {offRoster.length > 0 && (
+            <button onClick={addAllToRoster} disabled={syncing} style={{ ...BTN_QUIET, opacity: syncing ? 0.5 : 1 }}
+              title="Every client who has ever paid gets a Client Roster record">
+              {syncing ? "Adding…" : `Add ${offRoster.length} to the roster`}
+            </button>
+          )}
           <label style={{ fontSize: 12, color: MUTED, display: "flex", alignItems: "center", gap: 6 }}>
             From
             <select value={from} style={SELECT}

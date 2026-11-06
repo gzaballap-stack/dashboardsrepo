@@ -1,3 +1,28 @@
+## 2026-11-05 — Every paying client gets a Client Roster record; roster opens on Live
+
+Owner's decision (reversing the morning's "leave the roster as is"): **the
+roster should list every client who has ever paid**, so the roster and the
+Profit and Loss Clients tab are the same set.
+
+- **"Add N to the roster"** button on the P&L Clients tab (shows while any
+  sheet client has no roster record). After a confirm listing the names,
+  `POST /api/profit-loss/clients/sync` creates the missing roster records and
+  links each profile (`pnl_clients.client_id`); a sheet name that already
+  matches a roster name is linked, never duplicated. Status: paid in the
+  latest month logged → **Live**, otherwise **Offline** (the past martial-arts
+  clients land in Offline, as asked). The owner should link clients they
+  entered under a person's name to the right roster record **before**
+  pressing it, or they get a second record.
+- **A brand-new client typed on the sheet is created on the roster as Live**
+  at the same moment; a typed name matching a roster client is linked.
+- Needs the roster-link column (`scripts/migrate-pnl-links.mjs v1`, run by
+  the owner); until then the button says a database update is needed.
+- **Client Roster opens on Live** (filter preselected; Total shows everyone)
+  and the service reads **"FB Ads"** — "Facebook Ads" was too wide for its
+  chip.
+- Checked in a local preview: 37 off-roster clients → all linked, button
+  disappears. Not checked signed in.
+
 ## 2026-11-05 — Profit and Loss: an empty month starts from last month's names (one button)
 
 The owner disliked clients appearing on their own under PROFIT. Replaced by:
