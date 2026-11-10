@@ -1,3 +1,42 @@
+## 2026-11-10 — Client Billing: a credit pays for the client's next booking on its own
+
+Owner thinks of a credit as **an appointment owed**: "credits still to be sent
+out" = bookings that won't be billed. Built on top of the dollar balance, no
+new tables:
+
+- **Automatic cover.** When a client holds at least one appointment's price in
+  credit, their **next booking made after that credit was issued** is marked
+  **Covered by credit · not billed** (`coverWithCredit` in the billing route).
+  A cover is a `billing_charges` row of total 0 paid in full by credit
+  (`request_id` starts `cover:`), holding that one appointment — the same
+  record a hand-made "use credit" charge leaves. Oldest credit first
+  (`planCovers` / `oldestOpenCredit` in `src/lib/billing.ts`).
+- **It never reaches back.** Only bookings with `occurred_at` on or after the
+  credit are eligible — otherwise a credit would be swallowed by months of old
+  appointments that were paid outside the dashboard and all read "to bill".
+  Older uncharged appointments can still take credit by hand in the charge
+  dialog.
+- **When it runs:** opening the client list or a client, and after issuing /
+  removing a credit, changing the price, or cancelling a charge. Nothing
+  listens to the booking webhook — ingestion is untouched. No price set = no
+  cover; the credit stays as dollars and comes off the next charge, as does
+  any leftover smaller than one appointment.
+- **Removing a credit** un-covers the booking it paid for (newest first) — the
+  booking goes back to "to bill". Refused if the credit went on a real charge.
+  A covered booking that itself goes wrong can be credited: the credit is owed
+  again and lands on the next booking.
+- **Screen:** appointment states are **To bill / Charged / Credited / Covered
+  by credit**. Client tiles: To bill, Paid, Awaiting payment, Credited,
+  **Credits still owed** (in appointments). List gains Covered and Credits owed
+  columns. The Credits tab is a ledger — every credit issued and every use,
+  with Issued / Used / Still owed. Covers are not listed under Charges.
+- **Not done:** a no-show is **not** credited automatically — crediting is
+  still the owner's call per appointment.
+- **Checked:** 25 simulated scenarios (7 new: cover on next booking, never
+  backwards, two credits / three bookings, simultaneous loads, re-credit of a
+  covered booking, removal un-covers, no price), a local preview with made-up
+  data, production build. Not run against the real database or signed in.
+
 ## 2026-11-10 — Client Billing (Payments): charge and credit appointments per client, through Stripe
 
 New page **Payments → Client Billing** (`/dashboard/payments/client-billing`).

@@ -7,15 +7,17 @@ import { createPortal } from "react-dom";
    Client Billing
 
    Every client on the roster, with what they have been charged and credited.
-   Open a client to see their appointments — each one is Not charged, Charged
+   Open a client to see their appointments — each one is To bill, Charged
    or Credited — and to charge the ones you pick, credit ones that went wrong,
    or charge a one-off amount.
 
    A charge goes to the client's saved card, out as an emailed invoice (both
    through Stripe), or is just recorded when they paid some other way. Credit
-   on an appointment that was already charged becomes the client's credit
-   balance and comes off their next charge. Every figure is worked out by the
-   API from the charges and credits themselves.
+   on an appointment that was already charged is owed back as a free
+   appointment: the client's next booking is marked "Covered by credit" on its
+   own and never billed. Until that booking exists the credit shows as still
+   owed. Every figure is worked out by the API from the charges and credits
+   themselves.
    ──────────────────────────────────────────────────────────────────────────── */
 
 type StripeState = { configured: boolean; test: boolean };
@@ -25,10 +27,11 @@ type ClientRow = {
   price: number; stripe_linked: boolean;
   appointments: number; uncharged: number; uncharged_value: number;
   charged: number; paid: number; outstanding: number; credited: number; balance: number;
+  covered: number; credits_owed: number;
 };
 
 type ApptBilling = {
-  state: "charged" | "credited"; price: number; charged: boolean;
+  state: "charged" | "credited" | "covered"; price: number; charged: boolean;
   charge_id: string | null; charge_status: string | null;
   credit_amount: number; credited_at: string | null; credit_reason: string | null;
 };
@@ -46,12 +49,13 @@ type Charge = {
   stripe_invoice_url: string | null; error: string | null; created_at: string; paid_at: string | null;
 };
 
-type Credited = {
-  event_id: string; lead_name: string | null; appointment_at: string | null;
-  credit_amount: number; credited_at: string; credit_reason: string | null;
+// One line of a client's credit history: a credit issued (for an appointment,
+// or added by hand), or credit used (a booking it covered, or part of a charge).
+type LedgerEntry = {
+  type: "issued" | "used"; source: "appointment" | "manual" | "cover" | "charge";
+  id: string; at: string; amount: number;
+  lead_name: string | null; appointment_at: string | null; reason: string | null;
 };
-
-type ManualCredit = { id: string; amount: number; reason: string; created_at: string };
 
 type Customer = { id: string; name: string | null; email: string | null; payment?: { id: string | null; label: string } | null };
 
@@ -59,8 +63,8 @@ type Detail = {
   client: { id: string; name: string; status: string };
   settings: { price: number; stripe_customer_id: string | null };
   customer: Customer | null; customer_error: string | null;
-  balance: number;
-  appointments: Appointment[]; credited: Credited[]; charges: Charge[]; credits: ManualCredit[];
+  balance: number; credits_owed: number;
+  appointments: Appointment[]; ledger: LedgerEntry[]; charges: Charge[];
 };
 
 type Method = "card" | "invoice" | "manual";
@@ -74,6 +78,7 @@ const FAINT = "#a8a8a8";
 const GOOD = "#1a7f4b";
 const BAD = "#b4472e";
 const WARN = "#8a6100";
+const FREE = "#2b5fad";
 
 const PANEL: React.CSSProperties = { background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 16 };
 const FIELD: React.CSSProperties = {
@@ -421,8 +426,10 @@ function CreditModal({ detail, picked, onClose, onDone }: {
     if (busy) return;
     setBusy(true); setError(null);
     try {
-      await api("/api/billing", { action: "credit", client_id: detail.client.id, event_ids: picked.map(a => a.event_id), reason });
-      onDone(back > 0 ? `Credited ${plural(picked.length, "appointment")} — ${money(back)} added to their credit` : `Credited ${plural(picked.length, "appointment")}`);
+      const res = await api("/api/billing", { action: "credit", client_id: detail.client.id, event_ids: picked.map(a => a.event_id), reason });
+      const covered = Number(res.covered ?? 0);
+      onDone(`Credited ${plural(picked.length, "appointment")}`
+        + (covered > 0 ? ` — ${plural(covered, "booking")} now covered by credit` : back > 0 ? " — their next booking won't be billed" : ""));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong"); setBusy(false);
     }
@@ -432,8 +439,8 @@ function CreditModal({ detail, picked, onClose, onDone }: {
     <Modal title={`Credit ${plural(picked.length, "appointment")}`} sub={detail.client.name} onClose={busy ? () => {} : onClose}>
       <div style={{ ...PANEL, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         <p style={{ fontSize: 13, color: INK, lineHeight: 1.5 }}>
-          {charged.length > 0 && <>{plural(charged.length, "appointment")} already charged: <strong>{money(back)}</strong> goes onto their credit and comes off their next charge. </>}
-          {picked.length - charged.length > 0 && <>{plural(picked.length - charged.length, "appointment")} not charged yet: {picked.length - charged.length === 1 ? "it" : "they"} won&rsquo;t be charged.</>}
+          {charged.length > 0 && <>{plural(charged.length, "appointment")} already charged: {charged.length === 1 ? "it is" : "they are"} owed back, so their next {charged.length === 1 ? "booking" : `${charged.length} bookings`} won&rsquo;t be billed ({money(back)}). </>}
+          {picked.length - charged.length > 0 && <>{plural(picked.length - charged.length, "appointment")} not charged yet: {picked.length - charged.length === 1 ? "it" : "they"} won&rsquo;t be billed.</>}
         </p>
         <label style={LABEL}>
           Reason (optional)
@@ -546,7 +553,7 @@ function StripeLinkModal({ detail, onClose, onDone }: {
 
 /* ── one client ───────────────────────────────────────────────────────────── */
 
-type ApptFilter = "all" | "uncharged" | "charged" | "credited";
+type ApptFilter = "all" | "uncharged" | "charged" | "credited" | "covered";
 type DetailTab = "appointments" | "charges" | "credits";
 
 const stateOf = (a: Appointment): Exclude<ApptFilter, "all"> => (a.billing ? a.billing.state : "uncharged");
@@ -575,8 +582,9 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged }: {
       const num = (v: unknown) => Number(v ?? 0) || 0;
       const next: Detail = {
         ...data,
+        credits_owed: num(data.credits_owed),
+        ledger: data.ledger ?? [],
         charges: (data.charges ?? []).map((c: Charge) => ({ ...c, subtotal: num(c.subtotal), credit_applied: num(c.credit_applied), total: num(c.total) })),
-        credits: (data.credits ?? []).map((c: ManualCredit) => ({ ...c, amount: num(c.amount) })),
       };
       setDetail(next);
       setPriceText(next.settings.price ? String(next.settings.price) : "");
@@ -612,7 +620,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged }: {
   };
 
   const counts = useMemo(() => {
-    const c = { all: 0, uncharged: 0, charged: 0, credited: 0 };
+    const c = { all: 0, uncharged: 0, charged: 0, credited: 0, covered: 0 };
     for (const a of detail?.appointments ?? []) { c.all++; c[stateOf(a)]++; }
     return c;
   }, [detail]);
@@ -629,12 +637,17 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged }: {
   const shown = detail.appointments.filter(a => filter === "all" || stateOf(a) === filter);
   const chosen = detail.appointments.filter(a => picked.has(a.event_id));
   const toCharge = chosen.filter(a => !a.billing);
-  const toCredit = chosen.filter(a => !a.billing || a.billing.state === "charged");
+  const toCredit = chosen.filter(a => a.billing?.state !== "credited");
   const toUncredit = chosen.filter(a => a.billing?.state === "credited");
   const allShownPicked = shown.length > 0 && shown.every(a => picked.has(a.event_id));
   const price = detail.settings.price;
   const outstanding = detail.charges.filter(c => c.status === "pending").reduce((s, c) => s + c.total, 0);
   const paidTotal = detail.charges.filter(c => c.status === "paid").reduce((s, c) => s + c.total, 0);
+  const issued = detail.ledger.filter(l => l.type === "issued");
+  const used = detail.ledger.filter(l => l.type === "used");
+  const owed = detail.credits_owed;
+  // Credit worth less than one appointment (or no price set): it comes off the next charge instead.
+  const loose = price > 0 ? Math.round((detail.balance - owed * price) * 100) / 100 : detail.balance;
 
   const toggle = (id: string) => setPicked(prev => {
     const next = new Set(prev);
@@ -650,11 +663,12 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged }: {
 
   const billingPill = (a: Appointment) => {
     const b = a.billing;
-    if (!b) return <Pill text="Not charged" color={MUTED} />;
+    if (!b) return <Pill text="To bill" color={MUTED} />;
     if (b.state === "credited") {
-      return <Pill text={b.credit_amount > 0 ? `Credited ${money(b.credit_amount)}` : "Credited"} color={BAD}
+      return <Pill text={b.credit_amount > 0 ? `Credited ${money(b.credit_amount)}` : "Credited · not billed"} color={BAD}
         title={[b.credit_reason, b.credit_amount > 0 ? "Was charged — added to their credit" : "Never charged"].filter(Boolean).join(" · ")} />;
     }
+    if (b.state === "covered") return <Pill text="Covered by credit · not billed" color={FREE} title="Their credit paid for this one" />;
     const waiting = b.charge_status === "pending" || b.charge_status === "draft";
     return <Pill text={`Charged ${money(b.price)}${waiting ? " · awaiting payment" : ""}`} color={waiting ? WARN : GOOD} />;
   };
@@ -698,17 +712,23 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged }: {
       </div>
 
       <div style={TILE_GRID}>
-        <Tile label="Not charged yet" value={String(counts.uncharged)} sub={price ? `${money(counts.uncharged * price)} at ${money(price)} each` : "Set a price to see the value"} />
+        <Tile label="To bill" value={String(counts.uncharged)} sub={price ? `${money(counts.uncharged * price)} at ${money(price)} each` : "Set a price to see the value"} />
         <Tile label="Paid" value={money(paidTotal)} sub="all time" tone={paidTotal > 0 ? "good" : undefined} />
         <Tile label="Awaiting payment" value={money(outstanding)} sub="invoices not paid yet" tone={outstanding > 0 ? "warn" : undefined} />
-        <Tile label="Credit they hold" value={money(detail.balance)} sub="comes off the next charge" />
+        <Tile label="Credited" value={String(issued.filter(l => l.source === "appointment").length)}
+          sub={`${plural(used.filter(l => l.source === "cover").length, "booking")} covered by credit`} />
+        <Tile label="Credits still owed"
+          value={price > 0 ? plural(owed, "appointment") : money(detail.balance)}
+          sub={owed > 0 ? `next ${owed === 1 ? "booking" : `${owed} bookings`} won't be billed${loose > 0 ? ` · plus ${money(loose)}` : ""}`
+            : loose > 0 ? `${money(loose)} comes off the next charge` : "nothing owed"}
+          tone={owed > 0 || loose > 0 ? "warn" : undefined} />
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <Segments<DetailTab> value={tab} onChange={setTab} options={[
           { id: "appointments", label: `Appointments (${counts.all})` },
           { id: "charges", label: `Charges (${detail.charges.length})` },
-          { id: "credits", label: `Credits (${detail.credited.length + detail.credits.length})` },
+          { id: "credits", label: `Credits (${issued.length})` },
         ]} />
       </div>
 
@@ -717,9 +737,10 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged }: {
         <div style={{ ...PANEL, padding: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "4px 4px 10px" }}>
             <Segments<ApptFilter> value={filter} onChange={setFilter} options={[
-              { id: "uncharged", label: `Not charged (${counts.uncharged})` },
+              { id: "uncharged", label: `To bill (${counts.uncharged})` },
               { id: "charged", label: `Charged (${counts.charged})` },
               { id: "credited", label: `Credited (${counts.credited})` },
+              { id: "covered", label: `Covered by credit (${counts.covered})` },
               { id: "all", label: `All (${counts.all})` },
             ]} />
             <span style={{ flex: 1 }} />
@@ -816,7 +837,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged }: {
                             <button disabled={busy} style={{ fontSize: 12.5, fontWeight: 600, color: BAD }}
                               onClick={() => {
                                 const what = c.method === "manual" ? `Remove this ${money(c.total)} charge?` : `Cancel this ${money(c.total)} invoice in Stripe?`;
-                                if (window.confirm(`${what} Its appointments go back to Not charged.`)) act({ action: "void", id: c.id }, c.method === "manual" ? "Charge removed" : "Invoice cancelled");
+                                if (window.confirm(`${what} Its appointments go back to To bill.`)) act({ action: "void", id: c.id }, c.method === "manual" ? "Charge removed" : "Invoice cancelled");
                               }}>
                               {c.method === "manual" ? "Remove" : "Cancel"}
                             </button>
@@ -854,46 +875,55 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged }: {
           </button>
         </div>
         <div style={{ ...PANEL, padding: 12 }}>
-          {detail.credited.length + detail.credits.length === 0 ? (
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", padding: "4px 8px 10px", fontSize: 12.5, color: MUTED }}>
+            <span>Issued <strong style={{ color: INK }}>{money(issued.reduce((t, l) => t + l.amount, 0))}</strong></span>
+            <span>Used <strong style={{ color: INK }}>{money(used.reduce((t, l) => t + l.amount, 0))}</strong></span>
+            <span>Still owed <strong style={{ color: detail.balance > 0 ? WARN : INK }}>{money(detail.balance)}</strong>
+              {owed > 0 && ` · ${plural(owed, "appointment")}`}</span>
+          </div>
+          {detail.ledger.length === 0 ? (
             <p style={{ fontSize: 13, color: MUTED, padding: "18px 8px" }}>No credits yet.</p>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 600 }}>
                 <thead>
                   <tr>
-                    <th style={TH}>Credited</th><th style={TH}>For</th><th style={TH}>Reason</th>
+                    <th style={TH}>Date</th><th style={TH} /><th style={TH}>For</th><th style={TH}>Reason</th>
                     <th style={{ ...TH, ...NUM }}>Credit</th><th style={TH} />
                   </tr>
                 </thead>
                 <tbody>
-                  {detail.credits.map(c => (
-                    <tr key={c.id}>
-                      <td style={{ ...TD, whiteSpace: "nowrap" }}>{day(c.created_at)}</td>
-                      <td style={TD}>Added by hand</td>
-                      <td style={{ ...TD, color: c.reason ? INK : FAINT }}>{c.reason || "—"}</td>
-                      <td style={{ ...TD, ...NUM, fontWeight: 700 }}>{money(c.amount)}</td>
-                      <td style={{ ...TD, textAlign: "right" }}>
-                        <button disabled={busy} style={{ fontSize: 12.5, fontWeight: 600, color: BAD }}
-                          onClick={() => { if (window.confirm(`Remove this ${money(c.amount)} credit?`)) act({ action: "delete_credit", id: c.id }, "Credit removed"); }}>
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {detail.credited.map(c => (
-                    <tr key={c.event_id}>
-                      <td style={{ ...TD, whiteSpace: "nowrap" }}>{day(c.credited_at)}</td>
-                      <td style={TD}>{c.lead_name ?? "Appointment"}<span style={{ color: FAINT, fontSize: 11.5 }}> · {day(c.appointment_at)}</span></td>
-                      <td style={{ ...TD, color: c.credit_reason ? INK : FAINT }}>{c.credit_reason || "—"}</td>
-                      <td style={{ ...TD, ...NUM, fontWeight: 700, color: c.credit_amount ? INK : FAINT }}>{c.credit_amount ? money(c.credit_amount) : "not charged"}</td>
-                      <td style={{ ...TD, textAlign: "right" }}>
-                        <button disabled={busy} style={{ fontSize: 12.5, fontWeight: 600, color: BAD }}
-                          onClick={() => act({ action: "uncredit", client_id: clientId, event_ids: [c.event_id] }, "Credit removed")}>
-                          Remove
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {detail.ledger.map(l => {
+                    const what = l.source === "manual" ? "Added by hand"
+                      : l.source === "charge" ? "Taken off a charge"
+                      : l.lead_name ?? (l.source === "cover" ? "Bookings covered" : "Appointment");
+                    return (
+                      <tr key={`${l.type}-${l.id}`}>
+                        <td style={{ ...TD, whiteSpace: "nowrap" }}>{day(l.at)}</td>
+                        <td style={TD}>
+                          {l.type === "issued"
+                            ? <Pill text="Credit issued" color={BAD} />
+                            : <Pill text={l.source === "cover" ? "Covered a booking" : "Credit used"} color={FREE} />}
+                        </td>
+                        <td style={TD}>{what}{l.appointment_at && <span style={{ color: FAINT, fontSize: 11.5 }}> · {day(l.appointment_at)}</span>}</td>
+                        <td style={{ ...TD, color: l.reason ? INK : FAINT }}>{l.reason || "—"}</td>
+                        <td style={{ ...TD, ...NUM, fontWeight: 700, color: l.amount ? INK : FAINT }}>
+                          {l.type === "used" ? money(-l.amount) : l.amount ? `+${money(l.amount)}` : "not billed"}
+                        </td>
+                        <td style={{ ...TD, textAlign: "right" }}>
+                          {l.type === "issued" && (
+                            <button disabled={busy} style={{ fontSize: 12.5, fontWeight: 600, color: BAD }}
+                              onClick={() => {
+                                if (l.source === "manual") { if (window.confirm(`Remove this ${money(l.amount)} credit?`)) act({ action: "delete_credit", id: l.id }, "Credit removed"); }
+                                else act({ action: "uncredit", client_id: clientId, event_ids: [l.id] }, "Credit removed");
+                              }}>
+                              Remove
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -951,7 +981,8 @@ export default function ClientBilling() {
     uncharged: t.uncharged + c.uncharged, value: t.value + c.uncharged_value,
     charged: t.charged + c.charged, paid: t.paid + c.paid,
     outstanding: t.outstanding + c.outstanding, balance: t.balance + c.balance,
-  }), { uncharged: 0, value: 0, charged: 0, paid: 0, outstanding: 0, balance: 0 }), [rows]);
+    owed: t.owed + (c.credits_owed ?? 0),
+  }), { uncharged: 0, value: 0, charged: 0, paid: 0, outstanding: 0, balance: 0, owed: 0 }), [rows]);
 
   const periodLabel = PERIODS.find(p => p.id === period)?.label.toLowerCase() ?? "";
 
@@ -961,7 +992,7 @@ export default function ClientBilling() {
         <div style={{ flex: 1, minWidth: 180 }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>Client Billing</h2>
           <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-            Which appointments each client has been charged for, and which were credited.
+            What each client still has to be billed, what was credited, and the credits still owed.
             {" "}
             <span style={{ color: stripe.configured ? (stripe.test ? WARN : GOOD) : FAINT, fontWeight: 600 }}>
               {stripe.configured ? (stripe.test ? "Stripe: test mode" : "Stripe connected") : "Stripe not connected"}
@@ -986,11 +1017,11 @@ export default function ClientBilling() {
         <p style={{ fontSize: 13, color: FAINT }}>Loading…</p>
       ) : (<>
         <div style={TILE_GRID}>
-          <Tile label="Not charged yet" value={String(totals.uncharged)} sub={`${money(totals.value)} · appointments ${period === "all" ? "ever" : periodLabel}`} />
+          <Tile label="To bill" value={String(totals.uncharged)} sub={`${money(totals.value)} · appointments ${period === "all" ? "ever" : periodLabel}`} />
           <Tile label="Charged" value={money(totals.charged)} sub={periodLabel} />
           <Tile label="Paid" value={money(totals.paid)} sub={periodLabel} tone={totals.paid > 0 ? "good" : undefined} />
           <Tile label="Awaiting payment" value={money(totals.outstanding)} sub="invoices not paid yet" tone={totals.outstanding > 0 ? "warn" : undefined} />
-          <Tile label="Credit clients hold" value={money(totals.balance)} sub="comes off their next charge" />
+          <Tile label="Credits still owed" value={plural(totals.owed, "appointment")} sub={`${money(totals.balance)} · bookings that won't be billed`} tone={totals.balance > 0 ? "warn" : undefined} />
         </div>
 
         <div style={{ ...PANEL, padding: 12 }}>
@@ -998,17 +1029,18 @@ export default function ClientBilling() {
             <p style={{ fontSize: 13, color: MUTED, padding: "18px 8px" }}>No clients to show.</p>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
                 <thead>
                   <tr>
                     <th style={TH}>Client</th>
                     <th style={{ ...TH, ...NUM }}>Price</th>
                     <th style={{ ...TH, ...NUM }}>Appointments</th>
-                    <th style={{ ...TH, ...NUM }}>Not charged</th>
+                    <th style={{ ...TH, ...NUM }}>To bill</th>
                     <th style={{ ...TH, ...NUM }}>Charged</th>
                     <th style={{ ...TH, ...NUM }}>Credited</th>
+                    <th style={{ ...TH, ...NUM }}>Covered</th>
                     <th style={{ ...TH, ...NUM }}>Awaiting</th>
-                    <th style={{ ...TH, ...NUM }}>Credit held</th>
+                    <th style={{ ...TH, ...NUM }}>Credits owed</th>
                     <th style={TH}>Stripe</th>
                   </tr>
                 </thead>
@@ -1028,8 +1060,11 @@ export default function ClientBilling() {
                       </td>
                       <td style={{ ...TD, ...NUM, color: c.charged ? INK : FAINT }}>{money(c.charged)}</td>
                       <td style={{ ...TD, ...NUM, color: c.credited ? INK : FAINT }}>{c.credited}</td>
+                      <td style={{ ...TD, ...NUM, color: c.covered ? FREE : FAINT }}>{c.covered ?? 0}</td>
                       <td style={{ ...TD, ...NUM, color: c.outstanding ? WARN : FAINT }}>{money(c.outstanding)}</td>
-                      <td style={{ ...TD, ...NUM, color: c.balance ? INK : FAINT }}>{money(c.balance)}</td>
+                      <td style={{ ...TD, ...NUM, color: c.balance > 0 ? WARN : FAINT, fontWeight: c.balance > 0 ? 700 : 400 }}>
+                        {c.credits_owed > 0 ? `${c.credits_owed} appt${c.credits_owed === 1 ? "" : "s"}` : c.balance > 0 ? money(c.balance) : "—"}
+                      </td>
                       <td style={{ ...TD, color: c.stripe_linked ? GOOD : FAINT }}>{c.stripe_linked ? "Linked" : "—"}</td>
                     </tr>
                   ))}

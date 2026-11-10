@@ -59,6 +59,60 @@ export function planCharge(opts: {
   };
 }
 
+/* ── credit → free appointments ───────────────────────────────────────────────
+   Credit a client holds pays for their next bookings on its own: once they hold
+   at least one appointment's price, the first appointment booked after that
+   credit was issued is marked "covered by credit" and never billed. Credit is
+   used oldest first, and only ever on bookings made after it was issued — it
+   never reaches back to old appointments. */
+
+export type CreditEntry = { at: string; amount: number };
+
+const time = (iso: string) => new Date(iso).getTime();
+
+/** When the oldest credit with something still left on it was issued (credit is
+ *  used oldest first). null = all of it is used. */
+export function oldestOpenCredit(credits: CreditEntry[], used: number): string | null {
+  let left = toCents(used);
+  for (const c of [...credits].sort((a, b) => time(a.at) - time(b.at))) {
+    const worth = toCents(c.amount);
+    if (worth <= 0) continue;
+    if (left >= worth) { left -= worth; continue; }
+    return c.at;
+  }
+  return null;
+}
+
+/** The bookings a client's credit covers, in order. `candidates` are their
+ *  appointments that are neither charged nor credited. */
+export function planCovers(opts: {
+  credits: CreditEntry[]; used: number; price: number; candidates: { id: string; at: string }[];
+}): string[] {
+  const price = toCents(opts.price);
+  if (price <= 0) return [];
+  const total = opts.credits.reduce((s, c) => s + Math.max(0, toCents(c.amount)), 0);
+  const pool = [...opts.candidates].sort((a, b) => time(a.at) - time(b.at));
+  const covered: string[] = [];
+  let used = toCents(opts.used);
+  while (total - used >= price) {
+    const since = oldestOpenCredit(opts.credits, fromCents(used));
+    if (!since) break;
+    const next = pool.find(c => !covered.includes(c.id) && time(c.at) >= time(since));
+    if (!next) break;
+    covered.push(next.id);
+    used += price;
+  }
+  return covered;
+}
+
+/** How many whole appointments a credit balance is worth at this price. */
+export const creditInAppointments = (balance: number, price: number) =>
+  price > 0 ? Math.floor(toCents(balance) / toCents(price)) : 0;
+
+/** A charge paid entirely with credit: nothing was billed for it. */
+export const paidByCredit = (c: { total?: unknown; credit_applied?: unknown }) =>
+  toCents(Number(c.total ?? 0)) === 0 && toCents(Number(c.credit_applied ?? 0)) > 0;
+
 /** Billing moves real money, so "no restriction set" is not enough: it takes
  *  an admin, or an account an admin has ticked Client Billing for. */
 export async function canBill(ctx: AuthContext): Promise<boolean> {
