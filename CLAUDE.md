@@ -163,6 +163,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `lift-log/*` | Health Tracker — weekly log, diet/split plans, and the public token-based CSV/JSON export |
 | `whoop/*` | Health Tracker **Whoop** connection — `connect` → OAuth → `callback`, `sync` (POST, re-reads recent days), `GET` status + days, `DELETE` disconnect. Tokens in `whoop_connections` (server-only), days in `whoop_days`. Day = morning you woke. See `NOTES.md` 2026-10-13. |
 | `profit-loss`, `profit-loss/clients`, `profit-loss/rate` | **Profit and Loss** (Payments menu) — one row per line of a month (client payment, business expense, personal expense) in `pnl_lines`, scoped to the signed-in user. Dollars only; an expense typed in euros is converted once at today's rate as it is saved (`src/lib/fx.ts`, ECB via frankfurter.dev). Totals, the Overview and the Clients tab are all summed from those lines in the browser. Client details (contact…) live in `pnl_clients`, tied to the lines by name and optionally to a Client Roster record (`client_id`); every roster client appears on the P&L Clients tab; P&L shows the roster name, else the client name; an empty month can start from last month's names with blank amounts. See `NOTES.md` 2026-10-04/05, 2026-11-05. |
+| `billing`, `billing/stripe-customers` | **Client Billing** (Payments menu) — per roster client: which appointments (`events` rows) are charged or credited, the charges, and the credit balance that comes off the next charge. Tables `billing_clients` / `billing_charges` / `billing_appointments` / `billing_credits`. Charges go to Stripe (saved card or emailed invoice, `src/lib/stripe.ts`) or are recorded by hand; status is read back from Stripe when a client is opened (no webhook). **Moves real money:** admins or accounts explicitly ticked only (`canBill`). See `NOTES.md` 2026-11-10. |
 | `sales-calls` | **Sales Tracker** (TM Dashboard) — Tomsi Media's sales-call log in `sales_calls`, shared by everyone with TM access. See `NOTES.md` 2026-10-04 (Sales Tracker). |
 | `me` | Who is signed in and which features they're allowed to open |
 | `ai-campaign-chat` | Claude-powered chat over a campaign/client's data — see below |
@@ -303,6 +304,7 @@ Census fetching in `src/lib/census.ts` (needs `CENSUS_API_KEY`).
 | `DIRECT_WEBHOOK_TOKEN` | Token in the GHL workflow URLs (`/api/webhooks/ghl/…?token=`) and the Apps Script docs bridge |
 | `GOOGLE_DOCS_SCRIPT_URL` | The deployed `scripts/google-docs-bridge.gs` web app — territory doc + sales-call numbers fill |
 | `SMS_COST_PER_MESSAGE` | Per-message rate the SMS channel multiplies by messages sent (default `0.01`). See `NOTES.md` 2026-10-19 |
+| `STRIPE_SECRET_KEY` | Client Billing — charge a client's saved card or email an invoice. **V1 only; never set it on V2** (demo clients, real cards). `sk_test_…` = test mode. Unset = charges can only be recorded by hand |
 | `META_MANAGEMENT_TOKEN` | Optional. A Meta system-user token with `ads_management` — lets the Creative Hub rename ads in Meta to `<code> <title>`. Unset = buttons explain how to do it by hand |
 | `META_ACCESS_TOKEN` | Creative & Copy Hub previews (all client accounts) and the Meta B2B report (`meta-b2b-report`) — the long-lived token the Make spend scenarios use. Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_DEMO_EVENT` (legacy `META_KEPT_INTRO_EVENT` still works) |
 
@@ -326,6 +328,7 @@ Never commit `.env*` — they're gitignored. Production values live in Railway.
 | Health Tracker (log, diet plan, gym split, Whoop tab) | `src/components/HealthTracker.tsx`, `src/lib/health-tracker.ts` |
 | Whoop OAuth, token refresh, day assembly | `src/lib/whoop.ts`, `src/app/api/whoop/` |
 | Profit and Loss (month sheet, overview, clients, client details) | `src/components/ProfitLoss.tsx`, `src/app/api/profit-loss/` |
+| Client Billing (charge / credit appointments, Stripe) | `src/components/ClientBilling.tsx`, `src/app/api/billing/`, `src/lib/billing.ts`, `src/lib/stripe.ts` |
 | Calendar (a panel inside the Task Board) + iCal parsing | `src/components/CalendarView.tsx`, `src/lib/ics.ts` |
 | Env switching | `scripts/switch-env.js` |
 | First-time setup skill | `.claude/commands/start.md` (`/start`) |

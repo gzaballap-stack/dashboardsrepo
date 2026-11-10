@@ -1,0 +1,212 @@
+// Stripe, over its REST API — no SDK. Server-side only.
+//
+// Used by Client Billing to charge a client's saved card or email them an
+// invoice. Every charge is a Stripe invoice: one line per item, credit as a
+// negative line, so the client's receipt reads the same as the dashboard.
+//
+// STRIPE_SECRET_KEY unset = billing still tracks everything, and charges can
+// only be recorded by hand.
+
+const API = 'https://api.stripe.com/v1';
+const TIMEOUT_MS = 25_000;
+
+export class StripeError extends Error {
+  /** false = the request may or may not have reached Stripe (timeout, network). */
+  definite: boolean;
+  code: string | null;
+  constructor(message: string, definite: boolean, code: string | null = null) {
+    super(message);
+    this.definite = definite;
+    this.code = code;
+  }
+}
+
+const key = () => (process.env.STRIPE_SECRET_KEY ?? '').trim();
+
+export function stripeStatus(): { configured: boolean; test: boolean } {
+  const k = key();
+  return { configured: k.length > 0, test: /^(sk|rk)_test_/.test(k) };
+}
+
+type Params = Record<string, string | number | boolean | null | undefined | Record<string, string>>;
+
+// { a: 1, metadata: { b: 'c' } } → a=1&metadata[b]=c
+function encode(params: Params): string {
+  const out = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === null || v === undefined) continue;
+    if (typeof v === 'object') {
+      for (const [k2, v2] of Object.entries(v)) out.append(`${k}[${k2}]`, v2);
+    } else out.append(k, String(v));
+  }
+  return out.toString();
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Json = any;
+
+async function call(method: 'GET' | 'POST' | 'DELETE', path: string, params?: Params, idempotencyKey?: string): Promise<Json> {
+  const k = key();
+  if (!k) throw new StripeError('Stripe is not connected', true);
+
+  const headers: Record<string, string> = { Authorization: `Bearer ${k}` };
+  let url = `${API}${path}`;
+  let body: string | undefined;
+  if (params && method === 'GET') url += (url.includes('?') ? '&' : '?') + encode(params);
+  else if (params) { body = encode(params); headers['Content-Type'] = 'application/x-www-form-urlencoded'; }
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { method, headers, body, signal: AbortSignal.timeout(TIMEOUT_MS), cache: 'no-store' });
+  } catch {
+    throw new StripeError("Couldn't reach Stripe", false);
+  }
+  let data: Json = null;
+  try { data = await res.json(); } catch { /* not JSON */ }
+  if (!res.ok) {
+    // 5xx: Stripe may have done the work before failing to answer.
+    throw new StripeError(data?.error?.message ?? `Stripe answered ${res.status}`, res.status < 500, data?.error?.code ?? null);
+  }
+  return data;
+}
+
+/* ── customers ────────────────────────────────────────────────────────────── */
+
+export type StripeCustomer = { id: string; name: string | null; email: string | null };
+
+/** Customers matching a name or email. Reads up to 500 and filters here —
+ *  Stripe's own search is not available on every account. */
+export async function findCustomers(q: string): Promise<StripeCustomer[]> {
+  const needle = q.trim().toLowerCase();
+  const found: StripeCustomer[] = [];
+  let after: string | undefined;
+  for (let page = 0; page < 5; page++) {
+    const data = await call('GET', '/customers', { limit: 100, starting_after: after });
+    const rows: Json[] = data?.data ?? [];
+    for (const c of rows) {
+      const hay = `${c.name ?? ''} ${c.email ?? ''} ${c.description ?? ''}`.toLowerCase();
+      if (!needle || hay.includes(needle)) found.push({ id: c.id, name: c.name ?? c.description ?? null, email: c.email ?? null });
+    }
+    if (!data?.has_more || !rows.length) break;
+    after = rows[rows.length - 1].id;
+  }
+  return found.slice(0, 50);
+}
+
+export async function createCustomer(name: string, email: string | null): Promise<StripeCustomer> {
+  const c = await call('POST', '/customers', { name, email: email || undefined });
+  return { id: c.id, name: c.name ?? null, email: c.email ?? null };
+}
+
+export type CustomerSummary = StripeCustomer & {
+  /** What a card charge would use. null = nothing on file. */
+  payment: { id: string | null; label: string } | null;
+};
+
+function describePayment(pm: Json): string {
+  if (pm?.card) return `${String(pm.card.brand ?? 'card').replace(/^./, (ch: string) => ch.toUpperCase())} •••• ${pm.card.last4}`;
+  if (pm?.us_bank_account) return `${pm.us_bank_account.bank_name ?? 'Bank account'} •••• ${pm.us_bank_account.last4}`;
+  if (pm?.sepa_debit) return `SEPA •••• ${pm.sepa_debit.last4}`;
+  return 'Saved payment method';
+}
+
+/** The customer and the payment method a card charge would use. null if the
+ *  customer no longer exists in Stripe. */
+export async function getCustomer(id: string): Promise<CustomerSummary | null> {
+  let c: Json;
+  try {
+    c = await call('GET', `/customers/${encodeURIComponent(id)}`, { 'expand[]': 'invoice_settings.default_payment_method' });
+  } catch (e) {
+    if (e instanceof StripeError && e.code === 'resource_missing') return null;
+    throw e;
+  }
+  if (!c || c.deleted) return null;
+  const base = { id: c.id as string, name: (c.name ?? null) as string | null, email: (c.email ?? null) as string | null };
+
+  const def = c.invoice_settings?.default_payment_method;
+  if (def && typeof def === 'object') return { ...base, payment: { id: def.id, label: describePayment(def) } };
+
+  const list = await call('GET', `/customers/${encodeURIComponent(id)}/payment_methods`, { limit: 10 });
+  const pms: Json[] = list?.data ?? [];
+  const pick = pms.find(p => p.type === 'card') ?? pms.find(p => p.type === 'us_bank_account') ?? pms[0];
+  if (pick) return { ...base, payment: { id: pick.id, label: describePayment(pick) } };
+
+  // Older customers hold a card as a "source"; Stripe charges it by default.
+  if (c.default_source) return { ...base, payment: { id: null, label: 'Saved card' } };
+  return { ...base, payment: null };
+}
+
+/* ── invoices ─────────────────────────────────────────────────────────────── */
+
+export type InvoiceState = {
+  id: string;
+  /** draft | open | paid | uncollectible | void */
+  status: string;
+  url: string | null;
+};
+
+const stateOf = (inv: Json): InvoiceState => ({ id: inv.id, status: inv.status, url: inv.hosted_invoice_url ?? null });
+
+export type InvoiceLine = { description: string; cents: number };
+
+/** A draft invoice holding exactly these lines — nothing else pending on the
+ *  customer is swept in. `ref` is our charge id: it keys every request, so a
+ *  repeat of the same call can never create a second invoice. */
+export async function createDraftInvoice(opts: {
+  ref: string; customerId: string; lines: InvoiceLine[]; description: string;
+  method: 'card' | 'invoice'; paymentMethodId?: string | null; daysUntilDue?: number;
+}): Promise<InvoiceState> {
+  const inv = await call('POST', '/invoices', {
+    customer: opts.customerId,
+    currency: 'usd',
+    collection_method: opts.method === 'card' ? 'charge_automatically' : 'send_invoice',
+    days_until_due: opts.method === 'invoice' ? (opts.daysUntilDue ?? 7) : undefined,
+    default_payment_method: opts.method === 'card' ? (opts.paymentMethodId ?? undefined) : undefined,
+    auto_advance: false,
+    pending_invoice_items_behavior: 'exclude',
+    description: opts.description || undefined,
+    metadata: { billing_charge_id: opts.ref },
+  }, `${opts.ref}-invoice`);
+
+  try {
+    for (let i = 0; i < opts.lines.length; i++) {
+      const line = opts.lines[i];
+      await call('POST', '/invoiceitems', {
+        customer: opts.customerId, invoice: inv.id, currency: 'usd',
+        amount: line.cents, description: line.description,
+      }, `${opts.ref}-item-${i}`);
+    }
+  } catch (e) {
+    await deleteDraftInvoice(inv.id);
+    throw e;
+  }
+  return stateOf(inv);
+}
+
+export async function finalizeInvoice(id: string, ref: string): Promise<InvoiceState> {
+  return stateOf(await call('POST', `/invoices/${id}/finalize`, { auto_advance: false }, `${ref}-finalize`));
+}
+
+/** Charges the invoice's payment method now. */
+export async function payInvoice(id: string, ref: string): Promise<InvoiceState> {
+  return stateOf(await call('POST', `/invoices/${id}/pay`, {}, `${ref}-pay`));
+}
+
+/** Emails the invoice to the customer. */
+export async function sendInvoice(id: string, ref: string): Promise<InvoiceState> {
+  return stateOf(await call('POST', `/invoices/${id}/send`, {}, `${ref}-send`));
+}
+
+export async function getInvoice(id: string): Promise<InvoiceState> {
+  return stateOf(await call('GET', `/invoices/${id}`));
+}
+
+export async function voidInvoice(id: string): Promise<InvoiceState> {
+  return stateOf(await call('POST', `/invoices/${id}/void`, {}));
+}
+
+/** Best effort — a draft that can't be deleted is harmless (never sent, never charged). */
+export async function deleteDraftInvoice(id: string): Promise<boolean> {
+  try { await call('DELETE', `/invoices/${id}`); return true; } catch { return false; }
+}

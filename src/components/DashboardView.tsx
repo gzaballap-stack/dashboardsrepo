@@ -22,8 +22,9 @@ import BrandBackground from "./BrandBackground";
 import TaskBoard from "./TaskBoard";
 import HealthTracker from "./HealthTracker";
 import ProfitLoss from "./ProfitLoss";
+import ClientBilling from "./ClientBilling";
 import SalesTracker from "./SalesTracker";
-import { hasFeature, type FeatureId } from "@/lib/feature-access";
+import { hasFeature, hasExplicitFeature, type FeatureId } from "@/lib/feature-access";
 import { pathForRoute, routeForSlug, type DashRoute } from "@/lib/dashboard-routes";
 import CampaignOverview from "./CampaignOverview";
 import WeeklyBreakdown from "./WeeklyBreakdown";
@@ -335,6 +336,12 @@ function ShareReports({ clients }: { clients: Client[] }) {
 const SECTION_IS_LEAF = new Set<string>(["payments"]);
 const PROFIT_LOSS_ICON = "M3 17l6-6 4 4 8-8M15 7h6v6";
 
+type PaymentsView = "profit_loss" | "client_billing";
+const PAYMENTS_NAV: { id: PaymentsView; label: string; icon: string }[] = [
+  { id: "profit_loss",    label: "Profit and Loss", icon: PROFIT_LOSS_ICON },
+  { id: "client_billing", label: "Client Billing",  icon: "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" },
+];
+
 const CLIENTS_NAV: { id: ClientsView; label: string; icon: string }[] = [
   { id: "client_roster", label: "Client Roster", icon: NAV_ICONS.admin_clients },
   { id: "csm_dashboard", label: "CSM Dashboard", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
@@ -423,6 +430,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const [tomsiPreset, setTomsiPreset] = useState<Preset>("this_month");
   const [clientsView, setClientsView] = useState<ClientsView>(() => (initialRoute?.clientsView as ClientsView) ?? "client_roster");
   const [hubView, setHubView] = useState<HubView>(() => (initialRoute?.hubView as HubView) ?? "b2b_library");
+  const [paymentsView, setPaymentsView] = useState<PaymentsView>(() => (initialRoute?.paymentsView as PaymentsView) ?? "profit_loss");
   // Collapsed sidebar buys ~176px, which is what wide drawer tables need to
   // fit without a horizontal scroll.
   // The menu is a rail that opens on hover and closes when the pointer leaves,
@@ -483,6 +491,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
         if (initialRoute.view) setView(initialRoute.view as View);
         if (initialRoute.clientsView) setClientsView(initialRoute.clientsView as ClientsView);
         if (initialRoute.hubView) setHubView(initialRoute.hubView as HubView);
+        if (initialRoute.paymentsView) setPaymentsView(initialRoute.paymentsView as PaymentsView);
         return;
       }
 
@@ -514,6 +523,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
       if (savedTop === "tomsi_media" && saved.tomsiView && !["b2b_tracking","campaign_overview"].includes(saved.tomsiView)) setView(saved.tomsiView as View);
       if (saved.clientsView) setClientsView(saved.clientsView as ClientsView);
+      if (PAYMENTS_NAV.some(p => p.id === saved.paymentsView)) setPaymentsView(saved.paymentsView as PaymentsView);
     } catch {}
   }, [initialRoute]);
 
@@ -521,14 +531,14 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   // trip — a Next navigation would re-run the page's auth check on every click.
   const urlSynced = useRef(false);
   useEffect(() => {
-    const path = pathForRoute({ section: topSection, view, clientsView, hubView });
+    const path = pathForRoute({ section: topSection, view, clientsView, hubView, paymentsView });
     if (window.location.pathname === path) { urlSynced.current = true; return; }
     // The first correction (a bare /dashboard resolving to the saved view)
     // replaces; real navigation after that builds normal back-button history.
     if (urlSynced.current) window.history.pushState(null, "", path);
     else window.history.replaceState(null, "", path);
     urlSynced.current = true;
-  }, [topSection, view, clientsView, hubView]);
+  }, [topSection, view, clientsView, hubView, paymentsView]);
 
   // Back/forward between views.
   useEffect(() => {
@@ -540,6 +550,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       if (r.view) setView(r.view as View);
       if (r.clientsView) setClientsView(r.clientsView as ClientsView);
       if (r.hubView) setHubView(r.hubView as HubView);
+      if (r.paymentsView) setPaymentsView(r.paymentsView as PaymentsView);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -556,10 +567,10 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   useEffect(() => {
     try {
       localStorage.setItem(NAV_STATE_KEY, JSON.stringify({
-        topSection, view, tomsiView, clientsView, hubView, expandedSections: Array.from(expandedSections),
+        topSection, view, tomsiView, clientsView, hubView, paymentsView, expandedSections: Array.from(expandedSections),
       }));
     } catch {}
-  }, [topSection, view, tomsiView, clientsView, hubView, expandedSections]);
+  }, [topSection, view, tomsiView, clientsView, hubView, paymentsView, expandedSections]);
 
   // Restore dismissed alerts + closed banners, then fetch current alerts on mount
   useEffect(() => {
@@ -709,6 +720,12 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const groups = allGroups.filter(g => NAV.some(n => n.group === g && can(n.view)));
   const toolsVisible = TOOLS_VIEWS.filter(v => can(v));
   const clientsNavVisible = CLIENTS_NAV.filter(c => can(c.id));
+  // Client Billing moves real money: it needs an admin, or an account it has
+  // been ticked for — "no restriction set" is not enough, and it stays hidden
+  // until /api/me has answered.
+  const canPayments = (id: PaymentsView) =>
+    id === "client_billing" ? !!me && hasExplicitFeature("client_billing", isAdmin, allowedViews) : can(id);
+  const paymentsNavVisible = PAYMENTS_NAV.filter(p => canPayments(p.id));
   // The leaderboards keep the access rule they had in their old homes.
   const canHub = (id: HubView) =>
     id === "b2b_leaderboard" ? can("creative_leaderboard") && can("b2b_tracking")
@@ -726,7 +743,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
     : id === "creative_hub"    ? hubNavVisible.length > 0
     : id === "clients"         ? clientsNavVisible.length > 0
     : id === "tools"           ? toolsVisible.length > 0
-    : id === "payments"        ? can("profit_loss")
+    : id === "payments"        ? paymentsNavVisible.length > 0
     : true;
 
   // Someone whose access was narrowed can still have a now-forbidden view saved
@@ -758,15 +775,24 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       return;
     }
     if (topSection === "creative_hub" && !canHub(hubView)) setHubView(hubNavVisible[0].items[0].id);
+    if (topSection === "payments" && !canPayments(paymentsView)) setPaymentsView(paymentsNavVisible[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me]);
+
+  // A link straight to a Payments page this account can't open lands on the
+  // one it can.
+  useEffect(() => {
+    if (!me || topSection !== "payments") return;
+    if (!canPayments(paymentsView) && paymentsNavVisible.length) setPaymentsView(paymentsNavVisible[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me, topSection, paymentsView]);
 
   // Section + page, e.g. ["Clients", "Client Roster"]. Drives the header crumb
   // and the browser tab so they can't drift apart.
   const crumb: [string | null, string] =
     topSection === "tomsi_media" ? ["Tomsi Media", TOMSI_LABEL[tomsiView] ?? "B2B Dashboard"]
     : topSection === "creative_hub" ? ["Creative & Copy Hub", HUB_LABEL[hubView]]
-    : topSection === "payments"  ? ["Payments", "Profit and Loss"]
+    : topSection === "payments"  ? ["Payments", PAYMENTS_NAV.find(p => p.id === paymentsView)?.label ?? "Payments"]
     : topSection === "clients"   ? ["Clients", CLIENTS_NAV.find(c => c.id === clientsView)?.label ?? "Clients"]
     : topSection === "settings"  ? ["Settings", "Users"]
     : [NAV.find(n => n.view === view)?.group ?? null, NAV.find(n => n.view === view)?.label ?? "Dashboard"];
@@ -834,7 +860,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                     // somewhere on a single tap is disorienting. Navigation
                     // happens when a child is picked. Leaf sections still go
                     // straight there, since there is nothing to expand.
-                    if (SECTION_IS_LEAF.has(sec.id)) {
+                    if (SECTION_IS_LEAF.has(sec.id) && !(sec.id === "payments" && paymentsNavVisible.length > 1)) {
                       setTopSection(sec.id);
                       setExpandedSections(prev => new Set(prev).add(sec.id));
                       setSidebarOpen(false);
@@ -947,20 +973,26 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                 {/* Sub-nav for Payments */}
                 {!navCollapsed && sec.id === "payments" && expandedSections.has("payments") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
-                    <button
-                      onClick={() => { setTopSection("payments"); setSidebarOpen(false); }}
-                      className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
-                      style={isActive
-                        ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
-                        : { color: "#767676" }}
-                      onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
-                      onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.color = "#767676"; }}
-                    >
-                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d={PROFIT_LOSS_ICON} />
-                      </svg>
-                      Profit and Loss
-                    </button>
+                    {paymentsNavVisible.map(item => {
+                      const active = topSection === "payments" && paymentsView === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => { setTopSection("payments"); setPaymentsView(item.id); setSidebarOpen(false); }}
+                          className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
+                          style={active
+                            ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
+                            : { color: "#767676" }}
+                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#4a4a4a"; }}
+                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#767676"; }}
+                        >
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                          </svg>
+                          {item.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -1369,7 +1401,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
             : <CreativeHub key={hubView.slice(0, 3)} scope={hubView.startsWith("b2b") ? "b2b" : "b2c"} tab={hubView.endsWith("_timeline") ? "timeline" : "library"} clients={publicClients} />
           )}
 
-          {topSection === "payments" && can("profit_loss") && <ProfitLoss />}
+          {topSection === "payments" && paymentsView === "profit_loss" && can("profit_loss") && <ProfitLoss />}
+          {topSection === "payments" && paymentsView === "client_billing" && canPayments("client_billing") && <ClientBilling />}
 
           {(topSection === "clients_dashboard" || topSection === "tools" || (topSection === "tomsi_media" && tomsiView !== "b2b_tracking")) && (<>
 

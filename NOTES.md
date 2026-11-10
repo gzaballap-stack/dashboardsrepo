@@ -1,3 +1,59 @@
+## 2026-11-10 — Client Billing (Payments): charge and credit appointments per client, through Stripe
+
+New page **Payments → Client Billing** (`/dashboard/payments/client-billing`).
+Hangs off the Client Roster record, as planned on 2026-11-05.
+
+- **List:** every roster client with price per appointment, appointments in the
+  period, how many are not charged yet, charged $, credited count, unpaid
+  invoices and the credit they hold. Period: this month / last month / 30 /
+  90 days / all time (by booking date, `events.occurred_at`).
+- **One client:** each appointment (`events` rows: booked / show / no-show) is
+  **Not charged**, **Charged** or **Credited**. Tick appointments → **Charge**
+  or **Credit**; "Charge another amount" for a one-off (setup fee…). Tabs for
+  Charges and Credits. Price per appointment and the Stripe customer are set
+  at the top.
+- **Charging** (confirm dialog shows count × price − credit = total): the
+  client's **saved card now**, an **emailed invoice**, or **already paid — just
+  record it**. Card and invoice are Stripe invoices (one line for the
+  appointments, a negative line for credit); nothing else pending on the
+  Stripe customer is swept in. Without `STRIPE_SECRET_KEY` only "record it"
+  works — the tab still tracks everything.
+- **Credits:** crediting a *charged* appointment puts its price on the client's
+  **credit balance**, which comes off their next charge automatically (editable
+  in the dialog). Crediting a *not charged* appointment just marks it — it
+  won't be charged, nothing is owed. Credit can also be added by hand. Nothing
+  is ever refunded in Stripe from here.
+  `balance = credits on appointments + credits by hand − credit used on
+  charges that were not cancelled/failed`.
+- **Safety:** an appointment can't be charged twice (`billing_appointments.
+  event_id` unique); a double click can't make two charges (`request_id`); the
+  server refuses if the total differs from what the dialog showed. A declined
+  card cancels the Stripe invoice and frees the appointments. If the connection
+  drops mid-payment the charge is held as "awaiting" and settled from Stripe
+  the next time the client is opened (same for emailed invoices getting paid,
+  or invoices cancelled inside Stripe) — there is **no Stripe webhook**; status
+  is read from Stripe on opening a client. A paid Stripe charge can't be
+  cancelled here (refund in Stripe, or credit the appointments); unpaid
+  invoices and hand-recorded charges can.
+- **Access:** real money, so "no restriction set" is not enough — **admins, or
+  accounts ticked for Client Billing** in Settings > Users (`canBill` in
+  `src/lib/billing.ts`, `hasExplicitFeature` for the menu). Setting a user to
+  "Everything" does not include it.
+- **Tables** (`supabase/migrations/add_client_billing.sql`, additive):
+  `billing_clients` (price, Stripe customer), `billing_charges`,
+  `billing_appointments`, `billing_credits`. Run
+  `node scripts/migrate-billing.mjs v1` (**owner, on V1**); until then the page
+  says "Almost ready". V2 by the V2 data session if wanted.
+- **Stripe key:** `STRIPE_SECRET_KEY` in Railway on **V1 only** — never on V2
+  (demo clients, real cards). A `sk_test_…` key shows "Stripe: test mode".
+- **Not done:** Stripe payments do not write to Profit and Loss (the owner
+  types those by hand; auto-logging would double count). No refunds. USD only.
+- **Checked:** 18 simulated scenarios against a fake database and a fake Stripe
+  (declines, dropped connection, double submit, credit maths, access), the
+  screen in a local preview with made-up data, and the production build.
+  **Never run against real Stripe or a real database, and not checked signed
+  in** — first real charge should be a small one, or use a test key first.
+
 ## 2026-11-06 — Roster → Profit and Loss, not the other way; no "Add to roster"
 
 Owner's final call on the client link: **the roster stays as it is and is

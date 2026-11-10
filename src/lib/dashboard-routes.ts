@@ -21,6 +21,8 @@ export type DashRoute = {
   clientsView?: string;
   /** Creative & Copy Hub page id. */
   hubView?: string;
+  /** Payments page id. */
+  paymentsView?: string;
 };
 
 export const SECTION_SLUGS: Record<DashSection, string> = {
@@ -73,6 +75,13 @@ export const CLIENTS_VIEW_ROUTES: Record<string, { slug: string; label: string }
   share_reports: { slug: "share-reports", label: "Share Reports" },
 };
 
+// Payments pages. Profit and Loss keeps the bare /dashboard/payments address it
+// has always had.
+export const PAYMENTS_VIEW_ROUTES: Record<string, { slug: string; label: string }> = {
+  profit_loss:    { slug: "profit-and-loss", label: "Profit and Loss" },
+  client_billing: { slug: "client-billing",  label: "Client Billing" },
+};
+
 // Creative & Copy Hub pages. The two halves are separate libraries: B2B is
 // Tomsi Media's own ads, B2C is the clients'.
 export const HUB_VIEW_ROUTES: Record<string, { slug: string; label: string }> = {
@@ -94,6 +103,9 @@ export function pathForRoute(r: DashRoute): string {
   }
   if (r.section === "creative_hub" && r.hubView && HUB_VIEW_ROUTES[r.hubView]) {
     return `/dashboard/${section}/${HUB_VIEW_ROUTES[r.hubView].slug}`;
+  }
+  if (r.section === "payments" && r.paymentsView && r.paymentsView !== "profit_loss" && PAYMENTS_VIEW_ROUTES[r.paymentsView]) {
+    return `/dashboard/${section}/${PAYMENTS_VIEW_ROUTES[r.paymentsView].slug}`;
   }
   if ((r.section === "clients_dashboard" || r.section === "tools") && r.view && VIEW_ROUTES[r.view]) {
     return `/dashboard/${section}/${VIEW_ROUTES[r.view].slug}`;
@@ -118,12 +130,16 @@ export function routeForSlug(slug: string[] | undefined): DashRoute | null {
     const hv = Object.keys(HUB_VIEW_ROUTES).find(k => HUB_VIEW_ROUTES[k].slug === viewSlug);
     return { section, hubView: hv ?? "b2b_library" };
   }
+  if (section === "payments") {
+    const pv = Object.keys(PAYMENTS_VIEW_ROUTES).find(k => PAYMENTS_VIEW_ROUTES[k].slug === viewSlug);
+    return { section, paymentsView: pv ?? "profit_loss" };
+  }
   // The Creative Leaderboard used to live in the Clients Dashboard; old links follow it.
   if (section === "clients_dashboard" && viewSlug === "creative-leaderboard") {
     return { section: "creative_hub", hubView: "b2c_leaderboard" };
   }
   // Profit and Loss moved from Tools to Payments; old links follow it.
-  if (section === "tools" && viewSlug === "profit-and-loss") return { section: "payments" };
+  if (section === "tools" && viewSlug === "profit-and-loss") return { section: "payments", paymentsView: "profit_loss" };
   if (section === "clients_dashboard" || section === "tools") {
     const v = Object.keys(VIEW_ROUTES).find(k => VIEW_ROUTES[k].slug === viewSlug && VIEW_ROUTES[k].section === section);
     if (v) return { section, view: v };
@@ -138,6 +154,7 @@ export function titleForSlug(slug: string[] | undefined): string {
   if (!r) return "Dashboard";
   if (r.section === "clients" && r.clientsView) return CLIENTS_VIEW_ROUTES[r.clientsView]?.label ?? "Clients";
   if (r.hubView && HUB_VIEW_ROUTES[r.hubView]) return HUB_VIEW_ROUTES[r.hubView].label;
+  if (r.section === "payments" && r.paymentsView && PAYMENTS_VIEW_ROUTES[r.paymentsView]) return PAYMENTS_VIEW_ROUTES[r.paymentsView].label;
   if (r.view && VIEW_ROUTES[r.view]) return VIEW_ROUTES[r.view].label;
   return SECTION_TITLES[r.section];
 }

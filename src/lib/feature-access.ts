@@ -18,7 +18,7 @@ export type FeatureId =
   | "admin_agents" | "schedule"
   | "b2b_tracking"
   | "client_roster" | "csm_dashboard" | "share_reports"
-  | "zip_tool" | "task_board" | "lift_tracker" | "profit_loss"
+  | "zip_tool" | "task_board" | "lift_tracker" | "profit_loss" | "client_billing"
   | "admin_users";
 
 export type FeatureGroup =
@@ -54,6 +54,7 @@ export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] =
   // every account's allowed_views, so renaming it would revoke access silently.
   { id: "lift_tracker",         label: "Health Tracker",        group: "Tools"             },
   { id: "profit_loss",          label: "Profit and Loss",       group: "Payments"          },
+  { id: "client_billing",       label: "Client Billing",        group: "Payments"          },
   { id: "admin_users",          label: "User Management",       group: "Settings"          },
 ];
 
@@ -79,6 +80,7 @@ const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/lift-log",           features: ["lift_tracker"] },
   { prefix: "/api/whoop",              features: ["lift_tracker"] },
   { prefix: "/api/profit-loss",        features: ["profit_loss"] },
+  { prefix: "/api/billing",            features: ["client_billing"] },
   { prefix: "/api/tasks",              features: ["task_board"] },
   { prefix: "/api/zip-",               features: ["zip_tool"] },
   { prefix: "/api/metrics",            features: ["dashboard"] },
@@ -115,6 +117,15 @@ export function canReachPath(pathname: string, allowed: string[] | null | undefi
   const gate = API_GATES.find(g => pathname.startsWith(g.prefix));
   if (!gate) return true;
   return gate.features.some(f => allowed.includes(f));
+}
+
+// Features that move real money. "No restriction set" does not open these: it
+// takes an admin, or an account an admin has ticked the feature for. The API
+// routes enforce the same rule themselves (`canBill` in lib/billing.ts).
+export const EXPLICIT_ONLY: FeatureId[] = ["client_billing"];
+
+export function hasExplicitFeature(feature: FeatureId, isAdmin: boolean, allowed: string[] | null | undefined): boolean {
+  return isAdmin || (Array.isArray(allowed) && allowed.includes(feature));
 }
 
 export function hasFeature(feature: FeatureId, allowed: string[] | null | undefined): boolean {
