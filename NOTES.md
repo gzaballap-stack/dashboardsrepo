@@ -1,3 +1,42 @@
+## 2026-11-11 — Client Billing: Match with Stripe (payments taken outside the dashboard)
+
+Owner wanted this month's appointments (and SMS ones) tracked from what Stripe
+already took. The Stripe key only exists on V1's Railway — not locally — so
+this is a screen in the app, not a one-off script.
+
+- **Match with Stripe** button on Client Billing (list view, Stripe connected).
+  Uses the page's period. `GET /api/billing/stripe-match` reads successful
+  charges from Stripe (`listPayments` in `src/lib/stripe.ts`, **read-only**,
+  net of refunds, USD only) and leaves out anything charged from this dashboard
+  (invoice metadata `billing_charge_id`, or its invoice id on a
+  `billing_charges` row) and anything matched before.
+- **Suggestion** (`src/lib/stripe-match.ts`, pure rules): client = the one
+  linked to that Stripe customer, else the single roster client matching by
+  P&L-profile email or by name (flagged "check it's right"); count = amount ÷
+  the client's price when it divides; appointments = ones named in the
+  payment's description, then matching an "SMS"/"ads" hint, then the **most
+  recent untracked ones booked before the payment**. An appointment is
+  suggested for one payment only. Untracked appointments are read from 60 days
+  before the period so a payment can be for last month's.
+- **Saving** (`POST`, one payment at a time; "Save all" loops the ones whose
+  ticks × price = amount): re-reads the payment from Stripe (the browser never
+  supplies the amount), then writes a `billing_charges` row — `method manual`,
+  `status paid`, `created_at`/`paid_at` = the day Stripe took it,
+  `request_id = stripe:<charge id>` (unique → never twice), receipt link in
+  `stripe_invoice_url`, **no `stripe_invoice_id`** — and one
+  `billing_appointments` row per ticked appointment at amount ÷ count. "Not for
+  appointments" saves it as a `custom` charge. If the client has no Stripe
+  customer and nobody else holds that one, it is linked.
+- **Undo** = Remove on the client's Charges tab (it is a manual charge, so no
+  Stripe call is ever made); the payment then shows in Match with Stripe again.
+- Pins `Stripe-Version: 2024-06-20` for the charge reads so a charge still
+  names its invoice; if Stripe refuses, falls back to a plain read and the
+  screen says details are limited.
+- Tested only against a simulated Stripe (12 scenarios) and a preview with
+  made-up data. **Not yet run against the real Stripe account** — first real
+  use should be a single payment, checked on the client's page. No schema
+  change.
+
 ## 2026-11-11 — Client Billing: appointment cards, "Not tracked", Cancelled; ad spend is not our cost
 
 Owner's corrections and asks, built on top of the entry below (never shipped

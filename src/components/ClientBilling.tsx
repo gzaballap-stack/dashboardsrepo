@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import StripeMatch from "./StripeMatch";
 import { createPortal } from "react-dom";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -1048,11 +1049,11 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
                         <td style={{ ...TD, ...NUM }}>{money(c.subtotal)}</td>
                         <td style={{ ...TD, ...NUM, color: c.credit_applied ? INK : FAINT }}>{c.credit_applied ? money(-c.credit_applied) : "—"}</td>
                         <td style={{ ...TD, ...NUM, fontWeight: 700, textDecoration: dead ? "line-through" : undefined }}>{money(c.total)}</td>
-                        <td style={TD}>{c.total === 0 && c.credit_applied > 0 ? "Credit" : METHOD_LABEL[c.method]}</td>
+                        <td style={TD}>{c.total === 0 && c.credit_applied > 0 ? "Credit" : c.method === "manual" && c.stripe_invoice_url ? "Stripe" : METHOD_LABEL[c.method]}</td>
                         <td style={TD}><Pill text={st.label} color={st.color} /></td>
                         <td style={{ ...TD, whiteSpace: "nowrap", textAlign: "right" }}>
                           {c.stripe_invoice_url && !dead && (
-                            <a href={c.stripe_invoice_url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: INK, marginRight: 12 }}>Invoice ↗</a>
+                            <a href={c.stripe_invoice_url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 600, color: INK, marginRight: 12 }}>{c.method === "manual" ? "Receipt ↗" : "Invoice ↗"}</a>
                           )}
                           {canCancel && (
                             <button disabled={busy} style={{ fontSize: 12.5, fontWeight: 600, color: BAD }}
@@ -1175,6 +1176,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
   const [openId, setOpenId] = useState<string | null>(openClientId ?? null);
   const [returns, setReturns] = useState<Returns | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [matching, setMatching] = useState(false);
 
   const [version, setVersion] = useState(0);
   const reload = useCallback(() => setVersion(v => v + 1), []);
@@ -1227,6 +1229,11 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
             </span>
           </p>
         </div>
+        {stripe.configured && ready && !openId && !matching && (
+          <button onClick={() => setMatching(true)} style={BTN_DARK} title="Tie payments already taken in Stripe to each client's appointments">
+            Match with Stripe
+          </button>
+        )}
         <Segments<PeriodId> value={period} onChange={setPeriod} options={PERIODS} />
       </div>
 
@@ -1239,6 +1246,10 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
             Client Billing needs a one-off database update before it can store charges and credits.
           </p>
         </div>
+      ) : matching ? (
+        <StripeMatch start={rangeOf(period).start} end={rangeOf(period).end}
+          periodLabel={period === "all" ? "all time" : periodLabel === "30 days" || periodLabel === "90 days" ? `in the last ${periodLabel}` : periodLabel}
+          onBack={() => setMatching(false)} onChanged={reload} />
       ) : openId ? (
         <ClientDetail key={openId} clientId={openId} period={period} stripe={stripe} onBack={() => setOpenId(null)} onChanged={reload} onOpenProfitLoss={onOpenProfitLoss} />
       ) : rows === null ? (
