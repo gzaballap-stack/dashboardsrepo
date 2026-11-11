@@ -47,14 +47,26 @@ async function syncOne(req: Request) {
       fields: 'ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,frequency,inline_link_clicks,unique_inline_link_clicks,unique_link_clicks_ctr,ctr,cpc,cpm,actions,cost_per_action_type',
       time_range: JSON.stringify({ since: date, until: date }),
       level: 'ad',
+      limit: '500',
       access_token: meta_token,
     });
 
-    const metaRes = await fetch(`https://graph.facebook.com/v19.0/${account_id}/insights?${params}`);
-    const metaJson = await metaRes.json() as {
+    // Meta returns 25 rows a page unless asked for more, and an account with more
+    // ads than one page silently lost the rest (and their spend). Ask for 500 and
+    // follow `paging.next` until the day is complete.
+    type InsightsPage = {
       data?: Record<string, string>[];
       error?: { message: string };
+      paging?: { next?: string };
     };
+    const metaRes = await fetch(`https://graph.facebook.com/v19.0/${account_id}/insights?${params}`);
+    const metaJson = await metaRes.json() as InsightsPage;
+    for (let next = metaJson.paging?.next, page = 0; next && !metaJson.error && page < 20; page++) {
+      const more = await (await fetch(next)).json() as InsightsPage;
+      if (more.error) { metaJson.error = more.error; break; }
+      metaJson.data = [...(metaJson.data ?? []), ...(more.data ?? [])];
+      next = more.paging?.next;
+    }
 
     if (metaJson.error) {
       return NextResponse.json({ error: `Meta API: ${metaJson.error.message}` }, { status: 502 });
