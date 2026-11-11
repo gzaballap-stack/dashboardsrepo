@@ -3,10 +3,11 @@
 //
 // An appointment is one row in `events` (booked, then flipped to show / no-show
 // in place). Billing tracks it in `billing_appointments`:
-//   no row                       → not charged
-//   row with a charge            → charged
+//   no row                       → not tracked: nobody has decided yet
+//   row with a charge            → billed
 //   row with credited_at         → credited (credit_amount is what came back:
-//                                  its price if it had been charged, else 0)
+//                                  its price if it had been billed, else 0)
+//   row with cancelled_at        → cancelled: never billed, nothing owed
 //
 // A client's credit balance is what they are owed against their next charge:
 //   credits on appointments + credits added by hand − credit already used.
@@ -109,9 +110,83 @@ export function planCovers(opts: {
 export const creditInAppointments = (balance: number, price: number) =>
   price > 0 ? Math.floor(toCents(balance) / toCents(price)) : 0;
 
+/** The database has not had the "cancelled" column added yet. */
+export function isMissingColumn(error: { code?: string; message?: string } | null | undefined, column: string): boolean {
+  if (!error) return false;
+  return (error.code === 'PGRST204' || error.code === '42703' || /column|schema cache/i.test(error.message ?? ''))
+    && (error.message ?? '').includes(column);
+}
+
 /** A charge paid entirely with credit: nothing was billed for it. */
 export const paidByCredit = (c: { total?: unknown; credit_applied?: unknown }) =>
   toCents(Number(c.total ?? 0)) === 0 && toCents(Number(c.credit_applied ?? 0)) > 0;
+
+/* ── where an appointment came from, and what each source returns ─────────────
+   SMS and Facebook Ads are told apart the same way the Clients dashboard does:
+   an SMS reply is stored as a lead with `ad_platform = sms`, and the bookings
+   that follow inherit it. Anything else carrying ad attribution is ads. An
+   appointment with no recorded source falls back on the client's service — and
+   for a client running both, it is "unknown" rather than guessed. */
+
+export type Source = 'ads' | 'sms' | 'unknown';
+
+type Attributed = {
+  ad_platform?: unknown; utm_source?: unknown; utm_medium?: unknown;
+  campaign_id?: unknown; adset_id?: unknown; ad_id?: unknown; utm_campaign?: unknown;
+};
+
+const isSms = (v: unknown) => typeof v === 'string' && v.trim().toLowerCase() === 'sms';
+
+export function sourceOf(e: Attributed, service: string | null | undefined): Source {
+  if (isSms(e.ad_platform) || isSms(e.utm_source) || isSms(e.utm_medium)) return 'sms';
+  if (e.ad_platform || e.campaign_id || e.adset_id || e.ad_id || e.utm_source || e.utm_campaign) return 'ads';
+  if (service === 'sms') return 'sms';
+  if (service === 'both') return 'unknown';
+  return 'ads';
+}
+
+export type BillingState = 'to_bill' | 'charged' | 'credited' | 'covered' | 'cancelled';
+
+export type SourceReturn = {
+  appointments: number;       // booked in the period
+  credited: number;           // of those, credited — earn nothing
+  cancelled: number;          // of those, cancelled — earn nothing
+  untracked: number;          // of those, not decided yet
+  billed: number;             // $ already charged, or paid for by credit
+  to_bill: number;            // $ the untracked ones are worth, at the client's price
+  revenue: number;            // billed + to_bill
+  cost: number;               // SMS cost. Ads cost us nothing: the client pays the ad spend
+  profit: number;             // revenue − cost
+  multiple: number | null;    // revenue ÷ cost; null when nothing was spent
+  cost_per_appointment: number | null;
+};
+
+/** What each source cost and what its appointments bring in. A billed or
+ *  credit-covered appointment counts at the price it was charged; one not
+ *  tracked yet counts at the client's current price; a credited or cancelled
+ *  one counts for nothing. */
+export function returnsBySource(
+  appointments: { source: Source; state: BillingState; price: number; clientPrice: number }[],
+  costs: { ads: number; sms: number },
+): Record<'ads' | 'sms', SourceReturn> & { unknown: number } {
+  const make = (source: 'ads' | 'sms'): SourceReturn => {
+    const mine = appointments.filter(a => a.source === source);
+    const billed = mine.filter(a => a.state === 'charged' || a.state === 'covered').reduce((s, a) => s + toCents(a.price), 0);
+    const toBill = mine.filter(a => a.state === 'to_bill').reduce((s, a) => s + toCents(a.clientPrice), 0);
+    const cost = toCents(costs[source]);
+    return {
+      appointments: mine.length,
+      credited: mine.filter(a => a.state === 'credited').length,
+      cancelled: mine.filter(a => a.state === 'cancelled').length,
+      untracked: mine.filter(a => a.state === 'to_bill').length,
+      billed: fromCents(billed), to_bill: fromCents(toBill), revenue: fromCents(billed + toBill),
+      cost: fromCents(cost), profit: fromCents(billed + toBill - cost),
+      multiple: cost > 0 ? Math.round(((billed + toBill) / cost) * 100) / 100 : null,
+      cost_per_appointment: cost > 0 && mine.length > 0 ? fromCents(cost / mine.length) : null,
+    };
+  };
+  return { ads: make('ads'), sms: make('sms'), unknown: appointments.filter(a => a.source === 'unknown').length };
+}
 
 /** Billing moves real money, so "no restriction set" is not enough: it takes
  *  an admin, or an account an admin has ticked Client Billing for. */

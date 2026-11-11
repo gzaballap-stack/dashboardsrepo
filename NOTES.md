@@ -1,3 +1,80 @@
+## 2026-11-11 — Client Billing: appointment cards, "Not tracked", Cancelled; ad spend is not our cost
+
+Owner's corrections and asks, built on top of the entry below (never shipped
+separately — both went out together):
+
+- **Ad spend is the client's money, not Tomsi Media's.** Return by source now
+  costs **SMS only** (messages × rate). The FB Ads card shows appointments and
+  revenue with "No cost to you — the client pays the ad spend"; no return
+  multiple, no ad-spend read. The entry below still describes an ad-spend cost
+  — that part is superseded.
+- **"Not tracked"** replaces "To bill": an appointment nobody has decided on
+  (no `billing_appointments` row). The client page says how many there are, the
+  client list has a warning and a Not tracked column. "Charged" reads
+  **Billed** everywhere.
+- **Appointments are cards**, not a table. A not-tracked card carries
+  **Bill · Credit · Cancelled**; tick several for the same three in bulk
+  ("Tick all"). Bill opens the charge dialog; Credit and Cancelled apply at
+  once. Tracked cards show their state with one action: Billed / Covered →
+  "Credit it" (dialog, since credit is owed back), Credited → "Undo credit",
+  Cancelled → "Undo". Return by source moved to its own tab so the cards sit
+  right under the tiles.
+- **Cancelled** is its own outcome, kept apart from credits on the owner's
+  question ("separate them, or just credit?" → separate: a credit means
+  something is owed back, a cancellation means the appointment never happened;
+  mixing them inflates credits and hides the cancellation count). Only for
+  appointments not billed yet; never creates credit; not in the credit ledger;
+  never covered by credit; own filter, own counts. A billed appointment that
+  falls through is credited, not cancelled. Crediting a cancelled one turns it
+  into a credit worth nothing.
+- **New column `billing_appointments.cancelled_at`** — in
+  `add_client_billing.sql` as `add column if not exists`, so
+  `node scripts/migrate-billing.mjs v1` (**owner**) adds it. Reads select `*`,
+  so a database without it works as before; only the Cancelled button answers
+  "needs a one-off database update".
+- **Checked:** 34 simulated scenarios (3 new: cancel rules, cover skips
+  cancelled, database without the column), local preview with made-up data,
+  production build. Not run against the real database or signed in.
+
+## 2026-11-10 — Client Billing: SMS vs FB Ads per appointment, return by source, one client profile with Profit and Loss
+
+- **Source on every appointment** (FB Ads / SMS / No source), same rule as the
+  Clients dashboard's channel toggle: `ad_platform = sms` (also `utm_source` /
+  `utm_medium` = sms) is SMS; any other attribution is ads (`sourceOf` in
+  `src/lib/billing.ts`). **No attribution at all** falls back on the roster
+  service — SMS-only client → SMS, ads / not set → ads, **Both → "No source"**,
+  shown as its own pill and filter and counted in neither return figure, with a
+  warning saying how many. That is the accuracy check: the dashboard's ads view
+  silently counts those as ads. Nothing rewrites `events`.
+- **Return by source** on the client list (all clients) and on each client, for
+  the period: cost (ad spend less excluded campaigns / SMS sent × rate — the
+  dashboard's own Ad Spend and Total SMS Cost), cost per appointment, billed,
+  still to bill, revenue, profit, return (revenue ÷ cost). Revenue: a charged
+  or credit-covered appointment at the price charged, one still to bill at the
+  client's current price, a credited one nothing (`returnsBySource`). Assumes
+  Tomsi Media's revenue is the per-appointment price and its cost is the spend
+  tracked here; kept inside Client Billing (admins) rather than on the Clients
+  dashboard, which setters see.
+- **One client profile.** Billing's "Client details" card reads and edits the
+  **Profit and Loss client profile** (`pnl_clients`, the signed-in user's;
+  matched by roster link, else by name) — contact, email, phone, website, notes
+  — and shows what they have paid per the P&L sheet. Saving from Billing links
+  the profile to the roster client. **Open in Profit and Loss** / **Open in
+  Client Billing** jump between the two on the same client. The Stripe "create
+  customer" form starts from the profile's email. Billing charges still do not
+  write to the P&L sheet.
+- P&L client panel now re-opens once roster + profiles have loaded if it was
+  opened before them (it used to keep blank boxes).
+- JSX gotcha hit here: a text run containing `&ldquo;` / `&rsquo;` lost its
+  leading space after a `{expression}` in this Next build — write such
+  sentences as one template string.
+- **Could not check live data** (production reads are blocked from sessions),
+  so how many real appointments have no source is unknown until the owner
+  looks. If many: the fix is on the booking side (source missing on the lead),
+  or a "set source by hand" tool — not built.
+- **Checked:** 31 simulated scenarios (6 new), local preview with made-up data,
+  production build. Not run against the real database or signed in.
+
 ## 2026-11-10 — Client Billing: a credit pays for the client's next booking on its own
 
 Owner thinks of a credit as **an appointment owed**: "credits still to be sent

@@ -52,7 +52,10 @@ await runSQL(readFileSync(resolve(__dirname, '../supabase/migrations/add_client_
   'Client Billing tables');
 
 const check = await runSQL(`
-  select table_name from information_schema.tables
-  where table_schema = 'public' and table_name like 'billing_%' order by table_name;
+  select
+    (select count(*) from information_schema.tables
+      where table_schema = 'public' and table_name like 'billing_%') as billing_tables,
+    (select count(*) from information_schema.columns
+      where table_schema = 'public' and table_name = 'billing_appointments' and column_name = 'cancelled_at') as cancelled_column;
 `, 'Verify');
 console.log('\n' + JSON.stringify(check, null, 2));

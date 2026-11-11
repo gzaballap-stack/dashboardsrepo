@@ -55,9 +55,12 @@ create table if not exists billing_appointments (
   credited_at    timestamptz,                      -- set = credited
   credit_amount  numeric not null default 0,       -- what the credit gave back (0 if it was never charged)
   credit_reason  text,
+  cancelled_at   timestamptz,                      -- set = cancelled: never billed, nothing owed
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now()
 );
+-- Added after the first release; a database created before it gets the column here.
+alter table billing_appointments add column if not exists cancelled_at timestamptz;
 create index if not exists billing_appointments_client_idx on billing_appointments (client_id);
 create index if not exists billing_appointments_charge_idx on billing_appointments (charge_id);
 

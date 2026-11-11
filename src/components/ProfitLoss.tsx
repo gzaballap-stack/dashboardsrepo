@@ -589,7 +589,7 @@ const FORM_FIELDS: { id: keyof ClientForm; label: string; type?: string; placeho
 
 // A client's details and their whole payment history, all time. Saving a new
 // name renames them on every month, so the history stays attached.
-function ClientPanel({ name, display, profile, roster, lines, months, otherKeys, onSave, onClose, onOpenMonth }: {
+function ClientPanel({ name, display, profile, roster, lines, months, otherKeys, onSave, onClose, onOpenMonth, onOpenBilling }: {
   name: string;                  // as on the lines
   display: string;               // what shows everywhere (roster name, else company, else name)
   profile: Profile | null;
@@ -600,6 +600,7 @@ function ClientPanel({ name, display, profile, roster, lines, months, otherKeys,
   onSave: (form: ClientForm) => Promise<string | null>;
   onClose: () => void;
   onOpenMonth: (month: string) => void;
+  onOpenBilling?: (clientId: string) => void;   // their page on Client Billing, if this account has it
 }) {
   const stored: ClientForm = useMemo(() => ({
     name,
@@ -658,6 +659,9 @@ function ClientPanel({ name, display, profile, roster, lines, months, otherKeys,
                 profile?.client_id ? "on the Client Roster" : "not on the Client Roster"].filter(Boolean).join(" · ")}
             </p>
           </div>
+          {onOpenBilling && profile?.client_id && (
+            <button onClick={() => onOpenBilling(profile.client_id!)} style={{ ...BTN_QUIET, padding: "7px 11px" }}>Open in Client Billing</button>
+          )}
           <button onClick={onClose} aria-label="Close" style={{ ...BTN_QUIET, padding: "7px 11px" }}>Close</button>
         </div>
 
@@ -755,11 +759,16 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "clients", label: "Clients" },
 ];
 
-export default function ProfitLoss() {
+export default function ProfitLoss({ openClientKey, onOpenBilling }: {
+  /** Open straight on this client's details (coming from Client Billing). */
+  openClientKey?: string | null;
+  /** Jump to a roster client on Client Billing; absent when this account can't open it. */
+  onOpenBilling?: (clientId: string) => void;
+} = {}) {
   const thisMonth = useMemo(() => { const d = new Date(); return monthKey(d.getFullYear(), d.getMonth()); }, []);
   const [lines, setLines] = useState<Line[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("month");
+  const [tab, setTab] = useState<Tab>(openClientKey ? "clients" : "month");
   const [month, setMonth] = useState(thisMonth);
   const [scope, setScope] = useState<number | "all">("all");
   // Clients from the Client Roster, and the expenses marked "repeats monthly".
@@ -768,7 +777,11 @@ export default function ProfitLoss() {
   const euro = { rate: todayRate };
   const [clientRange, setClientRange] = useState<{ from: string; to: string } | null>(null);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
-  const [editing, setEditing] = useState<string | null>(null);   // clientKey of the open client
+  const [editing, setEditing] = useState<string | null>(openClientKey ?? null);   // clientKey of the open client
+  // The client panel fills its boxes once, when it opens. Arriving with a
+  // client already open, it must open again when the details have loaded —
+  // or saving would write blanks over them.
+  const [extrasReady, setExtrasReady] = useState({ roster: false, profiles: false });
   const [roster, setRoster] = useState<RosterClient[]>([]);
   const rosterById = useMemo(() => new Map(roster.map(c => [c.id, c])), [roster]);
   const rosterByKey = useMemo(() => new Map(roster.map(c => [clientKey(c.name), c])), [roster]);
@@ -811,7 +824,8 @@ export default function ProfitLoss() {
       .then(body => setRoster((body.clients ?? [])
         .filter((c: RosterClient & { is_internal?: boolean }) => !c.is_internal)
         .map((c: RosterClient & { is_live?: boolean }) => ({ id: c.id, name: c.name, status: c.status ?? (c.is_live ? "live" : "offline") }))))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setExtrasReady(r => ({ ...r, roster: true })));
   }, []);
 
   // Client details are an extra: if they can't be read, the sheet still works.
@@ -819,7 +833,8 @@ export default function ProfitLoss() {
     fetch("/api/profit-loss/clients")
       .then(res => (res.ok ? res.json() : { clients: [] }))
       .then(body => setProfiles(Object.fromEntries((body.clients ?? []).map((c: Profile) => [c.name_key, c]))))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setExtrasReady(r => ({ ...r, profiles: true })));
   }, []);
 
   const send = useCallback(async (method: string, url: string, body?: unknown) => {
@@ -1449,6 +1464,8 @@ export default function ProfitLoss() {
 
       {editing && (
         <ClientPanel
+          key={`${extrasReady.roster}-${extrasReady.profiles}`}
+          onOpenBilling={onOpenBilling}
           name={cs.names.get(editing) ?? profiles[editing]?.name ?? rosterByKey.get(editing)?.name ?? editing}
           display={displayOf(cs.names.get(editing) ?? profiles[editing]?.name ?? rosterByKey.get(editing)?.name ?? editing)}
           profile={(() => {

@@ -601,6 +601,7 @@ create table if not exists billing_appointments (
   credited_at    timestamptz,                      -- set = credited
   credit_amount  numeric not null default 0,       -- what the credit gave back (0 if it was never charged)
   credit_reason  text,
+  cancelled_at   timestamptz,                      -- set = cancelled: never billed, nothing owed
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now()
 );

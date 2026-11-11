@@ -431,6 +431,9 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const [clientsView, setClientsView] = useState<ClientsView>(() => (initialRoute?.clientsView as ClientsView) ?? "client_roster");
   const [hubView, setHubView] = useState<HubView>(() => (initialRoute?.hubView as HubView) ?? "b2b_library");
   const [paymentsView, setPaymentsView] = useState<PaymentsView>(() => (initialRoute?.paymentsView as PaymentsView) ?? "profit_loss");
+  // Jumping between a client's Billing page and their Profit and Loss details:
+  // which client the page being opened should land on. Cleared by the menu.
+  const [paymentsFocus, setPaymentsFocus] = useState<{ billingClientId?: string; pnlClientKey?: string }>({});
   // Collapsed sidebar buys ~176px, which is what wide drawer tables need to
   // fit without a horizontal scroll.
   // The menu is a rail that opens on hover and closes when the pointer leaves,
@@ -978,7 +981,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                       return (
                         <button
                           key={item.id}
-                          onClick={() => { setTopSection("payments"); setPaymentsView(item.id); setSidebarOpen(false); }}
+                          onClick={() => { setTopSection("payments"); setPaymentsView(item.id); setPaymentsFocus({}); setSidebarOpen(false); }}
                           className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
                           style={active
                             ? { background: "rgba(0,0,0,0.06)", color: "#000000" }
@@ -1401,8 +1404,18 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
             : <CreativeHub key={hubView.slice(0, 3)} scope={hubView.startsWith("b2b") ? "b2b" : "b2c"} tab={hubView.endsWith("_timeline") ? "timeline" : "library"} clients={publicClients} />
           )}
 
-          {topSection === "payments" && paymentsView === "profit_loss" && can("profit_loss") && <ProfitLoss />}
-          {topSection === "payments" && paymentsView === "client_billing" && canPayments("client_billing") && <ClientBilling />}
+          {topSection === "payments" && paymentsView === "profit_loss" && can("profit_loss") && (
+            <ProfitLoss key={paymentsFocus.pnlClientKey ?? "pnl"} openClientKey={paymentsFocus.pnlClientKey}
+              onOpenBilling={canPayments("client_billing")
+                ? id => { setPaymentsFocus({ billingClientId: id }); setPaymentsView("client_billing"); }
+                : undefined} />
+          )}
+          {topSection === "payments" && paymentsView === "client_billing" && canPayments("client_billing") && (
+            <ClientBilling key={paymentsFocus.billingClientId ?? "billing"} openClientId={paymentsFocus.billingClientId}
+              onOpenProfitLoss={can("profit_loss")
+                ? key => { setPaymentsFocus({ pnlClientKey: key }); setPaymentsView("profit_loss"); }
+                : undefined} />
+          )}
 
           {(topSection === "clients_dashboard" || topSection === "tools" || (topSection === "tomsi_media" && tomsiView !== "b2b_tracking")) && (<>
 
