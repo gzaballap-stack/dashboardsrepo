@@ -1,6 +1,8 @@
 ## 2026-11-12 — Client Billing: backlog = this month + all SMS; "are you sure" before billing; lead lookup
 
-- **Backlog view.** Client Billing now opens on **This month + all SMS**
+- **Backlog view.** A **This month + all SMS** tab, last in the row. The page
+  still opens on This month — it briefly opened on the backlog and the owner
+  asked for everything else to stay exactly as it was. The tab is
   (`period = backlog`, sent as `sms_all=1` with this month's dates): this
   month's appointments from every source, plus every SMS appointment booked
   before it (filed as SMS by `ad_platform` / `utm_source` / `utm_medium`, or any

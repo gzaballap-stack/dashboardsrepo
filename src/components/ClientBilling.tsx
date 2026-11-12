@@ -153,12 +153,13 @@ const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 // return by source under it are this month's.
 type PeriodId = "backlog" | "this_month" | "last_month" | "last_30" | "last_90" | "all";
 const PERIODS: { id: PeriodId; label: string }[] = [
-  { id: "backlog", label: "This month + all SMS" },
   { id: "this_month", label: "This month" },
   { id: "last_month", label: "Last month" },
   { id: "last_30", label: "30 days" },
   { id: "last_90", label: "90 days" },
   { id: "all", label: "All time" },
+  // Last, and never the opening view: the owner wants the page as it was.
+  { id: "backlog", label: "This month + all SMS" },
 ];
 
 function rangeOf(id: PeriodId): { start: string | null; end: string | null } {
@@ -1364,7 +1365,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
   /** Jump to this client on Profit and Loss; absent when that page isn't available. */
   onOpenProfitLoss?: (clientKey: string) => void;
 } = {}) {
-  const [period, setPeriod] = useState<PeriodId>("backlog");
+  const [period, setPeriod] = useState<PeriodId>("this_month");
   // SMS appointments from before this month that the backlog includes; null = they couldn't be read.
   const [olderSms, setOlderSms] = useState<number | null>(0);
   const [rows, setRows] = useState<ClientRow[] | null>(null);
