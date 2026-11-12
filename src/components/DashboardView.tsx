@@ -785,9 +785,20 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const inHub = topSection === "creative_hub";
   const hubIsLeaderboard = inHub && hubView.endsWith("_leaderboard");
 
+  // B2B Tracking opens the whole TM Dashboard; SMS Dashboard alone opens just
+  // that page.
+  const canTomsi = (id: TomsiView) => can("b2b_tracking") || (id === "sms_dashboard" && can("sms_dashboard"));
+  const tomsiNavVisible = TOMSI_NAV
+    .map(g => ({ ...g, items: g.items.filter(i => canTomsi(i.id)) }))
+    .filter(g => g.items.length > 0);
+  const openTomsi = (id: TomsiView) => {
+    setTomsiView(id);
+    if (id !== "b2b_tracking") setView(id === "sms_dashboard" ? "dashboard" : id as View);
+  };
+
   const sectionVisible = (id: TopSection) =>
     id === "clients_dashboard" ? groups.length > 0
-    : id === "tomsi_media"     ? can("b2b_tracking")
+    : id === "tomsi_media"     ? tomsiNavVisible.length > 0
     : id === "creative_hub"    ? hubNavVisible.length > 0
     : id === "clients"         ? clientsNavVisible.length > 0
     : id === "tools"           ? toolsVisible.length > 0
@@ -808,6 +819,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
         const fallback = toolsVisible[0] ?? null;
         if (fallback) { setTopSection("tools"); setView(fallback as View); }
         else if (clientsNavVisible.length) setTopSection("clients");
+        else if (tomsiNavVisible.length) { setTopSection("tomsi_media"); openTomsi(tomsiNavVisible[0].items[0].id); }
         return;
       }
       if (!can(view) || TOOLS_VIEWS.includes(view) || view === "sales_tracker") {
@@ -823,6 +835,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       return;
     }
     if (topSection === "clients" && !can(clientsView)) setClientsView(clientsNavVisible[0].id);
+    if (topSection === "tomsi_media" && !canTomsi(tomsiView)) openTomsi(tomsiNavVisible[0].items[0].id);
     if (topSection === "creative_hub" && !canHub(hubView)) setHubView(hubNavVisible[0].items[0].id);
     if (topSection === "payments" && !canPayments(paymentsView)) setPaymentsView(paymentsNavVisible[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1103,7 +1116,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                 {/* Sub-nav for Tomsi Media Dashboard */}
                 {!navCollapsed && sec.id === "tomsi_media" && expandedSections.has("tomsi_media") && (
                   <div className="mt-1 mb-2" style={{ borderLeft: "1px solid rgba(0,0,0,0.081)", marginLeft: 20, paddingLeft: 8 }}>
-                    {TOMSI_NAV.map(group => (
+                    {tomsiNavVisible.map(group => (
                       <div key={group.group} className="mb-3">
                         <p className="text-[9px] font-bold uppercase tracking-widest px-2 mb-1" style={{ color: "#c2c2c2" }}>{group.group}</p>
                         {group.items.map(item => {
@@ -1113,8 +1126,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                               key={item.id}
                               onClick={() => {
                                 setTopSection("tomsi_media");
-                                setTomsiView(item.id);
-                                if (item.id !== "b2b_tracking") setView(item.id === "sms_dashboard" ? "dashboard" : item.id as View);
+                                openTomsi(item.id);
                                 setStatOpen(null);
                                 setSidebarOpen(false);
                               }}
@@ -1242,7 +1254,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
 
           {/* Tomsi Media: one "Download" button → Full brief / Update (Markdown files
               to paste into an AI chat) or Link (a read-only URL an AI project can fetch). */}
-          {topSection === "tomsi_media" && (
+          {topSection === "tomsi_media" && can("b2b_tracking") && (
             <div className="relative flex-shrink-0" ref={reportMenuRef}>
               <button onClick={() => { setShowReportMenu(v => !v); setShowReportShare(false); }} title="Media-buying reports"
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"

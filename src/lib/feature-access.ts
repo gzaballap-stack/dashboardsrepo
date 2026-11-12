@@ -16,7 +16,7 @@ export type FeatureId =
   | "heatmap_show" | "heatmap_pickup" | "heatmap_leads"
   | "agent_stats" | "agent_scorecards" | "recordings"
   | "admin_agents" | "schedule"
-  | "b2b_tracking"
+  | "b2b_tracking" | "sms_dashboard"
   | "onboarding" | "client_roster" | "csm_dashboard" | "share_reports"
   | "zip_tool" | "task_board" | "lift_tracker" | "profit_loss" | "client_billing"
   | "admin_users";
@@ -41,7 +41,10 @@ export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] =
   { id: "recordings",           label: "Call Recordings",       group: "Clients Dashboard" },
   { id: "admin_agents",         label: "Agent Roster",          group: "Clients Dashboard" },
   { id: "schedule",             label: "Power Dialer Schedule", group: "Clients Dashboard" },
-  { id: "b2b_tracking",         label: "B2B Tracking",          group: "TM Dashboard"      },
+  // B2B Tracking is the whole TM Dashboard. SMS Dashboard on its own opens just
+  // that page (SMS stats + Johnny's payout) for someone who should see nothing else.
+  { id: "b2b_tracking",         label: "B2B Tracking (whole TM Dashboard)", group: "TM Dashboard" },
+  { id: "sms_dashboard",        label: "SMS Dashboard only",    group: "TM Dashboard"      },
   { id: "creative_hub_b2b",     label: "B2B Library & Timeline", group: "Creative & Copy Hub" },
   { id: "creative_hub_b2c",     label: "B2C Library & Timeline", group: "Creative & Copy Hub" },
   { id: "creative_leaderboard", label: "Creative Leaderboard",  group: "Creative & Copy Hub" },
@@ -84,7 +87,7 @@ const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/billing",            features: ["client_billing"] },
   { prefix: "/api/tasks",              features: ["task_board"] },
   { prefix: "/api/zip-",               features: ["zip_tool"] },
-  { prefix: "/api/metrics",            features: ["dashboard"] },
+  { prefix: "/api/metrics",            features: ["dashboard", "sms_dashboard"] },
   { prefix: "/api/campaign-overview",  features: ["campaign_overview"] },
   { prefix: "/api/campaign-exclusions",features: ["campaign_overview"] },
   { prefix: "/api/client-ad-breakdown",features: ["campaign_overview"] },
@@ -106,7 +109,9 @@ const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/client-touchpoints", features: ["csm_dashboard"] },
   { prefix: "/api/csm-recordings",     features: ["csm_dashboard"] },
   { prefix: "/api/client-sessions",    features: ["zip_tool"] },
-  { prefix: "/api/b2b-metrics",        features: ["b2b_tracking"] },
+  { prefix: "/api/b2b-metrics",        features: ["b2b_tracking", "sms_dashboard"] },
+  { prefix: "/api/b2b-stat-source",    features: ["b2b_tracking", "sms_dashboard"] },
+  { prefix: "/api/sms-payout",         features: ["b2b_tracking", "sms_dashboard"] },
   { prefix: "/api/sales-calls",        features: ["b2b_tracking"] },
   { prefix: "/api/sales-pitches",      features: ["b2b_tracking"] },
   { prefix: "/api/b2b-ads",            features: ["b2b_tracking"] },

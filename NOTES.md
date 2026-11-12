@@ -1,3 +1,13 @@
+## 2026-11-12 — "SMS Dashboard only" permission
+
+Settings > Users, TM Dashboard group: **B2B Tracking** is the whole TM Dashboard
+(as before); the new **SMS Dashboard only** (`sms_dashboard`) opens just the SMS
+Dashboard page (SMS stats + Johnny's payout) for someone who should see nothing
+else under Tomsi Media — the other Tomsi items, the Weekly breakdown and the
+Download (Meta report) menu stay hidden. Gates `/api/metrics`, `b2b-metrics`,
+`b2b-stat-source`, `sms-payout` accept either. Nobody loses access: accounts
+with B2B Tracking still see everything.
+
 ## 2026-11-12 — Onboarding board (Clients > Onboarding)
 
 First item in the Clients menu. The owner's onboarding process, moved into the
