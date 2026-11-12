@@ -95,6 +95,7 @@ export async function POST(req: Request) {
     let attribution = await inheritAttribution(service, {
       table: 'b2b_events',
       ghl_contact_id: payload.ghl_contact_id ?? null,
+      lead_phone: payload.lead_phone ?? null,
       attr: pickAttribution(payload),
     });
     // Live attribution: when nothing is known for this contact yet (first touch,

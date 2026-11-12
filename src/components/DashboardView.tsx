@@ -24,6 +24,7 @@ import HealthTracker from "./HealthTracker";
 import ProfitLoss from "./ProfitLoss";
 import ClientBilling from "./ClientBilling";
 import SalesTracker from "./SalesTracker";
+import SmsPayout from "./SmsPayout";
 import { hasFeature, hasExplicitFeature, type FeatureId } from "@/lib/feature-access";
 import { pathForRoute, routeForSlug, type DashRoute } from "@/lib/dashboard-routes";
 import CampaignOverview from "./CampaignOverview";
@@ -123,15 +124,17 @@ type View =
 
 // B2B view type alias — rendered under Tomsi Media section
 type TomsiView =
-  | "b2b_tracking" | "dashboard" | "campaign_overview" | "goals" | "sales_tracker"
+  | "b2b_tracking" | "dashboard" | "sms_dashboard" | "campaign_overview" | "goals" | "sales_tracker"
   | "leads" | "dials" | "appointments" | "speed_to_lead"
   | "heatmap_show" | "heatmap_pickup" | "heatmap_leads";
 
 // The Tomsi Media section reuses the client dashboard views, locked to the
-// internal "Tomsi Media" client. Every id except b2b_tracking is also a View.
+// internal "Tomsi Media" client. Every id except b2b_tracking is also a View;
+// sms_dashboard is the same dashboard page on the SMS channel (tomsiChannel).
 const TOMSI_NAV: { group: string; items: { id: TomsiView; label: string; icon: string }[] }[] = [
   { group: "Overview", items: [
-    { id: "dashboard",            label: "B2B Dashboard",        icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+    { id: "dashboard",            label: "Ads Dashboard",        icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+    { id: "sms_dashboard",        label: "SMS Dashboard",        icon: "M21 12a8 8 0 0 1-8 8H8l-4 3v-6.5A8 8 0 1 1 21 12z" },
     { id: "goals",                label: "Goal Tracker",         icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
   ]},
   { group: "Sales", items: [
@@ -251,6 +254,41 @@ function KpiCard({ label, value, accent = false, note, onStat }: {
       <span className="text-xs font-medium tracking-wide pl-3" style={{ color: "#6b6b6b" }}>{label}</span>
       <span className="text-3xl font-bold pl-3" style={{ color: "#000000" }}>{value}</span>
       {note && <span className="text-[11px] font-semibold pl-3" style={{ color: note.color }}>{note.text}</span>}
+    </div>
+  );
+}
+
+// Channel switch: a segmented control on a soft track, the active option lifted
+// on a white card so it reads as the selected tab. Clients dashboard and B2B
+// Dashboard share it; only the ads label differs.
+function ChannelToggle({ value, onChange, adsLabel }: { value: Channel; onChange: (c: Channel) => void; adsLabel: string }) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg p-1 flex-shrink-0"
+      style={{ background: "rgba(0,0,0,0.055)", border: "1px solid rgba(0,0,0,0.06)" }}>
+      {([["ads", adsLabel], ["sms", "SMS"]] as [Channel, string][]).map(([id, label]) => {
+        const active = value === id;
+        return (
+          <button key={id} onClick={() => onChange(id)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap"
+            style={active
+              ? { background: "#ffffff", color: "#000000", boxShadow: "0 1px 2px rgba(0,0,0,0.08), 0 1px 6px rgba(0,0,0,0.06)" }
+              : { background: "transparent", color: "#6b6b6b" }}
+            onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#000000"; }}
+            onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#6b6b6b"; }}
+          >
+            {id === "ads" ? (
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M13.5 22v-8.2h2.8l.4-3.2h-3.2V8.5c0-.9.3-1.6 1.6-1.6h1.7V4.1c-.3 0-1.3-.1-2.5-.1-2.5 0-4.1 1.5-4.1 4.2v2.4H7.4v3.2h2.8V22h3.3z" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 12a8 8 0 0 1-8 8H8l-4 3v-6.5A8 8 0 1 1 21 12z" />
+              </svg>
+            )}
+            {label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -427,6 +465,10 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   // Tomsi landing view. A refresh of /dashboard/tm-dashboard carries no sub-view
   // and used to sit on the removed "b2b_tracking" default, rendering nothing.
   const [tomsiView, setTomsiView] = useState<TomsiView>("dashboard");
+  // Tomsi Media: Ads Dashboard and SMS Dashboard are the same page on two
+  // channels — split on the channel stamped on each row (ad_platform = sms),
+  // like the Clients dashboard's switch.
+  const tomsiChannel: Channel = tomsiView === "sms_dashboard" ? "sms" : "ads";
   const [tomsiPreset, setTomsiPreset] = useState<Preset>("this_month");
   const [clientsView, setClientsView] = useState<ClientsView>(() => (initialRoute?.clientsView as ClientsView) ?? "client_roster");
   const [hubView, setHubView] = useState<HubView>(() => (initialRoute?.hubView as HubView) ?? "b2b_library");
@@ -524,7 +566,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
         && !(saved.view === "sales_tracker" && savedTop !== "tomsi_media"))
         setView(saved.view as View);
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
-      if (savedTop === "tomsi_media" && saved.tomsiView && !["b2b_tracking","campaign_overview"].includes(saved.tomsiView)) setView(saved.tomsiView as View);
+      if (savedTop === "tomsi_media" && saved.tomsiView && !["b2b_tracking","campaign_overview"].includes(saved.tomsiView)) setView(saved.tomsiView === "sms_dashboard" ? "dashboard" : saved.tomsiView as View);
       if (saved.clientsView) setClientsView(saved.clientsView as ClientsView);
       if (PAYMENTS_NAV.some(p => p.id === saved.paymentsView)) setPaymentsView(saved.paymentsView as PaymentsView);
     } catch {}
@@ -645,13 +687,13 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
     else if (selectedClientId) params.set("client_id", selectedClientId);
     if (start) params.set("start_date", start);
     if (end) params.set("end_date", end);
-    if (!internalId) params.set("channel", channel);
+    params.set("channel", internalId ? tomsiChannel : channel);
     fetch(`/api/metrics?${params}`)
       .then(r => r.json())
       .then(d => { if (alive) { setMetrics(d); setMetricsLoading(false); } })
       .catch(() => { if (alive) setMetricsLoading(false); });
     return () => { alive = false; };
-  }, [view, selectedClientId, preset, customStart, customEnd, topSection, tomsiPreset, clients, channel]);
+  }, [view, selectedClientId, preset, customStart, customEnd, topSection, tomsiPreset, clients, channel, tomsiChannel]);
 
   // Tomsi dashboard extras: cash collected and self/team-booked demos live in B2B tracking.
   useEffect(() => {
@@ -661,9 +703,10 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
     const params = new URLSearchParams();
     if (start) params.set("start_date", start);
     if (end) params.set("end_date", end);
+    params.set("channel", tomsiChannel);
     fetch(`/api/b2b-metrics?${params}`).then(r => r.json()).then(d => { if (alive) setB2bKpis(d); }).catch(() => { if (alive) setB2bKpis(null); });
     return () => { alive = false; };
-  }, [view, topSection, tomsiPreset, customStart, customEnd]);
+  }, [view, topSection, tomsiPreset, customStart, customEnd, tomsiChannel]);
 
   async function handleSignOut() {
     const supabase = createBrowserSupabaseClient();
@@ -793,7 +836,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   // Section + page, e.g. ["Clients", "Client Roster"]. Drives the header crumb
   // and the browser tab so they can't drift apart.
   const crumb: [string | null, string] =
-    topSection === "tomsi_media" ? ["Tomsi Media", TOMSI_LABEL[tomsiView] ?? "B2B Dashboard"]
+    topSection === "tomsi_media" ? ["Tomsi Media", TOMSI_LABEL[tomsiView] ?? "Ads Dashboard"]
     : topSection === "creative_hub" ? ["Creative & Copy Hub", HUB_LABEL[hubView]]
     : topSection === "payments"  ? ["Payments", PAYMENTS_NAV.find(p => p.id === paymentsView)?.label ?? "Payments"]
     : topSection === "clients"   ? ["Clients", CLIENTS_NAV.find(c => c.id === clientsView)?.label ?? "Clients"]
@@ -1068,7 +1111,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                               onClick={() => {
                                 setTopSection("tomsi_media");
                                 setTomsiView(item.id);
-                                if (item.id !== "b2b_tracking") setView(item.id as View);
+                                if (item.id !== "b2b_tracking") setView(item.id === "sms_dashboard" ? "dashboard" : item.id as View);
+                                setStatOpen(null);
                                 setSidebarOpen(false);
                               }}
                               className="w-full text-left px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-2 transition-all duration-150 mb-0.5"
@@ -1282,35 +1326,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
             <>
               {view === "dashboard" && !inHub && (
                 <>
-                  {/* Channel switch: a segmented control on a soft track, the active
-                      option lifted on a white card so it reads as the selected tab. */}
-                  <div className="flex items-center gap-0.5 rounded-lg p-1 flex-shrink-0"
-                    style={{ background: "rgba(0,0,0,0.055)", border: "1px solid rgba(0,0,0,0.06)" }}>
-                    {([["ads", "Facebook Ads"], ["sms", "SMS"]] as [Channel, string][]).map(([id, label]) => {
-                      const active = channel === id;
-                      return (
-                        <button key={id} onClick={() => { setChannel(id); setSelectedClientId(""); }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap"
-                          style={active
-                            ? { background: "#ffffff", color: "#000000", boxShadow: "0 1px 2px rgba(0,0,0,0.08), 0 1px 6px rgba(0,0,0,0.06)" }
-                            : { background: "transparent", color: "#6b6b6b" }}
-                          onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#000000"; }}
-                          onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.color = "#6b6b6b"; }}
-                        >
-                          {id === "ads" ? (
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                              <path d="M13.5 22v-8.2h2.8l.4-3.2h-3.2V8.5c0-.9.3-1.6 1.6-1.6h1.7V4.1c-.3 0-1.3-.1-2.5-.1-2.5 0-4.1 1.5-4.1 4.2v2.4H7.4v3.2h2.8V22h3.3z" />
-                            </svg>
-                          ) : (
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <path d="M21 12a8 8 0 0 1-8 8H8l-4 3v-6.5A8 8 0 1 1 21 12z" />
-                            </svg>
-                          )}
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ChannelToggle value={channel} adsLabel="Facebook Ads" onChange={id => { setChannel(id); setSelectedClientId(""); }} />
                   <Select value={selectedClientId} onChange={v => setSelectedClientId(v)}>
                     <option value="">All Clients</option>
                     <option value="__live__">Live Clients</option>
@@ -1439,7 +1455,61 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                   <span className="text-sm font-medium">Loading metrics…</span>
                 </div>
               </div>
-            ) : metrics && inTomsi ? (() => {
+            ) : metrics && inTomsi && tomsiChannel === "sms" ? (() => {
+              // B2B SMS acquisition: the cost is messages sent × the per-message
+              // rate (same rate as the client SMS channel); every row counted here
+              // carries the SMS channel — the reply, and the demo / show / close
+              // that followed it.
+              const cost = metrics.sms_cost ?? metrics.ad_spend;
+              const sent = metrics.sms_sent ?? 0;
+              const repliesN = metrics.new_leads;
+              const bookings = metrics.total_booked_appointments ?? metrics.booked_appointments;
+              const money = (v: number) => `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              const per = (den: number) => den > 0 ? money(cost / den) : "—";
+              const openStat = (label: string, value: string) => setStatOpen({ label, value });
+              const statNumbers: StatNumbers = {
+                ad_spend: cost, sms_sent: sent, sms_cost: cost, leads: repliesN,
+                booked_pending: metrics.booked_appointments, total_booked: bookings, bookings,
+                shows: metrics.shows, no_shows: metrics.no_shows, closes: metrics.closes,
+                revenue: metrics.total_revenue ?? 0, cash: 0,
+                spam_leads: metrics.spam_leads ?? 0, spam_appointments: metrics.spam_appointments ?? 0,
+                dials: metrics.outbound_dials, pickups: metrics.pickups, conversations: metrics.conversations,
+                callbacks: metrics.callbacks, speed_to_lead_min: metrics.speed_to_lead_min,
+                self_booked: 0, team_booked: 0, booking_leads: 0, non_booking_leads: 0, b2b_leads: repliesN,
+                landing_visits: 0, calendar_visits: 0, precall_views: 0, vsl_views: 0,
+              };
+              const EVEN = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 } as React.CSSProperties;
+              return (
+              <div className="space-y-8 max-w-7xl">
+                {statOpen && (
+                  <StatSourceModal label={statOpen.label} value={statOpen.value} numbers={statNumbers}
+                    startDate={viewStart} endDate={viewEnd} channel="sms" onClose={() => setStatOpen(null)} />
+                )}
+                <section>
+                  <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>SMS</h2>
+                  <div style={EVEN}>
+                    <KpiCard onStat={openStat} label="SMS Sent" value={fmtInt(sent)} />
+                    <KpiCard onStat={openStat} label="SMS Cost" value={money(cost)} />
+                    <KpiCard onStat={openStat} label="Positive Replies" value={fmtInt(repliesN)} />
+                    <KpiCard onStat={openStat} label="Positive Reply Rate" value={sent > 0 ? fmtPct((repliesN / sent) * 100) : "—"} accent />
+                    <KpiCard onStat={openStat} label="Cost per Positive Reply" value={per(repliesN)} />
+                    <KpiCard onStat={openStat} label="Bookings" value={fmtInt(bookings)} />
+                    <KpiCard onStat={openStat} label="Reply → Booking Rate" value={repliesN > 0 ? fmtPct((bookings / repliesN) * 100) : "—"} accent />
+                    <KpiCard onStat={openStat} label="Cost per Booking" value={per(bookings)} />
+                    <KpiCard onStat={openStat} label="Shows" value={fmtInt(metrics.shows)} accent />
+                    <KpiCard onStat={openStat} label="Cost per Show" value={per(metrics.shows)} />
+                    <KpiCard onStat={openStat} label="Closes" value={fmtInt(metrics.closes)} />
+                    <KpiCard onStat={openStat} label="Closing Rate" value={metrics.shows > 0 ? fmtPct(metrics.close_rate) : "—"} accent />
+                    <KpiCard onStat={openStat} label="Cost per Acquisition" value={per(metrics.closes)} />
+                  </div>
+                </section>
+
+                <div style={{ borderTop: "1px solid rgba(0,0,0,0.081)" }} />
+
+                <SmsPayout startDate={viewStart} endDate={viewEnd} />
+              </div>
+              );
+            })() : metrics && inTomsi ? (() => {
               const cash = b2bKpis?.cash_collected ?? 0;
               const selfBooked = b2bKpis?.self_booked ?? 0, teamBooked = b2bKpis?.team_booked ?? 0;
               const bookedByKnown = selfBooked + teamBooked > 0;
@@ -1471,7 +1541,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
               <div className="space-y-8 max-w-7xl">
                 {statOpen && (
                   <StatSourceModal label={statOpen.label} value={statOpen.value} numbers={statNumbers}
-                    startDate={viewStart} endDate={viewEnd} onClose={() => setStatOpen(null)} />
+                    startDate={viewStart} endDate={viewEnd} channel="ads" onClose={() => setStatOpen(null)} />
                 )}
                 <section>
                   <h2 className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: "#949494" }}>Overview</h2>

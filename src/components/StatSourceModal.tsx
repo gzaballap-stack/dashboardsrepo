@@ -25,12 +25,15 @@ const fmtWhen = (iso: string | null) => {
     : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 };
 
-export default function StatSourceModal({ label, value, numbers, startDate, endDate, onClose }: {
+export default function StatSourceModal({ label, value, numbers, startDate, endDate, channel, onClose }: {
   label: string; value: string; numbers: StatNumbers;
-  startDate: string; endDate: string; onClose: () => void;
+  startDate: string; endDate: string;
+  // Ads / SMS switch on the B2B Dashboard — the records come from the same channel as the tile.
+  channel?: 'ads' | 'sms';
+  onClose: () => void;
 }) {
   const def = B2B_STAT_SOURCES[label];
-  const key = `${startDate}|${endDate}`;
+  const key = `${startDate}|${endDate}|${channel ?? ''}`;
   const [data, setData] = useState<SrcData | null>(() => cache.get(key) ?? null);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,12 +42,13 @@ export default function StatSourceModal({ label, value, numbers, startDate, endD
     const params = new URLSearchParams();
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
+    if (channel) params.set("channel", channel);
     fetch(`/api/b2b-stat-source?${params}`)
       .then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error ?? "Could not load the records"); return j as SrcData; })
       .then(j => { cache.set(key, j); if (alive) setData(j); })
       .catch(e => { if (alive) setError(e instanceof Error ? e.message : "Could not load the records"); });
     return () => { alive = false; };
-  }, [key, startDate, endDate]);
+  }, [key, startDate, endDate, channel]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };

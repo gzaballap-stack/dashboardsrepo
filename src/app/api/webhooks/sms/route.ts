@@ -4,8 +4,10 @@ import { createServiceClient } from '@/lib/supabase';
 import { validateWebhookSecret } from '@/lib/api-auth';
 import { resolveClientId } from '@/lib/client-lookup';
 import { POST as clientWebhook } from '@/app/api/webhooks/route';
+import { POST as b2bWebhook } from '@/app/api/webhooks/b2b/route';
+import { getTomsiClientId } from '@/lib/tomsi';
 import {
-  anthropicClient, classifySmsReply, tagGhlContact, smsGhlKey,
+  anthropicClient, classifySmsReply, tagGhlContact, smsGhlKey, b2bSmsGhlKey,
   SMS_INTENT_TAGS, type SmsIntent, type SmsClassification,
 } from '@/lib/sms-intent';
 
@@ -33,6 +35,13 @@ import {
 //               sms_replies, the contact gets one `sms-<intent>` tag in GHL (the GHL
 //               workflows keyed on those tags send the follow-up), and an
 //               `interested` reply becomes the same lead sms_reply would create.
+//
+// client_name = "Tomsi Media" is the B2B SMS acquisition system: SMS sent is
+// stored the same way, but a positive reply goes through the B2B webhook (a
+// `lead` in b2b_events, mirrored under the internal client) with the SMS
+// channel on it, the reply is read with the B2B prompt, and the contact is
+// tagged in the Tomsi sub-account (GHL_API_KEY_B2B). The B2B Dashboard's
+// Ads / SMS switch then splits on that channel.
 
 type Payload = Record<string, unknown> & { customData?: Record<string, unknown> };
 
@@ -64,6 +73,7 @@ export async function POST(req: Request) {
     console.warn('[webhooks/sms] rejected: unknown client', JSON.stringify({ event_type: eventType, client_name: clientName }));
     return NextResponse.json({ error: `Client "${clientName}" not found` }, { status: 400 });
   }
+  const isTomsi = clientId === (await getTomsiClientId(service));
 
   if (eventType === 'sms_sent') {
     const messages = Math.max(1, Math.round(Number(get('messages')) || 1));
@@ -91,12 +101,17 @@ export async function POST(req: Request) {
   // Positive reply = a lead on the SMS channel. Reuse the client webhook so
   // dedupe, zip handling, Setup→Live and everything else behave exactly as for
   // any other lead.
+  //
+  // Tomsi Media's own replies are B2B leads: the B2B webhook writes b2b_events
+  // and mirrors the row under the internal client, so both the B2B Dashboard
+  // (SMS channel) and the demo booked later (which inherits the channel) line up.
   const createLead = async () => {
     const lead = {
       event_type: 'lead', client_id: clientId, occurred_at: when.toISOString(), ...contact,
       utm_source: 'sms', ad_platform: 'sms', utm_medium: 'sms',
     };
-    const res = await clientWebhook(new Request(new URL('/api/webhooks', req.url), {
+    const path = isTomsi ? '/api/webhooks/b2b' : '/api/webhooks';
+    const res = await (isTomsi ? b2bWebhook : clientWebhook)(new Request(new URL(path, req.url), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: req.headers.get('authorization') ?? '' },
       body: JSON.stringify(lead),
@@ -131,7 +146,7 @@ export async function POST(req: Request) {
   let result: SmsClassification | null = null;
   let classifierError: string | null = null;
   try {
-    result = await classifySmsReply(ai, message, { outboundMessage: get('outbound_message') || null, clientName });
+    result = await classifySmsReply(ai, message, { outboundMessage: get('outbound_message') || null, clientName, audience: isTomsi ? 'b2b' : 'b2c' });
     intent = result.intent;
   } catch (e) {
     classifierError = (e as Error).message;
@@ -151,8 +166,8 @@ export async function POST(req: Request) {
   // reported, not swallowed — but the row is still stored below.
   let tagged = false;
   let tagError: string | null = null;
-  const key = smsGhlKey();
-  if (!key) tagError = 'GHL_API_KEY_SMS is not set';
+  const key = isTomsi ? b2bSmsGhlKey() : smsGhlKey();
+  if (!key) tagError = isTomsi ? 'GHL_API_KEY_B2B is not set' : 'GHL_API_KEY_SMS is not set';
   else if (!contactId) tagError = 'no contact_id in payload';
   else {
     try { await tagGhlContact(key, contactId, intent, { needsReview }); tagged = true; }

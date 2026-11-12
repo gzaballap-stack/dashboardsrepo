@@ -61,6 +61,31 @@ Rules:
 - confidence is 0 to 1: how sure you are of the intent.
 - suggested_reply: one short, friendly SMS (under 300 characters) a setter could send next. For interested: ask for the best day/time and confirm the address is theirs. For question: answer briefly and re-offer the free estimate. For later: say you'll check back and thank them. For not_interested / wrong_number / stop: a one-line polite close (for stop, just confirm removal). For unclear: a short clarifying question. Never promise prices.`;
 
+// Tomsi Media's own B2B SMS acquisition: the same intents, read in the right
+// context — a business owner answering an agency, not a homeowner answering a
+// contractor.
+const SYSTEM_B2B = `You classify text-message replies for Tomsi Media, a marketing agency that books estimate appointments for home-improvement contractors (kitchen and bathroom remodellers and similar trades).
+
+Context: Tomsi Media texted a contractor / business owner something like: "Hey, we book qualified kitchen and bath estimates for remodellers in your area — are you taking on more jobs this month?" You are reading the business owner's reply.
+
+Pick exactly one intent:
+- interested: wants to hear more, says yes, asks how it works with intent to proceed, asks for a call, gives availability.
+- question: asks something before deciding (who is this, how did you get my number, what does it cost, how many appointments, what areas). Not a yes yet.
+- later: not now but maybe in the future — "not right now", "slammed until spring", "check back next quarter".
+- not_interested: a clear no — not needed, has enough work, already has an agency, no thanks. Not hostile, not opting out.
+- wrong_number: wrong person, not a contractor, not the owner, business closed, "who?" with a different name.
+- stop: opt out or hostile — stop, remove me, unsubscribe, don't text me, profanity aimed at us.
+- unclear: can't tell — emoji only, unrelated, gibberish, blank, or an auto-reply.
+
+Rules:
+- "Yes" / "sure" / "tell me more" / "how does it work" / "how much" with intent to proceed → interested.
+- A single "?" or "who is this" → question.
+- Treat "STOP" / "stop" alone as stop, always.
+- confidence is 0 to 1: how sure you are of the intent.
+- suggested_reply: one short, friendly SMS (under 300 characters) a setter could send next. For interested: offer a quick 15-minute call and ask for the best day/time. For question: answer briefly and offer the call. For later: say you'll check back and thank them. For not_interested / wrong_number / stop: a one-line polite close (for stop, just confirm removal). For unclear: a short clarifying question. Never promise prices or a number of appointments.`;
+
+export type SmsAudience = 'b2c' | 'b2b';
+
 export function anthropicClient(): Anthropic | null {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
@@ -74,18 +99,19 @@ export function anthropicClient(): Anthropic | null {
 export async function classifySmsReply(
   client: Anthropic,
   message: string,
-  opts: { outboundMessage?: string | null; clientName?: string | null } = {},
+  opts: { outboundMessage?: string | null; clientName?: string | null; audience?: SmsAudience } = {},
 ): Promise<SmsClassification> {
+  const b2b = opts.audience === 'b2b';
   const lines: string[] = [];
-  if (opts.clientName) lines.push(`Contractor: ${opts.clientName}`);
+  if (opts.clientName && !b2b) lines.push(`Contractor: ${opts.clientName}`);
   if (opts.outboundMessage) lines.push(`Our outbound text: ${JSON.stringify(opts.outboundMessage)}`);
-  lines.push(`Homeowner's reply: ${JSON.stringify(message)}`);
+  lines.push(`${b2b ? "Business owner's" : "Homeowner's"} reply: ${JSON.stringify(message)}`);
 
   const response = await client.messages.parse({
     model: 'claude-opus-5-5',
     max_tokens: 1024,
     output_config: { effort: 'low', format: zodOutputFormat(Classification) },
-    system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
+    system: [{ type: 'text', text: b2b ? SYSTEM_B2B : SYSTEM, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: lines.join('\n') }],
   });
 
@@ -103,6 +129,11 @@ const GHL_VERSION = '2021-07-28';
 /** The Private Integration token for the SMS sub-account (falls back to the client key). */
 export function smsGhlKey(): string | null {
   return process.env.GHL_API_KEY_SMS || process.env.GHL_API_KEY || null;
+}
+
+/** Tomsi Media's own B2B SMS runs in the Tomsi sub-account, so its contacts are tagged with that key. */
+export function b2bSmsGhlKey(): string | null {
+  return process.env.GHL_API_KEY_B2B || smsGhlKey();
 }
 
 async function ghlTags(method: 'POST' | 'DELETE', key: string, contactId: string, tags: string[]) {

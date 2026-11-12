@@ -16,7 +16,11 @@ export type SrcEvent = {
   external_id?: string | null;
   post_call_status?: string | null;
 };
-export type SrcData = { events: SrcEvent[]; b2b: SrcEvent[]; spend: { spend_date: string; amount: number }[]; excluded_spend: number; ad_names?: Record<string, string> };
+export type SrcData = {
+  events: SrcEvent[]; b2b: SrcEvent[]; spend: { spend_date: string; amount: number }[]; excluded_spend: number; ad_names?: Record<string, string>;
+  // SMS channel only: the blasts behind SMS Sent, and the per-message rate.
+  sms?: { sent_date: string; messages: number }[]; sms_rate?: number;
+};
 
 // The numbers already on screen — formulas quote these so they always match the tile.
 export type StatNumbers = {
@@ -26,6 +30,8 @@ export type StatNumbers = {
   self_booked: number; team_booked: number; booking_leads: number; non_booking_leads: number; b2b_leads: number;
   landing_visits: number; calendar_visits: number; bookings: number; precall_views: number; vsl_views: number;
   no_closes?: number; follow_ups?: number;
+  // SMS channel tiles.
+  sms_sent?: number; sms_cost?: number;
 };
 
 export type SourceRow = { when: string | null; who: string; detail?: string };
@@ -39,6 +45,7 @@ export type StatSource = {
 };
 
 const GHL = 'GoHighLevel. Each event is sent to the dashboard the moment it happens.';
+const SMS_GHL = 'GoHighLevel SMS workflows. Each blast reports what it sent; every reply is read by the dashboard and the interested ones become leads.';
 const META = 'Meta Ads. Spend is pulled into the dashboard every morning.';
 const SITE = 'Your funnel pages. Each page load and video view is tracked on the site and sent to the dashboard.';
 const CALLS = 'GoHighLevel call log. Every outbound dial is sent to the dashboard when the call ends.';
@@ -83,6 +90,11 @@ const shows = (d: SrcData) => person('Shows', ev(d, 'show'), demoDetail);
 const noShows = (d: SrcData) => person('No-shows', ev(d, 'no_show'), demoDetail);
 const closes = (d: SrcData) => person('Closes', ev(d, 'closed'), e => (Number(e.revenue) ? $(Number(e.revenue)) : 'No amount recorded'));
 const cashRows = (d: SrcData) => person('Closes with cash', bb(d, 'close'), e => (Number(e.revenue) ? $(Number(e.revenue)) : '$0 — no amount recorded'));
+const smsRows = (d: SrcData): SourcePart => ({
+  title: 'Messages sent',
+  rows: (d.sms ?? []).map(r => ({ when: `${r.sent_date}T12:00:00`, who: `${r.messages.toLocaleString('en-US')} message${r.messages === 1 ? '' : 's'}`, detail: d.sms_rate ? `× ${$(d.sms_rate)} = ${$(r.messages * d.sms_rate)}` : undefined })),
+});
+const replies = (d: SrcData) => person('Positive replies', ev(d, 'lead'), () => 'Replied interested');
 const spendRows = (d: SrcData): SourcePart => ({
   title: 'Daily ad spend',
   rows: [
@@ -153,7 +165,68 @@ const watchStats = (kind: 'Pre-Call' | 'VSL', type: string, views: (n: StatNumbe
   return out;
 };
 
+const SMS_COST = 'Cost = messages sent × the per-message rate (the same rate as the client SMS channel).';
+const smsCost = (n: StatNumbers) => n.sms_cost ?? n.ad_spend;
+const smsPer = (n: StatNumbers, what: string, den: number) => `${$(smsCost(n))} SMS cost ÷ ${den} ${what} = ${den ? $(smsCost(n) / den) : '—'}`;
+
 export const B2B_STAT_SOURCES: Record<string, StatSource> = {
+  // ── SMS channel (B2B SMS acquisition) ──
+  'SMS Sent': {
+    what: 'Text messages the B2B SMS system sent in this period.',
+    origin: SMS_GHL, formula: n => `${(n.sms_sent ?? 0).toLocaleString('en-US')} messages sent`,
+    parts: d => [smsRows(d)],
+  },
+  'SMS Cost': {
+    what: SMS_COST,
+    origin: SMS_GHL, formula: (n, d) => `${(n.sms_sent ?? 0).toLocaleString('en-US')} messages × ${d?.sms_rate != null ? $(d.sms_rate) : 'rate'} = ${$(smsCost(n))}`,
+    parts: d => [smsRows(d)],
+  },
+  'Positive Replies': {
+    what: 'Replies read as interested. Each one is a lead on the SMS channel.',
+    origin: SMS_GHL, formula: n => `${n.leads} positive replies`,
+    parts: d => [replies(d)],
+  },
+  'Positive Reply Rate': {
+    what: 'Of the messages sent, how many came back as a positive reply.',
+    origin: SMS_GHL, formula: n => `${n.leads} positive replies ÷ ${(n.sms_sent ?? 0).toLocaleString('en-US')} sent = ${pct(n.leads, n.sms_sent ?? 0)}`,
+    parts: d => [replies(d), smsRows(d)],
+  },
+  'Cost per Positive Reply': {
+    what: `Cost per positive reply. ${SMS_COST}`,
+    origin: SMS_GHL, formula: n => smsPer(n, 'positive replies', n.leads),
+    parts: d => [replies(d), smsRows(d)],
+  },
+  'Reply → Booking Rate': {
+    what: 'Of the positive replies, how many booked a demo.',
+    origin: GHL, formula: n => `${n.total_booked} demos booked ÷ ${n.leads} positive replies = ${pct(n.total_booked, n.leads)}`,
+    parts: d => [demos(d), replies(d)],
+  },
+  'Cost per Booking': {
+    what: `Cost per demo booked. ${SMS_COST}`,
+    origin: SMS_GHL, formula: n => smsPer(n, 'demos booked', n.total_booked),
+    parts: d => [demos(d), smsRows(d)],
+  },
+  'Cost per Show': {
+    what: `Cost per demo that actually showed. ${SMS_COST}`,
+    origin: SMS_GHL, formula: n => smsPer(n, 'shows', n.shows),
+    parts: d => [shows(d), smsRows(d)],
+  },
+  'Closes': {
+    what: 'Demos that closed into a client.',
+    origin: GHL, formula: n => `${n.closes} closes`,
+    parts: d => [closes(d)],
+  },
+  'Closing Rate': {
+    what: 'Of the demos that showed, how many closed.',
+    origin: GHL, formula: n => `${n.closes} closes ÷ ${n.shows} shows = ${pct(n.closes, n.shows)}`,
+    parts: d => [closes(d), shows(d)],
+  },
+  'Cost per Acquisition': {
+    what: `Cost to acquire one client. ${SMS_COST}`,
+    origin: SMS_GHL, formula: n => smsPer(n, 'closes', n.closes),
+    parts: d => [closes(d), smsRows(d)],
+  },
+
   // ── Overview ──
   'Ad Spend': {
     what: 'What Meta charged for Tomsi Media ads in this period.',
@@ -341,7 +414,7 @@ export const B2B_STAT_SOURCES: Record<string, StatSource> = {
     parts: d => [visits(d, 'visit_calendar', 'Calendar page visits')],
   },
   'Bookings': {
-    what: 'Demos booked, from GoHighLevel. The same number as Demos Booked above.',
+    what: 'Demos booked, from GoHighLevel.',
     origin: GHL, formula: n => `${n.bookings} demos booked`,
     parts: d => [demosBooked(d)],
   },

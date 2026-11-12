@@ -21,6 +21,14 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const start_date = searchParams.get('start_date');
   const end_date = searchParams.get('end_date');
+  // Channel (ads | sms), as on /api/metrics and /api/b2b-metrics, so the records
+  // listed are the ones the tile on screen was counted from.
+  const channel = searchParams.get('channel');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const byChannel = (q: any) =>
+    channel === 'sms' ? q.eq('ad_platform', 'sms')
+    : channel === 'ads' ? q.or('ad_platform.is.null,ad_platform.neq.sms')
+    : q;
 
   const tomsiId = await getTomsiClientId(ctx.service);
   if (!tomsiId) return NextResponse.json({ error: 'Tomsi Media client not found' }, { status: 404 });
@@ -47,7 +55,7 @@ export async function GET(req: Request) {
           .order('occurred_at', { ascending: false });
         if (start_date) q = q.gte('occurred_at', `${start_date}T00:00:00.000Z`);
         if (end_date)   q = q.lte('occurred_at', `${end_date}T23:59:59.999Z`);
-        return q;
+        return byChannel(q);
       }),
       all(() => {
         let q = ctx.service.from('b2b_events')
@@ -55,7 +63,7 @@ export async function GET(req: Request) {
           .order('occurred_at', { ascending: false });
         if (start_date) q = q.gte('occurred_at', `${start_date}T00:00:00.000Z`);
         if (end_date)   q = q.lte('occurred_at', `${end_date}T23:59:59.999Z`);
-        return q;
+        return byChannel(q);
       }),
       (() => {
         let q = ctx.service.from('ad_spend').select('client_id, spend_date, amount').eq('client_id', tomsiId).order('spend_date', { ascending: false });
@@ -65,6 +73,20 @@ export async function GET(req: Request) {
       })(),
     ]);
     if (spendRes.error) throw new Error(spendRes.error.message);
+
+    // SMS channel: the cost is messages sent × the per-message rate (same rate
+    // as the client SMS channel), so return the blasts instead of ad spend.
+    let sms: { sent_date: string; messages: number }[] | undefined;
+    let sms_rate: number | undefined;
+    if (channel === 'sms') {
+      let q = ctx.service.from('sms_sends').select('sent_date, messages').eq('client_id', tomsiId).order('sent_date', { ascending: false });
+      if (start_date) q = q.gte('sent_date', start_date);
+      if (end_date)   q = q.lte('sent_date', end_date);
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      sms = (data ?? []).map(r => ({ sent_date: r.sent_date as string, messages: Number(r.messages) || 0 }));
+      sms_rate = Number(process.env.SMS_COST_PER_MESSAGE ?? '0.01') || 0;
+    }
 
     // Ad id → the ad's real name. This funnel passes Meta's numeric ids through
     // the UTM slots, so an event's own ad_name is often just the id again.
@@ -80,6 +102,7 @@ export async function GET(req: Request) {
       spend: (spendRes.data ?? []).map(r => ({ spend_date: r.spend_date, amount: Number(r.amount) || 0 })),
       excluded_spend,
       ad_names,
+      ...(sms ? { sms, sms_rate } : {}),
     });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });

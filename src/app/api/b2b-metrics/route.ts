@@ -12,6 +12,9 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const start_date = searchParams.get('start_date');
   const end_date   = searchParams.get('end_date');
+  // Channel, as on /api/metrics: "ads" leaves out the SMS acquisition system's
+  // rows (ad_platform = sms), "sms" keeps only them, absent = everything.
+  const channel    = searchParams.get('channel');
 
   let eventsQ = ctx.service
     .from('b2b_events')
@@ -19,6 +22,8 @@ export async function GET(req: Request) {
 
   if (start_date) eventsQ = eventsQ.gte('occurred_at', `${start_date}T00:00:00.000Z`);
   if (end_date)   eventsQ = eventsQ.lte('occurred_at', `${end_date}T23:59:59.999Z`);
+  if (channel === 'sms') eventsQ = eventsQ.eq('ad_platform', 'sms');
+  else if (channel === 'ads') eventsQ = eventsQ.or('ad_platform.is.null,ad_platform.neq.sms');
 
   let spendQ = ctx.service
     .from('b2b_ad_spend')

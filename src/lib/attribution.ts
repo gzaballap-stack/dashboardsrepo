@@ -63,7 +63,9 @@ export async function inheritAttribution(
   // An event that knows its own origin always wins.
   if (hasAttribution(opts.attr)) return opts.attr;
 
-  const phone = opts.table === 'events' ? phoneKey(opts.lead_phone) : null;
+  // Both tables: Tomsi Media's own SMS replies live in another GHL sub-account
+  // too, so a B2B demo booked for an SMS lead is matched the same way.
+  const phone = phoneKey(opts.lead_phone);
   if (!opts.ghl_contact_id && !phone) return opts.attr;
 
   const lookup = async (match: (q: ReturnType<typeof base>) => ReturnType<typeof base>) => {

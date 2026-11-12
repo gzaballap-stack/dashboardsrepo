@@ -1,3 +1,41 @@
+## 2026-11-12 — SMS Dashboard as its own page, and Johnny's payout tracker
+
+Owner's follow-up to the entry below: not a switch — two menu items. Under
+Tomsi Media the **B2B Dashboard is now "Ads Dashboard"** and **"SMS Dashboard"**
+sits under it (same page, `tomsiView = sms_dashboard`, channel `sms`). The
+header Ads / SMS toggle described below is gone; the Clients dashboard keeps
+its switch (`ChannelToggle`).
+
+**Johnny's payout** sits under the SMS stats (`SmsPayout.tsx`,
+`/api/sms-payout`, rules in `src/lib/sms-payout.ts`). Johnny gets 30% (changeable)
+of the revenue each client he signs through the B2B SMS system generates in
+their first month.
+
+- **A row per client signed**, in the page's date range by the day they
+  signed. Signed = the B2B close on the SMS channel. A close becomes a row once
+  it is **tied to a roster client**: by hand ("which client did they become?",
+  with a name / P&L-email suggestion), or on its own when the close named the
+  client (`b2b_events.client_id`). A client can also be added without a close.
+  One row per client, one client per close.
+- **Clock starts at the client's first text blast** — the earliest `sms_sends`
+  row for that client (the B2C SMS channel), 30 days from there; a start can be
+  set by hand and put back. No blast yet = "No blast yet", nothing counted.
+- **Revenue = the client's paid Client Billing charges** (`billing_charges`,
+  status paid, by `paid_at`) inside the window. The cash recorded on the close
+  itself is shown on the row but **not counted** — owner said "we get it off the
+  billing"; flag if it should be.
+- **Share**: a default % (`app_settings.sms_payout_pct`, 30 unless changed)
+  that new rows start from, and each row's own %, both editable in place.
+  Payout = revenue × %. "Tracking · N days left" until the window closes, then
+  **Final**. Totals: clients, revenue, payout so far, final, still tracking.
+- **New tables `sms_payouts` + `app_settings`** (`add_sms_payouts.sql`, in
+  `schema.sql`): `node scripts/migrate-sms-payouts.mjs v1` (**owner**; V2 has
+  no `b2b_events`, so the panel there only lists clients added by hand). Until
+  run, the panel says it needs the one-off update; nothing else is affected.
+- **Checked:** 28 simulated scenarios (rules, auto-tie, suggestions, link /
+  add / update / remove, refusals, window edges), typecheck, production build.
+  Not signed in, not run against a real database.
+
 ## 2026-11-12 — Client Billing: backlog = this month + all SMS; "are you sure" before billing; lead lookup
 
 - **Backlog view.** A **This month + all SMS** tab, last in the row. The page
@@ -67,6 +105,59 @@ appointment it was for).
   limit ("… +3 more").
 - Tested against the simulated Stripe only (53 scenarios across the three
   suites). Payments matched before this change have no note.
+
+## 2026-11-11 — B2B Dashboard: Ads / SMS switch for the B2B SMS acquisition system
+
+Owner runs a second B2B acquisition system — SMS blasts out of the Tomsi Media
+GHL account — and wants it on the dashboard next to the ads funnel, "same as
+with B2C".
+
+- **Ads / SMS switch** on the B2B Dashboard header (the Clients dashboard's
+  control, shared as `ChannelToggle`). Ads is the default and is everything the
+  page showed before minus SMS rows; SMS shows one block: SMS Sent, SMS Cost,
+  Positive Replies, Positive Reply Rate, Cost per Positive Reply, Bookings,
+  Reply → Booking Rate, Cost per Booking, Shows, Cost per Show, Closes, Closing
+  Rate (closes ÷ shows), Cost per Acquisition. Costs show cents. Every tile has
+  a "where this comes from" entry (`b2b-stat-sources.ts`); the records panel
+  passes the channel so it lists the same rows the tile counted.
+- **Channel = `ad_platform = sms`** on the row, exactly the Clients rule.
+  `/api/metrics` already had `channel`; `/api/b2b-metrics` and
+  `/api/b2b-stat-source` now take it too (`ads` = null or not sms, `sms` = sms,
+  absent = all). SMS cost = `sms_sends` for the Tomsi client × `SMS_COST_PER_MESSAGE`
+  — the same rate as the client SMS channel, by request.
+- **Intake is the existing SMS webhook with `client_name = Tomsi Media`.**
+  `sms_sent` stores under the internal client as for any client. A positive
+  reply (`sms_reply`, or `sms_inbound` read as interested) is posted to the
+  **B2B webhook** as a `lead` carrying `utm_source` / `ad_platform` /
+  `utm_medium = sms`, so it lands in `b2b_events` and is mirrored under the
+  internal client like every other B2B event (one lead per contact). The reply
+  is read with a B2B prompt (business owner answering an agency, not a
+  homeowner answering a contractor — `SYSTEM_B2B` in `sms-intent.ts`, same
+  intents and tags) and the contact is tagged with `GHL_API_KEY_B2B` (falls
+  back to the SMS key). Assumes the B2B SMS contacts live in the Tomsi
+  sub-account; if they live in the SMS sub-account, tagging fails with a 404
+  that is reported in `tag_error` and the lead is still created.
+- **Demo → show → close follow the reply.** `inheritAttribution` now does the
+  phone fallback for `b2b_events` too (it was events-only) and the B2B webhook
+  passes `lead_phone`, so a demo booked for an SMS lead under a different
+  contact id (or the same one) inherits the SMS channel, and the mirrored row
+  with it. `ensureLeadForContact` already matched by phone, so no synthetic
+  second lead. Phones are matched on their last 10 digits, so GHL's E.164
+  numbers match; a lead stored with a formatted phone would not.
+- **V1 impact:** the B2B Dashboard's Ads view now sends `channel=ads` — a
+  Tomsi row that already carries `ad_platform = sms` would move from Ads to SMS
+  (there should be none today). No schema change, nothing to migrate.
+- **GHL setup still to do (owner):** two workflows in the Tomsi Media account
+  posting to `/api/webhooks/ghl/sms?token=…` with custom data
+  `client_name = Tomsi Media`: the blast workflow with `event_type = sms_sent`
+  (+ `messages` if it fires once per blast), the inbound-reply workflow with
+  `event_type = sms_inbound` and `message = {{message.body}}`. Until then the
+  SMS view shows zeros.
+- **Checked:** 22 simulated scenarios against an in-memory database (blast,
+  reply, re-fired reply, booking by phone, show, close, ads row for contrast,
+  all three channel modes on metrics / b2b-metrics / stat-source, B2C reply
+  unchanged), lint, production build. Not run against the real database or
+  signed in; V2 has no `b2b_events`, so nothing was posted there.
 
 ## 2026-11-11 — Client Billing: "Track today's appointments" is the first thing on the page
 

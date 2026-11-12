@@ -149,10 +149,10 @@ No preview environments. Check Railway dashboard for build logs.
 
 | Group | Purpose |
 |---|---|
-| `webhooks/*` | Ingestion from Make (dials, leads, appts, status, claims, ad-campaigns, b2b). `webhooks/sms` is posted **straight from GHL** (no Make): `sms_sent` → `sms_sends`, `sms_reply` → a `lead` on the SMS channel, `sms_inbound` → Claude reads the reply (`src/lib/sms-intent.ts`), tags the contact `sms-<intent>` in GHL, stores it in `sms_replies` and creates the lead if interested. See `NOTES.md` 2026-10-19 and 2026-11-04 |
+| `webhooks/*` | Ingestion from Make (dials, leads, appts, status, claims, ad-campaigns, b2b). `webhooks/sms` is posted **straight from GHL** (no Make): `sms_sent` → `sms_sends`, `sms_reply` → a `lead` on the SMS channel, `sms_inbound` → Claude reads the reply (`src/lib/sms-intent.ts`), tags the contact `sms-<intent>` in GHL, stores it in `sms_replies` and creates the lead if interested. `client_name = Tomsi Media` is the **B2B SMS acquisition system**: the lead goes through `webhooks/b2b` (B2B prompt, tagged with `GHL_API_KEY_B2B`). See `NOTES.md` 2026-10-19, 2026-11-04 and 2026-11-11 |
 | `webhooks/ghl/[event]`, `webhooks/engagement` | **GHL → app direct (Make retired 2026-10-26).** One URL per GHL workflow with `?token=<DIRECT_WEBHOOK_TOKEN>`; builds the same body Make used to send and hands it to the routes above. Engagement is public (funnel-page snippet). Docs via the Apps Script bridge (`GOOGLE_DOCS_SCRIPT_URL`). See `NOTES.md` 2026-10-26 |
 | `cron/sync-spend` | Meta spend for every client with `clients.meta_account_id` + B2B, 3× a day via pg_cron on V1 |
-| `metrics`, `agent-stats`, `heatmap`, `report` | Core reporting reads |
+| `metrics`, `agent-stats`, `heatmap`, `report` | Core reporting reads. `metrics`, `b2b-metrics` and `b2b-stat-source` take `channel=ads\|sms` (`events.ad_platform = sms` is SMS) — the Clients dashboard's switch and the Tomsi Ads / SMS Dashboard pages |
 | `ad-spend/*`, `b2b-ad-spend/*` | Ad spend sync — `sync-all` fetches + stores every ad level in one call |
 | `campaign-overview`, `campaign-exclusions`, `client-ad-breakdown` | Campaign views |
 | `creative-hub`, `creative-hub/folders`, `creative-hub/copy` (+ `copy/import`), `creative-hub/changes`, `creative-hub/push-names`, `creative-leaderboard` | **Creative & Copy Hub** — one record per creative, filed in a category / folder that gives it its code (`AI/SLOP/001`), ads bound by id in `creative_hub_links`; media + copy pulled live from Meta and cached in `creative_hub_meta`, run dates from `ad_campaigns`, prompt / script / tags in `creative_hub_entries`. Split B2B (Tomsi Media) / B2C (clients). Needs `META_ACCESS_TOKEN`; renaming ads in Meta needs `META_MANAGEMENT_TOKEN`. See `NOTES.md` 2026-10-01/02. |
@@ -164,6 +164,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `whoop/*` | Health Tracker **Whoop** connection — `connect` → OAuth → `callback`, `sync` (POST, re-reads recent days), `GET` status + days, `DELETE` disconnect. Tokens in `whoop_connections` (server-only), days in `whoop_days`. Day = morning you woke. See `NOTES.md` 2026-10-13. |
 | `profit-loss`, `profit-loss/clients`, `profit-loss/rate` | **Profit and Loss** (Payments menu) — one row per line of a month (client payment, business expense, personal expense) in `pnl_lines`, scoped to the signed-in user. Dollars only; an expense typed in euros is converted once at today's rate as it is saved (`src/lib/fx.ts`, ECB via frankfurter.dev). Totals, the Overview and the Clients tab are all summed from those lines in the browser. Client details (contact…) live in `pnl_clients`, tied to the lines by name and optionally to a Client Roster record (`client_id`); every roster client appears on the P&L Clients tab; P&L shows the roster name, else the client name; an empty month can start from last month's names with blank amounts. See `NOTES.md` 2026-10-04/05, 2026-11-05. |
 | `billing`, `billing/stripe-customers`, `billing/stripe-match` | **Client Billing** (Payments menu) — per roster client: which appointments (`events` rows) are charged or credited, the charges, and the credit balance that comes off the next charge. Tables `billing_clients` / `billing_charges` / `billing_appointments` / `billing_credits`. Charges go to Stripe (saved card or emailed invoice, `src/lib/stripe.ts`) or are recorded by hand; status is read back from Stripe when a client is opened (no webhook). Credit pays for the client's next booking on its own ("Covered by credit", a zero charge; only bookings made after the credit). The page opens on **Track today's appointments** (booked today / yesterday / 7 days across every client, `?view=recent`). Appointments show as cards: **Not tracked** (no row yet) → Bill / Credit / Cancelled (`cancelled_at`: never billed, nothing owed, not a credit). Each carries its source (FB Ads / SMS / No source, `sourceOf`); return by source counts **SMS cost only** — ad spend is the client's, never Tomsi Media's cost; the client details card is the Profit and Loss profile (`pnl_clients`). **Match with Stripe** (`billing/stripe-match`, `src/lib/stripe-match.ts`, `StripeMatch.tsx`) reads payments taken in Stripe outside the dashboard (read-only) and ties each to a client's untracked appointments once confirmed. **Moves real money:** admins or accounts explicitly ticked only (`canBill`). See `NOTES.md` 2026-11-10/11. |
+| `sms-payout` | **Johnny's payout** (SMS Dashboard) — clients signed through B2B SMS, 30-day window from the first blast, paid billing charges × share. Tables `sms_payouts`, `app_settings` (`scripts/migrate-sms-payouts.mjs`). See `NOTES.md` 2026-11-12 |
 | `sales-calls` | **Sales Tracker** (TM Dashboard) — Tomsi Media's sales-call log in `sales_calls`, shared by everyone with TM access. See `NOTES.md` 2026-10-04 (Sales Tracker). |
 | `me` | Who is signed in and which features they're allowed to open |
 | `ai-campaign-chat` | Claude-powered chat over a campaign/client's data — see below |
@@ -270,6 +271,17 @@ the roster and CSM. `src/lib/tomsi.ts` resolves the id server-side.
 Dials and no-shows for B2B come through the **client** Make scenarios: the
 Tomsi Media GHL sub-account runs the same All Dials / No Show workflows with
 custom data `client_name = "Tomsi Media"`.
+
+**B2B SMS acquisition** (the **SMS Dashboard** item under Tomsi Media; the old
+B2B Dashboard is the **Ads Dashboard**): the SMS
+webhook with `client_name = "Tomsi Media"` stores blasts in `sms_sends` and
+posts positive replies to `/api/webhooks/b2b` as `lead`s with
+`ad_platform = sms`; the demo, show and close that follow inherit the channel
+(by contact id or phone). SMS cost = messages × `SMS_COST_PER_MESSAGE`. Under
+the SMS stats, **Johnny's payout** (`SmsPayout.tsx`, `api/sms-payout`,
+`src/lib/sms-payout.ts`, tables `sms_payouts` + `app_settings`): a share of each
+SMS-signed client's first 30 days of Client Billing revenue, clock started by
+the client's first text blast. See `NOTES.md` 2026-11-11 and 2026-11-12.
 
 ---
 
