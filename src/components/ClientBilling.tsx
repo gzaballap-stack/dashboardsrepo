@@ -661,6 +661,100 @@ function CreditModal({ detail, picked, onClose, onDone }: {
   );
 }
 
+/* ── prepaid credits ──────────────────────────────────────────────────────── */
+
+// A client who pays for a batch up front: issue that many appointments as
+// credit, and their next bookings are covered by it instead of billed.
+function IssueCreditsModal({ detail, onClose, onDone }: {
+  detail: Detail; onClose: () => void; onDone: (message: string) => void;
+}) {
+  const saved = detail.settings.price;
+  const [countText, setCountText] = useState("");
+  const [priceText, setPriceText] = useState("");
+  const [reason, setReason] = useState("");
+  const [record, setRecord] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [requestId, setRequestId] = useState(newRequestId);
+
+  const count = /^\d+$/.test(countText.trim()) ? Number(countText.trim()) : 0;
+  const price = saved > 0 ? saved : (parseAmount(priceText) ?? 0);
+  const value = (cents(price) * count) / 100;
+  const holding = detail.credits_owed;
+  const blocked = count < 1 ? "Enter how many appointments" : count > 1000 ? "That is too many at once" : price <= 0 ? "Set a price per appointment" : null;
+
+  const submit = async () => {
+    if (busy || blocked) return;
+    setBusy(true); setError(null);
+    try {
+      await api("/api/billing", {
+        action: "issue_credits", client_id: detail.client.id, count,
+        price: saved > 0 ? undefined : price, reason, record_payment: record, request_id: requestId,
+      });
+      onDone(`${plural(count, "credit")} issued — their next ${count === 1 ? "booking" : `${count} bookings`} won't be billed${record ? `, and ${money(value)} recorded as paid` : ""}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong"); setBusy(false); setRequestId(newRequestId());
+    }
+  };
+
+  return (
+    <Modal title="Issue credits" sub={`${detail.client.name} · prepaid appointments`} onClose={busy ? () => {} : onClose}>
+      <div style={{ ...PANEL, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <label style={{ ...LABEL, flex: 1, minWidth: 140 }}>
+            Appointments paid for up front
+            <input value={countText} onChange={e => setCountText(e.target.value)} inputMode="numeric" placeholder="e.g. 10" autoFocus style={FIELD} />
+          </label>
+          <label style={{ ...LABEL, flex: 1, minWidth: 140 }}>
+            Price per appointment
+            {saved > 0
+              ? <span style={{ ...FIELD, background: "rgba(0,0,0,0.04)", fontWeight: 600 }}>{money(saved)}</span>
+              : <input value={priceText} onChange={e => setPriceText(e.target.value)} inputMode="decimal" placeholder="$0" style={FIELD} />}
+          </label>
+        </div>
+        {saved <= 0 && <p style={{ fontSize: 12, color: MUTED, marginTop: -4 }}>This also becomes their price per appointment.</p>}
+        <label style={LABEL}>
+          Note (optional)
+          <input value={reason} onChange={e => setReason(e.target.value)} maxLength={300}
+            placeholder={count ? `Prepaid — ${plural(count, "appointment")}` : "e.g. Prepaid batch, November"} style={FIELD} />
+        </label>
+
+        <div style={{ borderTop: "1px solid rgba(0,0,0,0.07)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 5, fontSize: 13, color: MUTED }}>
+          <div style={{ display: "flex" }}>
+            <span style={{ flex: 1 }}>{count && price ? `${count} × ${money(price)}` : "Credit"}</span>
+            <span style={NUM}>{money(value)}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", color: INK, marginTop: 4 }}>
+            <span style={{ flex: 1, fontWeight: 700 }}>Credits they will hold</span>
+            <span style={{ ...NUM, fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>{plural(holding + count, "appointment")}</span>
+          </div>
+          {holding > 0 && <p style={{ fontSize: 12, color: FAINT }}>{`${holding} already held + ${count} new`}</p>}
+        </div>
+      </div>
+
+      <Notice tone="warn">
+        {"Each booking made from now on uses one credit and is marked Covered by credit — it is not billed. If one cancels, mark it Cancelled and the credit comes back. Appointments already booked are not touched."}
+      </Notice>
+
+      <label style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: CARD, border: BORDER, cursor: "pointer" }}>
+        <input type="checkbox" checked={record} onChange={e => setRecord(e.target.checked)} style={{ marginTop: 3 }} />
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: INK }}>{`Also record the payment${value > 0 ? ` — ${money(value)} already paid` : ""}`}</span>
+          <span style={{ display: "block", fontSize: 12, color: MUTED, marginTop: 1 }}>Nothing is sent to Stripe. Leave this off if you will match the payment from Stripe, so it is not counted twice.</span>
+        </span>
+      </label>
+
+      {error && <Notice tone="bad">{error}</Notice>}
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={submit} disabled={busy || !!blocked} style={{ ...BTN_DARK, padding: "10px 18px", fontSize: 13, opacity: busy || blocked ? 0.35 : 1 }}>
+          {busy ? "Working…" : count ? `Issue ${plural(count, "credit")}` : "Issue credits"}
+        </button>
+        {blocked && !busy && <span style={{ fontSize: 12.5, color: MUTED }}>{blocked}</span>}
+      </div>
+    </Modal>
+  );
+}
+
 /* ── Stripe customer ──────────────────────────────────────────────────────── */
 
 function StripeLinkModal({ detail, onClose, onDone }: {
@@ -763,6 +857,7 @@ function StripeLinkModal({ detail, onClose, onDone }: {
 function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onCancel, onUncancel, onUncredit, onCreditBilled }: {
   a: Appointment; price: number; busy: boolean;
   ticked?: boolean; onTick?: () => void;
+  /** onCancel also serves a booking their credit covered: it gives the credit back. */
   onBill: () => void; onCredit: () => void; onCancel: () => void;
   onUncancel: () => void; onUncredit: () => void; onCreditBilled?: () => void;
 }) {
@@ -779,6 +874,8 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
   const last = !b ? null
     : b.state === "cancelled" ? <button disabled={busy} onClick={onUncancel} style={quiet}>Undo</button>
     : b.state === "credited" ? <button disabled={busy} onClick={onUncredit} style={quiet}>Undo credit</button>
+    // Their credit paid for it: if it cancels, the credit goes back to them.
+    : b.state === "covered" ? <button disabled={busy} onClick={onCancel} title="Mark it cancelled and give the credit back" style={{ ...small, flex: "none", background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Cancelled — return the credit</button>
     : onCreditBilled ? <button disabled={busy} onClick={onCreditBilled} style={quiet}>Credit it</button>
     : null;
   return (
@@ -949,7 +1046,7 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
                 <AppointmentCard key={a.event_id} a={a} price={a.price} busy={busy}
                   onBill={() => bill(a.client_id, [a.event_id])}
                   onCredit={() => act({ action: "credit", client_id: a.client_id, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"} credited — not billed`)}
-                  onCancel={() => act({ action: "cancel", client_id: a.client_id, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"} marked cancelled`)}
+                  onCancel={() => act({ action: "cancel", client_id: a.client_id, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"} marked cancelled${a.billing?.state === "covered" ? " — the credit is back with the client" : ""}`)}
                   onUncancel={() => act({ action: "uncancel", client_id: a.client_id, event_ids: [a.event_id] }, "Back to not tracked")}
                   onUncredit={() => act({ action: "uncredit", client_id: a.client_id, event_ids: [a.event_id] }, "Credit removed")} />
               ))}
@@ -986,6 +1083,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   const [charging, setCharging] = useState<string[] | null>(null);     // event ids; [] = one-off amount
   const [crediting, setCrediting] = useState<Appointment[] | null>(null);
   const [linking, setLinking] = useState(false);
+  const [issuing, setIssuing] = useState(false);
   const [priceText, setPriceText] = useState("");
   const [busy, setBusy] = useState(false);
   const [creditAmount, setCreditAmount] = useState("");
@@ -1017,7 +1115,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   useEffect(() => { load(); }, [load]);
 
   const done = (text: string, failed?: boolean) => {
-    setCharging(null); setCrediting(null); setLinking(false);
+    setCharging(null); setCrediting(null); setLinking(false); setIssuing(false);
     setPicked(new Set());
     setFlash({ text, bad: failed });
     load(); onChanged();
@@ -1087,7 +1185,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
       ticked={picked.has(a.event_id)} onTick={() => toggle(a.event_id)}
       onBill={() => setCharging([a.event_id])}
       onCredit={() => act({ action: "credit", client_id: clientId, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"} credited — not billed`)}
-      onCancel={() => act({ action: "cancel", client_id: clientId, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"} marked cancelled`)}
+      onCancel={() => act({ action: "cancel", client_id: clientId, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"} marked cancelled${a.billing?.state === "covered" ? " — the credit is back with the client" : ""}`)}
       onUncancel={() => act({ action: "uncancel", client_id: clientId, event_ids: [a.event_id] }, "Back to not tracked")}
       onUncredit={() => act({ action: "uncredit", client_id: clientId, event_ids: [a.event_id] }, "Credit removed")}
       onCreditBilled={() => setCrediting([a])} />
@@ -1098,6 +1196,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button onClick={onBack} style={BTN_QUIET}>← All clients</button>
         <h3 style={{ flex: 1, minWidth: 160, fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>{detail.client.name}</h3>
+        <button onClick={() => setIssuing(true)} style={BTN_QUIET} title="Prepaid appointments: credits issued ahead of the bookings">Issue credits</button>
         <button onClick={() => setCharging([])} style={BTN_QUIET}>Charge another amount</button>
       </div>
 
@@ -1353,6 +1452,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
       {charging && <ChargeModal detail={detail} stripe={stripe} eventIds={charging} onClose={() => setCharging(null)} onDone={done} />}
       {crediting && <CreditModal detail={detail} picked={crediting} onClose={() => setCrediting(null)} onDone={done} />}
       {linking && <StripeLinkModal detail={detail} onClose={() => setLinking(false)} onDone={done} />}
+      {issuing && <IssueCreditsModal detail={detail} onClose={() => setIssuing(false)} onDone={done} />}
     </div>
   );
 }

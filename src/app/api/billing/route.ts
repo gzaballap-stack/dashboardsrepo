@@ -1063,11 +1063,44 @@ export async function POST(req: Request) {
     if (loaded.error) return bad(loaded.error, 409);
     const existing = await trackedRows(service, eventIds);
     if (existing.error) return dbError(existing.error);
-    // Only an appointment nobody has decided on can be cancelled: a billed one
-    // has to be credited instead, so the client gets it back.
+    // An appointment nobody has decided on can be cancelled, and so can one
+    // their credit covered — that gives the credit back (below). One that was
+    // billed for money has to be credited instead, so the client gets it back.
     const taken = new Set(existing.rows.map(r => r.event_id as string));
     const { data: s } = await service.from('billing_clients').select('price_per_appointment').eq('client_id', clientId).maybeSingle();
     const stamp = now();
+
+    // Covered by credit → cancelled: the appointment lets go of the credit it
+    // used, so it is there again for their next booking. Nothing was ever
+    // billed for it, so there is no money to give back.
+    let returned = 0;
+    const coveredRows = existing.rows.filter(r => r.client_id === clientId && r.charge_id && !r.credited_at && !r.cancelled_at);
+    for (const row of coveredRows) {
+      const { data: charge } = await service.from('billing_charges')
+        .select('id, status, subtotal, credit_applied, total, appointment_count').eq('id', row.charge_id as string).maybeSingle();
+      if (!charge || charge.status !== 'paid' || !paidByCredit(charge)) continue;
+      const { data: freed, error } = await service.from('billing_appointments')
+        .update({ charge_id: null, cancelled_at: stamp, credit_amount: 0, credit_reason: reason || null, updated_at: stamp })
+        .eq('id', row.id).eq('charge_id', charge.id).is('credited_at', null).select('id');
+      if (error) {
+        if (isMissingColumn(error, 'cancelled_at')) return bad('Marking appointments cancelled needs a one-off database update first', 503);
+        return dbError(error);
+      }
+      if (!freed?.length) continue;      // someone changed it in the same moment
+      // The record of the credit being used goes with it: all of it when this
+      // was the only appointment on it, otherwise just this one's share.
+      const { data: left } = await service.from('billing_appointments').select('id').eq('charge_id', charge.id);
+      if (!left?.length) await service.from('billing_charges').delete().eq('id', charge.id);
+      else {
+        const share = Math.min(num(row.price), num(charge.credit_applied));
+        await service.from('billing_charges').update({
+          subtotal: round2(num(charge.subtotal) - share), credit_applied: round2(num(charge.credit_applied) - share),
+          appointment_count: Math.max(0, num(charge.appointment_count) - 1),
+        }).eq('id', charge.id);
+      }
+      returned++;
+    }
+
     const fresh = loaded.events.filter(e => !taken.has(e.id as string)).map(e => ({
       client_id: clientId, event_id: e.id, lead_name: e.lead_name,
       appointment_at: e.scheduled_at ?? e.occurred_at, charge_id: null,
@@ -1080,7 +1113,12 @@ export async function POST(req: Request) {
         return error.code === '23505' ? bad('Some of those were just billed or credited — refresh and try again', 409) : dbError(error);
       }
     }
-    return NextResponse.json({ cancelled: fresh.length, skipped: eventIds.length - fresh.length });
+    // A credit that came back goes to their next booking still waiting, if any.
+    const covered = returned > 0 ? await tryCover(service, clientId) : 0;
+    return NextResponse.json({
+      cancelled: fresh.length + returned, credits_returned: returned, covered,
+      skipped: eventIds.length - fresh.length - returned,
+    });
   }
 
   if (action === 'uncancel') {
@@ -1097,6 +1135,67 @@ export async function POST(req: Request) {
     // Back to "not tracked" — and if they hold credit, it may cover it.
     await tryCover(service, clientId);
     return NextResponse.json({ uncancelled: rows.length });
+  }
+
+  /* ── prepaid appointments: credits issued ahead of the bookings ── */
+  // A client who pays for a batch up front holds that many appointments in
+  // credit; each booking that follows is covered by it and never billed. The
+  // credit is worth count × their price per appointment, so the count stays
+  // true as long as the price does. Optionally the payment itself is recorded
+  // too (as already paid — nothing is sent to Stripe).
+  if (action === 'issue_credits') {
+    const clientId = String(body.client_id ?? '');
+    const count = Number(body.count);
+    if (!clientId) return bad('client_id is required');
+    if (!Number.isInteger(count) || count < 1 || count > 1000) return bad('Enter how many appointments');
+    const { data: client } = await service.from('clients').select('id, name, is_internal').eq('id', clientId).maybeSingle();
+    if (!client || client.is_internal) return bad('Client not found', 404);
+
+    const { data: s, error: settingsError } = await service.from('billing_clients').select('price_per_appointment').eq('client_id', clientId).maybeSingle();
+    if (settingsError) return dbError(settingsError);
+    const saved = num(s?.price_per_appointment);
+    let price = saved;
+    if (saved <= 0) {
+      // No price yet: the one typed here becomes their price per appointment.
+      const typed = amount(body.price);
+      if (typed === null || typed <= 0) return bad('Set a price per appointment first');
+      const { error } = await service.from('billing_clients')
+        .upsert({ client_id: clientId, price_per_appointment: typed, updated_at: now() }, { onConflict: 'client_id' });
+      if (error) return dbError(error);
+      price = typed;
+    }
+    const value = round2((toCents(price) * count) / 100);
+    const some = `${count} appointment${count === 1 ? '' : 's'}`;
+    const typedReason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 300) : '';
+    const reason = typedReason || `Prepaid — ${some}`;
+
+    let chargeId: string | null = null;
+    if (body.record_payment === true) {
+      const requestId = typeof body.request_id === 'string' && body.request_id ? body.request_id : null;
+      const { data: charge, error } = await service.from('billing_charges').insert({
+        client_id: clientId, client_name: client.name,
+        kind: 'custom', description: `Prepaid — ${some} × $${price}`, appointment_count: 0,
+        subtotal: value, credit_applied: 0, total: value,
+        method: 'manual', status: 'paid', paid_at: now(),
+        request_id: requestId, created_by: ctx.userId,
+      }).select('id').single();
+      if (error || !charge) {
+        if (error?.code === '23505') return bad('Those credits were already issued — refresh to see them', 409);
+        return dbError(error ?? { message: 'Could not record the payment' });
+      }
+      chargeId = charge.id as string;
+    }
+
+    const { error: creditError } = await service.from('billing_credits').insert({
+      client_id: clientId, amount: value, reason, created_by: ctx.userId,
+    });
+    if (creditError) {
+      // No credit, so no payment on record for it either.
+      if (chargeId) await service.from('billing_charges').delete().eq('id', chargeId);
+      return dbError(creditError);
+    }
+    const covered = await tryCover(service, clientId);
+    return NextResponse.json({ success: true, count, price, credit: value, recorded: !!chargeId, covered });
   }
 
   /* ── credit not tied to an appointment ── */

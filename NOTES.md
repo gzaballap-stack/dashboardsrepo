@@ -1,3 +1,34 @@
+## 2026-11-12 — Client Billing: prepaid credits ("Issue credits"); a covered booking can be cancelled
+
+Owner: clients who pay for a batch up front need credits issued ahead of the
+bookings, a counter of credits not yet used, and — when a booking their credit
+covered cancels — the credit back.
+
+- **Issue credits** button on the client page, left of "Charge another
+  amount". Asks how many appointments were paid for up front; the credit is
+  count × the client's price per appointment (`issue_credits` action → one
+  `billing_credits` row, reason "Prepaid — N appointments"). A client with no
+  price yet gets the price typed there as their price. Optional tick: also
+  record the payment as already paid (a `custom` manual charge, nothing sent to
+  Stripe; off by default so a payment later matched from Stripe isn't counted
+  twice).
+- Nothing new was needed for the rest — it is the credit machinery of
+  2026-11-10: each booking made after the credit is marked **Covered by
+  credit** on the next load (never billed), and the counter is the existing
+  **Credits still owed** tile / column (balance ÷ price, in appointments).
+  Appointments booked before the credits are not touched.
+- **Covered → Cancelled.** The `cancel` action now also takes a booking that
+  credit paid for (a paid charge of 0 fully covered by credit): the row becomes
+  cancelled and lets go of the charge, and the "credit used" record is deleted
+  (or reduced by that one appointment's share when the charge held several).
+  The credit is back in the balance and goes straight to the next booking
+  waiting. The card shows **Cancelled — return the credit**. A booking billed
+  for real money still can't be cancelled — it has to be credited.
+- Counts stay true only while the client's price is unchanged: credit is held
+  in dollars, so changing the price changes how many appointments it is worth.
+- Tested against the simulated database (72 scenarios across six suites) and a
+  made-up-data preview. No schema change.
+
 ## 2026-11-12 — Client Billing was slow because it downloaded every SMS row
 
 Measured on V1, signed in, from the browser pane (timings only):
