@@ -1,3 +1,29 @@
+## 2026-11-12 — Client Billing was slow because it downloaded every SMS row
+
+Measured on V1, signed in, from the browser pane (timings only):
+
+- The list call took **6–12 s**; the same call over an empty period took 2 s;
+  the Today panel (no SMS read) 1.3–1.6 s. The difference was the SMS cost read.
+- `sms_sends` holds **a row per text sent** — 35,768 this month. `readSms` paged
+  through them a thousand at a time, one trip after another, sorting each time,
+  just to add up `messages`. The earlier "run reads side by side" change could
+  not help: this one read was the whole wait.
+- Fix: **`sms_totals(p_start, p_end, p_client)`** — a read-only database function
+  returning one row per client (`supabase/migrations/add_sms_totals.sql`,
+  `scripts/migrate-sms-totals.mjs <v1|v2>`; additive, no table or index
+  touched). `readSms` calls it; where the function doesn't exist yet it still
+  reads the rows, but in wide reads that stop only on an empty answer (correct
+  whatever the database's row cap is). Totals are identical either way.
+- Not changed: every request to V1 costs ~0.8–1 s before its own work
+  (`/api/me`, `/api/clients` and `/api/alerts` each take that long), and the
+  page waits for `/api/me` before Client Billing starts. That is the sign-in
+  check plus distance between the visitor, Railway and Supabase — a whole-app
+  matter, not billing's.
+- The Clients dashboard's SMS tiles (`api/metrics`, `channel=sms`) read the same
+  table in one unpaged request and showed the same 35,768, so V1 is not capping
+  that read today. It would silently undercount if a row cap were ever applied —
+  it could use `sms_totals` too. Left alone for now.
+
 ## 2026-11-12 — New client survey (replaces the GHL onboarding form)
 
 The owner's GHL form (`widget/form/7nrpwBEv3KtdtT2mRLDJ`) rebuilt inside the

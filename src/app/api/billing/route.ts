@@ -209,15 +209,32 @@ async function freeCredit(service: Service, clientId: string, needed: number): P
 // the Clients dashboard's Total SMS Cost. Ad spend is paid by the client, so
 // Facebook Ads appointments carry no cost here. A table that can't be read
 // counts as nothing spent rather than failing the page.
+// `sms_sends` holds a row per text sent — tens of thousands a month. Reading
+// them a thousand at a time to add them up was what made this page take
+// several seconds, so the database adds them up instead (`sms_totals`, one row
+// per client). Until that function exists on a database, the rows are still
+// read here, but in as few trips as the database allows.
 async function readSms(service: Service, opts: { clientId?: string; start: string | null; end: string | null }): Promise<Row[]> {
-  const sms = await readAll((a, b) => {
-    let q = service.from('sms_sends').select('client_id, sent_date, messages').order('sent_date').range(a, b);
+  try {
+    const { data, error } = await service.rpc('sms_totals', { p_start: opts.start, p_end: opts.end, p_client: opts.clientId ?? null });
+    if (!error && Array.isArray(data)) return data as Row[];
+  } catch { /* not there yet — read the rows */ }
+
+  const WIDE = 50_000;
+  const rows: Row[] = [];
+  for (let trip = 0; trip < 60; trip++) {
+    let q = service.from('sms_sends').select('client_id, messages').order('sent_date').order('id').range(rows.length, rows.length + WIDE - 1);
     if (opts.clientId) q = q.eq('client_id', opts.clientId);
     if (opts.start) q = q.gte('sent_date', opts.start);
     if (opts.end) q = q.lte('sent_date', opts.end);
-    return q;
-  });
-  return sms.error ? [] : sms.rows;
+    const { data, error } = await q;
+    if (error) return [];
+    // A short answer may be the database's own cap rather than the end, so
+    // only an empty one ends it.
+    if (!data?.length) break;
+    rows.push(...(data as Row[]));
+  }
+  return rows;
 }
 
 function smsCost(rows: Row[], skip?: Set<string>) {

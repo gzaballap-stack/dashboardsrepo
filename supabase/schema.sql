@@ -703,3 +703,31 @@ create table if not exists client_surveys (
   updated_at        timestamptz not null default now()
 );
 alter table client_surveys enable row level security;
+
+-- ── SMS totals ──────────────────────────────────────────────────────────────
+-- See migrations/add_sms_totals.sql.
+--   select * from sms_totals('2026-11-01', '2026-11-30', '<id>');  -- one client
+
+create or replace function public.sms_totals(
+  p_start  date default null,
+  p_end    date default null,
+  p_client uuid default null
+)
+returns table (client_id uuid, messages bigint)
+language sql
+stable
+as $$
+  select s.client_id, coalesce(sum(s.messages), 0)::bigint as messages
+  from public.sms_sends s
+  where (p_start  is null or s.sent_date >= p_start)
+    and (p_end    is null or s.sent_date <= p_end)
+    and (p_client is null or s.client_id = p_client)
+  group by s.client_id
+$$;
+
+-- Only the server reads it, like the table itself.
+revoke all on function public.sms_totals(date, date, uuid) from public, anon, authenticated;
+grant execute on function public.sms_totals(date, date, uuid) to service_role;
+
+-- So the API sees the new function straight away.
+notify pgrst, 'reload schema';
