@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError, type AuthContext } from '@/lib/api-auth';
-import { APPOINTMENT_TYPES, LIVE_CHARGE_STATUSES, canBill, isMissingTable, round2, sourceOf } from '@/lib/billing';
-import { stripeStatus, listPayments, getPayment, type StripePayment } from '@/lib/stripe';
+import { APPOINTMENT_TYPES, LIVE_CHARGE_STATUSES, canBill, isMissingTable, namesNote, round2, sourceOf } from '@/lib/billing';
+import { stripeStatus, listPayments, getPayment, notePayment, type StripePayment } from '@/lib/stripe';
 import { MATCH, matchKey, split, suggest, type Candidate, type MatchClient } from '@/lib/stripe-match';
 
 // Client Billing — Match with Stripe.
@@ -15,9 +15,11 @@ import { MATCH, matchKey, split, suggest, type Candidate, type MatchClient } fro
 //   POST { payment_id, client_id, event_ids }   save one match
 //   POST { payment_id, client_id, other: true } the payment was not for appointments
 //
-// Stripe is only ever read here. A match is a charge marked paid on the date
-// Stripe took the money, holding those appointments — removed again from the
-// client's Charges tab, which puts the payment back in this list.
+// No money is ever touched in Stripe here. A match is a charge marked paid on
+// the date Stripe took the money, holding those appointments — removed again
+// from the client's Charges tab, which puts the payment back in this list. The
+// one thing written to Stripe is an internal note on the payment naming the
+// client and the appointments (taken off again when the match is removed).
 
 type Row = Record<string, unknown>;
 
@@ -274,7 +276,13 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ success: true, charge_id: charge.id, amount: payment.amount, appointments: events.length, linked });
+  // The payment in Stripe says which client and appointments it was for.
+  const noted = await notePayment(payment.id, {
+    billing_client: String(client.name ?? ''),
+    appointments: events.length ? namesNote(events.map(e => e.lead_name as string | null)) : 'Not for appointments',
+  });
+
+  return NextResponse.json({ success: true, charge_id: charge.id, amount: payment.amount, appointments: events.length, linked, noted });
 }
 
 // Reading a long stretch of Stripe takes a few round trips.

@@ -287,9 +287,10 @@ export default function StripeMatch({ start, end, periodLabel, onBack, onChanged
     if (other && !window.confirm(`Log this ${money(p.amount)} for ${client.name} as a payment that wasn't for appointments?`)) return;
     setBusy(p.id); setError(null); setFlash(null);
     try {
-      await send(p, other ? { ...choice, ticked: [] } : choice, other);
+      const res = await send(p, other ? { ...choice, ticked: [] } : choice, other);
       settle(p, other ? { ...choice, ticked: [] } : choice);
-      setFlash(other ? `${money(p.amount)} logged for ${client.name}` : `${money(p.amount)} matched to ${plural(choice.ticked.length, "appointment")} for ${client.name}`);
+      setFlash((other ? `${money(p.amount)} logged for ${client.name}` : `${money(p.amount)} matched to ${plural(choice.ticked.length, "appointment")} for ${client.name}`)
+        + (res?.noted === false ? ". Stripe would not take the note — the match itself is saved." : ""));
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save");
@@ -335,7 +336,7 @@ export default function StripeMatch({ start, end, periodLabel, onBack, onChanged
         <div style={{ flex: 1, minWidth: 200 }}>
           <h3 style={{ fontSize: 17, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>Match with Stripe</h3>
           <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-            {`Payments taken in Stripe, ${periodLabel}, not tied to appointments yet. Nothing is saved until you confirm, and Stripe is never changed.`}
+            {`Payments taken in Stripe, ${periodLabel}, not tied to appointments yet. Nothing is saved until you confirm. In Stripe, the payment only gets a note naming its appointments.`}
           </p>
         </div>
         <button onClick={() => setVersion(v => v + 1)} disabled={busy !== null} style={BTN_QUIET}>Refresh</button>

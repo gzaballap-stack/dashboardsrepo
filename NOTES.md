@@ -1,3 +1,40 @@
+## 2026-11-11 — Client Billing: faster load; appointment names on Stripe
+
+**Faster load** (owner: the page took too long). Not measured on V1 — the
+reasoning is from the code; no figures change.
+
+- `GET /api/billing` (all three views) now asks for everything at once,
+  including the access check (`canBill`) and the settings read, instead of one
+  trip after another. Nothing is answered until the access check is back.
+- One client: their Stripe card, SMS cost and P&L profile are fetched while the
+  billing records are brought up to date (Stripe sync → credit cover → reads
+  stay in that order).
+- The **Today panel no longer waits for the list** — both load together and the
+  figures show "Loading the rest…" under it. The list answer carries `covered`
+  (bookings its credit pass just covered); when that is above 0 the Today panel
+  reads again, since it may have looked a moment too early.
+- Still true: every load re-reads all of `billing_charges` /
+  `billing_appointments` / `billing_credits` (balances are all-time), and there
+  is no `events (event_type, occurred_at)` index for the all-client reads. If it
+  is slow again as data grows, those are the next two things to look at.
+
+**Appointment names on Stripe** (owner: each payment should say which
+appointment it was for).
+
+- A charge made from the dashboard: the invoice line reads
+  `2 appointments × $200 — Dana White, Luis Ortega` (the client sees this), and
+  the invoice carries the same names as metadata `appointments`.
+- A payment matched through Match with Stripe: after the match is saved the
+  Stripe payment gets internal metadata `billing_client` + `appointments`
+  (`notePayment` in `src/lib/stripe.ts`); removing the match takes them off.
+  **This is the one write Match with Stripe makes to Stripe** — metadata only,
+  never money, best effort: a read-only key just means no note, and the screen
+  says so.
+- `namesNote` (`src/lib/billing.ts`) keeps the list under Stripe's 500-character
+  limit ("… +3 more").
+- Tested against the simulated Stripe only (53 scenarios across the three
+  suites). Payments matched before this change have no note.
+
 ## 2026-11-11 — Client Billing: "Track today's appointments" is the first thing on the page
 
 Owner wants an end-of-day prompt: what was booked today, and which of those

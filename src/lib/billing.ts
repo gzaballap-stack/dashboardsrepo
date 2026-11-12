@@ -106,6 +106,20 @@ export function planCovers(opts: {
   return covered;
 }
 
+/** The appointments' names as one line — "Dana White, Luis Ortega +3 more" —
+ *  for the note Stripe carries. Stripe caps a note at 500 characters. */
+export function namesNote(names: (string | null | undefined)[], max = 400): string {
+  const clean = names.map(n => (typeof n === 'string' && n.trim() ? n.trim().split(/\s+/).join(' ') : 'No name'));
+  let out = '';
+  for (let i = 0; i < clean.length; i++) {
+    const next = out ? `${out}, ${clean[i]}` : clean[i];
+    const rest = clean.length - i - 1;
+    if (next.length + (rest ? ` +${rest} more`.length : 0) > max) return out ? `${out} +${clean.length - i} more` : clean[i].slice(0, max);
+    out = next;
+  }
+  return out;
+}
+
 /** How many whole appointments a credit balance is worth at this price. */
 export const creditInAppointments = (balance: number, price: number) =>
   price > 0 ? Math.floor(toCents(balance) / toCents(price)) : 0;

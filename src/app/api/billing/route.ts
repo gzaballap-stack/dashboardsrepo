@@ -3,12 +3,12 @@ import { getAuthContext, isAuthError, type AuthContext } from '@/lib/api-auth';
 import {
   APPOINTMENT_TYPES, LIVE_CHARGE_STATUSES, STRIPE_MINIMUM,
   canBill, creditBalance, creditInAppointments, isMissingColumn, isMissingTable, oldestOpenCredit, paidByCredit,
-  planCharge, planCovers, returnsBySource, round2, sourceOf, toCents,
+  namesNote, planCharge, planCovers, returnsBySource, round2, sourceOf, toCents,
   type BillingState, type Source,
 } from '@/lib/billing';
 import {
   StripeError, stripeStatus, getCustomer, createDraftInvoice, finalizeInvoice,
-  payInvoice, sendInvoice, getInvoice, voidInvoice, deleteDraftInvoice,
+  payInvoice, sendInvoice, getInvoice, voidInvoice, deleteDraftInvoice, notePayment,
 } from '@/lib/stripe';
 
 // Client Billing — which appointments each client has been charged for, which
@@ -209,7 +209,7 @@ async function freeCredit(service: Service, clientId: string, needed: number): P
 // the Clients dashboard's Total SMS Cost. Ad spend is paid by the client, so
 // Facebook Ads appointments carry no cost here. A table that can't be read
 // counts as nothing spent rather than failing the page.
-async function costsFor(service: Service, opts: { clientId?: string; skip?: Set<string>; start: string | null; end: string | null }) {
+async function readSms(service: Service, opts: { clientId?: string; start: string | null; end: string | null }): Promise<Row[]> {
   const sms = await readAll((a, b) => {
     let q = service.from('sms_sends').select('client_id, sent_date, messages').order('sent_date').range(a, b);
     if (opts.clientId) q = q.eq('client_id', opts.clientId);
@@ -217,8 +217,11 @@ async function costsFor(service: Service, opts: { clientId?: string; skip?: Set<
     if (opts.end) q = q.lte('sent_date', opts.end);
     return q;
   });
-  const keep = (r: Row) => !!r.client_id && !opts.skip?.has(r.client_id as string);
-  const sent = (sms.error ? [] : sms.rows.filter(keep)).reduce((t, r) => t + num(r.messages), 0);
+  return sms.error ? [] : sms.rows;
+}
+
+function smsCost(rows: Row[], skip?: Set<string>) {
+  const sent = rows.filter(r => !!r.client_id && !skip?.has(r.client_id as string)).reduce((t, r) => t + num(r.messages), 0);
   const rate = Number(process.env.SMS_COST_PER_MESSAGE ?? '0.01') || 0;
   return { ads: 0, sms: round2(sent * rate), sms_sent: sent };
 }
@@ -315,8 +318,10 @@ function billingView(a: Row | undefined, charge: Row | undefined) {
 
 /* ── GET ──────────────────────────────────────────────────────────────────── */
 
+// Each view asks for everything it needs at once — the access check included —
+// and answers nothing until that check is back.
 export async function GET(req: Request) {
-  const ctx = await guard();
+  const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
   const service = ctx.service;
 
@@ -333,9 +338,14 @@ export async function GET(req: Request) {
   };
   const stripe = stripeStatus();
 
-  const probe = await service.from('billing_clients').select('client_id, price_per_appointment, stripe_customer_id');
-  if (probe.error) return isMissingTable(probe.error) ? NextResponse.json({ ...NEEDS_SETUP, stripe }) : bad(probe.error.message, 500);
-  const settings = new Map((probe.data ?? []).map(s => [s.client_id as string, s]));
+  const readSettings = () => service.from('billing_clients').select('client_id, price_per_appointment, stripe_customer_id');
+  type Settings = Awaited<ReturnType<typeof readSettings>>;
+  const refuse = (allowed: boolean, probe: Settings) => {
+    if (!allowed) return bad('Client Billing is not enabled for this account', 403);
+    if (probe.error) return isMissingTable(probe.error) ? NextResponse.json({ ...NEEDS_SETUP, stripe }) : bad(probe.error.message, 500);
+    return null;
+  };
+  const settingsOf = (probe: Settings) => new Map((probe.data ?? []).map(s => [s.client_id as string, s]));
 
   /* ── the last few days, every client: what was booked and where each stands ── */
   if (params.get('view') === 'recent') {
@@ -344,7 +354,8 @@ export async function GET(req: Request) {
     // Never more than a month back, whatever is asked for.
     const fromMs = Math.max(at(params.get('from')) ?? toMs - 7 * 86_400_000, toMs - 31 * 86_400_000);
 
-    const [clients, events] = await Promise.all([
+    const [allowed, probe, clients, events] = await Promise.all([
+      canBill(ctx), readSettings(),
       service.from('clients').select('id, name, service, is_internal'),
       readAll((a, b) => service.from('events')
         .select(`id, client_id, event_type, occurred_at, scheduled_at, lead_name, lead_phone, calendar_name, ${ATTRIBUTION}`)
@@ -352,6 +363,9 @@ export async function GET(req: Request) {
         .gte('occurred_at', new Date(fromMs).toISOString()).lte('occurred_at', new Date(toMs).toISOString())
         .order('occurred_at', { ascending: false }).range(a, b), 5),
     ]);
+    const refused = refuse(allowed, probe);
+    if (refused) return refused;
+    const settings = settingsOf(probe);
     const failed = clients.error ?? events.error;
     if (failed) return bad(failed.message ?? 'Could not load appointments', 500);
 
@@ -362,10 +376,9 @@ export async function GET(req: Request) {
     const apptByEvent = new Map(tracked.rows.map(a => [a.event_id as string, a]));
 
     const chargeById = new Map<string, Row>();
-    for (const part of chunks([...new Set(tracked.rows.map(a => a.charge_id as string | null).filter((id): id is string => !!id))])) {
-      const { data } = await service.from('billing_charges').select('id, status, total, credit_applied').in('id', part);
-      for (const c of (data ?? []) as Row[]) chargeById.set(c.id as string, c);
-    }
+    const chargeIds = [...new Set(tracked.rows.map(a => a.charge_id as string | null).filter((id): id is string => !!id))];
+    const found = await Promise.all(chunks(chargeIds).map(part => service.from('billing_charges').select('id, status, total, credit_applied').in('id', part)));
+    for (const { data } of found) for (const c of (data ?? []) as Row[]) chargeById.set(c.id as string, c);
 
     return NextResponse.json({
       ready: true, stripe,
@@ -386,13 +399,29 @@ export async function GET(req: Request) {
 
   /* ── one client ── */
   if (clientId) {
-    const { data: client } = await service.from('clients').select('id, name, status, service').eq('id', clientId).maybeSingle();
+    const [allowed, probe, { data: client }] = await Promise.all([
+      canBill(ctx), readSettings(),
+      service.from('clients').select('id, name, status, service').eq('id', clientId).maybeSingle(),
+    ]);
+    const refused = refuse(allowed, probe);
+    if (refused) return refused;
+    const settings = settingsOf(probe);
     if (!client) return bad('Client not found', 404);
 
-    await syncWithStripe(service, clientId);
-    await tryCover(service, clientId);
-
-    const [events, appts, charges, credits] = await Promise.all([
+    // Their card in Stripe, the SMS cost and their profile don't depend on the
+    // billing records, so they are fetched while those are brought up to date.
+    const s = settings.get(clientId);
+    const readCustomer = async () => {
+      if (!stripe.configured || !s?.stripe_customer_id) return { customer: null, customerError: null as string | null };
+      try {
+        const customer = await getCustomer(s.stripe_customer_id as string);
+        return { customer, customerError: customer ? null : 'This Stripe customer no longer exists — link another' };
+      } catch (e) { return { customer: null, customerError: e instanceof Error ? e.message : "Couldn't reach Stripe" }; }
+    };
+    const readRecords = async () => {
+      await syncWithStripe(service, clientId);
+      await tryCover(service, clientId);
+      return Promise.all([
       readAll((a, b) => {
         let q = service.from('events')
           .select(`id, event_type, occurred_at, scheduled_at, lead_name, lead_phone, calendar_name, ${ATTRIBUTION}`)
@@ -404,8 +433,13 @@ export async function GET(req: Request) {
       }, 10),
       readAll((a, b) => service.from('billing_appointments').select(APPT_COLS).eq('client_id', clientId).range(a, b)),
       readAll((a, b) => service.from('billing_charges').select(CHARGE_COLS).eq('client_id', clientId).order('created_at', { ascending: false }).range(a, b), 2),
-      readAll((a, b) => service.from('billing_credits').select('id, amount, reason, created_at').eq('client_id', clientId).order('created_at', { ascending: false }).range(a, b), 2),
+        readAll((a, b) => service.from('billing_credits').select('id, amount, reason, created_at').eq('client_id', clientId).order('created_at', { ascending: false }).range(a, b), 2),
+      ]);
+    };
+    const [[events, appts, charges, credits], { customer, customerError }, smsRows, shared] = await Promise.all([
+      readRecords(), readCustomer(), readSms(service, { clientId, start, end }), profileFor(ctx, client),
     ]);
+    const costs = smsCost(smsRows);
     const failed = events.error ?? appts.error ?? charges.error ?? credits.error;
     if (failed) return isMissingTable(failed) ? NextResponse.json({ ...NEEDS_SETUP, stripe }) : bad(failed.message ?? 'Could not load billing', 500);
 
@@ -413,15 +447,6 @@ export async function GET(req: Request) {
     const apptByEvent = new Map(appts.rows.map(a => [a.event_id as string, a]));
 
     const billingOf = (a: Row | undefined) => billingView(a, a?.charge_id ? chargeById.get(a.charge_id as string) : undefined);
-
-    const s = settings.get(clientId);
-    let customer = null, customerError: string | null = null;
-    if (stripe.configured && s?.stripe_customer_id) {
-      try {
-        customer = await getCustomer(s.stripe_customer_id as string);
-        if (!customer) customerError = 'This Stripe customer no longer exists — link another';
-      } catch (e) { customerError = e instanceof Error ? e.message : "Couldn't reach Stripe"; }
-    }
 
     const price = num(s?.price_per_appointment);
     const balance = creditBalance(
@@ -460,10 +485,6 @@ export async function GET(req: Request) {
 
     // Each appointment's source, and what each source cost and returns.
     const sources = new Map<string, Source>(events.rows.map(e => [e.id as string, sourceOf(e, client.service as string | null)]));
-    const [costs, shared] = await Promise.all([
-      costsFor(service, { clientId, start, end }),
-      profileFor(ctx, client),
-    ]);
     const returns = returnsBySource(events.rows.map(e => {
       const b = billingOf(apptByEvent.get(e.id as string));
       return { source: sources.get(e.id as string)!, state: (b ? b.state : 'to_bill') as BillingState, price: b?.price ?? 0, clientPrice: price };
@@ -498,7 +519,8 @@ export async function GET(req: Request) {
     readAll((a, b) => service.from('billing_appointments').select(APPT_COLS).range(a, b)),
     readAll((a, b) => service.from('billing_credits').select('client_id, amount').range(a, b)),
   ]);
-  const [clients, events] = await Promise.all([
+  const [allowed, probe, clients, events, billing, smsRows] = await Promise.all([
+    canBill(ctx), readSettings(),
     service.from('clients').select('id, name, status, service, is_internal').order('name'),
     readAll((a, b) => {
       let q = service.from('events').select(`id, client_id, ${ATTRIBUTION}`).in('event_type', APPOINTMENT_TYPES).order('occurred_at', { ascending: false }).range(a, b);
@@ -506,8 +528,13 @@ export async function GET(req: Request) {
       if (to) q = q.lte('occurred_at', to);
       return q;
     }),
+    readBilling(),
+    readSms(service, { start, end }),
   ]);
-  let [charges, appts, credits] = await readBilling();
+  const refused = refuse(allowed, probe);
+  if (refused) return refused;
+  const settings = settingsOf(probe);
+  let [charges, appts, credits] = billing;
   const failed = clients.error ?? charges.error ?? appts.error ?? credits.error ?? events.error;
   if (failed) return isMissingTable(failed) ? NextResponse.json({ ...NEEDS_SETUP, stripe }) : bad(failed.message ?? 'Could not load billing', 500);
 
@@ -567,7 +594,7 @@ export async function GET(req: Request) {
       clientPrice: num(settings.get(e.client_id as string)?.price_per_appointment),
     };
   });
-  const costs = await costsFor(service, { skip: internal, start, end });
+  const costs = smsCost(smsRows, internal);
   const returns = returnsBySource(sourced, costs);
   const sourcedBy = new Map<string, typeof sourced>();
   for (const a of sourced) sourcedBy.set(a.client_id, [...(sourcedBy.get(a.client_id) ?? []), a]);
@@ -605,7 +632,7 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ ready: true, stripe, clients: rows, returns: { ...returns, sms_sent: costs.sms_sent } });
+  return NextResponse.json({ ready: true, stripe, clients: rows, returns: { ...returns, sms_sent: costs.sms_sent }, covered });
 }
 
 /* ── POST ─────────────────────────────────────────────────────────────────── */
@@ -625,8 +652,8 @@ async function loadAppointments(service: Service, clientId: string, ids: string[
 
 async function trackedRows(service: Service, ids: string[]) {
   const rows: Row[] = [];
-  for (const part of chunks(ids)) {
-    const { data, error } = await service.from('billing_appointments').select(APPT_COLS).in('event_id', part);
+  const parts = await Promise.all(chunks(ids).map(part => service.from('billing_appointments').select(APPT_COLS).in('event_id', part)));
+  for (const { data, error } of parts) {
     if (error) return { error, rows };
     rows.push(...((data ?? []) as Row[]));
   }
@@ -789,7 +816,10 @@ export async function POST(req: Request) {
     };
     const text = (e: unknown) => (e instanceof Error ? e.message : 'Stripe error');
 
-    const lines = [{ description: count ? `${count} appointment${count === 1 ? '' : 's'} × $${price}` : description, cents: toCents(plan.subtotal) }];
+    // The invoice says who the appointments were: on the line the client sees,
+    // and as a note on the invoice in Stripe.
+    const names = count ? namesNote(events.map(e => e.lead_name as string | null)) : '';
+    const lines = [{ description: count ? `${count} appointment${count === 1 ? '' : 's'} × $${price} — ${names}` : description, cents: toCents(plan.subtotal) }];
     if (plan.credit > 0) lines.push({ description: 'Credit applied', cents: -toCents(plan.credit) });
 
     let invoiceId: string;
@@ -797,6 +827,7 @@ export async function POST(req: Request) {
       const draft = await createDraftInvoice({
         ref: chargeId, customerId: customer!.id, lines, description,
         method: method as 'card' | 'invoice', paymentMethodId: customer!.payment?.id ?? null,
+        note: names || undefined,
       });
       invoiceId = draft.id;
       await setCharge(service, chargeId, { stripe_invoice_id: invoiceId });
@@ -856,7 +887,7 @@ export async function POST(req: Request) {
   if (action === 'void') {
     const id = String(body.id ?? '');
     const { data: charge, error } = await service.from('billing_charges')
-      .select('id, client_id, status, method, credit_applied, stripe_invoice_id').eq('id', id).maybeSingle();
+      .select('id, client_id, status, method, credit_applied, stripe_invoice_id, request_id').eq('id', id).maybeSingle();
     if (error) return dbError(error);
     if (!charge) return bad('Charge not found', 404);
     if (charge.status === 'void' || charge.status === 'failed') return NextResponse.json({ success: true });
@@ -890,6 +921,10 @@ export async function POST(req: Request) {
     }
     await setCharge(service, id, { status: 'void' });
     await release(service, id);
+    // A payment matched from Stripe carries a note of its appointments there;
+    // the match is gone, so the note goes too. The money is not touched.
+    const matched = typeof charge.request_id === 'string' && charge.request_id.startsWith('stripe:') ? charge.request_id.slice(7) : null;
+    if (matched && stripeStatus().configured) await notePayment(matched, { appointments: '', billing_client: '' });
     if (charge.client_id) await tryCover(service, charge.client_id);
     return NextResponse.json({ success: true });
   }

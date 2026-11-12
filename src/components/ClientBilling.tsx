@@ -795,8 +795,11 @@ type RecentSpan = "today" | "yesterday" | "week";
 
 const startOfDay = (back: number) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - back); return d; };
 
-function TodayPanel({ stripe, onChanged, onOpenClient }: {
-  stripe: StripeState; onChanged: () => void; onOpenClient: (id: string) => void;
+function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
+  stripe: StripeState;
+  /** Bumped when something outside the panel changed what it shows. */
+  tick: number;
+  onChanged: () => void; onOpenClient: (id: string) => void;
 }) {
   const [rows, setRows] = useState<RecentAppt[] | null>(null);
   const [span, setSpan] = useState<RecentSpan>("today");
@@ -816,7 +819,7 @@ function TodayPanel({ stripe, onChanged, onOpenClient }: {
       })
       .catch(e => { if (live) { setError(e instanceof Error ? e.message : "Could not load today's appointments"); setRows(prev => prev ?? []); } });
     return () => { live = false; };
-  }, [version]);
+  }, [version, tick]);
 
   const refresh = () => { setVersion(v => v + 1); onChanged(); };
 
@@ -1336,6 +1339,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
   const [returns, setReturns] = useState<Returns | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [matching, setMatching] = useState(false);
+  const [todayTick, setTodayTick] = useState(0);
 
   const [version, setVersion] = useState(0);
   const reload = useCallback(() => setVersion(v => v + 1), []);
@@ -1350,6 +1354,9 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
         setReady(data.ready !== false);
         setRows(data.clients ?? []);
         setReturns(data.returns ?? null);
+        // Credit was just spent on a new booking: the Today panel, which loads
+        // alongside, may have read it a moment too early.
+        if (Number(data.covered ?? 0) > 0) setTodayTick(t => t + 1);
         setError(null);
       })
       .catch(e => {
@@ -1411,11 +1418,11 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
           onBack={() => setMatching(false)} onChanged={reload} />
       ) : openId ? (
         <ClientDetail key={openId} clientId={openId} period={period} stripe={stripe} onBack={() => setOpenId(null)} onChanged={reload} onOpenProfitLoss={onOpenProfitLoss} />
-      ) : rows === null ? (
-        <p style={{ fontSize: 13, color: FAINT }}>Loading…</p>
       ) : (<>
-        <TodayPanel stripe={stripe} onChanged={reload} onOpenClient={setOpenId} />
+        {/* Loads on its own, alongside the figures below — neither waits for the other. */}
+        <TodayPanel stripe={stripe} tick={todayTick} onChanged={reload} onOpenClient={setOpenId} />
 
+        {rows === null ? <p style={{ fontSize: 13, color: FAINT }}>Loading the rest…</p> : (<>
         <div style={TILE_GRID}>
           <Tile label="Not tracked" value={String(totals.uncharged)} tone={totals.uncharged > 0 ? "warn" : undefined}
             sub={totals.uncharged === 0 ? "every appointment is dealt with" : `${money(totals.value)} if billed · ${period === "all" ? "all time" : periodLabel}`} />
@@ -1499,6 +1506,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
             </div>
           )}
         </div>
+        </>)}
       </>)}
     </div>
   );

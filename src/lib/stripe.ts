@@ -157,6 +157,8 @@ export type InvoiceLine = { description: string; cents: number };
 export async function createDraftInvoice(opts: {
   ref: string; customerId: string; lines: InvoiceLine[]; description: string;
   method: 'card' | 'invoice'; paymentMethodId?: string | null; daysUntilDue?: number;
+  /** The appointments it is for, kept on the invoice in Stripe. */
+  note?: string;
 }): Promise<InvoiceState> {
   const inv = await call('POST', '/invoices', {
     customer: opts.customerId,
@@ -167,7 +169,7 @@ export async function createDraftInvoice(opts: {
     auto_advance: false,
     pending_invoice_items_behavior: 'exclude',
     description: opts.description || undefined,
-    metadata: { billing_charge_id: opts.ref },
+    metadata: opts.note ? { billing_charge_id: opts.ref, appointments: opts.note.slice(0, 500) } : { billing_charge_id: opts.ref },
   }, `${opts.ref}-invoice`);
 
   try {
@@ -293,6 +295,16 @@ export async function listPayments(opts: { from?: number | null; to?: number | n
     if (!(e instanceof StripeError) || !e.definite) throw e;
     return { ...(await read(false)), limited: true };
   }
+}
+
+/** Writes a note on a payment in Stripe — which client and appointments it was
+ *  for. Internal only (Stripe "metadata"): the customer never sees it and no
+ *  money is touched. An empty value takes that note off again. Best effort:
+ *  false if Stripe refused, e.g. a key that may only read. */
+export async function notePayment(id: string, note: Record<string, string>): Promise<boolean> {
+  const metadata = Object.fromEntries(Object.entries(note).map(([k, v]) => [k, v.slice(0, 500)]));
+  try { await call('POST', `/charges/${encodeURIComponent(id)}`, { metadata }); return true; }
+  catch { return false; }
 }
 
 /** One payment, read again from Stripe. null = not a successful payment. */
