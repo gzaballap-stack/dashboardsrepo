@@ -168,7 +168,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `sms-payout` | **Johnny's payout** (SMS Dashboard) — clients signed through B2B SMS, 30-day window from the first blast, paid billing charges × share. Tables `sms_payouts`, `app_settings` (`scripts/migrate-sms-payouts.mjs`). See `NOTES.md` 2026-11-12 |
 | `sales-calls` | **Sales Tracker** (TM Dashboard) — Tomsi Media's sales-call log in `sales_calls`, shared by everyone with TM access. See `NOTES.md` 2026-10-04 (Sales Tracker). |
 | `me` | Who is signed in and which features they're allowed to open |
-| `sms-payout` access | Settings > Users: **B2B Tracking** = whole TM Dashboard; **SMS Dashboard only** (`sms_dashboard`) = just the SMS Dashboard page + Johnny's payout. See `NOTES.md` 2026-11-12 |
+| TM Dashboard access | Settings > Users: **Ads Dashboard** (`b2b_tracking`, every Tomsi page but SMS) and **SMS Dashboard** (`sms_dashboard`, that page + Johnny's payout) are separate ticks. See `NOTES.md` 2026-11-12 |
 | `ai-campaign-chat` | Claude-powered chat over a campaign/client's data — see below |
 | `admin/*` | One-off ops: seeds, backfills, schema/migration runners (bypass auth via secret) |
 | `cron/seed-daily` | V2 demo-data daily seed (driven by the V2 data session) |

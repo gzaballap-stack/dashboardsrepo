@@ -785,9 +785,9 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
   const inHub = topSection === "creative_hub";
   const hubIsLeaderboard = inHub && hubView.endsWith("_leaderboard");
 
-  // B2B Tracking opens the whole TM Dashboard; SMS Dashboard alone opens just
-  // that page.
-  const canTomsi = (id: TomsiView) => can("b2b_tracking") || (id === "sms_dashboard" && can("sms_dashboard"));
+  // Two separate permissions: "Ads Dashboard" (b2b_tracking) is every Tomsi
+  // page but the SMS Dashboard, which has its own.
+  const canTomsi = (id: TomsiView) => id === "sms_dashboard" ? can("sms_dashboard") : can("b2b_tracking");
   const tomsiNavVisible = TOMSI_NAV
     .map(g => ({ ...g, items: g.items.filter(i => canTomsi(i.id)) }))
     .filter(g => g.items.length > 0);

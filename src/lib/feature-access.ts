@@ -41,10 +41,12 @@ export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] =
   { id: "recordings",           label: "Call Recordings",       group: "Clients Dashboard" },
   { id: "admin_agents",         label: "Agent Roster",          group: "Clients Dashboard" },
   { id: "schedule",             label: "Power Dialer Schedule", group: "Clients Dashboard" },
-  // B2B Tracking is the whole TM Dashboard. SMS Dashboard on its own opens just
-  // that page (SMS stats + Johnny's payout) for someone who should see nothing else.
-  { id: "b2b_tracking",         label: "B2B Tracking (whole TM Dashboard)", group: "TM Dashboard" },
-  { id: "sms_dashboard",        label: "SMS Dashboard only",    group: "TM Dashboard"      },
+  // Two separate permissions. The id stays `b2b_tracking` (written into every
+  // account's allowed_views): it is the ads side of the TM Dashboard — Ads
+  // Dashboard, B2B Tracking, Campaign Overview, Goal Tracker, Sales Tracker.
+  // `sms_dashboard` is the SMS Dashboard page (SMS stats + Johnny's payout).
+  { id: "b2b_tracking",         label: "Ads Dashboard",         group: "TM Dashboard"      },
+  { id: "sms_dashboard",        label: "SMS Dashboard",         group: "TM Dashboard"      },
   { id: "creative_hub_b2b",     label: "B2B Library & Timeline", group: "Creative & Copy Hub" },
   { id: "creative_hub_b2c",     label: "B2C Library & Timeline", group: "Creative & Copy Hub" },
   { id: "creative_leaderboard", label: "Creative Leaderboard",  group: "Creative & Copy Hub" },
@@ -111,7 +113,7 @@ const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/client-sessions",    features: ["zip_tool"] },
   { prefix: "/api/b2b-metrics",        features: ["b2b_tracking", "sms_dashboard"] },
   { prefix: "/api/b2b-stat-source",    features: ["b2b_tracking", "sms_dashboard"] },
-  { prefix: "/api/sms-payout",         features: ["b2b_tracking", "sms_dashboard"] },
+  { prefix: "/api/sms-payout",         features: ["sms_dashboard"] },
   { prefix: "/api/sales-calls",        features: ["b2b_tracking"] },
   { prefix: "/api/sales-pitches",      features: ["b2b_tracking"] },
   { prefix: "/api/b2b-ads",            features: ["b2b_tracking"] },
