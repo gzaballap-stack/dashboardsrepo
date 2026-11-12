@@ -3,6 +3,8 @@ import {
   validateDirectToken, field, clientEvent, b2bEvent, CLIENT_EVENTS, B2B_EVENTS, type GhlPayload,
 } from '@/lib/ghl-direct';
 import { createFromTemplate, replaceText } from '@/lib/google-docs-bridge';
+import { createServiceClient } from '@/lib/supabase';
+import { createCard, tablesMissing } from '@/lib/onboarding-server';
 import { POST as clientWebhook } from '@/app/api/webhooks/route';
 import { POST as b2bWebhook } from '@/app/api/webhooks/b2b/route';
 import { POST as smsWebhook } from '@/app/api/webhooks/sms/route';
@@ -20,6 +22,7 @@ import { POST as salesCallGoals } from '@/app/api/admin/sales-call-goals/route';
 //   SMS             sms            (custom data event_type = sms_sent | sms_reply)
 //   Tomsi sales     territory      (Sales Call Territory Scoring)
 //                   sales-call-numbers
+//   Onboarding      onboarding     (the onboarding form — opens a card on Clients > Onboarding)
 //
 // Each one hands the existing route the same body Make used to send.
 
@@ -95,6 +98,26 @@ async function salesCallNumbers(req: Request, p: GhlPayload) {
   return NextResponse.json({ ...data, doc_filled: filled.ok, ...(filled.ok ? {} : { doc_error: filled.error }) });
 }
 
+// Onboarding form submitted: open the client's card on the Onboarding board.
+// The card is named after the company (custom data `client_name` wins, so the
+// workflow can send the exact roster name), falling back to the person. Custom
+// data `service` = facebook | sms picks the checklist straight away; without it
+// the card asks. A second submission for the same contact changes nothing.
+async function onboardingForm(p: GhlPayload) {
+  const person = [field(p, 'first_name'), field(p, 'last_name')].filter(Boolean).join(' ') || field(p, 'full_name');
+  const company = field(p, 'client_name', 'Client Name', 'company_name', 'Company Name', 'business_name', 'Business Name');
+  const wants = field(p, 'service', 'Service', 'track').toLowerCase();
+  const track = /sms|text/.test(wants) ? 'sms' as const : /facebook|fb|meta|ads/.test(wants) ? 'facebook' as const : null;
+  if (!company && !person) return NextResponse.json({ error: 'No company or contact name on the form' }, { status: 400 });
+
+  const made = await createCard(createServiceClient(), {
+    client_name: company || person, contact_name: person, contact_email: field(p, 'email'),
+    contact_phone: field(p, 'phone'), ghl_contact_id: field(p, 'contact_id'), source: 'ghl_form', track,
+  });
+  if (made.error) return NextResponse.json({ error: made.error }, { status: tablesMissing({ message: made.error }) ? 503 : 500 });
+  return NextResponse.json({ success: true, card_id: made.card?.id, existing: !!made.existing });
+}
+
 export async function POST(req: Request, { params }: { params: Promise<{ event: string }> }) {
   if (!validateDirectToken(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { event } = await params;
@@ -111,6 +134,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ event: 
   if (event === 'sms') return forward(req, smsWebhook, '/api/webhooks/sms', p);
   if (event === 'territory') return territory(req, p);
   if (event === 'sales-call-numbers') return salesCallNumbers(req, p);
+  if (event === 'onboarding') return onboardingForm(p);
 
   return NextResponse.json({ error: `Unknown event "${event}"` }, { status: 404 });
 }

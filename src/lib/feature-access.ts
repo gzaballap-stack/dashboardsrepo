@@ -17,7 +17,7 @@ export type FeatureId =
   | "agent_stats" | "agent_scorecards" | "recordings"
   | "admin_agents" | "schedule"
   | "b2b_tracking"
-  | "client_roster" | "csm_dashboard" | "share_reports"
+  | "onboarding" | "client_roster" | "csm_dashboard" | "share_reports"
   | "zip_tool" | "task_board" | "lift_tracker" | "profit_loss" | "client_billing"
   | "admin_users";
 
@@ -45,6 +45,7 @@ export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] =
   { id: "creative_hub_b2b",     label: "B2B Library & Timeline", group: "Creative & Copy Hub" },
   { id: "creative_hub_b2c",     label: "B2C Library & Timeline", group: "Creative & Copy Hub" },
   { id: "creative_leaderboard", label: "Creative Leaderboard",  group: "Creative & Copy Hub" },
+  { id: "onboarding",           label: "Onboarding",            group: "Clients"           },
   { id: "client_roster",        label: "Client Roster",         group: "Clients"           },
   { id: "csm_dashboard",        label: "CSM Dashboard",         group: "Clients"           },
   { id: "share_reports",        label: "Share Reports",         group: "Clients"           },
@@ -99,6 +100,7 @@ const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/setter-availability",features: ["schedule"] },
   { prefix: "/api/watch-schedule",     features: ["schedule"] },
   { prefix: "/api/client-windows",     features: ["schedule"] },
+  { prefix: "/api/onboarding",         features: ["onboarding"] },
   { prefix: "/api/csm-dashboard",      features: ["csm_dashboard"] },
   { prefix: "/api/client-csm-status",  features: ["csm_dashboard"] },
   { prefix: "/api/client-touchpoints", features: ["csm_dashboard"] },

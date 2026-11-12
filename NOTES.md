@@ -1,3 +1,65 @@
+## 2026-11-12 — Onboarding board (Clients > Onboarding)
+
+First item in the Clients menu. The owner's onboarding process, moved into the
+dashboard so he — and later VAs — work it from one place.
+
+- **Board:** three columns (Not started / In progress / Done), one card per
+  client being onboarded. Add a card by typing the client name; drag cards
+  between columns or up and down (native drag; the card also has the three
+  stage buttons, which is what a phone uses). The first tick moves a card to In
+  progress on its own; Done is a drag, or the green button that appears when
+  everything is ticked.
+- **Card:** open it and pick **Facebook Ads or SMS** — that loads that
+  checklist onto the card. Steps are ticked or filled in as you go; each shows
+  who did it and when. Notes box, contact details (when the GHL form made the
+  card), delete. Switching service keeps the ticks on steps both lists share.
+- **Checklists** are two templates (Facebook Ads, SMS), edited by admins from
+  **Edit checklists**: tick steps, fill-in steps, headings, reorder, reset. A
+  card keeps its own copy, so editing a template never rewrites a card under
+  way — the card offers "Update this card" instead (ticks kept).
+- **The starter lists are placeholders** — the owner's process up to the split
+  (form submitted, onboarding call booked, call done, calendar connected,
+  Facebook access) plus the two automatic steps. He said he would send the real
+  Facebook and SMS checklists; put them in `DEFAULT_TEMPLATES`
+  (`src/lib/onboarding.ts`) or let him type them into the editor.
+- **Automatic steps** (`auto` on a step):
+  - *Added to the Client Roster* — ticking it links the roster client with that
+    name (same forgiving match the webhooks use) or creates it in **Setup**
+    with the service set; a client already on the other service becomes Both.
+    Setup still flips to Live on the first event, as before.
+  - *Ad account ID* — paste `act_…`, bare digits or a whole Ads Manager link.
+    The app asks Meta whether our token can see the account (shows its name, or
+    says access has not come through), then saves it to
+    `clients.meta_account_id`, which is all the scheduled spend sync needs.
+    Saving it also puts the client on the roster. An account already on the
+    roster record is shown as done rather than asked for again.
+    **This replaces `scripts/onboard-client.mjs`**, which predates the Make
+    retirement and should not be used.
+- **GHL onboarding form → card (built, not wired):** a Webhook action on the
+  form's workflow to `/api/webhooks/ghl/onboarding?token=<DIRECT_WEBHOOK_TOKEN>`
+  opens the card on its own, with "form submitted" already ticked. Custom data
+  `client_name` (exact roster name) and optionally `service` = facebook | sms.
+  Same contact twice, or a name that already has a card under way, changes
+  nothing. The owner still has to add that action in GHL.
+- **Access:** new feature `onboarding` (Clients group) in Settings > Users —
+  tick it for a VA. `/api/onboarding` is gated on it. Editing checklists is
+  admin-only.
+- **Code:** `OnboardingBoard.tsx`; rules in `lib/onboarding.ts` (pure, shared
+  with the browser), database side in `lib/onboarding-server.ts`, the API's
+  actions in `lib/onboarding-api.ts` (the route is a thin wrapper so the logic
+  can be run against a fake database).
+- **Schema:** `onboarding_cards`, `onboarding_templates`
+  (`migrations/add_onboarding.sql`, `node scripts/migrate-onboarding.mjs v1`).
+  Until it is run the page says a database update is needed and nothing else
+  changes.
+- **Checked:** in a local preview on a made-up in-memory database running the
+  real API logic — add, pick service, tick, fill-in, roster (new / fuzzy match
+  / Both), ad account (pasted link, bad format, no access; a real read-only
+  Meta lookup), switch service, edit a template and update a card, reorder,
+  move to Done, phone width; production build. Drag was exercised with
+  simulated drag events, not a real mouse. Not checked signed in, and the GHL
+  webhook only as far as its refusals (V2 has no tables yet).
+
 ## 2026-11-12 — SMS Dashboard as its own page, and Johnny's payout tracker
 
 Owner's follow-up to the entry below: not a switch — two menu items. Under

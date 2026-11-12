@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SUPERSEDED 2026-11-12 — Make is retired; use Clients > Onboarding in the dashboard
+// (the "Ad account ID" step saves clients.meta_account_id, which the spend sync reads).
+//
 // Onboard a new client on V1 (production):
 //   1. add the client row (clients.name) on the V1 database
 //   2. store its Meta ad account, so the app's scheduled spend sync covers it

@@ -16,6 +16,7 @@ import AlertBanner, { type Alert } from "./AlertBanner";
 import NotificationBell from "./NotificationBell";
 import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
+import OnboardingBoard from "./OnboardingBoard";
 import UserManager from "./UserManager";
 import ZipTool from "./ZipTool";
 import BrandBackground from "./BrandBackground";
@@ -381,13 +382,14 @@ const PAYMENTS_NAV: { id: PaymentsView; label: string; icon: string }[] = [
 ];
 
 const CLIENTS_NAV: { id: ClientsView; label: string; icon: string }[] = [
+  { id: "onboarding",    label: "Onboarding",    icon: "M4 5h4v14H4zM10 5h4v8h-4zM16 5h4v11h-4z" },
   { id: "client_roster", label: "Client Roster", icon: NAV_ICONS.admin_clients },
   { id: "csm_dashboard", label: "CSM Dashboard", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
   { id: "share_reports", label: "Share Reports", icon: NAV_ICONS.admin_share },
 ];
 
 type TopSection = "clients_dashboard" | "tomsi_media" | "creative_hub" | "clients" | "tools" | "payments" | "settings";
-type ClientsView = "client_roster" | "csm_dashboard" | "share_reports";
+type ClientsView = "onboarding" | "client_roster" | "csm_dashboard" | "share_reports";
 
 const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: string }[] = [
   {
@@ -820,6 +822,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       if (next) setTopSection(next);
       return;
     }
+    if (topSection === "clients" && !can(clientsView)) setClientsView(clientsNavVisible[0].id);
     if (topSection === "creative_hub" && !canHub(hubView)) setHubView(hubNavVisible[0].items[0].id);
     if (topSection === "payments" && !canPayments(paymentsView)) setPaymentsView(paymentsNavVisible[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1406,6 +1409,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
 
           {/* ── Tomsi Media Dashboard ── */}
 
+          {topSection === "clients" && clientsView === "onboarding" && <OnboardingBoard />}
           {topSection === "clients" && clientsView === "client_roster" && <ClientRoster />}
           {topSection === "clients" && clientsView === "csm_dashboard" && <CSMDashboard />}
           {topSection === "clients" && clientsView === "share_reports" && <ShareReports clients={clients} />}
