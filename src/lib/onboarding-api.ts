@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { AuthContext } from '@/lib/api-auth';
 import { cleanTemplate, isStage, isTrack, parseAdAccount, snapshot, steps, type Card, type CardItem } from './onboarding';
-import { createCard, ensureRoster, fillFromRoster, lookupAdAccount, markFormDone, readTemplates, tablesMissing } from './onboarding-server';
+import { coveredSteps, createCard, ensureRoster, fillFromRoster, lookupAdAccount, readTemplates, tablesMissing } from './onboarding-server';
+import { cardLink, ensureStripeCustomer, readSurvey, submitSurvey, whoIs, type Outcome } from './client-survey-server';
+import { getCustomer, stripeStatus } from './stripe';
 
 // Onboarding board (Clients > Onboarding) — what /api/onboarding does, once the
 // caller is known. Rules in onboarding.ts, database helpers in onboarding-server.ts.
@@ -14,6 +16,9 @@ import { createCard, ensureRoster, fillFromRoster, lookupAdAccount, markFormDone
 //        { action: 'refresh', id }                                 re-read the checklist from the template
 //        { action: 'delete', id }
 //        { action: 'template', track, items | null }               admins; null = back to the built-in list
+//        { action: 'survey_submit', answers, card_id? | client_id? }  the new client survey (client-survey-server.ts)
+//        { action: 'survey_get', client_id }                        a client's answers
+//        { action: 'card_link', id }                                Stripe's page for putting the card on file
 //
 // Tables onboarding_cards + onboarding_templates (migrations/add_onboarding.sql).
 // Without them the GET answers { ready: false } and the page says what to run.
@@ -28,11 +33,7 @@ async function isAdmin(ctx: AuthContext): Promise<boolean> {
   return data?.is_admin === true;
 }
 
-/** Who ticked it — the part of their email before the @. */
-async function whoAmI(ctx: AuthContext): Promise<string> {
-  const { data } = await ctx.service.auth.admin.getUserById(ctx.userId).catch(() => ({ data: null }));
-  return data?.user?.email?.split('@')[0] ?? 'someone';
-}
+const send = (o: Outcome) => NextResponse.json(o.json, { status: o.status });
 
 async function readCard(service: Service, id: unknown): Promise<Card | null> {
   if (typeof id !== 'string' || !id) return null;
@@ -55,9 +56,15 @@ export async function onboardingGet(ctx: AuthContext) {
   return NextResponse.json({ ready: true, cards: data ?? [], templates, is_admin: admin });
 }
 
-export async function onboardingPost(ctx: AuthContext, body: Record<string, unknown>) {
+export async function onboardingPost(ctx: AuthContext, body: Record<string, unknown>, origin = '') {
   const { service } = ctx;
   const action = body.action;
+
+  if (action === 'survey_submit') return send(await submitSurvey(ctx, body));
+  if (action === 'survey_get') {
+    if (typeof body.client_id !== 'string' || !body.client_id) return bad('client_id is required');
+    return send(await readSurvey(service, body.client_id));
+  }
 
   if (action === 'create') {
     const made = await createCard(service, {
@@ -86,6 +93,8 @@ export async function onboardingPost(ctx: AuthContext, body: Record<string, unkn
   const card = await readCard(service, body.id);
   if (!card) return bad('Card not found', 404);
 
+  if (action === 'card_link') return send(await cardLink(service, card, origin));
+
   if (action === 'delete') {
     const { error } = await service.from('onboarding_cards').delete().eq('id', card.id);
     if (error) return bad(error.message, 500);
@@ -113,10 +122,9 @@ export async function onboardingPost(ctx: AuthContext, body: Record<string, unkn
     if ('track' in body) {
       if (!isTrack(body.track)) return bad('track must be facebook or sms');
       // Switching service keeps anything already ticked on steps both lists share.
-      let items = snapshot((await readTemplates(service))[body.track], card.items);
-      if (card.source === 'ghl_form') items = markFormDone(items);
+      const items = snapshot((await readTemplates(service))[body.track], card.items);
       patch.track = body.track;
-      patch.items = await fillFromRoster(service, card.client_id, items);
+      patch.items = await coveredSteps(service, items, card.source, card.client_id);
     }
     return save(service, card.id, patch);
   }
@@ -131,7 +139,7 @@ export async function onboardingPost(ctx: AuthContext, body: Record<string, unkn
     const item = card.items.find(i => i.id === body.item_id);
     if (!item || item.kind === 'heading') return bad('Step not found', 404);
 
-    const stamp = { by: await whoAmI(ctx), at: new Date().toISOString() };
+    const stamp = { by: await whoIs(ctx), at: new Date().toISOString() };
     const cleared = { done: false, by: undefined, at: undefined };
     const patch: Record<string, unknown> = {};
     let next: CardItem = item;
@@ -146,6 +154,22 @@ export async function onboardingPost(ctx: AuthContext, body: Record<string, unkn
         if (r.error || !r.client_id) return bad(r.error ?? 'Could not add the client to the roster', 500);
         patch.client_id = r.client_id;
         next = { ...item, done: true, note: r.created ? 'Added to the roster in Setup' : 'Already on the roster — linked', ...stamp };
+      }
+    } else if (item.auto === 'card') {
+      // Ticks only when Stripe really holds a card for the client.
+      if (body.done === false) next = { ...item, ...cleared, note: undefined };
+      else {
+        if (!stripeStatus().configured) return bad('Stripe is not connected here, so the card cannot be checked', 503);
+        const r = await ensureRoster(service, card);
+        if (r.error || !r.client_id) return bad(r.error ?? 'Could not add the client to the roster', 500);
+        patch.client_id = r.client_id;
+        const customer = await ensureStripeCustomer(service, r.client_id, card.client_name, card.contact_email);
+        if (customer.error || !customer.id) return bad(customer.error ?? 'Could not reach Stripe', 502);
+        let payment: { label: string } | null = null;
+        try { payment = (await getCustomer(customer.id))?.payment ?? null; }
+        catch (e) { return bad(e instanceof Error ? e.message : "Couldn't reach Stripe", 502); }
+        if (!payment) return bad('No card on file in Stripe yet — get the card link and have it filled in first.');
+        next = { ...item, done: true, note: `${payment.label} — ready to charge from Client Billing`, ...stamp };
       }
     } else if (item.auto === 'ad_account') {
       const raw = String(body.value ?? '').trim();

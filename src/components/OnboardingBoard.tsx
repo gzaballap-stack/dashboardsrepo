@@ -8,8 +8,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   STAGES, STAGE_LABEL, TRACKS, TRACK_LABEL, progress,
-  type Card, type CardItem, type Stage, type TemplateItem, type Track,
+  type AutoStep, type Card, type CardItem, type Stage, type TemplateItem, type Track,
 } from "@/lib/onboarding";
+import { SURVEY_SECTIONS, showAnswer, type Answers } from "@/lib/client-survey";
+import ClientSurvey, { CardLink } from "./ClientSurvey";
+
+/** Where the survey lives on its own — the link the owner keeps for onboarding calls. */
+const SURVEY_PATH = "/dashboard/clients/new-client-survey";
+type SurveyOpen = { cardId?: string; clientId?: string; initial?: Answers };
 
 const CARD_SHADOW = "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)";
 const BORDER = "1px solid rgba(0,0,0,0.08)";
@@ -70,6 +76,10 @@ export default function OnboardingBoard() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // The survey, open over the board: new client, from a card, or a correction.
+  const [survey, setSurvey] = useState<SurveyOpen | null>(null);
+  const [surveySaves, setSurveySaves] = useState(0);
+  const [linkCopied, setLinkCopied] = useState(false);
   // Drag state: the card in hand, and where it would land.
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<{ stage: Stage; beforeId: string | null } | null>(null);
@@ -140,17 +150,20 @@ export default function OnboardingBoard() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Onboarding</h2>
-          <p className="text-sm mt-0.5" style={{ color: "#767676" }}>One card per new client. Open it, pick Facebook Ads or SMS, and work down the list.</p>
+          <p className="text-sm mt-0.5" style={{ color: "#767676" }}>One card per new client. Start with the survey, then work down the card&rsquo;s list.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") add(); }}
-            placeholder="New client name…" aria-label="New client name"
-            className="px-3 py-2 rounded-lg text-sm outline-none" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111", width: 220, flex: "1 1 160px" }} />
-          <button onClick={add} disabled={!newName.trim() || adding}
-            className="px-4 py-2 rounded-lg text-sm font-semibold flex-shrink-0"
-            style={{ background: "#000000", color: "#fff", opacity: !newName.trim() || adding ? 0.5 : 1 }}>
-            {adding ? "Adding…" : "Add client"}
+          <button onClick={() => setSurvey({})} className="px-4 py-2 rounded-lg text-sm font-semibold flex-shrink-0" style={{ background: "#000000", color: "#fff" }}>
+            New client survey
+          </button>
+          <button
+            onClick={async () => {
+              try { await navigator.clipboard.writeText(`${window.location.origin}${SURVEY_PATH}`); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 1500); }
+              catch { window.open(SURVEY_PATH, "_blank"); }
+            }}
+            title="A link that opens the survey on its own, for onboarding calls"
+            className="px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
+            {linkCopied ? "Link copied" : "Copy survey link"}
           </button>
           {isAdmin && (
             <button onClick={() => setEditing(true)} className="px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0"
@@ -159,6 +172,19 @@ export default function OnboardingBoard() {
             </button>
           )}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs" style={{ color: "#767676" }}>Survey already done somewhere else? Add a card by name:</span>
+        <input
+          value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") add(); }}
+          placeholder="Client name…" aria-label="Client name for a card without a survey"
+          className="px-3 py-1.5 rounded-lg text-sm outline-none" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111", width: 200 }} />
+        <button onClick={add} disabled={!newName.trim() || adding}
+          className="px-3 py-1.5 rounded-lg text-sm font-medium flex-shrink-0"
+          style={{ background: "rgba(0,0,0,0.06)", color: "#111111", opacity: !newName.trim() || adding ? 0.5 : 1 }}>
+          {adding ? "Adding…" : "Add card"}
+        </button>
       </div>
 
       {error && (
@@ -221,7 +247,7 @@ export default function OnboardingBoard() {
                 })}
                 {col.length === 0 && (
                   <p className="text-xs text-center py-6" style={{ color: "#949494" }}>
-                    {stage === "not_started" ? "Add a client above to start." : stage === "in_progress" ? "Cards move here on their first tick." : "Drag a card here when it's finished."}
+                    {stage === "not_started" ? "Submit a new client survey to start." : stage === "in_progress" ? "Cards move here on their first tick." : "Drag a card here when it's finished."}
                   </p>
                 )}
               </div>
@@ -232,14 +258,25 @@ export default function OnboardingBoard() {
 
       {open && (
         <CardPanel
-          key={open.id} card={open} templates={templates}
-          onChange={put} onClose={() => setOpenId(null)}
+          key={`${open.id}:${surveySaves}`} card={open} templates={templates}
+          onChange={put} onClose={() => setOpenId(null)} onSurvey={setSurvey}
           onStage={stage => move(open.id, stage, null)}
           onDelete={async () => {
             const r = await post({ action: "delete", id: open.id });
             if (r.error) { setError(r.error); return; }
             setCards(prev => prev.filter(c => c.id !== open.id)); setOpenId(null);
           }} />
+      )}
+      {survey && (
+        <div className="fixed inset-0 overflow-auto" style={{ zIndex: 60, background: "#fafafa" }}>
+          <div className="p-4 sm:p-8">
+            <ClientSurvey
+              initial={survey.initial} cardId={survey.cardId} clientId={survey.clientId}
+              onCancel={() => setSurvey(null)}
+              onSaved={r => { r.cards.forEach(put); setSurveySaves(n => n + 1); }}
+              onDone={r => { setSurvey(null); if (r.cards[0]) setOpenId(r.cards[0].id); }} />
+          </div>
+        </div>
       )}
       {editing && templates && (
         <TemplateEditor templates={templates} onClose={() => setEditing(false)} onSaved={t => setTemplates(t)} />
@@ -250,10 +287,18 @@ export default function OnboardingBoard() {
 
 // ── The card, opened ─────────────────────────────────────────────────────────
 
-function CardPanel({ card, templates, onChange, onClose, onStage, onDelete }: {
+function CardPanel({ card, templates, onChange, onClose, onStage, onDelete, onSurvey }: {
   card: Card; templates: Templates | null;
   onChange: (c: Card) => void; onClose: () => void; onStage: (s: Stage) => void; onDelete: () => void;
+  onSurvey: (s: SurveyOpen) => void;
 }) {
+  // The client's survey answers: undefined = still looking, null = none on file.
+  const [answers, setAnswers] = useState<Answers | null | undefined>(card.client_id ? undefined : null);
+  useEffect(() => {
+    if (!card.client_id) return;
+    post({ action: "survey_get", client_id: card.client_id })
+      .then(r => setAnswers(((r as { survey?: { answers?: Answers } | null }).survey?.answers) ?? null));
+  }, [card.client_id]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -267,6 +312,7 @@ function CardPanel({ card, templates, onChange, onClose, onStage, onDelete }: {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+  const answered = answers ? SURVEY_SECTIONS.flatMap(sec => sec.fields).map(f => ({ label: f.label, value: showAnswer(f, answers) })).filter(x => x.value) : [];
 
   async function send(key: string, body: Record<string, unknown>): Promise<boolean> {
     setBusy(key); setError(null); setNotice(null);
@@ -349,7 +395,7 @@ function CardPanel({ card, templates, onChange, onClose, onStage, onDelete }: {
                 {card.items.map(item => item.kind === "heading" ? (
                   <li key={item.id} className="text-xs font-semibold uppercase tracking-wider pt-3 pb-1" style={{ color: "#949494" }}>{item.label}</li>
                 ) : (
-                  <Step key={`${item.id}:${item.value ?? ""}`} item={item} busy={busy === item.id}
+                  <Step key={`${item.id}:${item.value ?? ""}`} item={item} cardId={card.id} busy={busy === item.id}
                     onTick={done => send(item.id, { action: "item", item_id: item.id, done })}
                     onValue={value => send(item.id, { action: "item", item_id: item.id, value })} />
                 ))}
@@ -362,7 +408,36 @@ function CardPanel({ card, templates, onChange, onClose, onStage, onDelete }: {
             </div>
           )}
 
-          {(card.contact_name || card.contact_email || card.contact_phone) && (
+          {answers === null && (
+            <div className="rounded-xl px-3 py-2.5 flex items-center justify-between gap-3" style={{ background: "#fafafa", border: BORDER }}>
+              <span className="text-xs" style={{ color: "#4a4a4a" }}>No client survey on file for this card.</span>
+              <button className="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0" style={{ background: "#000000", color: "#ffffff" }}
+                onClick={() => onSurvey({ cardId: card.id, initial: { business_name: card.client_name, ...(card.track ? { service: card.track === "sms" ? "sms" : "facebook_ads" } : {}) } })}>
+                Fill in the survey
+              </button>
+            </div>
+          )}
+          {answers && (
+            <details className="rounded-xl" style={{ background: "#fafafa", border: BORDER }}>
+              <summary className="px-3 py-2.5 text-xs font-semibold cursor-pointer flex items-center justify-between" style={{ color: "#111111" }}>
+                <span>Client survey · {answered.length} answers</span>
+                <button className="underline font-medium" style={{ color: "#767676" }}
+                  onClick={e => { e.preventDefault(); onSurvey({ clientId: card.client_id ?? undefined, initial: answers }); }}>
+                  Edit
+                </button>
+              </summary>
+              <dl className="px-3 pb-3 space-y-1.5">
+                {answered.map(x => (
+                  <div key={x.label} className="text-xs">
+                    <dt style={{ color: "#949494" }}>{x.label}</dt>
+                    <dd style={{ color: "#111111", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{x.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          )}
+
+          {!answers && (card.contact_name || card.contact_email || card.contact_phone) && (
             <div className="rounded-xl px-3 py-2.5 text-xs" style={{ background: "#fafafa", border: BORDER, color: "#4a4a4a" }}>
               <span className="font-semibold" style={{ color: "#111111" }}>Contact</span>{" "}
               {[card.contact_name, card.contact_email, card.contact_phone].filter(Boolean).join(" · ")}
@@ -394,14 +469,35 @@ function CardPanel({ card, templates, onChange, onClose, onStage, onDelete }: {
   );
 }
 
-function Step({ item, busy, onTick, onValue }: {
-  item: CardItem; busy: boolean; onTick: (done: boolean) => void; onValue: (value: string) => void;
+function Step({ item, cardId, busy, onTick, onValue }: {
+  item: CardItem; cardId: string; busy: boolean; onTick: (done: boolean) => void; onValue: (value: string) => void;
 }) {
   // Keyed on the saved value by the caller, so this starts from it each time it changes.
   const saved = item.value ?? "";
   const [value, setValue] = useState(saved);
   const who = item.done && item.by ? `${item.by}${item.at ? ` · ${day(item.at)}` : ""}` : "";
   const commit = () => { if (value.trim() !== saved) onValue(value.trim()); };
+
+  // Card on file: nothing to type here. Hand out Stripe's page, then ask Stripe.
+  if (item.auto === "card" && !item.done) {
+    return (
+      <li className="rounded-lg px-2 py-2" style={{ opacity: busy ? 0.6 : 1 }}>
+        <div className="flex items-start gap-2.5">
+          <Tick done={false} />
+          <div className="flex-1" style={{ minWidth: 0 }}>
+            <span className="block text-sm" style={{ color: "#111111" }}>{item.label}</span>
+            <span className="block text-xs mt-0.5" style={{ color: "#949494" }}>The card is typed into Stripe, never here. This ticks once Stripe has it.</span>
+            <div className="flex flex-wrap items-start gap-2 mt-2">
+              <CardLink cardId={cardId} compact />
+              <button onClick={() => onTick(true)} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "rgba(0,0,0,0.06)", color: "#111111" }}>
+                {busy ? "Checking…" : "Check Stripe"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </li>
+    );
+  }
 
   if (item.kind === "text") {
     return (
@@ -456,10 +552,12 @@ function Tick({ done }: { done: boolean }) {
 
 // ── The two checklists (admins) ──────────────────────────────────────────────
 
-const AUTO_NOTE: Record<string, string> = {
+const AUTO_NOTE: Record<AutoStep, string> = {
   roster: "Automatic — adds the client to the Client Roster",
   ad_account: "Automatic — saves the ad account so spend syncs",
+  card: "Automatic — gives the Stripe card link, ticks once the card is on file",
 };
+const AUTO_KIND: Record<AutoStep, TemplateItem["kind"]> = { roster: "check", ad_account: "text", card: "check" };
 
 function TemplateEditor({ templates, onClose, onSaved }: {
   templates: Templates; onClose: () => void; onSaved: (t: Templates) => void;
@@ -520,12 +618,19 @@ function TemplateEditor({ templates, onClose, onSaved }: {
         <div className="flex-1 overflow-auto px-5 py-3 space-y-1.5">
           {rows.map((r, i) => (
             <div key={r.id} className="flex items-center gap-1.5">
-              <select value={r.kind} disabled={!!r.auto} aria-label="Step type"
-                onChange={e => edit(i, { kind: e.target.value as TemplateItem["kind"] })}
-                className="outline-none flex-shrink-0" style={{ padding: "6px 6px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#111111", background: "#ffffff", border: "1px solid rgba(0,0,0,0.14)", width: 92 }}>
+              <select value={r.auto ? `auto:${r.auto}` : r.kind} aria-label="Step type"
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v.startsWith("auto:")) { const auto = v.slice(5) as AutoStep; edit(i, { auto, kind: AUTO_KIND[auto] }); }
+                  else edit(i, { kind: v as TemplateItem["kind"], auto: undefined });
+                }}
+                className="outline-none flex-shrink-0" style={{ padding: "6px 6px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#111111", background: "#ffffff", border: "1px solid rgba(0,0,0,0.14)", width: 118 }}>
                 <option value="check">Tick</option>
                 <option value="text">Fill in</option>
                 <option value="heading">Heading</option>
+                <option value="auto:roster">Auto: roster</option>
+                <option value="auto:ad_account">Auto: ad account</option>
+                <option value="auto:card">Auto: card on file</option>
               </select>
               <div className="flex-1" style={{ minWidth: 0 }}>
                 <input value={r.label} onChange={e => edit(i, { label: e.target.value })} aria-label="Step" autoFocus={r.id === focusId}

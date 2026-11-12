@@ -1,3 +1,63 @@
+## 2026-11-12 — New client survey (replaces the GHL onboarding form)
+
+The owner's GHL form (`widget/form/7nrpwBEv3KtdtT2mRLDJ`) rebuilt inside the
+dashboard, so one submission sets the client up everywhere.
+
+- **Where:** the black **New client survey** button on the Onboarding board,
+  and its own page **Clients > New Client Survey**
+  (`/dashboard/clients/new-client-survey`) — the link he keeps open on
+  onboarding calls ("Copy survey link" on the board). Same access as
+  Onboarding. Adding a card by name is still there, as the secondary option; a
+  card without a survey offers "Fill in the survey", which uses that card.
+- **Questions:** the same ones as the GHL form (contact, business, address,
+  appointment numbers, services, starting prices, miles out, availability,
+  financing, years, revenue, ad spend), plus two the form never asked and the
+  dashboard needs: **Service** (Facebook Ads / SMS / Both — required) and
+  **Price per appointment** (optional). Only Service and Business name are
+  required, so a half-known client can still be submitted.
+- **⚠️ Card details are deliberately NOT asked.** The GHL form took the card
+  number, CVC and expiry as plain text. That must never be stored in our
+  database (card rules forbid keeping a CVC at all), and a number sitting in a
+  form cannot be charged anyway. Instead: **Card on file in Stripe**, a
+  checklist step. "Get secure card link" opens Stripe's own page (Checkout in
+  setup mode, 24-hour link) — typed in on the call or sent to the client — and
+  the card lands on the client's Stripe customer, which is what Client
+  Billing's saved-card charge uses. "Check Stripe" ticks the step once a card
+  is really there. Do not add card fields back.
+- **What a submission does** (`lib/client-survey-server.ts`):
+  1. Client Roster — links the client with that name or creates it in Setup;
+     service set (a client on the other service becomes Both).
+  2. Answers saved in `client_surveys` (one per roster client), shown on the
+     card under "Client survey", with Edit.
+  3. Client profile (`pnl_clients`: contact, email, phone, website) — written
+     for the person submitting **and every admin**, because profiles are per
+     user and a VA's survey would otherwise never reach the owner's Profit and
+     Loss / Client Billing. Only blanks are filled; nothing typed by hand is
+     overwritten.
+  4. Client Billing — price per appointment, and the **Stripe customer**
+     (linked if Stripe already has exactly one customer with that email, else
+     created). No charge is ever made from here.
+  5. Onboarding board — one card per service (Both = two cards), survey and
+     roster steps ticked, in In progress. A checklist that already has a card
+     under way keeps it; "Edit" on a survey never opens cards.
+- **Stripe from Onboarding is not gated on Client Billing access** — creating a
+  customer and a card link moves no money, and a VA doing onboarding needs it.
+  Charging still needs Client Billing access.
+- Nothing is sent to GHL: if the old form fed a GHL workflow (contact creation,
+  welcome messages), that no longer fires from here.
+- Checklist editor: step types now include the three automatic ones (roster, ad
+  account, card on file). Starter lists gained "Card on file in Stripe"; cards
+  already open offer "Update this card".
+- **Schema:** `client_surveys`, added to `migrations/add_onboarding.sql` — the
+  same command again (`node scripts/migrate-onboarding.mjs v1`, safe to
+  re-run). Until then submitting says a database update is needed.
+- **Checked:** local preview on a made-up database with the real logic — new
+  client (Both → two cards), existing roster client adding a service, a VA
+  submitting, validation, junk / card fields dropped, survey from a card,
+  editing, resubmitting, phone width; production build. **Not checked: anything
+  against real Stripe** (no key locally — customer creation, the card link and
+  "Check Stripe" are untested live), and nothing signed in.
+
 ## 2026-11-12 — TM Dashboard permissions: Ads Dashboard / SMS Dashboard
 
 Settings > Users, TM Dashboard group, two separate ticks. **Ads Dashboard** is

@@ -17,6 +17,7 @@ import NotificationBell from "./NotificationBell";
 import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
 import OnboardingBoard from "./OnboardingBoard";
+import ClientSurvey from "./ClientSurvey";
 import UserManager from "./UserManager";
 import ZipTool from "./ZipTool";
 import BrandBackground from "./BrandBackground";
@@ -383,13 +384,16 @@ const PAYMENTS_NAV: { id: PaymentsView; label: string; icon: string }[] = [
 
 const CLIENTS_NAV: { id: ClientsView; label: string; icon: string }[] = [
   { id: "onboarding",    label: "Onboarding",    icon: "M4 5h4v14H4zM10 5h4v8h-4zM16 5h4v11h-4z" },
+  { id: "client_survey", label: "New Client Survey", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6M9 16h4" },
   { id: "client_roster", label: "Client Roster", icon: NAV_ICONS.admin_clients },
   { id: "csm_dashboard", label: "CSM Dashboard", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
   { id: "share_reports", label: "Share Reports", icon: NAV_ICONS.admin_share },
 ];
 
 type TopSection = "clients_dashboard" | "tomsi_media" | "creative_hub" | "clients" | "tools" | "payments" | "settings";
-type ClientsView = "onboarding" | "client_roster" | "csm_dashboard" | "share_reports";
+type ClientsView = "onboarding" | "client_survey" | "client_roster" | "csm_dashboard" | "share_reports";
+// The survey is part of Onboarding: whoever can open one can open the other.
+const clientsFeature = (id: ClientsView): string => (id === "client_survey" ? "onboarding" : id);
 
 const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: string }[] = [
   {
@@ -767,7 +771,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
 
   const groups = allGroups.filter(g => NAV.some(n => n.group === g && can(n.view)));
   const toolsVisible = TOOLS_VIEWS.filter(v => can(v));
-  const clientsNavVisible = CLIENTS_NAV.filter(c => can(c.id));
+  const clientsNavVisible = CLIENTS_NAV.filter(c => can(clientsFeature(c.id)));
   // Client Billing moves real money: it needs an admin, or an account it has
   // been ticked for — "no restriction set" is not enough, and it stays hidden
   // until /api/me has answered.
@@ -834,7 +838,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
       if (next) setTopSection(next);
       return;
     }
-    if (topSection === "clients" && !can(clientsView)) setClientsView(clientsNavVisible[0].id);
+    if (topSection === "clients" && !can(clientsFeature(clientsView))) setClientsView(clientsNavVisible[0].id);
     if (topSection === "tomsi_media" && !canTomsi(tomsiView)) openTomsi(tomsiNavVisible[0].items[0].id);
     if (topSection === "creative_hub" && !canHub(hubView)) setHubView(hubNavVisible[0].items[0].id);
     if (topSection === "payments" && !canPayments(paymentsView)) setPaymentsView(paymentsNavVisible[0].id);
@@ -1422,6 +1426,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           {/* ── Tomsi Media Dashboard ── */}
 
           {topSection === "clients" && clientsView === "onboarding" && <OnboardingBoard />}
+          {topSection === "clients" && clientsView === "client_survey" && <ClientSurvey onDone={() => setClientsView("onboarding")} />}
           {topSection === "clients" && clientsView === "client_roster" && <ClientRoster />}
           {topSection === "clients" && clientsView === "csm_dashboard" && <CSMDashboard />}
           {topSection === "clients" && clientsView === "share_reports" && <ShareReports clients={clients} />}

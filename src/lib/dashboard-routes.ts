@@ -71,6 +71,7 @@ export const VIEW_ROUTES: Record<string, { slug: string; label: string; section:
 
 export const CLIENTS_VIEW_ROUTES: Record<string, { slug: string; label: string }> = {
   onboarding:    { slug: "onboarding",    label: "Onboarding" },
+  client_survey: { slug: "new-client-survey", label: "New Client Survey" },
   client_roster: { slug: "client-roster", label: "Client Roster" },
   csm_dashboard: { slug: "csm-dashboard", label: "CSM Dashboard" },
   share_reports: { slug: "share-reports", label: "Share Reports" },

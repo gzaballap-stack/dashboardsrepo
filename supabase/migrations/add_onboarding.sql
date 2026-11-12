@@ -33,3 +33,16 @@ create table if not exists onboarding_templates (
 
 alter table onboarding_cards     enable row level security;
 alter table onboarding_templates enable row level security;
+
+-- New client survey (NOTES.md 2026-11-12): one set of answers per roster client.
+-- Never holds card details — cards go on file through Stripe's own page.
+create table if not exists client_surveys (
+  id                uuid primary key default gen_random_uuid(),
+  client_id         uuid not null unique references clients(id) on delete cascade,
+  answers           jsonb not null default '{}'::jsonb,
+  submitted_by      uuid,
+  submitted_by_name text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+alter table client_surveys enable row level security;

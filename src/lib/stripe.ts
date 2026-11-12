@@ -100,6 +100,21 @@ export async function createCustomer(name: string, email: string | null): Promis
   return { id: c.id, name: c.name ?? null, email: c.email ?? null };
 }
 
+/**
+ * A Stripe-hosted page where the card is typed in and saved on the customer —
+ * no charge is made. This is how a card gets on file: the number never passes
+ * through the dashboard. The link works for 24 hours.
+ */
+export async function createCardSetupLink(customerId: string, returnUrl: string): Promise<string> {
+  const session = await call('POST', '/checkout/sessions', {
+    mode: 'setup', customer: customerId,
+    'payment_method_types[0]': 'card',
+    success_url: returnUrl, cancel_url: returnUrl,
+  });
+  if (!session?.url) throw new StripeError('Stripe did not return a link', true);
+  return session.url as string;
+}
+
 export type CustomerSummary = StripeCustomer & {
   /** What a card charge would use. null = nothing on file. */
   payment: { id: string | null; label: string } | null;

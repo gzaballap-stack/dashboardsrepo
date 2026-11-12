@@ -19,8 +19,11 @@ export const STAGE_LABEL: Record<Stage, string> = { not_started: 'Not started', 
 //   roster      adds the client to the Client Roster (status Setup)
 //   ad_account  saves the Meta ad account on the roster record, which is what
 //               the scheduled spend sync reads — no other setup needed
+//   card        hands out Stripe's own page for putting a card on file, and
+//               ticks itself once Stripe holds one for the client
 export type ItemKind = 'heading' | 'check' | 'text';
-export type AutoStep = 'roster' | 'ad_account';
+export type AutoStep = 'roster' | 'ad_account' | 'card';
+export const isAuto = (v: unknown): v is AutoStep => v === 'roster' || v === 'ad_account' || v === 'card';
 export type TemplateItem = { id: string; kind: ItemKind; label: string; auto?: AutoStep };
 export type CardItem = TemplateItem & { done?: boolean; value?: string; note?: string; by?: string; at?: string };
 
@@ -28,14 +31,15 @@ export type Card = {
   id: string; client_name: string; client_id: string | null; track: Track | null; stage: Stage;
   position: number; items: CardItem[]; notes: string | null;
   contact_name: string | null; contact_email: string | null; contact_phone: string | null;
-  ghl_contact_id: string | null; source: string;
+  ghl_contact_id: string | null; source: string;   // manual | ghl_form | survey
   created_at: string; updated_at: string; completed_at: string | null;
 };
 
 // The owner's process up to the point where Facebook and SMS part ways.
 const BEFORE: TemplateItem[] = [
   { id: 'h_before',    kind: 'heading', label: 'Before onboarding' },
-  { id: 'form',        kind: 'check',   label: 'Onboarding form submitted (GHL form, during the call)' },
+  { id: 'form',        kind: 'check',   label: 'New client survey submitted' },
+  { id: 'card',        kind: 'check',   label: 'Card on file in Stripe', auto: 'card' },
   { id: 'call_booked', kind: 'check',   label: 'Onboarding call booked for the next day' },
   { id: 'call_done',   kind: 'check',   label: 'Onboarding call done' },
   { id: 'calendar',    kind: 'check',   label: 'Calendar connected' },
@@ -77,7 +81,7 @@ export function cleanTemplate(input: unknown): TemplateItem[] | null {
     const label = String(raw?.label ?? '').trim().slice(0, 300);
     if (!label) continue;
     const kind: ItemKind = raw.kind === 'heading' || raw.kind === 'text' ? raw.kind : 'check';
-    const auto = raw.auto === 'roster' || raw.auto === 'ad_account' ? raw.auto : undefined;
+    const auto = isAuto(raw.auto) ? raw.auto : undefined;
     let id = String(raw?.id ?? '').trim().slice(0, 60) || `s_${Math.random().toString(36).slice(2, 10)}`;
     while (seen.has(id)) id = `${id}_${Math.random().toString(36).slice(2, 6)}`;
     seen.add(id);

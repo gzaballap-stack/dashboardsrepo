@@ -1,4 +1,4 @@
-// node scripts/migrate-onboarding.mjs <v1|v2> — creates onboarding_cards + onboarding_templates (Clients > Onboarding).
+// node scripts/migrate-onboarding.mjs <v1|v2> — creates onboarding_cards + onboarding_templates + client_surveys (Clients > Onboarding). Safe to run again.
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -17,4 +17,4 @@ const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/qu
 });
 const out = await res.text();
 if (!res.ok) { console.error(`✗ ${which} (${ref}):`, out); process.exit(1); }
-console.log(`✓ ${which} (${ref}): onboarding_cards + onboarding_templates ready`);
+console.log(`✓ ${which} (${ref}): onboarding_cards + onboarding_templates + client_surveys ready`);
