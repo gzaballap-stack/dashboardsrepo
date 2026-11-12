@@ -16,6 +16,7 @@ import {
 //
 //   GET                      every client, with their figures for the period
 //   GET ?client_id=          one client: appointments, charges, credits
+//   GET ?view=recent&from=&to=   every client's appointments booked in that stretch
 //   POST { action: ... }     settings | profile | charge | void | credit |
 //                            uncredit | cancel | uncancel | add_credit |
 //                            delete_credit
@@ -295,6 +296,23 @@ async function syncWithStripe(service: Service, clientId: string) {
   }
 }
 
+// Where one appointment stands, for the screen. null = not tracked.
+function billingView(a: Row | undefined, charge: Row | undefined) {
+  if (!a) return null;
+  return {
+    // covered = paid in full by their credit: a free appointment, never billed.
+    state: a.cancelled_at ? 'cancelled' : a.credited_at ? 'credited' : charge && paidByCredit(charge) ? 'covered' : 'charged',
+    price: num(a.price),
+    charged: !!a.charge_id,
+    charge_id: (a.charge_id as string | null) ?? null,
+    charge_status: (charge?.status as string | undefined) ?? null,
+    credit_amount: num(a.credit_amount),
+    credited_at: (a.credited_at as string | null) ?? null,
+    credit_reason: (a.credit_reason as string | null) ?? null,
+    cancelled_at: (a.cancelled_at as string | null) ?? null,
+  };
+}
+
 /* ── GET ──────────────────────────────────────────────────────────────────── */
 
 export async function GET(req: Request) {
@@ -318,6 +336,53 @@ export async function GET(req: Request) {
   const probe = await service.from('billing_clients').select('client_id, price_per_appointment, stripe_customer_id');
   if (probe.error) return isMissingTable(probe.error) ? NextResponse.json({ ...NEEDS_SETUP, stripe }) : bad(probe.error.message, 500);
   const settings = new Map((probe.data ?? []).map(s => [s.client_id as string, s]));
+
+  /* ── the last few days, every client: what was booked and where each stands ── */
+  if (params.get('view') === 'recent') {
+    const at = (v: string | null) => { const t = v ? new Date(v).getTime() : NaN; return Number.isFinite(t) ? t : null; };
+    const toMs = at(params.get('to')) ?? Date.now();
+    // Never more than a month back, whatever is asked for.
+    const fromMs = Math.max(at(params.get('from')) ?? toMs - 7 * 86_400_000, toMs - 31 * 86_400_000);
+
+    const [clients, events] = await Promise.all([
+      service.from('clients').select('id, name, service, is_internal'),
+      readAll((a, b) => service.from('events')
+        .select(`id, client_id, event_type, occurred_at, scheduled_at, lead_name, lead_phone, calendar_name, ${ATTRIBUTION}`)
+        .in('event_type', APPOINTMENT_TYPES)
+        .gte('occurred_at', new Date(fromMs).toISOString()).lte('occurred_at', new Date(toMs).toISOString())
+        .order('occurred_at', { ascending: false }).range(a, b), 5),
+    ]);
+    const failed = clients.error ?? events.error;
+    if (failed) return bad(failed.message ?? 'Could not load appointments', 500);
+
+    const known = new Map((clients.data ?? []).filter(c => !c.is_internal).map(c => [c.id as string, c]));
+    const mine = events.rows.filter(e => e.client_id && known.has(e.client_id as string));
+    const tracked = await trackedRows(service, mine.map(e => e.id as string));
+    if (tracked.error) return isMissingTable(tracked.error) ? NextResponse.json({ ...NEEDS_SETUP, stripe }) : bad(tracked.error.message ?? 'Could not load billing', 500);
+    const apptByEvent = new Map(tracked.rows.map(a => [a.event_id as string, a]));
+
+    const chargeById = new Map<string, Row>();
+    for (const part of chunks([...new Set(tracked.rows.map(a => a.charge_id as string | null).filter((id): id is string => !!id))])) {
+      const { data } = await service.from('billing_charges').select('id, status, total, credit_applied').in('id', part);
+      for (const c of (data ?? []) as Row[]) chargeById.set(c.id as string, c);
+    }
+
+    return NextResponse.json({
+      ready: true, stripe,
+      appointments: mine.map(e => {
+        const client = known.get(e.client_id as string)!;
+        const a = apptByEvent.get(e.id as string);
+        return {
+          event_id: e.id, client_id: client.id, client_name: client.name,
+          price: num(settings.get(client.id as string)?.price_per_appointment),
+          outcome: e.event_type, booked_at: e.occurred_at, scheduled_at: e.scheduled_at,
+          lead_name: e.lead_name, lead_phone: e.lead_phone, calendar: e.calendar_name,
+          source: sourceOf(e, client.service as string | null),
+          billing: billingView(a, a?.charge_id ? chargeById.get(a.charge_id as string) : undefined),
+        };
+      }),
+    });
+  }
 
   /* ── one client ── */
   if (clientId) {
@@ -347,22 +412,7 @@ export async function GET(req: Request) {
     const chargeById = new Map(charges.rows.map(c => [c.id as string, c]));
     const apptByEvent = new Map(appts.rows.map(a => [a.event_id as string, a]));
 
-    const billingOf = (a: Row | undefined) => {
-      if (!a) return null;
-      const charge = a.charge_id ? chargeById.get(a.charge_id as string) : undefined;
-      return {
-        // covered = paid in full by their credit: a free appointment, never billed.
-        state: a.cancelled_at ? 'cancelled' : a.credited_at ? 'credited' : charge && paidByCredit(charge) ? 'covered' : 'charged',
-        price: num(a.price),
-        charged: !!a.charge_id,
-        charge_id: (a.charge_id as string | null) ?? null,
-        charge_status: (charge?.status as string | undefined) ?? null,
-        credit_amount: num(a.credit_amount),
-        credited_at: (a.credited_at as string | null) ?? null,
-        credit_reason: (a.credit_reason as string | null) ?? null,
-        cancelled_at: (a.cancelled_at as string | null) ?? null,
-      };
-    };
+    const billingOf = (a: Row | undefined) => billingView(a, a?.charge_id ? chargeById.get(a.charge_id as string) : undefined);
 
     const s = settings.get(clientId);
     let customer = null, customerError: string | null = null;

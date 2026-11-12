@@ -1,3 +1,28 @@
+## 2026-11-11 — Client Billing: "Track today's appointments" is the first thing on the page
+
+Owner wants an end-of-day prompt: what was booked today, and which of those
+still need billing, crediting or cancelling.
+
+- **Today panel** at the top of Client Billing's list view (`TodayPanel` in
+  `ClientBilling.tsx`). Headline is the prompt — "Track today's appointments —
+  N not tracked" (amber), "all tracked" (green) or "No appointments booked
+  today" — plus a line when earlier days this week still have untracked ones.
+  Segments **Today / Yesterday / 7 days**, each with its untracked count.
+- Grouped by client, same appointment cards as the client page
+  (`AppointmentCard`, now shared by both): **Bill $price / Credit / Cancelled**
+  on untracked ones, Undo on cancelled / credited. "Bill all N" per client when
+  more than one is waiting. Bill reads that client's card, credit and price and
+  opens the usual charge dialog.
+- **"Today" = booked today** (`events.occurred_at`), by the clock of the
+  computer viewing it — not the day the appointment takes place.
+- `GET /api/billing?view=recent&from=&to=` — every non-internal client's
+  appointments in that stretch (capped at a month) with client, price, source
+  and where each stands. Read-only; it does not spend credit (the list load
+  that runs before it does).
+- No sidebar badge or push notification — the prompt lives on the page only.
+- Tested against the simulated database (3 scenarios) and a made-up-data
+  preview. No schema change.
+
 ## 2026-11-11 — Client Billing: Match with Stripe (payments taken outside the dashboard)
 
 Owner wanted this month's appointments (and SMS ones) tracked from what Stripe
