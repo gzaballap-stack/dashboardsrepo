@@ -1,3 +1,34 @@
+## 2026-11-12 — Client Billing: backlog = this month + all SMS; "are you sure" before billing; lead lookup
+
+- **Backlog view.** Client Billing now opens on **This month + all SMS**
+  (`period = backlog`, sent as `sms_all=1` with this month's dates): this
+  month's appointments from every source, plus every SMS appointment booked
+  before it (filed as SMS by `ad_platform` / `utm_source` / `utm_medium`, or any
+  unsourced booking of an SMS-only client — the same `sourceOf` rule). The older
+  ones only add to what is listed and counted as Not tracked; **Billed, Paid and
+  Return by source stay this month's** (the SMS cost read is this month's, so
+  mixing in older appointments would inflate the return). If the older read
+  fails the page still answers with this month only and says so (`older_sms:
+  null`). Plain "This month" is still there.
+- **Why an SMS booking can be missing from billing** (owner asked about one
+  lead). Nothing on the SMS path writes an appointment: `webhooks/sms` only
+  writes `sms_sends`, `sms_replies` and a `lead`. An SMS appointment exists only
+  if GHL's `appointment_booked` workflow fires for that client afterwards, and
+  it is filed as SMS only if it inherits the lead's source (contact id, else
+  phone suffix — a different sub-account or a formatted phone breaks it, and it
+  then reads as ads or "No source"). So a missing one is either a lead with no
+  booking event, or a booking filed under another source / client. Not fixed
+  here — needs the facts for a real case first.
+- **`scripts/find-lead.mjs <v1|v2> <part of name>`** — read-only: every event
+  stored under a lead name, its client, source and billing state. Names and
+  dates only. For the owner to run; sessions can't read V1.
+- **"Are you sure you want to bill …?"** in the charge dialog before a card
+  charge or an emailed invoice; tied to the method and total, so changing
+  either asks again. "Already paid — just record it" does not ask.
+- Tested against the simulated database (58 scenarios across four suites). The
+  backlog read uses a PostgREST `or=` filter that has not run against the real
+  database — hence the fallback.
+
 ## 2026-11-11 — Client Billing: faster load; appointment names on Stripe
 
 **Faster load** (owner: the page took too long). Not measured on V1 — the

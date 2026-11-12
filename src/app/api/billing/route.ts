@@ -337,6 +337,11 @@ export async function GET(req: Request) {
     return (!from || t >= new Date(from).getTime()) && (!to || t <= new Date(to).getTime());
   };
   const stripe = stripeStatus();
+  // The backlog view: the period's appointments, plus every SMS appointment
+  // booked before it. Those older ones only add to what is listed and counted
+  // as not tracked — money figures and the return by source stay the period's.
+  const smsAll = params.get('sms_all') === '1' && !!from;
+  const none = Promise.resolve({ rows: [] as Row[], error: null as { code?: string; message?: string } | null });
 
   const readSettings = () => service.from('billing_clients').select('client_id, price_per_appointment, stripe_customer_id');
   type Settings = Awaited<ReturnType<typeof readSettings>>;
@@ -434,14 +439,22 @@ export async function GET(req: Request) {
       readAll((a, b) => service.from('billing_appointments').select(APPT_COLS).eq('client_id', clientId).range(a, b)),
       readAll((a, b) => service.from('billing_charges').select(CHARGE_COLS).eq('client_id', clientId).order('created_at', { ascending: false }).range(a, b), 2),
         readAll((a, b) => service.from('billing_credits').select('id, amount, reason, created_at').eq('client_id', clientId).order('created_at', { ascending: false }).range(a, b), 2),
+        // Their appointments from before the period; the SMS ones are kept below.
+        smsAll ? readAll((a, b) => service.from('events')
+          .select(`id, event_type, occurred_at, scheduled_at, lead_name, lead_phone, calendar_name, ${ATTRIBUTION}`)
+          .eq('client_id', clientId).in('event_type', APPOINTMENT_TYPES).lt('occurred_at', from!)
+          .order('occurred_at', { ascending: false }).range(a, b), 10) : none,
       ]);
     };
-    const [[events, appts, charges, credits], { customer, customerError }, smsRows, shared] = await Promise.all([
+    const [[periodEvents, appts, charges, credits, older], { customer, customerError }, smsRows, shared] = await Promise.all([
       readRecords(), readCustomer(), readSms(service, { clientId, start, end }), profileFor(ctx, client),
     ]);
     const costs = smsCost(smsRows);
-    const failed = events.error ?? appts.error ?? charges.error ?? credits.error;
+    const failed = periodEvents.error ?? appts.error ?? charges.error ?? credits.error;
     if (failed) return isMissingTable(failed) ? NextResponse.json({ ...NEEDS_SETUP, stripe }) : bad(failed.message ?? 'Could not load billing', 500);
+    // Older SMS appointments are an extra: if they can't be read the page still answers.
+    const olderSms = older.error ? [] : older.rows.filter(e => sourceOf(e, client.service as string | null) === 'sms');
+    const events = { rows: [...periodEvents.rows, ...olderSms] };
 
     const chargeById = new Map(charges.rows.map(c => [c.id as string, c]));
     const apptByEvent = new Map(appts.rows.map(a => [a.event_id as string, a]));
@@ -485,7 +498,7 @@ export async function GET(req: Request) {
 
     // Each appointment's source, and what each source cost and returns.
     const sources = new Map<string, Source>(events.rows.map(e => [e.id as string, sourceOf(e, client.service as string | null)]));
-    const returns = returnsBySource(events.rows.map(e => {
+    const returns = returnsBySource(periodEvents.rows.map(e => {
       const b = billingOf(apptByEvent.get(e.id as string));
       return { source: sources.get(e.id as string)!, state: (b ? b.state : 'to_bill') as BillingState, price: b?.price ?? 0, clientPrice: price };
     }), costs);
@@ -519,7 +532,9 @@ export async function GET(req: Request) {
     readAll((a, b) => service.from('billing_appointments').select(APPT_COLS).range(a, b)),
     readAll((a, b) => service.from('billing_credits').select('client_id, amount').range(a, b)),
   ]);
-  const [allowed, probe, clients, events, billing, smsRows] = await Promise.all([
+  const olderEvents = () => service.from('events').select(`id, client_id, ${ATTRIBUTION}`)
+    .in('event_type', APPOINTMENT_TYPES).lt('occurred_at', from!).order('occurred_at', { ascending: false });
+  const [allowed, probe, clients, periodEvents, billing, smsRows, olderFiled] = await Promise.all([
     canBill(ctx), readSettings(),
     service.from('clients').select('id, name, status, service, is_internal').order('name'),
     readAll((a, b) => {
@@ -530,13 +545,28 @@ export async function GET(req: Request) {
     }),
     readBilling(),
     readSms(service, { start, end }),
+    // Older appointments filed as SMS, whichever client they belong to.
+    smsAll ? readAll((a, b) => olderEvents().or('ad_platform.ilike.sms,utm_source.ilike.sms,utm_medium.ilike.sms').range(a, b)) : none,
   ]);
   const refused = refuse(allowed, probe);
   if (refused) return refused;
   const settings = settingsOf(probe);
   let [charges, appts, credits] = billing;
-  const failed = clients.error ?? charges.error ?? appts.error ?? credits.error ?? events.error;
+  const failed = clients.error ?? charges.error ?? appts.error ?? credits.error ?? periodEvents.error;
   if (failed) return isMissingTable(failed) ? NextResponse.json({ ...NEEDS_SETUP, stripe }) : bad(failed.message ?? 'Could not load billing', 500);
+
+  // …and every older appointment of a client who is on SMS only, where a
+  // booking with no recorded source still counts as SMS.
+  const smsOnly = (clients.data ?? []).filter(c => !c.is_internal && c.service === 'sms').map(c => c.id as string);
+  const olderOnSms = smsAll && smsOnly.length ? await readAll((a, b) => olderEvents().in('client_id', smsOnly).range(a, b)) : await none;
+  // An extra: if the older ones can't be read, the page still answers — and says so.
+  const olderFailed = !!(olderFiled.error ?? olderOnSms.error);
+  const serviceByClient = new Map((clients.data ?? []).map(c => [c.id as string, c.service as string | null]));
+  const inPeriodIds = new Set(periodEvents.rows.map(e => e.id as string));
+  const olderSms = [...new Map([...(olderFiled.error ? [] : olderFiled.rows), ...(olderOnSms.error ? [] : olderOnSms.rows)].map(e => [e.id as string, e])).values()]
+    .filter(e => !inPeriodIds.has(e.id as string) && !!e.client_id && sourceOf(e, serviceByClient.get(e.client_id as string)) === 'sms');
+  const olderIds = new Set(olderSms.map(e => e.id as string));
+  const events = { rows: [...periodEvents.rows, ...olderSms] };
 
   const by = <T extends Row>(rows: T[]) => {
     const map = new Map<string, T[]>();
@@ -592,10 +622,12 @@ export async function GET(req: Request) {
       source: sourceOf(e, serviceOf.get(e.client_id as string)),
       state: stateOf(a), price: num(a?.price),
       clientPrice: num(settings.get(e.client_id as string)?.price_per_appointment),
+      older: olderIds.has(e.id as string),
     };
   });
   const costs = smsCost(smsRows, internal);
-  const returns = returnsBySource(sourced, costs);
+  // Cost is the period's, so the return is worked out on the period's appointments only.
+  const returns = returnsBySource(sourced.filter(a => !a.older), costs);
   const sourcedBy = new Map<string, typeof sourced>();
   for (const a of sourced) sourcedBy.set(a.client_id, [...(sourcedBy.get(a.client_id) ?? []), a]);
 
@@ -632,7 +664,11 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ ready: true, stripe, clients: rows, returns: { ...returns, sms_sent: costs.sms_sent }, covered });
+  return NextResponse.json({
+    ready: true, stripe, clients: rows, returns: { ...returns, sms_sent: costs.sms_sent }, covered,
+    // SMS appointments from before the period that are included; null = they couldn't be read.
+    older_sms: !smsAll ? 0 : olderFailed ? null : olderSms.filter(e => !internal.has(e.client_id as string)).length,
+  });
 }
 
 /* ── POST ─────────────────────────────────────────────────────────────────── */

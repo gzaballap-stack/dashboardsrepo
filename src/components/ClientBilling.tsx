@@ -148,8 +148,12 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-type PeriodId = "this_month" | "last_month" | "last_30" | "last_90" | "all";
+// "backlog" is what there is to track: this month's appointments from every
+// source, plus every SMS appointment from before it. Money figures and the
+// return by source under it are this month's.
+type PeriodId = "backlog" | "this_month" | "last_month" | "last_30" | "last_90" | "all";
 const PERIODS: { id: PeriodId; label: string }[] = [
+  { id: "backlog", label: "This month + all SMS" },
   { id: "this_month", label: "This month" },
   { id: "last_month", label: "Last month" },
   { id: "last_30", label: "30 days" },
@@ -160,7 +164,7 @@ const PERIODS: { id: PeriodId; label: string }[] = [
 function rangeOf(id: PeriodId): { start: string | null; end: string | null } {
   const now = new Date();
   if (id === "all") return { start: null, end: null };
-  if (id === "this_month") return { start: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), end: ymd(now) };
+  if (id === "this_month" || id === "backlog") return { start: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), end: ymd(now) };
   if (id === "last_month") {
     return { start: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), end: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
   }
@@ -168,6 +172,10 @@ function rangeOf(id: PeriodId): { start: string | null; end: string | null } {
   back.setDate(back.getDate() - (id === "last_30" ? 29 : 89));
   return { start: ymd(back), end: ymd(now) };
 }
+
+/** The dates the money figures cover, in words. */
+const moneyLabel = (id: PeriodId) => (id === "backlog" ? "This month" : PERIODS.find(p => p.id === id)?.label ?? "");
+const smsAllOf = (id: PeriodId) => (id === "backlog" ? "1" : null);
 
 function query(params: Record<string, string | null | undefined>): string {
   const q = new URLSearchParams();
@@ -445,6 +453,7 @@ function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestId, setRequestId] = useState(newRequestId);
+  const [confirmFor, setConfirmFor] = useState<string | null>(null);
 
   const customer = detail.customer;
   const cardWhy = !stripe.configured ? "Stripe isn't connected yet"
@@ -470,8 +479,16 @@ function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
     : null;
   const tooSmall = effective !== "manual" && total > 0 && total < 0.5 ? "Stripe needs at least $0.50" : null;
 
+  // Anything that reaches the client — a card charge or an emailed invoice —
+  // is asked twice. The question is tied to this method and this total, so
+  // changing either asks again.
+  const stamp = `${effective}|${cents(total)}`;
+  const confirming = confirmFor === stamp;
+  const reaches = effective !== "manual";
+
   const submit = async () => {
     if (busy || blocked || tooSmall) return;
+    if (reaches && !confirming) { setConfirmFor(stamp); return; }
     setBusy(true); setError(null);
     try {
       const done = await api("/api/billing", {
@@ -486,7 +503,7 @@ function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
       // Stripe was reached (or may have been): the charge is on record, so
       // close and show it rather than invite a second attempt.
       if (/card failed|couldn't confirm|still open in stripe/i.test(message)) onDone(message, true);
-      else { setError(message); setBusy(false); setRequestId(newRequestId()); }
+      else { setError(message); setBusy(false); setConfirmFor(null); setRequestId(newRequestId()); }
     }
   };
 
@@ -568,13 +585,30 @@ function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
       )}
       {error && <Notice tone="bad">{error}</Notice>}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={submit} disabled={busy || !!blocked || !!tooSmall}
-          style={{ ...BTN_DARK, padding: "10px 18px", fontSize: 13, opacity: busy || blocked || tooSmall ? 0.35 : 1 }}>
-          {busy ? "Working…" : action}
-        </button>
-        {(blocked || tooSmall) && !busy && <span style={{ fontSize: 12.5, color: MUTED }}>{blocked ?? tooSmall}</span>}
-      </div>
+      {confirming && reaches && !blocked && !tooSmall ? (
+        <div role="alertdialog" aria-label="Confirm billing" style={{ background: "rgba(138,97,0,0.10)", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ fontSize: 14, fontWeight: 700, color: INK }}>{`Are you sure you want to bill ${detail.client.name}?`}</p>
+          <p style={{ fontSize: 12.5, color: WARN }}>
+            {effective === "card"
+              ? `This charges ${customer?.payment?.label ?? "their card"} ${money(total)} right now${count ? ` for ${plural(count, "appointment")}` : ""}.`
+              : `This emails ${customer?.email ?? "them"} an invoice for ${money(total)}${count ? ` for ${plural(count, "appointment")}` : ""}.`}
+          </p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button onClick={submit} disabled={busy} style={{ ...BTN_DARK, padding: "10px 18px", fontSize: 13, opacity: busy ? 0.35 : 1 }}>
+              {busy ? "Working…" : effective === "card" ? `Yes, charge ${money(total)}` : `Yes, send the invoice`}
+            </button>
+            <button onClick={() => setConfirmFor(null)} disabled={busy} style={{ ...BTN_QUIET, padding: "10px 18px", fontSize: 13 }}>No, go back</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={submit} disabled={busy || !!blocked || !!tooSmall}
+            style={{ ...BTN_DARK, padding: "10px 18px", fontSize: 13, opacity: busy || blocked || tooSmall ? 0.35 : 1 }}>
+            {busy ? "Working…" : action}
+          </button>
+          {(blocked || tooSmall) && !busy && <span style={{ fontSize: 12.5, color: MUTED }}>{blocked ?? tooSmall}</span>}
+        </div>
+      )}
     </Modal>
   );
 }
@@ -959,7 +993,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   const load = useCallback(async () => {
     try {
       const range = rangeOf(period);
-      const data = await api(`/api/billing${query({ client_id: clientId, start: range.start, end: range.end })}`);
+      const data = await api(`/api/billing${query({ client_id: clientId, start: range.start, end: range.end, sms_all: smsAllOf(period) })}`);
       const num = (v: unknown) => Number(v ?? 0) || 0;
       const next: Detail = {
         ...data,
@@ -1179,7 +1213,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
       </>)}
 
       {/* ── return by source ── */}
-      {tab === "returns" && detail.returns && <ReturnPanel returns={detail.returns} scope={PERIODS.find(p => p.id === period)?.label ?? ""} />}
+      {tab === "returns" && detail.returns && <ReturnPanel returns={detail.returns} scope={moneyLabel(period)} />}
 
       {/* ── charges ── */}
       {tab === "charges" && (
@@ -1330,7 +1364,9 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
   /** Jump to this client on Profit and Loss; absent when that page isn't available. */
   onOpenProfitLoss?: (clientKey: string) => void;
 } = {}) {
-  const [period, setPeriod] = useState<PeriodId>("this_month");
+  const [period, setPeriod] = useState<PeriodId>("backlog");
+  // SMS appointments from before this month that the backlog includes; null = they couldn't be read.
+  const [olderSms, setOlderSms] = useState<number | null>(0);
   const [rows, setRows] = useState<ClientRow[] | null>(null);
   const [stripe, setStripe] = useState<StripeState>({ configured: false, test: false });
   const [ready, setReady] = useState(true);
@@ -1347,9 +1383,10 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
   useEffect(() => {
     let live = true;
     const range = rangeOf(period);
-    api(`/api/billing${query({ start: range.start, end: range.end })}`)
+    api(`/api/billing${query({ start: range.start, end: range.end, sms_all: smsAllOf(period) })}`)
       .then(data => {
         if (!live) return;
+        setOlderSms(data.older_sms === null ? null : Number(data.older_sms ?? 0) || 0);
         setStripe(data.stripe ?? { configured: false, test: false });
         setReady(data.ready !== false);
         setRows(data.clients ?? []);
@@ -1380,7 +1417,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
     owed: t.owed + (c.credits_owed ?? 0),
   }), { uncharged: 0, value: 0, charged: 0, paid: 0, outstanding: 0, balance: 0, owed: 0 }), [rows]);
 
-  const periodLabel = PERIODS.find(p => p.id === period)?.label.toLowerCase() ?? "";
+  const periodLabel = moneyLabel(period).toLowerCase();
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1425,7 +1462,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
         {rows === null ? <p style={{ fontSize: 13, color: FAINT }}>Loading the rest…</p> : (<>
         <div style={TILE_GRID}>
           <Tile label="Not tracked" value={String(totals.uncharged)} tone={totals.uncharged > 0 ? "warn" : undefined}
-            sub={totals.uncharged === 0 ? "every appointment is dealt with" : `${money(totals.value)} if billed · ${period === "all" ? "all time" : periodLabel}`} />
+            sub={totals.uncharged === 0 ? "every appointment is dealt with" : `${money(totals.value)} if billed · ${period === "all" ? "all time" : period === "backlog" ? "this month + all SMS" : periodLabel}`} />
           <Tile label="Billed" value={money(totals.charged)} sub={periodLabel} />
           <Tile label="Paid" value={money(totals.paid)} sub={periodLabel} tone={totals.paid > 0 ? "good" : undefined} />
           <Tile label="Awaiting payment" value={money(totals.outstanding)} sub="invoices not paid yet" tone={totals.outstanding > 0 ? "warn" : undefined} />
@@ -1438,7 +1475,14 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
           </Notice>
         )}
 
-        {returns && <ReturnPanel returns={returns} scope={`All clients · ${PERIODS.find(p => p.id === period)?.label ?? ""}`} />}
+        {period === "backlog" && olderSms === null && (
+          <Notice tone="warn">{"SMS appointments from before this month couldn't be read just now — this shows this month only."}</Notice>
+        )}
+        {period === "backlog" && !!olderSms && (
+          <p style={{ fontSize: 12.5, color: MUTED }}>{`Includes ${plural(olderSms, "SMS appointment")} from before this month. Billed, Paid and the return below are this month's.`}</p>
+        )}
+
+        {returns && <ReturnPanel returns={returns} scope={`All clients · ${moneyLabel(period)}`} />}
 
         <div style={{ ...PANEL, padding: 12 }}>
           {visible.length === 0 ? (
