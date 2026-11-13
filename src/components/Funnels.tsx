@@ -22,7 +22,7 @@ type Version = {
   id: string; funnel_id: string; number: number; name: string; notes: string; content: FunnelContent;
   status: "draft" | "live" | "paused" | "archived"; weight: number; published_at: string | null; created_at: string;
 };
-type Funnel = { id: string; slug: string; name: string; site_url: string | null; versions: Version[]; stats: Record<string, VersionStats> };
+type Funnel = { id: string; slug: string; name: string; site_url: string | null; versions: Version[]; stats: Record<string, VersionStats>; legacy: VersionStats | null };
 type Data = { ready: boolean; funnels: Funnel[] };
 
 const CARD = "#ffffff";
@@ -139,6 +139,7 @@ export default function Funnels() {
       <p style={{ fontSize: 12, color: FAINT, lineHeight: 1.6, maxWidth: 820 }}>
         People are counted once per version. Booked calls, shows and closes belong to the version the lead came in on, whenever they happen.
         Ad spend is shared out day by day, by where that day&apos;s visitors landed. Your own visits with the test link are not counted.
+        The old funnel is the GoHighLevel pages the ads used before: its numbers start the day page visits began being recorded and are counted by the date each thing happened.
       </p>
     </div>
   );
@@ -228,6 +229,32 @@ function FunnelCard({ funnel, open, setOpen, editing, setEditing, act, busy, sho
                 </FragmentRow>
               );
             })}
+            {funnel.legacy && (() => {
+              const s = funnel.legacy;
+              return (
+                <tr style={{ borderTop: "2px solid rgba(0,0,0,0.08)", background: "rgba(0,0,0,0.018)" }}>
+                  <td style={{ ...td, textAlign: "left", paddingLeft: 20 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontWeight: 700 }}>Old funnel</span>
+                      <span style={{ color: MUTED }}>GoHighLevel pages</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: MUTED, background: "rgba(0,0,0,0.06)", borderRadius: 999, padding: "2px 8px" }}>Before</span>
+                    </div>
+                    {s.first_seen && <p style={{ fontSize: 11, color: FAINT, marginTop: 3 }}>{day(s.first_seen)} – {day(s.last_seen)}</p>}
+                  </td>
+                  <td style={td}>{num(s.visitors)}</td>
+                  <td style={{ ...td, color: FAINT }}>—</td>
+                  <td style={{ ...td, fontWeight: 700 }}>{num(s.leads)}</td>
+                  <td style={td}>{pct(s.leads, s.visitors)}</td>
+                  <td style={{ ...td, fontWeight: 700 }}>{num(s.booked)}</td>
+                  <td style={td}>{pct(s.booked, s.leads)}</td>
+                  <td style={td}>{num(s.shown)}</td>
+                  <td style={td}>{num(s.closed)}{s.revenue > 0 ? ` · ${money(s.revenue)}` : ""}</td>
+                  <td style={td}>{s.spend > 0 ? money(s.spend) : "—"}</td>
+                  <td style={td}>{per(s.spend, s.leads)}</td>
+                  <td style={{ ...td, paddingRight: 20 }}>{per(s.spend, s.booked)}</td>
+                </tr>
+              );
+            })()}
           </tbody>
         </table>
       </div>

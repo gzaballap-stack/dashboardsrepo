@@ -32,12 +32,13 @@ export async function GET(req: Request) {
   for (const f of (funnels ?? []) as FunnelRow[]) {
     const { data: versions, error: vErr } = await ctx.service.from('funnel_versions').select(VERSION_COLS).eq('funnel_id', f.id).order('number', { ascending: false });
     if (vErr) return bad(vErr.message, 500);
-    let stats = {};
-    try { stats = await funnelStats(ctx.service, f, start, end); } catch { /* stats are best-effort; the versions still show */ }
+    let stats = {}, legacy = null;
+    try { ({ versions: stats, legacy } = await funnelStats(ctx.service, f, start, end)); } catch { /* stats are best-effort; the versions still show */ }
     out.push({
       ...f,
       versions: ((versions ?? []) as VersionRow[]).map(v => ({ ...v, content: normalizeContent(v.content) })),
       stats,
+      legacy,
     });
   }
   return NextResponse.json({ ready: true, funnels: out });

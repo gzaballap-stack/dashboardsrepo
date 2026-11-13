@@ -98,7 +98,7 @@ type Ev = { version_id: string; visitor_id: string; event_type: string; step: nu
  * part of that day's spend that matches its part of that day's landing-page
  * visitors, the old funnel's visitors included.
  */
-export async function funnelStats(service: Service, funnel: FunnelRow, start?: string | null, end?: string | null): Promise<Record<string, VersionStats>> {
+export async function funnelStats(service: Service, funnel: FunnelRow, start?: string | null, end?: string | null): Promise<{ versions: Record<string, VersionStats>; legacy: VersionStats | null }> {
   const events = await all<Ev>(() => {
     let q = service.from('funnel_events')
       .select('version_id, visitor_id, event_type, step, ghl_contact_id, occurred_at')
@@ -177,6 +177,7 @@ export async function funnelStats(service: Service, funnel: FunnelRow, start?: s
   }
 
   // Ad spend, shared out by where each day's landing-page visitors went.
+  let allocated = 0;
   if (!funnel.client_id && visitsByDay.size) {
     try {
       const days = [...visitsByDay.keys()].sort();
@@ -201,11 +202,74 @@ export async function funnelStats(service: Service, funnel: FunnelRow, start?: s
         if (!spend) continue;
         const ours = [...byVersion.values()].reduce((a, b) => a + b, 0);
         const total = Math.max(landingByDay.get(day) ?? 0, ours);
-        for (const [v, n] of byVersion) of(v).spend += spend * (n / total);
+        for (const [v, n] of byVersion) { of(v).spend += spend * (n / total); allocated += spend * (n / total); }
       }
     } catch { /* no spend table: spend stays 0 */ }
   }
 
   for (const s of Object.values(stats)) { s.spend = Math.round(s.spend * 100) / 100; s.revenue = Math.round(s.revenue * 100) / 100; }
-  return stats;
+
+  let legacy: VersionStats | null = null;
+  if (!funnel.client_id) {
+    try { legacy = await legacyStats(service, funnel, start ?? null, end ?? null, allocated); } catch { /* no B2B tables here */ }
+  }
+  return { versions: stats, legacy };
+}
+
+/**
+ * The funnel that ran before this one: the GoHighLevel pages. Its numbers are
+ * the B2B funnel's own records (ads only, SMS left out) with everything that
+ * belongs to a version of the new funnel taken out: its visitors, its leads'
+ * contacts, and its share of ad spend. Counted by the date each thing happened,
+ * and only from the day page visits started being recorded, so the rates compare
+ * like with like.
+ */
+async function legacyStats(service: Service, funnel: FunnelRow, start: string | null, end: string | null, allocated: number): Promise<VersionStats | null> {
+  const first = await service.from('b2b_events').select('occurred_at').eq('event_type', 'visit_landing').order('occurred_at', { ascending: true }).limit(1);
+  if (first.error) throw new Error(first.error.message);
+  const firstDay = first.data?.[0]?.occurred_at?.slice(0, 10) ?? null;
+  if (!firstDay) return null;
+  const from = start && start > firstDay ? start : firstDay;
+
+  const mine = await all<{ visitor_id: string; ghl_contact_id: string | null; event_type: string }>(() =>
+    service.from('funnel_events').select('visitor_id, ghl_contact_id, event_type').eq('funnel_id', funnel.id).in('event_type', ['visit', 'lead']));
+  const newVisitors = new Set(mine.filter(e => e.event_type === 'visit').map(e => e.visitor_id));
+  const newContacts = new Set(mine.map(e => e.ghl_contact_id).filter((c): c is string => !!c));
+
+  const rows = await all<{ event_type: string; ghl_contact_id: string | null; external_id: string | null; revenue: number | null; occurred_at: string }>(() => {
+    let q = service.from('b2b_events').select('event_type, ghl_contact_id, external_id, revenue, occurred_at')
+      .in('event_type', ['visit_landing', 'lead', 'sales_call_booked', 'sales_call_shown', 'close'])
+      .or('ad_platform.is.null,ad_platform.neq.sms')
+      .gte('occurred_at', `${from}T00:00:00.000Z`).order('occurred_at', { ascending: true });
+    if (end) q = q.lte('occurred_at', `${end}T23:59:59.999Z`);
+    return q;
+  });
+
+  const s = empty();
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (r.ghl_contact_id && newContacts.has(r.ghl_contact_id)) continue;
+    if (r.event_type === 'visit_landing') {
+      const key = r.external_id;
+      if (key) {
+        if (newVisitors.has(key.split(':')[1] ?? '') || seen.has(key)) continue;
+        seen.add(key);
+      }
+      s.visitors++;
+    } else if (r.event_type === 'lead') s.leads++;
+    else if (r.event_type === 'sales_call_booked') s.booked++;
+    else if (r.event_type === 'sales_call_shown') s.shown++;
+    else { s.closed++; s.revenue += Number(r.revenue) || 0; }
+    if (!s.first_seen) s.first_seen = r.occurred_at;
+    s.last_seen = r.occurred_at;
+  }
+
+  const spend = await all<{ amount: number | null }>(() => {
+    let q = service.from('b2b_ad_spend').select('amount').gte('spend_date', from);
+    if (end) q = q.lte('spend_date', end);
+    return q;
+  });
+  s.spend = Math.max(0, Math.round((spend.reduce((a, r) => a + (Number(r.amount) || 0), 0) - allocated) * 100) / 100);
+  s.revenue = Math.round(s.revenue * 100) / 100;
+  return s;
 }
