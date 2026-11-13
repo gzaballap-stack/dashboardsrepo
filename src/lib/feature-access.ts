@@ -115,6 +115,7 @@ const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/b2b-stat-source",    features: ["b2b_tracking", "sms_dashboard"] },
   { prefix: "/api/sms-payout",         features: ["sms_dashboard"] },
   { prefix: "/api/sales-calls",        features: ["b2b_tracking"] },
+  { prefix: "/api/funnels",            features: ["b2b_tracking"] },
   { prefix: "/api/sales-pitches",      features: ["b2b_tracking"] },
   { prefix: "/api/b2b-ads",            features: ["b2b_tracking"] },
   { prefix: "/api/b2b-adsets",         features: ["b2b_tracking"] },

@@ -1,3 +1,69 @@
+## 2026-11-13 — Funnels: versions of the website funnel and what each produced (phase 1)
+
+Tomsi Media > **Funnels** (`src/components/Funnels.tsx`, gated on `b2b_tracking`).
+The start of the funnel builder the user asked for (a GHL / Lovable-style
+builder): **phase 1 = versions + per-version stats + a field editor**; phase 2
+= a visual editor (live preview, click to edit, drag sections); phase 3 = an AI
+chat that edits a version. User's choices: sections + AI chat (not free-form
+code), Tomsi's own funnels first with client funnels possible later
+(`funnels.client_id`), one live version by default with optional split tests,
+ads move to the new funnel once phase 1 works.
+
+- **Tables** (`supabase/migrations/add_funnels.sql`, `node scripts/migrate-funnels.mjs v1|v2`,
+  additive): `funnels`, `funnel_versions` (content jsonb, status draft / live /
+  paused / archived, weight), `funnel_events` (one row per person per step per
+  version). The funnel `check-your-market` and version 1 "Original" create
+  themselves on first use (`ensureDefaultFunnel`). Without the tables every
+  route answers "not set up" and the website shows the built-in funnel.
+- **Content** = `src/lib/funnel-content.ts`, the same file in the website repo
+  (`~/AIs/tomsimedia-site/src/lib/funnel-content.ts`) — **keep the two
+  identical**. Two pages (landing, booked) as ordered sections + the form's
+  wording + which revenue answers disqualify. `*asterisks*` = highlight. The
+  revenue options themselves are fixed (they are a GHL field's options).
+- **A version that has been live is frozen** (`published_at` set): content can
+  no longer be saved, so its numbers always describe one page. Change = copy →
+  edit → Make live (pauses the others) or Add to split test (shares traffic by
+  `weight`). The last live version cannot be paused.
+- **Website side**: `/check-your-market` asks `GET /api/webhooks/funnel?slug=`
+  which versions are live (answer kept 30 s, stale answer reused if the
+  dashboard is down, built-in content if there is none), picks one by weight,
+  keeps it per visitor in the `tm_fv` cookie, and posts steps to
+  `POST /api/webhooks/funnel` (`visit`, `step` 1–3, `disqualified`, `calendar`,
+  `booked` from the browser; `lead` from the website's `/api/lead` with the GHL
+  contact id). `?preview=tomsi&version=<id>` opens any version; a browser that
+  has used the preview key is never counted.
+- **Ads Dashboard continuity**: `visit` / `calendar` / `booked` of Tomsi's own
+  funnel are also passed to `/api/webhooks/b2b` as `visit_landing` /
+  `visit_calendar` / `visit_thankyou` (external id `<type>:<visitor>`), as the
+  old funnel page's snippet did, so those tiles keep counting when ads move.
+- **Stats** (`funnelStats`, `src/lib/funnels.ts`): people once per version;
+  booked / shown / closed / revenue come from `b2b_events` by the lead's
+  contact id (cohort: they belong to the version the lead came in on); ad spend
+  is `b2b_ad_spend` shared out per day by the version's share of that day's
+  landing visitors (old funnel's `visit_landing` rows included in the total).
+- Test data: `run-cleanup.mjs remove_website_funnel_tests` removes the named
+  test contacts' rows from `b2b_events` / `events`.
+
+## 2026-11-13 — Website funnel (tomsimedia.com/check-your-market): leads, UTMs, attribution
+
+The new Tomsi Media funnel lives in the **website repo** (`~/AIs/tomsimedia-site`,
+`/check-your-market`), not in GHL. Its leads are created through the GHL API
+(tag `funnel`), so GHL does **not** fill `attributionSource` for them — GHL only
+does that on its own forms / surveys / calendars, and the API cannot write it.
+
+- The funnel writes its UTMs into five contact fields in the Tomsi Media
+  sub-account: `UTM Source` / `Medium` / `Campaign` / `Content` / `Term`
+  (ids in `UTM_CUSTOM_FIELDS`, `src/lib/ghl-attribution.ts`). It also fills the
+  two fields the old survey filled (yearly revenue, the Yes/No question).
+- `fetchGhlAttribution` falls back to those fields **only when GHL's own record
+  is empty**. `b2bEvent` (`src/lib/ghl-direct.ts`) turns Meta ids riding in the
+  UTM slots into `campaign_id` / `adset_id` / `ad_id` when the payload has none.
+- The old GHL survey funnel (`clients.tomsimedia.com/check-area-availability`,
+  survey "Remodelers Area Availability Opt-In Survey") is still live and
+  unaffected.
+- A funnel lead only reaches the dashboard if the GHL "Ads - Leads" workflow
+  also fires for it (trigger: tag `funnel` added).
+
 ## 2026-11-13 — Client Billing: a reschedule is not a new appointment
 
 Owner: rescheduled appointments were showing up in billing as new ones to
