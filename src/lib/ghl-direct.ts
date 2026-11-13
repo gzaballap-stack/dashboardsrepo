@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
+import { mapGhlAttribution } from './ghl-attribution';
 
 // GHL workflows post straight to the app (no Make). GHL's Webhook action sends
 // its standard contact payload — flat contact fields (contact_id, first_name,
@@ -67,6 +68,28 @@ function attribution(p: GhlPayload): Record<string, string> {
   return out;
 }
 
+/**
+ * Leads from the website funnel carry their UTMs in contact fields ("UTM
+ * Source"…), which GHL sends along with every webhook. Read them the way GHL's
+ * own attribution record is read, so the Meta ids riding in the UTM slots become
+ * the campaign / ad set / ad ids the spend tables join on. Only fills what is
+ * missing, and only when the payload has no ids of its own.
+ */
+function withIdsFromUtms(attr: Record<string, string>): Record<string, string> {
+  if (attr.campaign_id || attr.adset_id || attr.ad_id) return attr;
+  if (!attr.utm_campaign && !attr.utm_source) return attr;
+  const mapped = mapGhlAttribution({
+    utmSource: attr.utm_source,
+    utmMedium: attr.utm_medium,
+    utmCampaign: attr.utm_campaign,
+    utmContent: attr.utm_content,
+    utmTerm: attr.utm_term,
+  });
+  const out = { ...attr };
+  for (const [k, v] of Object.entries(mapped)) if (v && !out[k]) out[k] = v;
+  return out;
+}
+
 function contact(p: GhlPayload) {
   return {
     ghl_contact_id: orNull(str(p.contact_id)),
@@ -112,7 +135,7 @@ export function b2bEvent(event: (typeof B2B_EVENTS)[number], p: GhlPayload): Rec
     occurred_at: now(),
     external_id: orNull(event === 'lead' ? field(p, 'lead_id') : field(p, 'appointment_id')),
     ...contact(p),
-    ...attribution(p),
+    ...withIdsFromUtms(attribution(p)),
   };
   const revenue = event === 'close' ? field(p, 'cash_collected') : field(p, 'revenue');
   if (revenue) body.revenue = revenue;

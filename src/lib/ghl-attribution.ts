@@ -1,5 +1,5 @@
 import type { Attribution } from './attribution';
-import { ATTRIBUTION_FIELDS } from './attribution';
+import { ATTRIBUTION_FIELDS, hasAttribution } from './attribution';
 
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 const GHL_VERSION = '2021-07-28';
@@ -74,6 +74,37 @@ export function mapGhlAttribution(src: GhlAttribution | null | undefined): Attri
   return out;
 }
 
+/**
+ * The Tomsi Media sub-account's UTM contact fields (custom field id → the name
+ * GHL's own attribution record uses).
+ *
+ * GHL fills `attributionSource` only on its own forms, surveys and calendars,
+ * and it cannot be written through the API. Leads from the website funnel
+ * (tomsimedia.com) are created through the API, so the funnel writes its UTMs
+ * into these contact fields instead. They are read only when GHL's own record
+ * is empty, so nothing changes for a contact GHL already attributed.
+ */
+const UTM_CUSTOM_FIELDS: Record<string, string> = {
+  EzXVddJhKcSotusii4cD: 'utmSource',
+  LZrpPMo8ZDKsnqMvxyVH: 'utmMedium',
+  dOXxUwaaZIL6XnK4DZrh: 'utmCampaign',
+  ZXWCFHQjfp8sBux798NT: 'utmContent',
+  BBzAbWAWIZDdlA5VLKXj: 'utmTerm',
+};
+
+/** A GHL-shaped attribution record built from the contact's UTM fields, or null if they are empty. */
+function attributionFromCustomFields(contact: unknown): GhlAttribution | null {
+  const list = (contact as { customFields?: unknown } | null)?.customFields;
+  if (!Array.isArray(list)) return null;
+  const out: GhlAttribution = {};
+  for (const f of list as Array<Record<string, unknown>>) {
+    const name = UTM_CUSTOM_FIELDS[String(f?.id ?? '')];
+    const value = f?.value ?? f?.field_value ?? f?.fieldValue;
+    if (name && value !== undefined && value !== null && String(value).trim() !== '') out[name] = String(value).trim();
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export type GhlFetchResult =
   | {
       ok: true;
@@ -139,9 +170,16 @@ export async function fetchGhlAttribution(
 
   const hasLast = last && typeof last === 'object' && Object.keys(last).length > 0;
 
+  // GHL's own record first; the funnel's UTM contact fields only when it is empty.
+  let attribution = mapGhlAttribution(src);
+  if (!hasAttribution(attribution)) {
+    const fromFields = attributionFromCustomFields(contact);
+    if (fromFields) attribution = mapGhlAttribution(fromFields);
+  }
+
   return {
     ok: true,
-    attribution: mapGhlAttribution(src),
+    attribution,
     lastTouch: hasLast ? mapGhlAttribution(last) : null,
     zip: pick(contact ?? {}, 'postalCode', 'postal_code', 'zip', 'zipCode'),
     raw: src,
