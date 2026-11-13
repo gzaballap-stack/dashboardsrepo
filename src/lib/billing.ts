@@ -227,3 +227,89 @@ export function isMissingTable(error: { code?: string; message?: string } | null
   return error.code === '42P01' || error.code === 'PGRST205'
     || /schema cache|does not exist/i.test(error.message ?? '');
 }
+
+/* ── reschedules ──────────────────────────────────────────────────────────────
+   GHL sends a rescheduled appointment as a booking of its own (a new event
+   row) unless it kept the same appointment id. For billing that is not a new
+   appointment: the same lead booking again with the same client belongs to the
+   appointment they already have, and is never billed a second time.
+
+   The same goes for a show / no-show: GHL posts it as a row of its own, next to
+   the booking it is the outcome of. It is not an appointment either — it tells
+   how that booking went.
+
+   A booking is a reschedule of the lead's earlier one unless:
+     · it has been billed, credited or marked not billed in its own right — then
+       it stands alone (that is also how one is overruled by hand); or
+     · the earlier one had already been credited or marked not billed when this
+       one was booked — the lead coming back after that is a fresh appointment.
+   Worked out when the page is read; nothing is stored. */
+
+export type Booking = {
+  id: string; client_id: string; at: string;
+  /** appointment_booked | show | no_show */
+  type?: string | null;
+  contact_id?: string | null; phone?: string | null; scheduled_at?: string | null;
+};
+
+/** The same lead at the same client: their GHL contact, else their phone. */
+export function leadKey(b: Booking): string | null {
+  const id = typeof b.contact_id === 'string' ? b.contact_id.trim() : '';
+  if (id) return `${b.client_id}|c:${id}`;
+  const digits = String(b.phone ?? '').replace(/\D/g, '');
+  return digits.length >= 7 ? `${b.client_id}|p:${digits.slice(-10)}` : null;
+}
+
+export type Reschedules = {
+  /** a row that is not an appointment of its own → the appointment it belongs to */
+  of: Map<string, Booking>;
+  /** why: the lead booked again, or it is that appointment's show / no-show */
+  kind: Map<string, 'reschedule' | 'outcome'>;
+  /** appointment → how it went, from the show / no-show row posted after it */
+  outcome: Map<string, string>;
+  /** appointment → its latest reschedule, and how many there were */
+  latest: Map<string, { booked_at: string; scheduled_at: string | null; count: number }>;
+};
+
+export function findReschedules(
+  bookings: Booking[],
+  tracked: Map<string, { credited_at?: unknown; cancelled_at?: unknown }>,
+): Reschedules {
+  const of = new Map<string, Booking>();
+  const kind: Reschedules['kind'] = new Map();
+  const outcome: Reschedules['outcome'] = new Map();
+  const latest: Reschedules['latest'] = new Map();
+  const groups = new Map<string, Booking[]>();
+  const seen = new Set<string>();
+  for (const b of bookings) {
+    if (seen.has(b.id)) continue;
+    seen.add(b.id);
+    const key = leadKey(b);
+    if (!key) continue;
+    groups.set(key, [...(groups.get(key) ?? []), b]);
+  }
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => time(a.at) - time(b.at));
+    let original: Booking | null = null;
+    for (const b of list) {
+      if (tracked.has(b.id)) { original = b; continue; }        // dealt with in its own right
+      // How the appointment went is never an appointment of its own.
+      if (original && (b.type === 'show' || b.type === 'no_show')) {
+        of.set(b.id, original); kind.set(b.id, 'outcome'); outcome.set(original.id, b.type);
+        continue;
+      }
+      if (original) {
+        const row = tracked.get(original.id);
+        const closed = (row?.cancelled_at ?? row?.credited_at) as string | null | undefined;
+        if (!closed || time(b.at) <= time(closed)) {
+          of.set(b.id, original); kind.set(b.id, 'reschedule');
+          latest.set(original.id, { booked_at: b.at, scheduled_at: b.scheduled_at ?? null, count: (latest.get(original.id)?.count ?? 0) + 1 });
+          continue;
+        }
+      }
+      original = b;
+    }
+  }
+  return { of, kind, outcome, latest };
+}

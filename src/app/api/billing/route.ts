@@ -3,7 +3,8 @@ import { getAuthContext, isAuthError, type AuthContext } from '@/lib/api-auth';
 import {
   APPOINTMENT_TYPES, LIVE_CHARGE_STATUSES, STRIPE_MINIMUM,
   canBill, creditBalance, creditInAppointments, isMissingColumn, isMissingTable, oldestOpenCredit, paidByCredit,
-  namesNote, planCharge, planCovers, returnsBySource, round2, sourceOf, sourceRecorded, toCents,
+  namesNote, planCharge, planCovers, findReschedules, returnsBySource, round2, sourceOf, sourceRecorded, toCents,
+  type Booking,
   type BillingState, type Source,
 } from '@/lib/billing';
 import {
@@ -107,6 +108,33 @@ async function setCharge(service: Service, id: string, patch: Row) {
   return data as Row | null;
 }
 
+/* ── reschedules ── */
+
+// What telling one lead's bookings apart needs from an event.
+const LEAD = 'ghl_contact_id, lead_phone';
+const BOOKING_COLS = `id, client_id, event_type, occurred_at, scheduled_at, ${LEAD}`;
+const booking = (e: Row): Booking => ({
+  id: e.id as string, client_id: e.client_id as string, at: e.occurred_at as string, type: e.event_type as string | null,
+  contact_id: e.ghl_contact_id as string | null, phone: e.lead_phone as string | null,
+  scheduled_at: (e.scheduled_at as string | null) ?? null,
+});
+
+// The appointments these leads booked before `before` — what a booking in the
+// period may be a reschedule of. Only the leads on screen are looked up, so a
+// month's view never reads the whole history. Best effort: a failed read just
+// means a reschedule is not recognised, never that the page fails.
+async function earlierBookings(service: Service, events: Row[], before: string | null): Promise<Row[]> {
+  if (!before || !events.length) return [];
+  const ids = [...new Set(events.map(e => e.ghl_contact_id as string | null).filter((v): v is string => !!v))];
+  const phones = [...new Set(events.filter(e => !e.ghl_contact_id).map(e => e.lead_phone as string | null).filter((v): v is string => !!v))];
+  const read = (column: string, part: string[]) => service.from('events').select(BOOKING_COLS)
+    .in('event_type', APPOINTMENT_TYPES).in(column, part).lt('occurred_at', before).limit(1000);
+  try {
+    const found = await Promise.all([...chunks(ids).map(p => read('ghl_contact_id', p)), ...chunks(phones).map(p => read('lead_phone', p))]);
+    return found.flatMap(r => (r.error ? [] : (r.data ?? []) as Row[]));
+  } catch { return []; }
+}
+
 // Marks a client's next bookings as covered by the credit they hold. Each cover
 // is a charge of 0 paid in full by credit, holding that one appointment — the
 // same record a hand-made "use credit" charge leaves, so everything that reads
@@ -121,7 +149,7 @@ async function coverWithCredit(service: Service, clientId: string): Promise<numb
   if (price <= 0) return 0;
 
   const [appts, credits, charges] = await Promise.all([
-    readAll((a, b) => service.from('billing_appointments').select('event_id, credit_amount, credited_at').eq('client_id', clientId).range(a, b)),
+    readAll((a, b) => service.from('billing_appointments').select(APPT_COLS).eq('client_id', clientId).range(a, b)),
     readAll((a, b) => service.from('billing_credits').select('amount, created_at').eq('client_id', clientId).range(a, b)),
     readAll((a, b) => service.from('billing_charges').select('credit_applied, status').eq('client_id', clientId).gt('credit_applied', 0).range(a, b)),
   ]);
@@ -135,14 +163,19 @@ async function coverWithCredit(service: Service, clientId: string): Promise<numb
   const since = oldestOpenCredit(entries, used);
   if (!since) return 0;
 
-  const { data: events, error } = await service.from('events')
-    .select('id, lead_name, scheduled_at, occurred_at')
+  // Every appointment they have had, not just the ones since the credit: a
+  // booking since then may be a reschedule of an older one, and a reschedule
+  // is not a new appointment — it must not use up a credit.
+  const history = await readAll((a, b) => service.from('events')
+    .select(`lead_name, ${BOOKING_COLS}`)
     .eq('client_id', clientId).in('event_type', APPOINTMENT_TYPES)
-    .gte('occurred_at', since).order('occurred_at', { ascending: true }).limit(500);
-  if (error || !events?.length) return 0;
+    .order('occurred_at', { ascending: true }).range(a, b), 10);
+  if (history.error || !history.rows.length) return 0;
 
-  const tracked = new Set(appts.rows.map(a => a.event_id as string));
-  const open = events.filter(e => !tracked.has(e.id as string));
+  const tracked = new Map(appts.rows.map(a => [a.event_id as string, a]));
+  const moved = findReschedules(history.rows.map(booking), tracked).of;
+  const events = history.rows.filter(e => new Date(e.occurred_at as string).getTime() >= new Date(since).getTime());
+  const open = events.filter(e => !tracked.has(e.id as string) && !moved.has(e.id as string)).slice(0, 500);
   const plan = planCovers({ credits: entries, used, price, candidates: open.map(e => ({ id: e.id as string, at: e.occurred_at as string })) });
   if (!plan.length) return 0;
 
@@ -339,6 +372,19 @@ function billingView(a: Row | undefined, charge: Row | undefined) {
   };
 }
 
+// What a screen needs to show a reschedule: on the reschedule, the appointment
+// it belongs to; on that appointment, where it was moved to.
+function rescheduleView(moved: ReturnType<typeof findReschedules>, id: string) {
+  const original = moved.of.get(id);
+  const latest = moved.latest.get(id);
+  return {
+    // kind 'outcome' = the show / no-show row of that appointment: screens leave it out.
+    reschedule_of: original ? { event_id: original.id, booked_at: original.at, scheduled_at: original.scheduled_at ?? null, kind: moved.kind.get(id) ?? 'reschedule' } : null,
+    rescheduled_to: latest ? (latest.scheduled_at ?? latest.booked_at) : null,
+    reschedules: latest?.count ?? 0,
+  };
+}
+
 /* ── GET ──────────────────────────────────────────────────────────────────── */
 
 // Each view asks for everything it needs at once — the access check included —
@@ -382,7 +428,7 @@ export async function GET(req: Request) {
       canBill(ctx), readSettings(),
       service.from('clients').select('id, name, service, is_internal'),
       readAll((a, b) => service.from('events')
-        .select(`id, client_id, event_type, occurred_at, scheduled_at, lead_name, lead_phone, calendar_name, ${ATTRIBUTION}`)
+        .select(`id, client_id, event_type, occurred_at, scheduled_at, lead_name, lead_phone, ghl_contact_id, calendar_name, ${ATTRIBUTION}`)
         .in('event_type', APPOINTMENT_TYPES)
         .gte('occurred_at', new Date(fromMs).toISOString()).lte('occurred_at', new Date(toMs).toISOString())
         .order('occurred_at', { ascending: false }).range(a, b), 5),
@@ -398,8 +444,10 @@ export async function GET(req: Request) {
     // The credits each of those clients still holds, so the panel can show
     // them and offer to use one. An extra: unreadable = shown as none.
     const clientIds = [...new Set(mine.map(e => e.client_id as string))];
+    // What these leads booked before the window: one of today's may be a reschedule.
+    const before = (await earlierBookings(service, mine, new Date(fromMs).toISOString())).filter(e => known.has(e.client_id as string));
     const [tracked, heldAppts, heldCredits, heldCharges] = await Promise.all([
-      trackedRows(service, mine.map(e => e.id as string)),
+      trackedRows(service, [...mine, ...before].map(e => e.id as string)),
       readAll((a, b) => service.from('billing_appointments').select('client_id, credit_amount').in('client_id', clientIds).gt('credit_amount', 0).range(a, b)),
       readAll((a, b) => service.from('billing_credits').select('client_id, amount').in('client_id', clientIds).range(a, b)),
       readAll((a, b) => service.from('billing_charges').select('client_id, credit_applied, status').in('client_id', clientIds).gt('credit_applied', 0).range(a, b)),
@@ -416,6 +464,7 @@ export async function GET(req: Request) {
       return [id, creditInAppointments(balance, num(settings.get(id)?.price_per_appointment))] as const;
     }));
     const apptByEvent = new Map(tracked.rows.map(a => [a.event_id as string, a]));
+    const moved = findReschedules([...before, ...mine].map(booking), apptByEvent);
 
     const chargeById = new Map<string, Row>();
     const chargeIds = [...new Set(tracked.rows.map(a => a.charge_id as string | null).filter((id): id is string => !!id))];
@@ -432,11 +481,12 @@ export async function GET(req: Request) {
           price: num(settings.get(client.id as string)?.price_per_appointment),
           credits_owed: creditsHeld.get(client.id as string) ?? 0,
           weekly: settings.get(client.id as string)?.billing_cycle === 'weekly',
-          outcome: e.event_type, booked_at: e.occurred_at, scheduled_at: e.scheduled_at,
+          outcome: moved.outcome.get(e.id as string) ?? e.event_type, booked_at: e.occurred_at, scheduled_at: e.scheduled_at,
           lead_name: e.lead_name, lead_phone: e.lead_phone, calendar: e.calendar_name,
           source: sourceOf(e, client.service as string | null),
           // Nothing was recorded on the booking: the source is what the client runs.
           source_assumed: !sourceRecorded(e) && sourceOf(e, client.service as string | null) !== 'unknown',
+          ...rescheduleView(moved, e.id as string),
           billing: billingView(a, a?.charge_id ? chargeById.get(a.charge_id as string) : undefined),
         };
       }),
@@ -470,7 +520,7 @@ export async function GET(req: Request) {
       return Promise.all([
       readAll((a, b) => {
         let q = service.from('events')
-          .select(`id, event_type, occurred_at, scheduled_at, lead_name, lead_phone, calendar_name, ${ATTRIBUTION}`)
+          .select(`id, client_id, event_type, occurred_at, scheduled_at, lead_name, lead_phone, ghl_contact_id, calendar_name, ${ATTRIBUTION}`)
           .eq('client_id', clientId).in('event_type', APPOINTMENT_TYPES)
           .order('occurred_at', { ascending: false }).range(a, b);
         if (from) q = q.gte('occurred_at', from);
@@ -480,9 +530,14 @@ export async function GET(req: Request) {
       readAll((a, b) => service.from('billing_appointments').select(APPT_COLS).eq('client_id', clientId).range(a, b)),
       readAll((a, b) => service.from('billing_charges').select(CHARGE_COLS).eq('client_id', clientId).order('created_at', { ascending: false }).range(a, b), 2),
         readAll((a, b) => service.from('billing_credits').select('id, amount, reason, created_at').eq('client_id', clientId).order('created_at', { ascending: false }).range(a, b), 2),
+        // Every booking they have had, whatever the period: a reschedule and
+        // the appointment it belongs to are often in different months.
+        from || to ? readAll((a, b) => service.from('events').select(BOOKING_COLS)
+          .eq('client_id', clientId).in('event_type', APPOINTMENT_TYPES).order('occurred_at', { ascending: false }).range(a, b), 10)
+          : Promise.resolve({ rows: [] as Row[], error: null }),
       ]);
     };
-    const [[events, appts, charges, credits], { customer, customerError }, smsRows, shared] = await Promise.all([
+    const [[events, appts, charges, credits, history], { customer, customerError }, smsRows, shared] = await Promise.all([
       readRecords(), readCustomer(), readSms(service, { clientId, start, end }), profileFor(ctx, client),
     ]);
     const costs = smsCost(smsRows);
@@ -493,6 +548,7 @@ export async function GET(req: Request) {
     const apptByEvent = new Map(appts.rows.map(a => [a.event_id as string, a]));
 
     const billingOf = (a: Row | undefined) => billingView(a, a?.charge_id ? chargeById.get(a.charge_id as string) : undefined);
+    const moved = findReschedules([...(history.error ? [] : history.rows), ...events.rows].map(booking), apptByEvent);
 
     const price = num(s?.price_per_appointment);
     const balance = creditBalance(
@@ -531,7 +587,7 @@ export async function GET(req: Request) {
 
     // Each appointment's source, and what each source cost and returns.
     const sources = new Map<string, Source>(events.rows.map(e => [e.id as string, sourceOf(e, client.service as string | null)]));
-    const returns = returnsBySource(events.rows.map(e => {
+    const returns = returnsBySource(events.rows.filter(e => !moved.of.has(e.id as string)).map(e => {
       const b = billingOf(apptByEvent.get(e.id as string));
       return { source: sources.get(e.id as string)!, state: (b ? b.state : 'to_bill') as BillingState, price: b?.price ?? 0, clientPrice: price };
     }), costs);
@@ -548,10 +604,11 @@ export async function GET(req: Request) {
       // What they are still owed, in appointments: bookings that won't be billed.
       credits_owed: creditInAppointments(balance, price),
       appointments: events.rows.map(e => ({
-        event_id: e.id, outcome: e.event_type, booked_at: e.occurred_at, scheduled_at: e.scheduled_at,
+        event_id: e.id, outcome: moved.outcome.get(e.id as string) ?? e.event_type, booked_at: e.occurred_at, scheduled_at: e.scheduled_at,
         lead_name: e.lead_name, lead_phone: e.lead_phone, calendar: e.calendar_name,
         source: sources.get(e.id as string),
         source_assumed: !sourceRecorded(e) && sources.get(e.id as string) !== 'unknown',
+        ...rescheduleView(moved, e.id as string),
         billing: billingOf(apptByEvent.get(e.id as string)),
       })),
       ledger,
@@ -570,7 +627,7 @@ export async function GET(req: Request) {
     canBill(ctx), readSettings(),
     service.from('clients').select('id, name, status, service, is_internal').order('name'),
     readAll((a, b) => {
-      let q = service.from('events').select(`id, client_id, ${ATTRIBUTION}`).in('event_type', APPOINTMENT_TYPES).order('occurred_at', { ascending: false }).range(a, b);
+      let q = service.from('events').select(`${BOOKING_COLS}, ${ATTRIBUTION}`).in('event_type', APPOINTMENT_TYPES).order('occurred_at', { ascending: false }).range(a, b);
       if (from) q = q.gte('occurred_at', from);
       if (to) q = q.lte('occurred_at', to);
       return q;
@@ -619,6 +676,14 @@ export async function GET(req: Request) {
   }
   const tracked = new Set(appts.rows.map(a => a.event_id as string));
   const chargeById = new Map(charges.rows.map(c => [c.id as string, c]));
+  // A reschedule is counted with the appointment it belongs to, not again.
+  const folded = findReschedules(
+    [...(await earlierBookings(service, events.rows, from)), ...events.rows].map(booking),
+    new Map(appts.rows.map(a => [a.event_id as string, a])),
+  );
+  const moved = folded.of;
+  const counted = { rows: events.rows.filter(e => !moved.has(e.id as string)) };
+  const countedBy = by(counted.rows);
 
   // Every appointment in the period with its source and where it stands, for
   // the return on each source across all clients.
@@ -632,7 +697,7 @@ export async function GET(req: Request) {
   };
   const internal = new Set((clients.data ?? []).filter(c => c.is_internal).map(c => c.id as string));
   const serviceOf = new Map((clients.data ?? []).map(c => [c.id as string, c.service as string | null]));
-  const sourced = events.rows.filter(e => e.client_id && !internal.has(e.client_id as string)).map(e => {
+  const sourced = counted.rows.filter(e => e.client_id && !internal.has(e.client_id as string)).map(e => {
     const a = apptByEvent.get(e.id as string);
     return {
       client_id: e.client_id as string,
@@ -653,14 +718,16 @@ export async function GET(req: Request) {
     const mine = chargesBy.get(c.id) ?? [];
     const myAppts = apptsBy.get(c.id) ?? [];
     const bySource = sourcedBy.get(c.id) ?? [];
-    const uncharged = (eventsBy.get(c.id) ?? []).filter(e => !tracked.has(e.id as string)).length;
+    const uncharged = (countedBy.get(c.id) ?? []).filter(e => !tracked.has(e.id as string)).length;
     const sum = (list: Row[]) => round2(list.reduce((t, r) => t + num(r.total), 0));
     return {
       id: c.id, name: c.name, status: c.status, service: c.service ?? null,
       price,
       stripe_linked: !!s?.stripe_customer_id,
       weekly: s?.billing_cycle === 'weekly',
-      appointments: (eventsBy.get(c.id) ?? []).length,
+      appointments: (countedBy.get(c.id) ?? []).length,
+      // Bookings in the period that are a lead's reschedule, not a new appointment.
+      rescheduled: (eventsBy.get(c.id) ?? []).filter(e => folded.kind.get(e.id as string) === 'reschedule').length,
       sms_appointments: bySource.filter(a => a.source === 'sms').length,
       ads_appointments: bySource.filter(a => a.source === 'ads').length,
       unknown_appointments: bySource.filter(a => a.source === 'unknown').length,

@@ -1,3 +1,71 @@
+## 2026-11-13 — Client Billing: a reschedule is not a new appointment
+
+Owner: rescheduled appointments were showing up in billing as new ones to
+bill. He wants them marked on the original and never billed again.
+
+- **Why they appeared**: GHL sends a reschedule as a booking of its own — a new
+  `events` row — unless it kept the same appointment id (then `webhooks`
+  upserts on `external_id` and it is the same row). Nothing in billing knew the
+  two rows were one appointment.
+- **The rule** (`findReschedules` / `leadKey` in `lib/billing.ts`, worked out
+  when the page is read — **nothing is stored, ingestion is untouched**): the
+  same lead (GHL contact id, else the last 10 digits of the phone) booking
+  again with the same client is a reschedule of the appointment they already
+  have. Two exceptions:
+  - it was billed / credited / marked not billed in its own right → it stands
+    alone. That is also the override: **Bill it anyway** on its card.
+  - the earlier one had already been credited or marked not billed when this
+    one was booked → the lead coming back is a fresh appointment (so a
+    credited no-show who rebooks is billed, or paid with that credit).
+- **What a reschedule does in billing**: not counted in Appointments, Not
+  tracked, the money "if billed" or Return by source; not offered by Bill all
+  or Tick all; **never uses up a credit** (`coverWithCredit` skips it). The
+  original's card says **Rescheduled to <date>** (× times). The reschedule
+  itself shows greyed as **Rescheduled** in today's panel, and on the client
+  page only under a **Rescheduled (N)** filter that appears when there are any.
+  The client list shows "+N rescheduled" under Appointments.
+- **Reads added**: the list and today's panel look up earlier bookings for the
+  leads on screen only (by contact id / phone, chunks of 150) — one more round
+  trip each; a client page reads that client's booking history alongside what
+  it already reads. A failed lookup just means a reschedule is not recognised.
+- **A show / no-show is that appointment's outcome, not an appointment.**
+  Found while reading the ingestion code: since Make was retired (2026-10-26)
+  `ghl-direct.ts` sends `external_id` on `appointment_booked` only, so a show
+  or no-show reaches `/api/webhooks` with none and is **inserted as a row of
+  its own** beside the booking (the Make blueprints sent one and upserted, i.e.
+  flipped the booking in place). Billing lists `appointment_booked`, `show` and
+  `no_show`, so a booking that showed would be listed twice. `findReschedules`
+  now folds such a row into the lead's booking (`kind: 'outcome'`): never
+  listed, counted, billed or paid with credit, and the booking's card takes its
+  Showed / No-show from it. **Unverified on V1** — nobody has looked at the
+  rows; `node scripts/appointment-repeats.mjs v1` (read-only, counts only)
+  shows whether it is so and how reschedules arrive.
+- **Cards**: an appointment still to deal with is amber and raised with a
+  filled "Not tracked" badge; one already dealt with is grey and flat ("✓
+  Billed"). In today's panel the ones to do come first. Owner: billed and
+  untracked looked too alike.
+- **Not done / to know**:
+  - The **main dashboard still counts a reschedule as a booking**. The owner
+    wants that fixed ("some sort of system"). **Deliberately not built blind**:
+    it means changing `webhooks/route.ts` (every client's bookings on V1) and
+    the right rule depends on what the report above shows — whether a
+    reschedule is a second `appointment_booked`, how long after, and whether
+    shows are separate rows (then `booked − shows − no_shows` in `metrics.ts`
+    is the intended model and a "pending" booking is one with no outcome row).
+    Next step: read that report, then fold reschedules on arrival (keep the
+    first booking's date, move its time, keep the payload) and decide about
+    rows already stored.
+  - A reschedule that kept its GHL appointment id is the same row: it never
+    showed twice, but it is not labelled "Rescheduled" either (the old time is
+    overwritten on arrival, and its booked date moves to the day it was
+    moved). Labelling it needs a change in `webhooks/route.ts`.
+  - A lead with neither contact id nor phone can't be matched.
+  - A genuine second job from the same lead is treated as a reschedule until
+    someone presses Bill it anyway.
+- Tested on a simulated database (10 scenarios) and a made-up-data preview.
+  **Not run against real data** — how many existing bookings it reclassifies
+  on V1 is unknown.
+
 ## 2026-11-13 — Client Billing: weekly clients, SMS margin, period buttons show they are loading
 
 - **Billed daily or weekly, per client** (`billing_clients.billing_cycle`,

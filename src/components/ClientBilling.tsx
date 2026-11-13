@@ -37,6 +37,8 @@ type ClientRow = {
   assumed_appointments?: number;
   /** Billed weekly: kept out of the daily list, dealt with on Saturday. */
   weekly?: boolean;
+  /** Bookings in the period that are a reschedule, not counted as appointments. */
+  rescheduled?: number;
 };
 
 type Source = "ads" | "sms" | "unknown";
@@ -68,8 +70,22 @@ type Appointment = {
   source: Source;
   /** Nothing was recorded on the booking: the source is what the client runs. */
   source_assumed?: boolean;
+  /** This booking is the same lead rescheduling: it belongs to that appointment and is not billed again. */
+  reschedule_of?: { event_id: string; booked_at: string; scheduled_at: string | null; kind?: "reschedule" | "outcome" } | null;
+  /** This appointment was rescheduled: where to, and how many times. */
+  rescheduled_to?: string | null;
+  reschedules?: number;
   billing: ApptBilling | null;
 };
+
+/** The show / no-show update of an appointment: GHL posts it as a row of its
+ *  own, but it is that appointment's outcome (already on its card), so no
+ *  screen lists it. */
+const isOutcomeRow = (a: Appointment) => !a.billing && a.reschedule_of?.kind === "outcome";
+/** A lead's reschedule that nobody has billed in its own right: nothing to decide. */
+const isReschedule = (a: Appointment) => !a.billing && !!a.reschedule_of;
+/** Still waiting for someone to bill it, credit it or mark it not billed. */
+const pending = (a: Appointment) => !a.billing && !a.reschedule_of;
 
 type Charge = {
   id: string; kind: "appointments" | "custom"; description: string; appointment_count: number;
@@ -879,14 +895,19 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
   const b = a.billing;
   const on = !!ticked;
   const waiting = b?.charge_status === "pending" || b?.charge_status === "draft";
-  const status = !b ? { text: "Not tracked", color: WARN, hint: "" }
+  // The same lead booking again: it belongs to their appointment, nothing to decide.
+  const moved = isReschedule(a);
+  const undecided = !b && !moved;
+  const status = moved ? { text: "Rescheduled", color: MUTED, hint: `Same lead as the booking of ${day(a.reschedule_of?.booked_at)} — not billed again` }
+    : !b ? { text: "Not tracked", color: WARN, hint: "" }
     : b.state === "cancelled" ? { text: STATE.cancelled.label, color: STATE.cancelled.color, hint: "" }
     : b.state === "credited" ? { text: `${STATE.credited.label} · ${money(b.credit_amount)}`, color: STATE.credited.color, hint: STATE.credited.hint }
     : b.state === "covered" ? { text: STATE.covered.label, color: STATE.covered.color, hint: STATE.covered.hint }
     : { text: `Billed ${money(b.price)}${waiting ? " · awaiting payment" : ""}`, color: waiting ? WARN : GOOD, hint: "" };
   const small: React.CSSProperties = { padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flex: 1 };
   const quiet: React.CSSProperties = { ...small, flex: "none", background: "transparent", color: MUTED, padding: "4px 0" };
-  const last = !b ? null
+  const last = moved ? <button disabled={busy} onClick={onBill} title="Only if this really is a second appointment" style={quiet}>Bill it anyway</button>
+    : !b ? null
     : b.state === "cancelled" ? <button disabled={busy} onClick={onUncancel} style={quiet}>Undo</button>
     : b.state === "credited" ? <button disabled={busy} onClick={onUncredit} style={quiet}>Undo credit</button>
     // A credit paid for it: if it turns out bad, the credit goes back to them.
@@ -898,21 +919,30 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
   return (
     <div
       style={{
-        background: CARD, borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 10, minWidth: 0,
-        border: on ? "1.5px solid #000000" : !b ? "1px solid rgba(138,97,0,0.35)" : BORDER,
+        // One still to deal with stands out — amber, raised. One already dealt
+        // with sits back — grey, flat — so the two are never mistaken at a glance.
+        background: undecided ? "#fff7e0" : "#f5f5f3", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 10, minWidth: 0,
+        border: on ? "1.5px solid #000000" : undecided ? "1.5px solid rgba(138,97,0,0.6)" : "1px solid rgba(0,0,0,0.05)",
+        opacity: moved ? 0.75 : 1,
         ...(edge && !on ? { borderLeft: `4px solid ${edge}` } : {}),
-        boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+        boxShadow: undecided ? "0 1px 2px rgba(138,97,0,0.10), 0 8px 18px -10px rgba(138,97,0,0.35)" : "none",
       }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-        {!b && onTick && (
+        {undecided && onTick && (
           <input type="checkbox" aria-label={`Select ${a.lead_name ?? "appointment"}`} checked={on} onChange={onTick} style={{ marginTop: 3 }} />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: 14, fontWeight: 700, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.lead_name ?? "No name"}</p>
+          <p style={{ fontSize: 14, fontWeight: 700, color: undecided ? INK : "#4a4a4a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.lead_name ?? "No name"}</p>
           <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
             {day(a.scheduled_at ?? a.booked_at)}
             {a.scheduled_at && <span style={{ color: FAINT }}> · booked {day(a.booked_at)}</span>}
           </p>
+          {a.rescheduled_to && (
+            <p style={{ fontSize: 12, fontWeight: 600, color: FREE, marginTop: 2 }}
+              title="The same lead booked again. It is this appointment, moved — not a new one, and not billed again.">
+              {`Rescheduled to ${day(a.rescheduled_to)}${(a.reschedules ?? 0) > 1 ? ` · ${a.reschedules} times` : ""}`}
+            </p>
+          )}
         </div>
         <Pill text={`${SOURCE_LABEL[a.source]}${a.source_assumed ? " · assumed" : ""}`} color={a.source_assumed ? MUTED : SOURCE_COLOR[a.source]}
           title={a.source === "unknown" ? "No ad or SMS source was recorded for this booking, and this client runs both"
@@ -922,12 +952,14 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
         <span style={{ color: a.outcome === "no_show" ? BAD : a.outcome === "show" ? GOOD : MUTED, fontWeight: 600 }}>{OUTCOME[a.outcome] ?? a.outcome}</span>
         <span style={{ flex: 1 }} />
-        <span style={{ color: status.color, fontWeight: 700 }} title={b?.credit_reason ?? undefined}>{status.text}</span>
+        {undecided
+          ? <span style={{ background: WARN, color: "#ffffff", fontWeight: 700, fontSize: 11.5, padding: "2px 9px", borderRadius: 999 }}>Not tracked</span>
+          : <span style={{ color: status.color, fontWeight: 700 }} title={b?.credit_reason ?? undefined}>{`${b?.state === "charged" && !waiting ? "✓ " : ""}${status.text}`}</span>}
       </div>
       {status.hint && <p style={{ fontSize: 11.5, color: MUTED, marginTop: -4 }}>{status.hint}</p>}
-      {(!b || last) && (
+      {(undecided || last) && (
         <div style={{ display: "flex", gap: 6, borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 10 }}>
-          {!b ? (<>
+          {undecided ? (<>
             <button disabled={busy} onClick={onBill} title={holdsCredit ? "They hold a credit — it pays for this one" : undefined} style={{ ...small, background: "#000000", color: "#ffffff" }}>
               {holdsCredit ? "Use a credit" : `Bill${price ? ` ${money(price)}` : ""}`}
             </button>
@@ -976,7 +1008,7 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
     query({ view: "recent", from: startOfWeek(1).toISOString(), to: new Date().toISOString() })}`)
       .then(data => {
         if (!live) return;
-        setRows((data.appointments ?? []).map((a: RecentAppt) => ({
+        setRows((data.appointments ?? []).filter((a: RecentAppt) => !isOutcomeRow(a)).map((a: RecentAppt) => ({
           ...a, source: a.source ?? "ads", price: Number(a.price ?? 0) || 0,
           credits: Number((a as { credits_owed?: number }).credits_owed ?? 0) || 0,
           weekly: a.weekly === true,
@@ -1015,17 +1047,17 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
   const inSpan = (a: RecentAppt, which: RecentSpan) => {
     const t = new Date(a.booked_at).getTime();
     // Weekly clients: this week's bookings, plus any from last week still waiting.
-    if (which === "weekly") return a.weekly && (t >= week0 || !a.billing);
+    if (which === "weekly") return a.weekly && (t >= week0 || pending(a));
     if (a.weekly) return false;
     return which === "today" ? t >= today0 : which === "yesterday" ? t >= yesterday0 && t < today0 : t >= sevenDays0;
   };
   const all = rows ?? [];
-  const open = (which: RecentSpan) => all.filter(a => inSpan(a, which) && !a.billing).length;
+  const open = (which: RecentSpan) => all.filter(a => inSpan(a, which) && pending(a)).length;
   const openToday = open("today"), openYesterday = open("yesterday"), openWeek = open("week"), openWeekly = open("weekly");
   const hasWeekly = all.some(a => a.weekly);
   const weeklyCount = all.filter(a => inSpan(a, "weekly")).length;
   // Weekly clients are due on Saturday — and stay due while last week's are still waiting.
-  const late = all.filter(a => a.weekly && !a.billing && new Date(a.booked_at).getTime() < week0).length;
+  const late = all.filter(a => a.weekly && pending(a) && new Date(a.booked_at).getTime() < week0).length;
   const due = openWeekly > 0 && (new Date().getDay() === 6 || late > 0);
   // Opens on today; on the day the week is due, with today's already done, on the week.
   const span: RecentSpan = pickedSpan ?? (due && openToday === 0 ? "weekly" : "today");
@@ -1034,7 +1066,9 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
   const groups = useMemo(() => {
     const map = new Map<string, RecentAppt[]>();
     for (const a of shown) map.set(a.client_id, [...(map.get(a.client_id) ?? []), a]);
-    return [...map.values()].sort((x, y) => y.filter(a => !a.billing).length - x.filter(a => !a.billing).length || x[0].client_name.localeCompare(y[0].client_name));
+    // Still to do first, then what is already dealt with.
+    for (const list of map.values()) list.sort((x, y) => Number(pending(y)) - Number(pending(x)));
+    return [...map.values()].sort((x, y) => y.filter(pending).length - x.filter(pending).length || x[0].client_name.localeCompare(y[0].client_name));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, span]);
 
@@ -1082,13 +1116,13 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
 
       {groups.map(list => {
         const first = list[0];
-        const waiting = list.filter(a => !a.billing);
+        const waiting = list.filter(pending);
         return (
           <div key={first.client_id} style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <button onClick={() => onOpenClient(first.client_id)} style={{ fontSize: 14, fontWeight: 700, color: INK }}>{first.client_name}</button>
               <span style={{ flex: 1, fontSize: 12.5, color: waiting.length ? WARN : MUTED }}>
-                {`${plural(list.length, "appointment")} ${spanWord}${waiting.length ? ` · ${waiting.length} not tracked` : " · all tracked"}`}
+                {`${plural(list.filter(x => !isReschedule(x)).length, "appointment")} ${spanWord}${waiting.length ? ` · ${waiting.length} not tracked` : " · all tracked"}`}
               </span>
               {first.credits > 0 && (
                 <Pill text={`Holds ${plural(first.credits, "credit")}`} color={STATE.covered.color}
@@ -1130,10 +1164,10 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
   );
 }
 
-type ApptFilter = "all" | "uncharged" | "charged" | "credited" | "covered" | "cancelled";
+type ApptFilter = "all" | "uncharged" | "charged" | "credited" | "covered" | "cancelled" | "rescheduled";
 type DetailTab = "appointments" | "charges" | "credits" | "returns";
 
-const stateOf = (a: Appointment): Exclude<ApptFilter, "all"> => (a.billing ? a.billing.state : "uncharged");
+const stateOf = (a: Appointment): Exclude<ApptFilter, "all"> => (a.billing ? a.billing.state : a.reschedule_of ? "rescheduled" : "uncharged");
 
 function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfitLoss }: {
   clientId: string; period: PeriodId; stripe: StripeState; onBack: () => void; onChanged: () => void;
@@ -1164,7 +1198,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
       const next: Detail = {
         ...data,
         credits_owed: num(data.credits_owed),
-        appointments: (data.appointments ?? []).map((a: Appointment) => ({ ...a, source: a.source ?? "ads" })),
+        appointments: (data.appointments ?? []).filter((a: Appointment) => !isOutcomeRow(a)).map((a: Appointment) => ({ ...a, source: a.source ?? "ads" })),
         ledger: data.ledger ?? [],
         returns: data.returns ?? null,
         profile: data.profile ?? null, profile_available: data.profile_available !== false, profile_key: data.profile_key ?? "",
@@ -1206,9 +1240,11 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   };
 
   const counts = useMemo(() => {
-    const c = { all: 0, uncharged: 0, charged: 0, credited: 0, covered: 0, cancelled: 0 };
+    // A reschedule is not an appointment of its own, so "all" leaves it out.
+    const c = { all: 0, uncharged: 0, charged: 0, credited: 0, covered: 0, cancelled: 0, rescheduled: 0 };
     for (const a of detail?.appointments ?? []) {
-      c.all++; c[stateOf(a)]++;
+      c[stateOf(a)]++;
+      if (!isReschedule(a)) c.all++;
     }
     return c;
   }, [detail]);
@@ -1224,9 +1260,9 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
 
   // No source buttons in here (the owner found them one set too many): each
   // card carries its source, and the split is on the client list and Return by source.
-  const shown = detail.appointments.filter(a => filter === "all" || stateOf(a) === filter);
+  const shown = detail.appointments.filter(a => (filter === "all" ? !isReschedule(a) : stateOf(a) === filter));
   // Ticking is for dealing with several undecided appointments at once.
-  const untracked = detail.appointments.filter(a => !a.billing);
+  const untracked = detail.appointments.filter(pending);
   const chosen = untracked.filter(a => picked.has(a.event_id));
   const chosenIds = chosen.map(a => a.event_id);
   const price = detail.settings.price;
@@ -1325,7 +1361,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <Segments<DetailTab> value={tab} onChange={setTab} options={[
-          { id: "appointments", label: `Appointments (${detail.appointments.length})` },
+          { id: "appointments", label: `Appointments (${counts.all})` },
           { id: "charges", label: `Charges (${detail.charges.length})` },
           { id: "credits", label: `Credits (${issued.length})` },
           ...(detail.returns ? [{ id: "returns" as DetailTab, label: "Return by source" }] : []),
@@ -1353,6 +1389,8 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
             { id: "covered", label: `${STATE.covered.label} (${counts.covered})` },
             { id: "cancelled", label: `${STATE.cancelled.label} (${counts.cancelled})` },
             { id: "all", label: `All (${counts.all})` },
+            // Only there when there are any: the same lead booking again, kept out of everything above.
+            ...(counts.rescheduled > 0 ? [{ id: "rescheduled" as ApptFilter, label: `Rescheduled (${counts.rescheduled})` }] : []),
           ]} />
         </div>
 
@@ -1694,6 +1732,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
                             {[c.ads_appointments ? `${c.ads_appointments} FB Ads` : null, c.sms_appointments ? `${c.sms_appointments} SMS` : null,
                               c.unknown_appointments ? `${c.unknown_appointments} no source` : null,
                               c.assumed_appointments ? `${c.assumed_appointments} assumed` : null].filter(Boolean).join(" · ")}
+                            {!!c.rescheduled && <span title="The same lead booking again: counted with the appointment it belongs to, not billed again">{` · +${c.rescheduled} rescheduled`}</span>}
                           </span>
                         )}
                       </td>
