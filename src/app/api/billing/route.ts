@@ -316,12 +316,18 @@ async function syncWithStripe(service: Service, clientId: string) {
   }
 }
 
+// Not billed, nothing owed: marked so, or (older records) "credited" for
+// nothing — a credit that gave the client no credit is the same thing.
+const notBilled = (a: Row) => !!a.cancelled_at || (!!a.credited_at && !a.charge_id && num(a.credit_amount) <= 0);
+
 // Where one appointment stands, for the screen. null = not tracked.
 function billingView(a: Row | undefined, charge: Row | undefined) {
   if (!a) return null;
   return {
-    // covered = paid in full by their credit: a free appointment, never billed.
-    state: a.cancelled_at ? 'cancelled' : a.credited_at ? 'credited' : charge && paidByCredit(charge) ? 'covered' : 'charged',
+    // cancelled = not billed, nothing owed.
+    // credited  = a bad appointment: the client was given a credit for it.
+    // covered   = a good appointment a credit paid for, so it was never billed.
+    state: notBilled(a) ? 'cancelled' : a.credited_at ? 'credited' : charge && paidByCredit(charge) ? 'covered' : 'charged',
     price: num(a.price),
     charged: !!a.charge_id,
     charge_id: (a.charge_id as string | null) ?? null,
@@ -354,12 +360,6 @@ export async function GET(req: Request) {
     return (!from || t >= new Date(from).getTime()) && (!to || t <= new Date(to).getTime());
   };
   const stripe = stripeStatus();
-  // The backlog view: the period's appointments, plus every SMS appointment
-  // booked before it. Those older ones only add to what is listed and counted
-  // as not tracked — money figures and the return by source stay the period's.
-  const smsAll = params.get('sms_all') === '1' && !!from;
-  const none = Promise.resolve({ rows: [] as Row[], error: null as { code?: string; message?: string } | null });
-
   const readSettings = () => service.from('billing_clients').select('client_id, price_per_appointment, stripe_customer_id');
   type Settings = Awaited<ReturnType<typeof readSettings>>;
   const refuse = (allowed: boolean, probe: Settings) => {
@@ -393,8 +393,26 @@ export async function GET(req: Request) {
 
     const known = new Map((clients.data ?? []).filter(c => !c.is_internal).map(c => [c.id as string, c]));
     const mine = events.rows.filter(e => e.client_id && known.has(e.client_id as string));
-    const tracked = await trackedRows(service, mine.map(e => e.id as string));
+    // The credits each of those clients still holds, so the panel can show
+    // them and offer to use one. An extra: unreadable = shown as none.
+    const clientIds = [...new Set(mine.map(e => e.client_id as string))];
+    const [tracked, heldAppts, heldCredits, heldCharges] = await Promise.all([
+      trackedRows(service, mine.map(e => e.id as string)),
+      readAll((a, b) => service.from('billing_appointments').select('client_id, credit_amount').in('client_id', clientIds).gt('credit_amount', 0).range(a, b)),
+      readAll((a, b) => service.from('billing_credits').select('client_id, amount').in('client_id', clientIds).range(a, b)),
+      readAll((a, b) => service.from('billing_charges').select('client_id, credit_applied, status').in('client_id', clientIds).gt('credit_applied', 0).range(a, b)),
+    ]);
     if (tracked.error) return isMissingTable(tracked.error) ? NextResponse.json({ ...NEEDS_SETUP, stripe }) : bad(tracked.error.message ?? 'Could not load billing', 500);
+    const heldOk = !heldAppts.error && !heldCredits.error && !heldCharges.error;
+    const creditsHeld = new Map(clientIds.map(id => {
+      const of = (rows: Row[]) => rows.filter(r => r.client_id === id);
+      const balance = heldOk ? creditBalance(
+        of(heldAppts.rows) as { credit_amount: number }[],
+        of(heldCredits.rows) as { amount: number }[],
+        of(heldCharges.rows) as { credit_applied: number; status: string }[],
+      ) : 0;
+      return [id, creditInAppointments(balance, num(settings.get(id)?.price_per_appointment))] as const;
+    }));
     const apptByEvent = new Map(tracked.rows.map(a => [a.event_id as string, a]));
 
     const chargeById = new Map<string, Row>();
@@ -410,6 +428,7 @@ export async function GET(req: Request) {
         return {
           event_id: e.id, client_id: client.id, client_name: client.name,
           price: num(settings.get(client.id as string)?.price_per_appointment),
+          credits_owed: creditsHeld.get(client.id as string) ?? 0,
           outcome: e.event_type, booked_at: e.occurred_at, scheduled_at: e.scheduled_at,
           lead_name: e.lead_name, lead_phone: e.lead_phone, calendar: e.calendar_name,
           source: sourceOf(e, client.service as string | null),
@@ -456,22 +475,14 @@ export async function GET(req: Request) {
       readAll((a, b) => service.from('billing_appointments').select(APPT_COLS).eq('client_id', clientId).range(a, b)),
       readAll((a, b) => service.from('billing_charges').select(CHARGE_COLS).eq('client_id', clientId).order('created_at', { ascending: false }).range(a, b), 2),
         readAll((a, b) => service.from('billing_credits').select('id, amount, reason, created_at').eq('client_id', clientId).order('created_at', { ascending: false }).range(a, b), 2),
-        // Their appointments from before the period; the SMS ones are kept below.
-        smsAll ? readAll((a, b) => service.from('events')
-          .select(`id, event_type, occurred_at, scheduled_at, lead_name, lead_phone, calendar_name, ${ATTRIBUTION}`)
-          .eq('client_id', clientId).in('event_type', APPOINTMENT_TYPES).lt('occurred_at', from!)
-          .order('occurred_at', { ascending: false }).range(a, b), 10) : none,
       ]);
     };
-    const [[periodEvents, appts, charges, credits, older], { customer, customerError }, smsRows, shared] = await Promise.all([
+    const [[events, appts, charges, credits], { customer, customerError }, smsRows, shared] = await Promise.all([
       readRecords(), readCustomer(), readSms(service, { clientId, start, end }), profileFor(ctx, client),
     ]);
     const costs = smsCost(smsRows);
-    const failed = periodEvents.error ?? appts.error ?? charges.error ?? credits.error;
+    const failed = events.error ?? appts.error ?? charges.error ?? credits.error;
     if (failed) return isMissingTable(failed) ? NextResponse.json({ ...NEEDS_SETUP, stripe }) : bad(failed.message ?? 'Could not load billing', 500);
-    // Older SMS appointments are an extra: if they can't be read the page still answers.
-    const olderSms = older.error ? [] : older.rows.filter(e => sourceOf(e, client.service as string | null) === 'sms');
-    const events = { rows: [...periodEvents.rows, ...olderSms] };
 
     const chargeById = new Map(charges.rows.map(c => [c.id as string, c]));
     const apptByEvent = new Map(appts.rows.map(a => [a.event_id as string, a]));
@@ -494,7 +505,7 @@ export async function GET(req: Request) {
       apptsByCharge.set(a.charge_id as string, list);
     }
     const ledger = [
-      ...appts.rows.filter(a => a.credited_at).map(a => ({
+      ...appts.rows.filter(a => a.credited_at && num(a.credit_amount) > 0).map(a => ({
         type: 'issued', source: 'appointment', id: a.event_id, at: a.credited_at,
         amount: num(a.credit_amount), lead_name: a.lead_name, appointment_at: a.appointment_at, reason: a.credit_reason,
       })),
@@ -515,7 +526,7 @@ export async function GET(req: Request) {
 
     // Each appointment's source, and what each source cost and returns.
     const sources = new Map<string, Source>(events.rows.map(e => [e.id as string, sourceOf(e, client.service as string | null)]));
-    const returns = returnsBySource(periodEvents.rows.map(e => {
+    const returns = returnsBySource(events.rows.map(e => {
       const b = billingOf(apptByEvent.get(e.id as string));
       return { source: sources.get(e.id as string)!, state: (b ? b.state : 'to_bill') as BillingState, price: b?.price ?? 0, clientPrice: price };
     }), costs);
@@ -549,9 +560,7 @@ export async function GET(req: Request) {
     readAll((a, b) => service.from('billing_appointments').select(APPT_COLS).range(a, b)),
     readAll((a, b) => service.from('billing_credits').select('client_id, amount').range(a, b)),
   ]);
-  const olderEvents = () => service.from('events').select(`id, client_id, ${ATTRIBUTION}`)
-    .in('event_type', APPOINTMENT_TYPES).lt('occurred_at', from!).order('occurred_at', { ascending: false });
-  const [allowed, probe, clients, periodEvents, billing, smsRows, olderFiled] = await Promise.all([
+  const [allowed, probe, clients, events, billing, smsRows] = await Promise.all([
     canBill(ctx), readSettings(),
     service.from('clients').select('id, name, status, service, is_internal').order('name'),
     readAll((a, b) => {
@@ -562,28 +571,13 @@ export async function GET(req: Request) {
     }),
     readBilling(),
     readSms(service, { start, end }),
-    // Older appointments filed as SMS, whichever client they belong to.
-    smsAll ? readAll((a, b) => olderEvents().or('ad_platform.ilike.sms,utm_source.ilike.sms,utm_medium.ilike.sms').range(a, b)) : none,
   ]);
   const refused = refuse(allowed, probe);
   if (refused) return refused;
   const settings = settingsOf(probe);
   let [charges, appts, credits] = billing;
-  const failed = clients.error ?? charges.error ?? appts.error ?? credits.error ?? periodEvents.error;
+  const failed = clients.error ?? charges.error ?? appts.error ?? credits.error ?? events.error;
   if (failed) return isMissingTable(failed) ? NextResponse.json({ ...NEEDS_SETUP, stripe }) : bad(failed.message ?? 'Could not load billing', 500);
-
-  // …and every older appointment of a client who is on SMS only, where a
-  // booking with no recorded source still counts as SMS.
-  const smsOnly = (clients.data ?? []).filter(c => !c.is_internal && c.service === 'sms').map(c => c.id as string);
-  const olderOnSms = smsAll && smsOnly.length ? await readAll((a, b) => olderEvents().in('client_id', smsOnly).range(a, b)) : await none;
-  // An extra: if the older ones can't be read, the page still answers — and says so.
-  const olderFailed = !!(olderFiled.error ?? olderOnSms.error);
-  const serviceByClient = new Map((clients.data ?? []).map(c => [c.id as string, c.service as string | null]));
-  const inPeriodIds = new Set(periodEvents.rows.map(e => e.id as string));
-  const olderSms = [...new Map([...(olderFiled.error ? [] : olderFiled.rows), ...(olderOnSms.error ? [] : olderOnSms.rows)].map(e => [e.id as string, e])).values()]
-    .filter(e => !inPeriodIds.has(e.id as string) && !!e.client_id && sourceOf(e, serviceByClient.get(e.client_id as string)) === 'sms');
-  const olderIds = new Set(olderSms.map(e => e.id as string));
-  const events = { rows: [...periodEvents.rows, ...olderSms] };
 
   const by = <T extends Row>(rows: T[]) => {
     const map = new Map<string, T[]>();
@@ -625,7 +619,7 @@ export async function GET(req: Request) {
   const apptByEvent = new Map(appts.rows.map(a => [a.event_id as string, a]));
   const stateOf = (a: Row | undefined): BillingState => {
     if (!a) return 'to_bill';
-    if (a.cancelled_at) return 'cancelled';
+    if (notBilled(a)) return 'cancelled';
     if (a.credited_at) return 'credited';
     const charge = a.charge_id ? chargeById.get(a.charge_id as string) : undefined;
     return charge && paidByCredit(charge) ? 'covered' : 'charged';
@@ -639,12 +633,10 @@ export async function GET(req: Request) {
       source: sourceOf(e, serviceOf.get(e.client_id as string)),
       state: stateOf(a), price: num(a?.price),
       clientPrice: num(settings.get(e.client_id as string)?.price_per_appointment),
-      older: olderIds.has(e.id as string),
     };
   });
   const costs = smsCost(smsRows, internal);
-  // Cost is the period's, so the return is worked out on the period's appointments only.
-  const returns = returnsBySource(sourced.filter(a => !a.older), costs);
+  const returns = returnsBySource(sourced, costs);
   const sourcedBy = new Map<string, typeof sourced>();
   for (const a of sourced) sourcedBy.set(a.client_id, [...(sourcedBy.get(a.client_id) ?? []), a]);
 
@@ -669,9 +661,11 @@ export async function GET(req: Request) {
       charged: sum(mine.filter(r => ['pending', 'paid'].includes(r.status as string) && inPeriod(r.created_at))),
       paid: sum(mine.filter(r => r.status === 'paid' && inPeriod(r.created_at))),
       outstanding: sum(mine.filter(r => r.status === 'pending')),
-      credited: myAppts.filter(a => a.credited_at && inPeriod(a.credited_at)).length,
-      cancelled: myAppts.filter(a => a.cancelled_at && inPeriod(a.cancelled_at)).length,
-      // Bookings not billed because their credit paid for them.
+      // A bad appointment the client was given a credit for.
+      credited: myAppts.filter(a => a.credited_at && !notBilled(a) && inPeriod(a.credited_at)).length,
+      // Not billed, nothing owed.
+      cancelled: myAppts.filter(a => notBilled(a) && inPeriod(a.cancelled_at ?? a.credited_at)).length,
+      // A good appointment a credit paid for, so it was not billed.
       covered: myAppts.filter(a => {
         const charge = a.charge_id ? chargeById.get(a.charge_id as string) : undefined;
         return !a.credited_at && !a.cancelled_at && !!charge && paidByCredit(charge) && inPeriod(a.created_at);
@@ -683,8 +677,6 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ready: true, stripe, clients: rows, returns: { ...returns, sms_sent: costs.sms_sent }, covered,
-    // SMS appointments from before the period that are included; null = they couldn't be read.
-    older_sms: !smsAll ? 0 : olderFailed ? null : olderSms.filter(e => !internal.has(e.client_id as string)).length,
   });
 }
 
@@ -996,23 +988,30 @@ export async function POST(req: Request) {
     const rowByEvent = new Map(existing.rows.map(r => [r.event_id as string, r]));
     const { data: s } = await service.from('billing_clients').select('price_per_appointment').eq('client_id', clientId).maybeSingle();
 
+    // A credit is always worth one appointment to the client, whether this
+    // dashboard billed it or it was paid for some other way (the backlog):
+    // their next booking is paid with it instead of billed. An appointment
+    // that should simply not be billed is "not billed" (`cancel`), not this.
+    const clientPrice = num(s?.price_per_appointment);
+    const worthOf = (row: Row | undefined) => (row && num(row.price) > 0 ? num(row.price) : clientPrice);
+    if (loaded.events.some(e => { const row = rowByEvent.get(e.id as string); return !row?.credited_at && worthOf(row) <= 0; })) {
+      return bad('Set a price per appointment first — a credit is worth one appointment');
+    }
+
     const stamp = now();
     let credited = 0, back = 0;
     const fresh: Row[] = [];
     for (const e of loaded.events) {
       const row = rowByEvent.get(e.id as string);
       if (!row) {
-        // Never charged: it simply won't be. Nothing to give back.
         fresh.push({
           client_id: clientId, event_id: e.id, lead_name: e.lead_name,
           appointment_at: e.scheduled_at ?? e.occurred_at, charge_id: null,
-          price: num(s?.price_per_appointment), credited_at: stamp, credit_amount: 0, credit_reason: reason || null,
+          price: clientPrice, credited_at: stamp, credit_amount: clientPrice, credit_reason: reason || null,
         });
-        credited++;
+        credited++; back += clientPrice;
       } else if (!row.credited_at) {
-        // Billed: its price goes onto the client's credit balance. One that
-        // was only marked cancelled becomes a credit worth nothing.
-        const worth = row.charge_id ? num(row.price) : 0;
+        const worth = worthOf(row);
         const patch: Row = { credited_at: stamp, credit_amount: worth, credit_reason: reason || null, updated_at: stamp };
         if (row.cancelled_at) patch.cancelled_at = null;
         const { error } = await service.from('billing_appointments').update(patch).eq('id', row.id).is('credited_at', null);
@@ -1052,7 +1051,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ uncredited: rows.length });
   }
 
-  /* ── cancelled: the appointment never happened — not billed, nothing owed ── */
+  /* ── not billed: no charge, nothing owed (stored as cancelled_at) ── */
   if (action === 'cancel') {
     const clientId = String(body.client_id ?? '');
     const eventIds = strings(body.event_ids);
@@ -1083,7 +1082,7 @@ export async function POST(req: Request) {
         .update({ charge_id: null, cancelled_at: stamp, credit_amount: 0, credit_reason: reason || null, updated_at: stamp })
         .eq('id', row.id).eq('charge_id', charge.id).is('credited_at', null).select('id');
       if (error) {
-        if (isMissingColumn(error, 'cancelled_at')) return bad('Marking appointments cancelled needs a one-off database update first', 503);
+        if (isMissingColumn(error, 'cancelled_at')) return bad('Marking appointments not billed needs a one-off database update first', 503);
         return dbError(error);
       }
       if (!freed?.length) continue;      // someone changed it in the same moment
@@ -1109,7 +1108,7 @@ export async function POST(req: Request) {
     if (fresh.length) {
       const { error } = await service.from('billing_appointments').insert(fresh);
       if (error) {
-        if (isMissingColumn(error, 'cancelled_at')) return bad('Marking appointments cancelled needs a one-off database update first', 503);
+        if (isMissingColumn(error, 'cancelled_at')) return bad('Marking appointments not billed needs a one-off database update first', 503);
         return error.code === '23505' ? bad('Some of those were just billed or credited — refresh and try again', 409) : dbError(error);
       }
     }
@@ -1127,7 +1126,7 @@ export async function POST(req: Request) {
     if (!clientId || !eventIds.length) return bad('Pick at least one appointment');
     const existing = await trackedRows(service, eventIds);
     if (existing.error) return dbError(existing.error);
-    const rows = existing.rows.filter(r => r.client_id === clientId && r.cancelled_at && !r.charge_id);
+    const rows = existing.rows.filter(r => r.client_id === clientId && !r.charge_id && notBilled(r));
     for (const r of rows) {
       const { error } = await service.from('billing_appointments').delete().eq('id', r.id);
       if (error) return dbError(error);

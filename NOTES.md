@@ -1,3 +1,92 @@
+## 2026-11-13 — Client Billing: Bill / Credit / Not billed; Match with Stripe removed
+
+Owner's list, in his words: drop Match with Stripe, drop the "This month + all
+SMS" and "30 days" tabs, and make credit a real system with the two credit
+states told apart.
+
+- **Match with Stripe is gone** — button, screen, `billing/stripe-match`,
+  `src/lib/stripe-match.ts`, `StripeMatch.tsx`, and the Stripe payment-listing
+  code. Charges it already made stay as they are (manual, `request_id =
+  stripe:<charge>`): they still show "Stripe" / "Receipt ↗" on the Charges tab,
+  and removing one still clears the note on the Stripe payment (`notePayment`,
+  the only piece kept). It is all in git history (last present in `1a6bf70`).
+- **Period tabs** are This month / Last month / 90 days / All time. The backlog
+  tab and its `sms_all` / `older_sms` plumbing are removed from page and API.
+- **The three choices on an untracked card are Bill / Credit / Not billed.**
+  - **Not billed** is what "Cancelled" was: no charge, nothing owed. Still
+    stored as `cancelled_at` and the `cancel` / `uncancel` actions.
+  - **Credit now always gives the client a credit worth one appointment**,
+    whether or not the dashboard billed it (`credit` action: `credit_amount` =
+    the price it was billed at, else the client's price). That is the backlog
+    case: an appointment paid for outside the dashboard that turned out bad.
+    Before, crediting an unbilled appointment was worth 0 — that meaning is now
+    Not billed. No price per appointment → refused, nothing written.
+  - Credit only pays for bookings made **after** it (unchanged). For an
+    appointment already on the page the card's Bill button reads **Use a
+    credit** while the client holds one, and the charge dialog applies it.
+    Deliberate: dating a credit back to its appointment would auto-cover older
+    untracked ones, and Undo would just re-cover them — no way out.
+- **Two credit states, never to read alike** (`STATE` in `ClientBilling.tsx`):
+  - **Credit given** (red edge) — a bad appointment; the client got a credit.
+  - **Paid with credit** (blue edge) — a good appointment a credit paid for,
+    so it was not billed. Was "Covered by credit". Its button is **Return the
+    credit** (→ Not billed, credit back).
+  Each card carries a one-line explanation; the client page has a tile for
+  each and a legend; the list has a column for each.
+- **Give credits** (was "Issue credits"; same `issue_credits` action): on the
+  client page and now on each client in **Track today's appointments**. The
+  panel shows **Holds N credits** per client (`credits_owed` on `?view=recent`,
+  three extra reads for the clients listed), its untracked cards read **Use a
+  credit** while the client holds one, and a booking a credit paid for shows
+  there as Paid with credit.
+- **Old records**: a row "credited" for nothing (`credited_at`, amount 0, no
+  charge) is read as **Not billed** everywhere (`notBilled` in the route) and
+  its Undo removes it. No data was rewritten; no schema change.
+- Tested on a simulated database (11 scenarios) and a made-up-data preview.
+  Not run against real data.
+
+## 2026-11-13 — New client survey: prepaid appointments, cash collected, closed in GHL
+
+Owner: the survey should capture what a client paid on signing — how many
+credits to issue and how much cash came in — and mark them closed in GHL.
+
+- **Two new questions**, section "Paid up front": **Prepaid appointments** (a
+  whole number) and **Cash collected** (dollars). Both optional. They show on
+  the onboarding card with the other answers.
+- **On submit → Client Billing, once per client** (`applyPrepaid` in
+  `client-survey-server.ts`):
+  - prepaid appointments → one `billing_credits` row, count × the price per
+    appointment (the survey's, else the one already in Client Billing), reason
+    `Onboarding survey — N prepaid appointments`. Their next bookings are then
+    Covered by credit, exactly as with **Issue credits** (2026-11-12). No price
+    anywhere → not issued, with a warning saying to use Issue credits.
+  - cash collected → one paid `billing_charges` row (`custom`, `manual`,
+    `request_id = survey-cash:<client id>`). Nothing is sent to Stripe.
+  - **Never twice**: a survey credit already on the client, or that request id,
+    means it is skipped — so correcting or resubmitting the survey changes
+    nothing in billing. A different number later is changed in Client Billing.
+  - **Needs Client Billing access** (`canBill`). Without it the answers are
+    kept on the survey and a warning says so; someone with access opening the
+    survey and saving it applies them.
+  - Nothing ties this payment to the one in Stripe; it is a hand record.
+- **Closed in GHL** (`src/lib/ghl-close.ts`): on a new submission (not a
+  correction) the client's contact in the **Tomsi Media** sub-account is found
+  by the survey's emails, then phones (`/contacts/search/duplicate`), its
+  **"Post-Call Status?"** field is set to **Close** (the field the owner fills
+  in after a demo, `DWkVhnxJV4Q8ufLrScZ1`), and a note is left with the cash
+  and prepaid count. Uses `GHL_API_KEY_B2B`. Best effort, 6 s per call: not
+  found / refused / down → a warning on the confirmation, the survey still
+  saves. No key (local, V2) → skipped silently. Does not need billing access.
+  - It does **not** record a close or cash on the Tomsi dashboard — those still
+    come from GHL's own close workflow (`webhooks/ghl/close`). Recording one
+    here too would double-count whenever that workflow also fires. I asked the
+    owner how he marks a close in GHL and where the cash should count; the
+    question was dismissed, so this is the conservative default. Revisit if he
+    wants the survey to be the close.
+- Tested against a simulated database and a fake GHL (8 scenarios) and a
+  made-up-data preview of the form. **Never run against the real GHL account**
+  — the lookup and the field write are unverified live. No schema change.
+
 ## 2026-11-12 — Client Billing: prepaid credits ("Issue credits"); a covered booking can be cancelled
 
 Owner: clients who pay for a batch up front need credits issued ahead of the

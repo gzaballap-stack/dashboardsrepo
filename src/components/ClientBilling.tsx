@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import StripeMatch from "./StripeMatch";
 import { createPortal } from "react-dom";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -9,18 +8,21 @@ import { createPortal } from "react-dom";
 
    Every client on the roster, with what they have been charged and credited.
    Open a client to see their appointments as cards. One nobody has decided
-   on yet is "Not tracked" and says so: bill it, credit it, or mark it
-   cancelled, right on the card (or tick several and do them together). The
-   others show where they stand — Billed, Credited, Covered by credit,
-   Cancelled — and can be undone or credited from the card.
+   on yet is "Not tracked" and says so: Bill it, Credit it, or mark it Not
+   billed, right on the card (or tick several and do them together).
+
+   Where a tracked appointment stands (the words are in STATE below):
+     Billed            charged, or recorded as paid
+     Credit given      a bad appointment — the client was given a credit for it
+     Paid with credit  a good appointment — a credit paid for it, so no bill
+     Not billed        no charge and nothing owed
 
    A charge goes to the client's saved card, out as an emailed invoice (both
    through Stripe), or is just recorded when they paid some other way. Credit
-   on an appointment that was already charged is owed back as a free
-   appointment: the client's next booking is marked "Covered by credit" on its
-   own and never billed. Until that booking exists the credit shows as still
-   owed. Every figure is worked out by the API from the charges and credits
-   themselves.
+   is always worth one appointment, whether the dashboard billed it or not:
+   the client's next booking is marked "Paid with credit" on its own and never
+   billed. Until that booking exists the credit shows as still owed. Every
+   figure is worked out by the API from the charges and credits themselves.
    ──────────────────────────────────────────────────────────────────────────── */
 
 type StripeState = { configured: boolean; test: boolean };
@@ -148,35 +150,39 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-// "backlog" is what there is to track: this month's appointments from every
-// source, plus every SMS appointment from before it. Money figures and the
-// return by source under it are this month's.
-type PeriodId = "backlog" | "this_month" | "last_month" | "last_30" | "last_90" | "all";
+type PeriodId = "this_month" | "last_month" | "last_90" | "all";
 const PERIODS: { id: PeriodId; label: string }[] = [
   { id: "this_month", label: "This month" },
   { id: "last_month", label: "Last month" },
-  { id: "last_30", label: "30 days" },
   { id: "last_90", label: "90 days" },
   { id: "all", label: "All time" },
-  // Last, and never the opening view: the owner wants the page as it was.
-  { id: "backlog", label: "This month + all SMS" },
 ];
 
 function rangeOf(id: PeriodId): { start: string | null; end: string | null } {
   const now = new Date();
   if (id === "all") return { start: null, end: null };
-  if (id === "this_month" || id === "backlog") return { start: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), end: ymd(now) };
+  if (id === "this_month") return { start: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), end: ymd(now) };
   if (id === "last_month") {
     return { start: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), end: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
   }
   const back = new Date(now);
-  back.setDate(back.getDate() - (id === "last_30" ? 29 : 89));
+  back.setDate(back.getDate() - 89);
   return { start: ymd(back), end: ymd(now) };
 }
 
-/** The dates the money figures cover, in words. */
-const moneyLabel = (id: PeriodId) => (id === "backlog" ? "This month" : PERIODS.find(p => p.id === id)?.label ?? "");
-const smsAllOf = (id: PeriodId) => (id === "backlog" ? "1" : null);
+/** The dates the figures cover, in words. */
+const moneyLabel = (id: PeriodId) => PERIODS.find(p => p.id === id)?.label ?? "";
+
+// Where a tracked appointment stands — one set of words for every screen. The
+// two that involve credit are opposites and must never read alike:
+//   credited = a bad appointment, the client GOT a credit for it;
+//   covered  = a good appointment, a credit PAID for it.
+const STATE = {
+  charged:   { label: "Billed", color: GOOD, hint: "" },
+  credited:  { label: "Credit given", color: BAD, hint: "Bad appointment — the client got a credit for it" },
+  covered:   { label: "Paid with credit", color: FREE, hint: "Good appointment — a credit paid for it, not billed" },
+  cancelled: { label: "Not billed", color: MUTED, hint: "" },
+} as const;
 
 function query(params: Record<string, string | null | undefined>): string {
   const q = new URLSearchParams();
@@ -310,7 +316,7 @@ function ReturnCard({ source, r, smsSent }: { source: "ads" | "sms"; r: SourceRe
     </div>
   );
   const counts = [plural(r.appointments, "appointment"),
-    r.credited > 0 ? `${r.credited} credited` : null, r.cancelled > 0 ? `${r.cancelled} cancelled` : null].filter(Boolean).join(" · ");
+    r.credited > 0 ? `${r.credited} credit given` : null, r.cancelled > 0 ? `${r.cancelled} not billed` : null].filter(Boolean).join(" · ");
   // SMS is the only source that costs us anything; ads are paid for by the client.
   const sms = source === "sms";
   return (
@@ -622,8 +628,8 @@ function CreditModal({ detail, picked, onClose, onDone }: {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const charged = picked.filter(a => a.billing?.charged);
-  const back = charged.reduce((s, a) => s + (a.billing?.price ?? 0), 0);
+  const n = picked.length;
+  const back = picked.reduce((s, a) => s + (a.billing?.price || detail.settings.price), 0);
 
   const submit = async () => {
     if (busy) return;
@@ -631,19 +637,18 @@ function CreditModal({ detail, picked, onClose, onDone }: {
     try {
       const res = await api("/api/billing", { action: "credit", client_id: detail.client.id, event_ids: picked.map(a => a.event_id), reason });
       const covered = Number(res.covered ?? 0);
-      onDone(`Credited ${plural(picked.length, "appointment")}`
-        + (covered > 0 ? ` — ${plural(covered, "booking")} now covered by credit` : back > 0 ? " — their next booking won't be billed" : ""));
+      onDone(`${plural(n, "credit")} given`
+        + (covered > 0 ? ` — ${plural(covered, "booking")} now paid with credit` : ` — their next ${n === 1 ? "booking" : `${n} bookings`} won't be billed`));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong"); setBusy(false);
     }
   };
 
   return (
-    <Modal title={`Credit ${plural(picked.length, "appointment")}`} sub={detail.client.name} onClose={busy ? () => {} : onClose}>
+    <Modal title={`Credit ${plural(n, "appointment")}`} sub={detail.client.name} onClose={busy ? () => {} : onClose}>
       <div style={{ ...PANEL, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         <p style={{ fontSize: 13, color: INK, lineHeight: 1.5 }}>
-          {charged.length > 0 && `${plural(charged.length, "appointment")} already charged: ${charged.length === 1 ? "it is" : "they are"} owed back, so their next ${charged.length === 1 ? "booking" : `${charged.length} bookings`} won’t be billed (${money(back)}). `}
-          {picked.length - charged.length > 0 && `${plural(picked.length - charged.length, "appointment")} not charged yet: ${picked.length - charged.length === 1 ? "it" : "they"} won’t be billed.`}
+          {`${n === 1 ? "This was a bad appointment" : "These were bad appointments"}: ${detail.client.name} gets ${plural(n, "credit")} (${money(back)}), so their next ${n === 1 ? "booking is" : `${n} bookings are`} paid with credit instead of billed.`}
         </p>
         <label style={LABEL}>
           Reason (optional)
@@ -654,7 +659,7 @@ function CreditModal({ detail, picked, onClose, onDone }: {
       {error && <Notice tone="bad">{error}</Notice>}
       <div>
         <button onClick={submit} disabled={busy} style={{ ...BTN_DARK, padding: "10px 18px", fontSize: 13, opacity: busy ? 0.35 : 1 }}>
-          {busy ? "Working…" : `Credit ${plural(picked.length, "appointment")}`}
+          {busy ? "Working…" : `Give ${plural(n, "credit")}`}
         </button>
       </div>
     </Modal>
@@ -691,18 +696,18 @@ function IssueCreditsModal({ detail, onClose, onDone }: {
         action: "issue_credits", client_id: detail.client.id, count,
         price: saved > 0 ? undefined : price, reason, record_payment: record, request_id: requestId,
       });
-      onDone(`${plural(count, "credit")} issued — their next ${count === 1 ? "booking" : `${count} bookings`} won't be billed${record ? `, and ${money(value)} recorded as paid` : ""}`);
+      onDone(`${plural(count, "credit")} given — their next ${count === 1 ? "booking" : `${count} bookings`} won't be billed${record ? `, and ${money(value)} recorded as paid` : ""}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong"); setBusy(false); setRequestId(newRequestId());
     }
   };
 
   return (
-    <Modal title="Issue credits" sub={`${detail.client.name} · prepaid appointments`} onClose={busy ? () => {} : onClose}>
+    <Modal title="Give credits" sub={`${detail.client.name} · one credit pays for one appointment`} onClose={busy ? () => {} : onClose}>
       <div style={{ ...PANEL, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <label style={{ ...LABEL, flex: 1, minWidth: 140 }}>
-            Appointments paid for up front
+            How many credits
             <input value={countText} onChange={e => setCountText(e.target.value)} inputMode="numeric" placeholder="e.g. 10" autoFocus style={FIELD} />
           </label>
           <label style={{ ...LABEL, flex: 1, minWidth: 140 }}>
@@ -733,21 +738,21 @@ function IssueCreditsModal({ detail, onClose, onDone }: {
       </div>
 
       <Notice tone="warn">
-        {"Each booking made from now on uses one credit and is marked Covered by credit — it is not billed. If one cancels, mark it Cancelled and the credit comes back. Appointments already booked are not touched."}
+        {"Each booking made from now on uses one credit and is marked Paid with credit — it is not billed. If one turns out bad, press Return the credit on its card. Appointments already booked are not touched."}
       </Notice>
 
       <label style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: CARD, border: BORDER, cursor: "pointer" }}>
         <input type="checkbox" checked={record} onChange={e => setRecord(e.target.checked)} style={{ marginTop: 3 }} />
         <span style={{ flex: 1, minWidth: 0 }}>
           <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: INK }}>{`Also record the payment${value > 0 ? ` — ${money(value)} already paid` : ""}`}</span>
-          <span style={{ display: "block", fontSize: 12, color: MUTED, marginTop: 1 }}>Nothing is sent to Stripe. Leave this off if you will match the payment from Stripe, so it is not counted twice.</span>
+          <span style={{ display: "block", fontSize: 12, color: MUTED, marginTop: 1 }}>Nothing is sent to Stripe.</span>
         </span>
       </label>
 
       {error && <Notice tone="bad">{error}</Notice>}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={submit} disabled={busy || !!blocked} style={{ ...BTN_DARK, padding: "10px 18px", fontSize: 13, opacity: busy || blocked ? 0.35 : 1 }}>
-          {busy ? "Working…" : count ? `Issue ${plural(count, "credit")}` : "Issue credits"}
+          {busy ? "Working…" : count ? `Give ${plural(count, "credit")}` : "Give credits"}
         </button>
         {blocked && !busy && <span style={{ fontSize: 12.5, color: MUTED }}>{blocked}</span>}
       </div>
@@ -854,35 +859,40 @@ function StripeLinkModal({ detail, onClose, onDone }: {
 
 // One appointment as a card. Undecided ones carry their three choices; the
 // rest show where they stand, with the one thing that can still be done.
-function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onCancel, onUncancel, onUncredit, onCreditBilled }: {
+function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onCancel, onUncancel, onUncredit, onCreditBilled, holdsCredit }: {
   a: Appointment; price: number; busy: boolean;
   ticked?: boolean; onTick?: () => void;
-  /** onCancel also serves a booking their credit covered: it gives the credit back. */
+  /** onCancel = not billed. It also serves a booking a credit paid for: that gives the credit back. */
   onBill: () => void; onCredit: () => void; onCancel: () => void;
   onUncancel: () => void; onUncredit: () => void; onCreditBilled?: () => void;
+  /** The client holds a credit: billing this one would use it. */
+  holdsCredit?: boolean;
 }) {
   const b = a.billing;
   const on = !!ticked;
   const waiting = b?.charge_status === "pending" || b?.charge_status === "draft";
-  const status = !b ? { text: "Not tracked", color: WARN }
-    : b.state === "cancelled" ? { text: "Cancelled · not billed", color: MUTED }
-    : b.state === "credited" ? { text: b.credit_amount > 0 ? `Credited ${money(b.credit_amount)}` : "Credited · not billed", color: BAD }
-    : b.state === "covered" ? { text: "Covered by credit · not billed", color: FREE }
-    : { text: `Billed ${money(b.price)}${waiting ? " · awaiting payment" : ""}`, color: waiting ? WARN : GOOD };
+  const status = !b ? { text: "Not tracked", color: WARN, hint: "" }
+    : b.state === "cancelled" ? { text: STATE.cancelled.label, color: STATE.cancelled.color, hint: "" }
+    : b.state === "credited" ? { text: `${STATE.credited.label} · ${money(b.credit_amount)}`, color: STATE.credited.color, hint: STATE.credited.hint }
+    : b.state === "covered" ? { text: STATE.covered.label, color: STATE.covered.color, hint: STATE.covered.hint }
+    : { text: `Billed ${money(b.price)}${waiting ? " · awaiting payment" : ""}`, color: waiting ? WARN : GOOD, hint: "" };
   const small: React.CSSProperties = { padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flex: 1 };
   const quiet: React.CSSProperties = { ...small, flex: "none", background: "transparent", color: MUTED, padding: "4px 0" };
   const last = !b ? null
     : b.state === "cancelled" ? <button disabled={busy} onClick={onUncancel} style={quiet}>Undo</button>
     : b.state === "credited" ? <button disabled={busy} onClick={onUncredit} style={quiet}>Undo credit</button>
-    // Their credit paid for it: if it cancels, the credit goes back to them.
-    : b.state === "covered" ? <button disabled={busy} onClick={onCancel} title="Mark it cancelled and give the credit back" style={{ ...small, flex: "none", background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Cancelled — return the credit</button>
+    // A credit paid for it: if it turns out bad, the credit goes back to them.
+    : b.state === "covered" ? <button disabled={busy} onClick={onCancel} title="Bad appointment: mark it not billed and give the credit back" style={{ ...small, flex: "none", background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Return the credit</button>
     : onCreditBilled ? <button disabled={busy} onClick={onCreditBilled} style={quiet}>Credit it</button>
     : null;
+  // The two credit states are told apart at a glance: a coloured edge each.
+  const edge = b?.state === "credited" ? STATE.credited.color : b?.state === "covered" ? STATE.covered.color : null;
   return (
     <div
       style={{
         background: CARD, borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 10, minWidth: 0,
         border: on ? "1.5px solid #000000" : !b ? "1px solid rgba(138,97,0,0.35)" : BORDER,
+        ...(edge && !on ? { borderLeft: `4px solid ${edge}` } : {}),
         boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
       }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -904,12 +914,15 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
         <span style={{ flex: 1 }} />
         <span style={{ color: status.color, fontWeight: 700 }} title={b?.credit_reason ?? undefined}>{status.text}</span>
       </div>
+      {status.hint && <p style={{ fontSize: 11.5, color: MUTED, marginTop: -4 }}>{status.hint}</p>}
       {(!b || last) && (
         <div style={{ display: "flex", gap: 6, borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 10 }}>
           {!b ? (<>
-            <button disabled={busy} onClick={onBill} style={{ ...small, background: "#000000", color: "#ffffff" }}>Bill{price ? ` ${money(price)}` : ""}</button>
-            <button disabled={busy} onClick={onCredit} style={{ ...small, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Credit</button>
-            <button disabled={busy} onClick={onCancel} style={{ ...small, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Cancelled</button>
+            <button disabled={busy} onClick={onBill} title={holdsCredit ? "They hold a credit — it pays for this one" : undefined} style={{ ...small, background: "#000000", color: "#ffffff" }}>
+              {holdsCredit ? "Use a credit" : `Bill${price ? ` ${money(price)}` : ""}`}
+            </button>
+            <button disabled={busy} onClick={onCredit} title="Bad appointment they paid for: the client gets a credit, and their next booking is not billed" style={{ ...small, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Credit</button>
+            <button disabled={busy} onClick={onCancel} title="No charge and no credit" style={{ ...small, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Not billed</button>
           </>) : last}
         </div>
       )}
@@ -921,8 +934,9 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
 
 // The first thing on the page: what was booked today (or yesterday, or this
 // week) across every client, and which of those nobody has billed, credited or
-// cancelled yet. "Today" is the day on this computer's clock.
-type RecentAppt = Appointment & { client_id: string; client_name: string; price: number };
+// marked not billed yet. "Today" is the day on this computer's clock.
+/** credits = whole appointments of credit the client still holds. */
+type RecentAppt = Appointment & { client_id: string; client_name: string; price: number; credits: number };
 type RecentSpan = "today" | "yesterday" | "week";
 
 const startOfDay = (back: number) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - back); return d; };
@@ -939,6 +953,7 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
   const [flash, setFlash] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [charging, setCharging] = useState<{ detail: Detail; eventIds: string[] } | null>(null);
+  const [issuing, setIssuing] = useState<Detail | null>(null);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
@@ -946,7 +961,10 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
     api(`/api/billing${query({ view: "recent", from: startOfDay(6).toISOString(), to: new Date().toISOString() })}`)
       .then(data => {
         if (!live) return;
-        setRows((data.appointments ?? []).map((a: RecentAppt) => ({ ...a, source: a.source ?? "ads", price: Number(a.price ?? 0) || 0 })));
+        setRows((data.appointments ?? []).map((a: RecentAppt) => ({
+          ...a, source: a.source ?? "ads", price: Number(a.price ?? 0) || 0,
+          credits: Number((a as { credits_owed?: number }).credits_owed ?? 0) || 0,
+        })));
         setError(null);
       })
       .catch(e => { if (live) { setError(e instanceof Error ? e.message : "Could not load today's appointments"); setRows(prev => prev ?? []); } });
@@ -963,17 +981,18 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
     finally { setBusy(false); }
   };
 
-  // Charging needs the client's card, credit and price: read them, then ask.
-  const bill = async (clientId: string, eventIds: string[]) => {
+  // Charging and giving credits need the client's card, credit and price: read them, then ask.
+  const withClient = async (clientId: string, then: (detail: Detail) => void) => {
     if (busy) return;
     setBusy(true); setError(null);
     try {
       const today = ymd(new Date());
       const data = await api(`/api/billing${query({ client_id: clientId, start: today, end: today })}`);
-      setCharging({ detail: { ...data, appointments: [], ledger: [], charges: [], returns: null } as Detail, eventIds });
-    } catch (e) { setError(e instanceof Error ? e.message : "Could not open the charge"); }
+      then({ ...data, credits_owed: Number(data.credits_owed ?? 0) || 0, appointments: [], ledger: [], charges: [], returns: null } as Detail);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not open this client"); }
     finally { setBusy(false); }
   };
+  const bill = (clientId: string, eventIds: string[]) => withClient(clientId, detail => setCharging({ detail, eventIds }));
 
   const today0 = startOfDay(0).getTime(), yesterday0 = startOfDay(1).getTime();
   const inSpan = (a: RecentAppt, which: RecentSpan) => {
@@ -1008,7 +1027,7 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
           <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
             {rows === null ? "Loading…"
               : older > 0 ? `${plural(older, "appointment")} from earlier this week ${older === 1 ? "is" : "are"} still not tracked.`
-              : "Bill, credit or cancel each booking as the day ends."}
+              : "Bill, credit or mark each booking not billed as the day ends."}
           </p>
         </div>
         <Segments<RecentSpan> value={span} onChange={setSpan} options={[
@@ -1035,6 +1054,12 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
               <span style={{ flex: 1, fontSize: 12.5, color: waiting.length ? WARN : MUTED }}>
                 {`${plural(list.length, "appointment")} ${spanWord}${waiting.length ? ` · ${waiting.length} not tracked` : " · all tracked"}`}
               </span>
+              {first.credits > 0 && (
+                <Pill text={`Holds ${plural(first.credits, "credit")}`} color={STATE.covered.color}
+                  title="Credits not used yet — their next bookings are paid with them instead of billed" />
+              )}
+              <button disabled={busy} onClick={() => withClient(first.client_id, setIssuing)} style={{ ...BTN_QUIET, opacity: busy ? 0.4 : 1 }}
+                title="Give this client credits: their next bookings are paid with them">Give credits</button>
               {waiting.length > 1 && (
                 <button disabled={busy} onClick={() => bill(first.client_id, waiting.map(a => a.event_id))} style={{ ...BTN_DARK, opacity: busy ? 0.4 : 1 }}>
                   {`Bill all ${waiting.length}${first.price ? ` · ${money(waiting.length * first.price)}` : ""}`}
@@ -1045,10 +1070,11 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
               {list.map(a => (
                 <AppointmentCard key={a.event_id} a={a} price={a.price} busy={busy}
                   onBill={() => bill(a.client_id, [a.event_id])}
-                  onCredit={() => act({ action: "credit", client_id: a.client_id, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"} credited — not billed`)}
-                  onCancel={() => act({ action: "cancel", client_id: a.client_id, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"} marked cancelled${a.billing?.state === "covered" ? " — the credit is back with the client" : ""}`)}
+                  onCredit={() => act({ action: "credit", client_id: a.client_id, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"}: credit given — the client's next booking won't be billed`)}
+                  onCancel={() => act({ action: "cancel", client_id: a.client_id, event_ids: [a.event_id] }, a.billing?.state === "covered" ? `${a.lead_name ?? "Appointment"} not billed — the credit is back with the client` : `${a.lead_name ?? "Appointment"} marked not billed`)}
                   onUncancel={() => act({ action: "uncancel", client_id: a.client_id, event_ids: [a.event_id] }, "Back to not tracked")}
-                  onUncredit={() => act({ action: "uncredit", client_id: a.client_id, event_ids: [a.event_id] }, "Credit removed")} />
+                  onUncredit={() => act({ action: "uncredit", client_id: a.client_id, event_ids: [a.event_id] }, "Credit removed")}
+                  holdsCredit={a.credits > 0} />
               ))}
             </div>
           </div>
@@ -1059,6 +1085,10 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
         <ChargeModal detail={charging.detail} stripe={stripe} eventIds={charging.eventIds}
           onClose={() => setCharging(null)}
           onDone={(message, failed) => { setCharging(null); if (failed) { setFlash(null); setError(message); } else setFlash(message); refresh(); }} />
+      )}
+      {issuing && (
+        <IssueCreditsModal detail={issuing} onClose={() => setIssuing(null)}
+          onDone={message => { setIssuing(null); setFlash(message); refresh(); }} />
       )}
     </div>
   );
@@ -1092,7 +1122,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   const load = useCallback(async () => {
     try {
       const range = rangeOf(period);
-      const data = await api(`/api/billing${query({ client_id: clientId, start: range.start, end: range.end, sms_all: smsAllOf(period) })}`);
+      const data = await api(`/api/billing${query({ client_id: clientId, start: range.start, end: range.end })}`);
       const num = (v: unknown) => Number(v ?? 0) || 0;
       const next: Detail = {
         ...data,
@@ -1184,11 +1214,11 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
     <AppointmentCard key={a.event_id} a={a} price={price} busy={busy}
       ticked={picked.has(a.event_id)} onTick={() => toggle(a.event_id)}
       onBill={() => setCharging([a.event_id])}
-      onCredit={() => act({ action: "credit", client_id: clientId, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"} credited — not billed`)}
-      onCancel={() => act({ action: "cancel", client_id: clientId, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"} marked cancelled${a.billing?.state === "covered" ? " — the credit is back with the client" : ""}`)}
+      onCredit={() => act({ action: "credit", client_id: clientId, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"}: credit given — the client's next booking won't be billed`)}
+      onCancel={() => act({ action: "cancel", client_id: clientId, event_ids: [a.event_id] }, a.billing?.state === "covered" ? `${a.lead_name ?? "Appointment"} not billed — the credit is back with the client` : `${a.lead_name ?? "Appointment"} marked not billed`)}
       onUncancel={() => act({ action: "uncancel", client_id: clientId, event_ids: [a.event_id] }, "Back to not tracked")}
       onUncredit={() => act({ action: "uncredit", client_id: clientId, event_ids: [a.event_id] }, "Credit removed")}
-      onCreditBilled={() => setCrediting([a])} />
+      onCreditBilled={() => setCrediting([a])} holdsCredit={owed > 0} />
   );
 
   return (
@@ -1196,7 +1226,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button onClick={onBack} style={BTN_QUIET}>← All clients</button>
         <h3 style={{ flex: 1, minWidth: 160, fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>{detail.client.name}</h3>
-        <button onClick={() => setIssuing(true)} style={BTN_QUIET} title="Prepaid appointments: credits issued ahead of the bookings">Issue credits</button>
+        <button onClick={() => setIssuing(true)} style={BTN_QUIET} title="Give this client credits: their next bookings are paid with them">Give credits</button>
         <button onClick={() => setCharging([])} style={BTN_QUIET}>Charge another amount</button>
       </div>
 
@@ -1232,11 +1262,13 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
 
       <div style={TILE_GRID}>
         <Tile label="Not tracked" value={String(counts.uncharged)} tone={counts.uncharged > 0 ? "warn" : undefined}
-          sub={counts.uncharged === 0 ? "every appointment is dealt with" : price ? `${money(counts.uncharged * price)} if billed at ${money(price)} each` : "bill, credit or cancel each one"} />
+          sub={counts.uncharged === 0 ? "every appointment is dealt with" : price ? `${money(counts.uncharged * price)} if billed at ${money(price)} each` : "bill, credit or mark each one not billed"} />
         <Tile label="Paid" value={money(paidTotal)} sub="all time" tone={paidTotal > 0 ? "good" : undefined} />
         <Tile label="Awaiting payment" value={money(outstanding)} sub="invoices not paid yet" tone={outstanding > 0 ? "warn" : undefined} />
-        <Tile label="Credited" value={String(issued.filter(l => l.source === "appointment").length)}
-          sub={`${plural(used.filter(l => l.source === "cover").length, "booking")} covered by credit · ${counts.cancelled} cancelled`} />
+        <Tile label={STATE.credited.label} value={String(issued.filter(l => l.source === "appointment").length)}
+          sub="bad appointments they got a credit for" tone={issued.some(l => l.source === "appointment") ? "bad" : undefined} />
+        <Tile label={STATE.covered.label} value={String(used.filter(l => l.source === "cover").length)}
+          sub={`good appointments a credit paid for · ${counts.cancelled} not billed`} />
         <Tile label="Credits still owed"
           value={owed > 0 ? plural(owed, "appointment") : detail.balance > 0 ? money(detail.balance) : "None"}
           sub={owed > 0 ? `next ${owed === 1 ? "booking" : `${owed} bookings`} won't be billed${loose > 0 ? ` · plus ${money(loose)}` : ""}`
@@ -1260,7 +1292,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
         {untracked.length > 0 && (
           <div role="status" style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", background: "rgba(138,97,0,0.08)", borderRadius: 12, padding: "11px 14px" }}>
             <span style={{ flex: 1, minWidth: 220, fontSize: 13, color: WARN }}>
-              <strong>{`${some(untracked.length)} not tracked yet.`}</strong>{" Bill, credit or cancel each one on its card — or tick several and do them together."}
+              <strong>{`${some(untracked.length)} not tracked yet.`}</strong>{" Bill, credit or mark each one not billed on its card — or tick several and do them together."}
             </span>
             <button onClick={() => setPicked(chosen.length === untracked.length ? new Set() : new Set(untracked.map(a => a.event_id)))} style={{ ...BTN_QUIET, color: WARN }}>
               {chosen.length === untracked.length ? "Untick all" : `Tick all ${untracked.length}`}
@@ -1272,9 +1304,9 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
           <Segments<ApptFilter> value={filter} onChange={setFilter} options={[
             { id: "uncharged", label: `Not tracked (${counts.uncharged})` },
             { id: "charged", label: `Billed (${counts.charged})` },
-            { id: "credited", label: `Credited (${counts.credited})` },
-            { id: "covered", label: `Covered by credit (${counts.covered})` },
-            { id: "cancelled", label: `Cancelled (${counts.cancelled})` },
+            { id: "credited", label: `${STATE.credited.label} (${counts.credited})` },
+            { id: "covered", label: `${STATE.covered.label} (${counts.covered})` },
+            { id: "cancelled", label: `${STATE.cancelled.label} (${counts.cancelled})` },
             { id: "all", label: `All (${counts.all})` },
           ]} />
           {sourcesPresent.length > 1 && (
@@ -1285,14 +1317,24 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
           )}
         </div>
 
+        <p style={{ fontSize: 12, color: MUTED, display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <span><strong style={{ color: STATE.credited.color }}>{STATE.credited.label}</strong>{" = a bad appointment; the client got a credit for it."}</span>
+          <span><strong style={{ color: STATE.covered.color }}>{STATE.covered.label}</strong>{" = a good appointment; a credit paid for it, so it was not billed."}</span>
+        </p>
+        {owed > 0 && untracked.length > 0 && (
+          <Notice tone="warn">
+            {`They hold ${plural(owed, "credit")}. New bookings use them on their own; for one already here, press Use a credit on its card.`}
+          </Notice>
+        )}
+
         {chosen.length > 0 && (
           <div style={{ ...PANEL, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", position: "sticky", top: 8, zIndex: 5 }}>
             <span style={{ flex: 1, minWidth: 120, fontSize: 13, fontWeight: 600, color: INK }}>{chosen.length} ticked</span>
             <button disabled={busy} onClick={() => setCharging(chosenIds)} style={BTN_DARK}>
               Bill {chosen.length}{price ? ` · ${money(chosen.length * price)}` : ""}
             </button>
-            <button disabled={busy} onClick={() => act({ action: "credit", client_id: clientId, event_ids: chosenIds }, `${some(chosen.length)} credited — not billed`)} style={BTN_QUIET}>Credit {chosen.length}</button>
-            <button disabled={busy} onClick={() => act({ action: "cancel", client_id: clientId, event_ids: chosenIds }, `${some(chosen.length)} marked cancelled`)} style={BTN_QUIET}>Cancelled {chosen.length}</button>
+            <button disabled={busy} onClick={() => act({ action: "credit", client_id: clientId, event_ids: chosenIds }, `${plural(chosen.length, "credit")} given — their next ${chosen.length === 1 ? "booking" : `${chosen.length} bookings`} won't be billed`)} style={BTN_QUIET}>Credit {chosen.length}</button>
+            <button disabled={busy} onClick={() => act({ action: "cancel", client_id: clientId, event_ids: chosenIds }, `${some(chosen.length)} marked not billed`)} style={BTN_QUIET}>Not billed {chosen.length}</button>
             <button onClick={() => setPicked(new Set())} style={{ fontSize: 12.5, fontWeight: 600, color: MUTED, padding: "0 4px" }}>Clear</button>
           </div>
         )}
@@ -1414,14 +1456,14 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
                   {detail.ledger.map(l => {
                     const what = l.source === "manual" ? "Added by hand"
                       : l.source === "charge" ? "Taken off a charge"
-                      : l.lead_name ?? (l.source === "cover" ? "Bookings covered" : "Appointment");
+                      : l.lead_name ?? (l.source === "cover" ? "Bookings paid with credit" : "Appointment");
                     return (
                       <tr key={`${l.type}-${l.id}`}>
                         <td style={{ ...TD, whiteSpace: "nowrap" }}>{day(l.at)}</td>
                         <td style={TD}>
                           {l.type === "issued"
                             ? <Pill text="Credit issued" color={BAD} />
-                            : <Pill text={l.source === "cover" ? "Covered a booking" : "Credit used"} color={FREE} />}
+                            : <Pill text={l.source === "cover" ? "Paid for a booking" : "Credit used"} color={FREE} />}
                         </td>
                         <td style={TD}>{what}{l.appointment_at && <span style={{ color: FAINT, fontSize: 11.5 }}> · {day(l.appointment_at)}</span>}</td>
                         <td style={{ ...TD, color: l.reason ? INK : FAINT }}>{l.reason || "—"}</td>
@@ -1466,8 +1508,6 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
   onOpenProfitLoss?: (clientKey: string) => void;
 } = {}) {
   const [period, setPeriod] = useState<PeriodId>("this_month");
-  // SMS appointments from before this month that the backlog includes; null = they couldn't be read.
-  const [olderSms, setOlderSms] = useState<number | null>(0);
   const [rows, setRows] = useState<ClientRow[] | null>(null);
   const [stripe, setStripe] = useState<StripeState>({ configured: false, test: false });
   const [ready, setReady] = useState(true);
@@ -1475,7 +1515,6 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
   const [openId, setOpenId] = useState<string | null>(openClientId ?? null);
   const [returns, setReturns] = useState<Returns | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [matching, setMatching] = useState(false);
   const [todayTick, setTodayTick] = useState(0);
 
   const [version, setVersion] = useState(0);
@@ -1484,10 +1523,9 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
   useEffect(() => {
     let live = true;
     const range = rangeOf(period);
-    api(`/api/billing${query({ start: range.start, end: range.end, sms_all: smsAllOf(period) })}`)
+    api(`/api/billing${query({ start: range.start, end: range.end })}`)
       .then(data => {
         if (!live) return;
-        setOlderSms(data.older_sms === null ? null : Number(data.older_sms ?? 0) || 0);
         setStripe(data.stripe ?? { configured: false, test: false });
         setReady(data.ready !== false);
         setRows(data.clients ?? []);
@@ -1526,18 +1564,13 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
         <div style={{ flex: 1, minWidth: 180 }}>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>Client Billing</h2>
           <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-            Every appointment per client: not tracked, billed, credited or cancelled — and the credits still owed.
+            Every appointment per client: not tracked, billed, credit given, paid with credit or not billed — and the credits still owed.
             {" "}
             <span style={{ color: stripe.configured ? (stripe.test ? WARN : GOOD) : FAINT, fontWeight: 600 }}>
               {stripe.configured ? (stripe.test ? "Stripe: test mode" : "Stripe connected") : "Stripe not connected"}
             </span>
           </p>
         </div>
-        {stripe.configured && ready && !openId && !matching && (
-          <button onClick={() => setMatching(true)} style={BTN_DARK} title="Tie payments already taken in Stripe to each client's appointments">
-            Match with Stripe
-          </button>
-        )}
         <Segments<PeriodId> value={period} onChange={setPeriod} options={PERIODS} />
       </div>
 
@@ -1550,10 +1583,6 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
             Client Billing needs a one-off database update before it can store charges and credits.
           </p>
         </div>
-      ) : matching ? (
-        <StripeMatch start={rangeOf(period).start} end={rangeOf(period).end}
-          periodLabel={period === "all" ? "all time" : periodLabel === "30 days" || periodLabel === "90 days" ? `in the last ${periodLabel}` : periodLabel}
-          onBack={() => setMatching(false)} onChanged={reload} />
       ) : openId ? (
         <ClientDetail key={openId} clientId={openId} period={period} stripe={stripe} onBack={() => setOpenId(null)} onChanged={reload} onOpenProfitLoss={onOpenProfitLoss} />
       ) : (<>
@@ -1563,7 +1592,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
         {rows === null ? <p style={{ fontSize: 13, color: FAINT }}>Loading the rest…</p> : (<>
         <div style={TILE_GRID}>
           <Tile label="Not tracked" value={String(totals.uncharged)} tone={totals.uncharged > 0 ? "warn" : undefined}
-            sub={totals.uncharged === 0 ? "every appointment is dealt with" : `${money(totals.value)} if billed · ${period === "all" ? "all time" : period === "backlog" ? "this month + all SMS" : periodLabel}`} />
+            sub={totals.uncharged === 0 ? "every appointment is dealt with" : `${money(totals.value)} if billed · ${periodLabel}`} />
           <Tile label="Billed" value={money(totals.charged)} sub={periodLabel} />
           <Tile label="Paid" value={money(totals.paid)} sub={periodLabel} tone={totals.paid > 0 ? "good" : undefined} />
           <Tile label="Awaiting payment" value={money(totals.outstanding)} sub="invoices not paid yet" tone={totals.outstanding > 0 ? "warn" : undefined} />
@@ -1572,15 +1601,8 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
 
         {totals.uncharged > 0 && (
           <Notice tone="warn">
-            {`${plural(totals.uncharged, "appointment")} across ${plural((rows ?? []).filter(c => c.uncharged > 0).length, "client")} ${totals.uncharged === 1 ? "has" : "have"} not been tracked as billed, credited or cancelled. Open a client to deal with them.`}
+            {`${plural(totals.uncharged, "appointment")} across ${plural((rows ?? []).filter(c => c.uncharged > 0).length, "client")} ${totals.uncharged === 1 ? "has" : "have"} not been tracked yet. Open a client to deal with them.`}
           </Notice>
-        )}
-
-        {period === "backlog" && olderSms === null && (
-          <Notice tone="warn">{"SMS appointments from before this month couldn't be read just now — this shows this month only."}</Notice>
-        )}
-        {period === "backlog" && !!olderSms && (
-          <p style={{ fontSize: 12.5, color: MUTED }}>{`Includes ${plural(olderSms, "SMS appointment")} from before this month. Billed, Paid and the return below are this month's.`}</p>
         )}
 
         {returns && <ReturnPanel returns={returns} scope={`All clients · ${moneyLabel(period)}`} />}
@@ -1598,9 +1620,9 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
                     <th style={{ ...TH, ...NUM }}>Appointments</th>
                     <th style={{ ...TH, ...NUM }}>Not tracked</th>
                     <th style={{ ...TH, ...NUM }}>Billed</th>
-                    <th style={{ ...TH, ...NUM }}>Credited</th>
-                    <th style={{ ...TH, ...NUM }}>Covered</th>
-                    <th style={{ ...TH, ...NUM }}>Cancelled</th>
+                    <th style={{ ...TH, ...NUM }} title={STATE.credited.hint}>{STATE.credited.label}</th>
+                    <th style={{ ...TH, ...NUM }} title={STATE.covered.hint}>{STATE.covered.label}</th>
+                    <th style={{ ...TH, ...NUM }}>{STATE.cancelled.label}</th>
                     <th style={{ ...TH, ...NUM }}>Awaiting</th>
                     <th style={{ ...TH, ...NUM }}>Credits owed</th>
                     <th style={TH}>Stripe</th>
@@ -1629,7 +1651,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
                         {c.uncharged}{c.uncharged > 0 && c.price > 0 && <span style={{ fontWeight: 400, color: MUTED }}> · {money(c.uncharged_value)}</span>}
                       </td>
                       <td style={{ ...TD, ...NUM, color: c.charged ? INK : FAINT }}>{money(c.charged)}</td>
-                      <td style={{ ...TD, ...NUM, color: c.credited ? INK : FAINT }}>{c.credited}</td>
+                      <td style={{ ...TD, ...NUM, color: c.credited ? STATE.credited.color : FAINT }}>{c.credited}</td>
                       <td style={{ ...TD, ...NUM, color: c.covered ? FREE : FAINT }}>{c.covered ?? 0}</td>
                       <td style={{ ...TD, ...NUM, color: c.cancelled ? INK : FAINT }}>{c.cancelled ?? 0}</td>
                       <td style={{ ...TD, ...NUM, color: c.outstanding ? WARN : FAINT }}>{money(c.outstanding)}</td>

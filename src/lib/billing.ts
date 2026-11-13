@@ -5,9 +5,13 @@
 // in place). Billing tracks it in `billing_appointments`:
 //   no row                       → not tracked: nobody has decided yet
 //   row with a charge            → billed
-//   row with credited_at         → credited (credit_amount is what came back:
-//                                  its price if it had been billed, else 0)
-//   row with cancelled_at        → cancelled: never billed, nothing owed
+//   row with a charge of 0 paid  → paid with credit: a good appointment a
+//     in full by credit            credit paid for, never billed
+//   row with credited_at         → credit given: a bad appointment; the client
+//                                  gets credit_amount back (one appointment's
+//                                  price, whether it was billed here or not)
+//   row with cancelled_at        → not billed: no charge, nothing owed (so is
+//                                  an old row credited for 0)
 //
 // A client's credit balance is what they are owed against their next charge:
 //   credits on appointments + credits added by hand − credit already used.

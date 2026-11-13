@@ -229,89 +229,6 @@ export async function deleteDraftInvoice(id: string): Promise<boolean> {
   try { await call('DELETE', `/invoices/${id}`); return true; } catch { return false; }
 }
 
-/* ── payments already taken in Stripe ─────────────────────────────────────────
-   Read-only. Used to match money that reached Stripe outside this dashboard
-   (an invoice sent from Stripe, a payment link) to the client's appointments. */
-
-export type StripePayment = {
-  id: string;                    // the Stripe charge, ch_… / py_…
-  created: string;               // when it was paid
-  amount: number;                // dollars, net of any refund
-  currency: string;
-  customer_id: string | null;
-  customer_name: string | null;
-  customer_email: string | null;
-  description: string;           // what the invoice or payment says it was for
-  url: string | null;            // the invoice or receipt
-  invoice_id: string | null;
-  /** Set when the payment came from a charge made in this dashboard. */
-  ours: string | null;
-};
-
-// A version where a charge still names its invoice, so the invoice's lines can
-// be read in the same request.
-const WITH_INVOICE = '2024-06-20';
-
-const https = (v: unknown) => (typeof v === 'string' && v.startsWith('https://') ? v : null);
-
-function toPayment(c: Json): StripePayment | null {
-  if (!c || c.status !== 'succeeded' || c.paid === false) return null;
-  const cents = Number(c.amount ?? 0) - Number(c.amount_refunded ?? 0);
-  if (!(cents > 0)) return null;
-  const customer = c.customer && typeof c.customer === 'object' ? c.customer : null;
-  const invoice = c.invoice && typeof c.invoice === 'object' ? c.invoice : null;
-  const lines: string[] = ((invoice?.lines?.data ?? []) as Json[])
-    .map(l => (typeof l?.description === 'string' ? l.description.trim() : '')).filter(Boolean);
-  const said = [typeof c.description === 'string' ? c.description.trim() : '', typeof invoice?.description === 'string' ? invoice.description.trim() : '', ...lines]
-    .filter((t, i, all) => t && all.indexOf(t) === i);
-  return {
-    id: String(c.id),
-    created: new Date(Number(c.created ?? 0) * 1000).toISOString(),
-    amount: cents / 100,
-    currency: String(c.currency ?? 'usd').toLowerCase(),
-    customer_id: customer?.id ?? (typeof c.customer === 'string' ? c.customer : null),
-    customer_name: (customer && !customer.deleted ? customer.name ?? customer.description : null) ?? c.billing_details?.name ?? null,
-    customer_email: (customer && !customer.deleted ? customer.email : null) ?? c.billing_details?.email ?? c.receipt_email ?? null,
-    description: said.join(' · ').slice(0, 400),
-    url: https(invoice?.hosted_invoice_url) ?? https(c.receipt_url),
-    invoice_id: invoice?.id ?? (typeof c.invoice === 'string' ? c.invoice : null),
-    ours: invoice?.metadata?.billing_charge_id ?? c.metadata?.billing_charge_id ?? null,
-  };
-}
-
-/** Successful payments between two moments (unix seconds), newest first.
- *  `limited` = Stripe would not hand over the invoice behind each payment, so
- *  descriptions are thinner and `ours` can't be told. `more` = there were more
- *  than could be read in one go. */
-export async function listPayments(opts: { from?: number | null; to?: number | null; maxPages?: number }): Promise<{ payments: StripePayment[]; limited: boolean; more: boolean }> {
-  const read = async (withInvoice: boolean) => {
-    const out: StripePayment[] = [];
-    let after: string | undefined;
-    let more = false;
-    const pages = opts.maxPages ?? 10;
-    for (let page = 0; page < pages; page++) {
-      const data = await call('GET', '/charges', {
-        limit: 100, starting_after: after,
-        'created[gte]': opts.from ?? undefined, 'created[lte]': opts.to ?? undefined,
-        'expand[0]': 'data.customer', 'expand[1]': withInvoice ? 'data.invoice' : undefined,
-      }, undefined, withInvoice ? WITH_INVOICE : undefined);
-      const rows: Json[] = data?.data ?? [];
-      for (const c of rows) { const p = toPayment(c); if (p) out.push(p); }
-      if (!data?.has_more || !rows.length) break;
-      after = rows[rows.length - 1].id;
-      if (page === pages - 1) more = true;
-    }
-    return { payments: out, more };
-  };
-  try {
-    return { ...(await read(true)), limited: false };
-  } catch (e) {
-    // Stripe refused the fuller request — the plain one still lists the money.
-    if (!(e instanceof StripeError) || !e.definite) throw e;
-    return { ...(await read(false)), limited: true };
-  }
-}
-
 /** Writes a note on a payment in Stripe — which client and appointments it was
  *  for. Internal only (Stripe "metadata"): the customer never sees it and no
  *  money is touched. An empty value takes that note off again. Best effort:
@@ -320,19 +237,4 @@ export async function notePayment(id: string, note: Record<string, string>): Pro
   const metadata = Object.fromEntries(Object.entries(note).map(([k, v]) => [k, v.slice(0, 500)]));
   try { await call('POST', `/charges/${encodeURIComponent(id)}`, { metadata }); return true; }
   catch { return false; }
-}
-
-/** One payment, read again from Stripe. null = not a successful payment. */
-export async function getPayment(id: string): Promise<StripePayment | null> {
-  const path = `/charges/${encodeURIComponent(id)}`;
-  let c: Json;
-  try {
-    c = await call('GET', path, { 'expand[0]': 'customer', 'expand[1]': 'invoice' }, undefined, WITH_INVOICE);
-  } catch (e) {
-    if (!(e instanceof StripeError) || !e.definite) throw e;
-    if (e.code === 'resource_missing') return null;
-    try { c = await call('GET', path, { 'expand[0]': 'customer' }); }
-    catch (e2) { if (e2 instanceof StripeError && e2.code === 'resource_missing') return null; throw e2; }
-  }
-  return toPayment(c);
 }
