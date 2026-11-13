@@ -21,6 +21,8 @@ export type SurveyResult = {
   stripe: { configured: boolean; made?: "existing" | "linked" | "created"; error?: string };
   warnings: string[];
   updated: boolean;
+  /** Anything else the survey did, in words: credits issued, cash recorded, marked closed in GHL. */
+  done?: string[];
 };
 
 const SERVICE_LABEL: Record<string, string> = { facebook_ads: "Facebook Ads", sms: "SMS", both: "Facebook Ads and SMS" };
@@ -198,6 +200,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
       cards.length ? `${cards.length === 1 ? "Onboarding card" : `${cards.length} onboarding cards`} opened, survey step ticked` : "Answers saved",
       "Contact details saved to the client profile (Profit and Loss and Client Billing)",
       ...(stripe.configured && !stripe.error ? [stripe.made === "created" ? "Customer created in Stripe" : stripe.made === "linked" ? "Linked to their existing Stripe customer" : "Already linked to Stripe"] : []),
+      ...(result.done ?? []),
     ];
     return (
       <div className="w-full max-w-2xl mx-auto space-y-4">

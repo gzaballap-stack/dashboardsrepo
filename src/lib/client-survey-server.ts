@@ -4,10 +4,12 @@
 // Onboarding board (one card per service). See NOTES.md 2026-11-12.
 
 import type { AuthContext } from './api-auth';
+import { canBill, round2, toCents } from './billing';
 import {
-  billingEmail, cleanAnswers, contactName, mainPhone, priceOf, serviceOf, str, surveyProblem, tracksOf,
+  billingEmail, cashOf, cleanAnswers, contactName, mainPhone, prepaidOf, priceOf, serviceOf, str, surveyProblem, tracksOf,
   type Answers,
 } from './client-survey';
+import { markClosedInGhl } from './ghl-close';
 import { snapshot, type Card } from './onboarding';
 import { coveredSteps, createCard, ensureRoster, ensureRosterFor, readTemplates, tablesMissing } from './onboarding-server';
 import { StripeError, createCardSetupLink, createCustomer, findCustomers, stripeStatus } from './stripe';
@@ -116,6 +118,65 @@ async function writeProfiles(ctx: AuthContext, clientId: string, name: string, a
   return null;
 }
 
+const SURVEY_CREDIT = 'Onboarding survey';
+const usd = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+
+/**
+ * "Paid up front" → Client Billing, once per client: the prepaid appointments
+ * become credits (count × their price, so their next bookings are covered and
+ * never billed), and the cash becomes a payment already made (nothing is sent
+ * to Stripe). Saving the survey again never does either a second time — a
+ * change after that is made in Client Billing. These records decide what a
+ * client is billed, so they take Client Billing access; without it the answers
+ * are kept on the survey and applied when someone with access saves it.
+ */
+async function applyPrepaid(
+  ctx: AuthContext, clientId: string, clientName: string, a: Answers, surveyPrice: number | null,
+): Promise<{ done: string[]; warnings: string[] }> {
+  const { service } = ctx;
+  const count = prepaidOf(a) ?? 0, cash = cashOf(a) ?? 0;
+  const done: string[] = [], warnings: string[] = [];
+  if (!count && !cash) return { done, warnings };
+  if (!(await canBill(ctx))) {
+    return { done, warnings: ['Prepaid appointments and cash collected are saved on the survey, but not in Client Billing yet — that takes Client Billing access. Someone with it can open this survey and save it again.'] };
+  }
+  const some = `${count} prepaid appointment${count === 1 ? '' : 's'}`;
+
+  if (cash > 0) {
+    const { error } = await service.from('billing_charges').insert({
+      client_id: clientId, client_name: clientName,
+      kind: 'custom', description: `Onboarding — cash collected${count ? ` (${some})` : ''}`, appointment_count: 0,
+      subtotal: cash, credit_applied: 0, total: cash,
+      method: 'manual', status: 'paid', paid_at: now(),
+      request_id: `survey-cash:${clientId}`, created_by: ctx.userId,
+    });
+    if (!error) done.push(`${usd(cash)} collected recorded as a payment in Client Billing`);
+    else if (error.code !== '23505') warnings.push('The cash collected could not be recorded in Client Billing');
+  }
+
+  if (count > 0) {
+    const { data: before, error: readErr } = await service.from('billing_credits').select('id').eq('client_id', clientId).like('reason', `${SURVEY_CREDIT}%`).limit(1);
+    if (readErr) warnings.push('The prepaid credits could not be issued in Client Billing');
+    else if (!before?.length) {
+      let price = surveyPrice ?? 0;
+      if (price <= 0) {
+        const { data: s } = await service.from('billing_clients').select('price_per_appointment').eq('client_id', clientId).maybeSingle();
+        price = Number((s as { price_per_appointment?: number | null } | null)?.price_per_appointment ?? 0) || 0;
+      }
+      if (price <= 0) warnings.push(`The ${some} were not issued as credits: there is no price per appointment. Set it in Client Billing and use Issue credits there.`);
+      else {
+        const { error } = await service.from('billing_credits').insert({
+          client_id: clientId, amount: round2((toCents(price) * count) / 100),
+          reason: `${SURVEY_CREDIT} — ${some}`, created_by: ctx.userId,
+        });
+        if (error) warnings.push('The prepaid credits could not be issued in Client Billing');
+        else done.push(`${some} issued as credits — their next ${count === 1 ? 'booking is' : `${count} bookings are`} not billed`);
+      }
+    }
+  }
+  return { done, warnings };
+}
+
 /**
  * Submit the survey.
  *   { answers }                 a new client: roster, profile, billing, card(s)
@@ -168,6 +229,11 @@ export async function submitSurvey(ctx: AuthContext, body: Record<string, unknow
       .upsert({ client_id: clientId, price_per_appointment: price, updated_at: now() }, { onConflict: 'client_id' });
     if (error) warnings.push('The price per appointment could not be saved to Client Billing');
   }
+  // 4b. What they paid on signing: credits for the prepaid appointments, and the cash.
+  const done: string[] = [];
+  const prepaid = await applyPrepaid(ctx, clientId, String(rosterRow?.name ?? name), a, price);
+  done.push(...prepaid.done); warnings.push(...prepaid.warnings);
+
   const stripe: Row = { configured: stripeStatus().configured };
   if (stripe.configured) {
     const customer = await ensureStripeCustomer(service, clientId, String(rosterRow?.name ?? name), billingEmail(a) || null);
@@ -205,11 +271,29 @@ export async function submitSurvey(ctx: AuthContext, body: Record<string, unknow
     }
   }
 
+  // 6. GoHighLevel: a client who filled in the survey has signed, so their
+  //    contact in the Tomsi Media account is marked closed. Not on a correction.
+  let ghl: Row = { marked: false, why: 'editing' };
+  if (!editing) {
+    const count = prepaidOf(a) ?? 0, cash = cashOf(a) ?? 0;
+    const note = [`Signed — new client survey filled in by ${by}.`, cash ? `Cash collected: ${usd(cash)}.` : '', count ? `Prepaid appointments: ${count}.` : ''].filter(Boolean).join(' ');
+    const result = await markClosedInGhl({
+      emails: [str(a, 'business_email'), str(a, 'personal_email')],
+      phones: [str(a, 'business_phone'), str(a, 'personal_phone')],
+      note,
+    });
+    ghl = result;
+    if (result.marked) done.push('Marked as closed in GoHighLevel (Post-Call Status: Close)');
+    else if (result.why === 'not_found') warnings.push("GoHighLevel: no contact with that email or phone, so they were not marked as closed — set Post-Call Status to Close by hand");
+    else if (result.why === 'no_contact_details') warnings.push('GoHighLevel: the survey has no email or phone, so they were not marked as closed');
+    else if (result.why === 'failed') warnings.push('GoHighLevel would not take the update — set Post-Call Status to Close by hand');
+  }
+
   return {
     status: 200,
     json: {
       client: { id: clientId, name: rosterRow?.name ?? name, status: rosterRow?.status ?? null, service: rosterRow?.service ?? wanted, created: !!roster.created },
-      cards, stripe, warnings, updated: !!before,
+      cards, stripe, warnings, updated: !!before, done, ghl,
     },
   };
 }

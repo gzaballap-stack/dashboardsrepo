@@ -35,6 +35,15 @@ export const SURVEY_SECTIONS: { title: string; note?: string; fields: SurveyFiel
     ],
   },
   {
+    // What they paid on signing. Submitting turns these into Client Billing
+    // records (credits, and a payment) — once: see applyPrepaid on the server.
+    title: 'Paid up front',
+    fields: [
+      { key: 'prepaid_appointments', label: 'Prepaid appointments', type: 'text', placeholder: '0', hint: 'How many they paid for up front. Issued as credits in Client Billing — their next bookings are not billed.' },
+      { key: 'cash_collected', label: 'Cash collected', type: 'money', placeholder: '0', hint: 'What they paid on signing. Recorded as a payment in Client Billing.' },
+    ],
+  },
+  {
     title: 'Contact',
     fields: [
       { key: 'first_name', label: 'First name', type: 'text' },
@@ -132,7 +141,23 @@ export function surveyProblem(a: Answers): string | null {
     if (f.type === 'email' && a[f.key] && !EMAIL.test(String(a[f.key]))) return `${f.label} doesn't look right`;
   }
   if (a.price_per_appointment && priceOf(a) === null) return 'Price per appointment should be a number';
+  if (a.prepaid_appointments && prepaidOf(a) === null) return 'Prepaid appointments should be a whole number';
+  if (a.cash_collected && cashOf(a) === null) return 'Cash collected should be a number';
   return null;
+}
+
+/** Appointments paid for up front. 0 = none; null = not a usable number. */
+export function prepaidOf(a: Answers): number | null {
+  const raw = str(a, 'prepaid_appointments');
+  if (!raw) return 0;
+  return /^\d{1,4}$/.test(raw) && Number(raw) <= 1000 ? Number(raw) : null;
+}
+/** Dollars collected on signing. 0 = none; null = not a usable number. */
+export function cashOf(a: Answers): number | null {
+  const raw = str(a, 'cash_collected');
+  if (!raw) return 0;
+  const n = Number(raw.replace(/[$,\s]/g, ''));
+  return /^[$\s]*[\d,]+(\.\d{1,2})?\s*$/.test(raw) && Number.isFinite(n) && n >= 0 && n < 10_000_000 ? Math.round(n * 100) / 100 : null;
 }
 
 export const str = (a: Answers, key: string): string => (typeof a[key] === 'string' ? (a[key] as string) : '');
