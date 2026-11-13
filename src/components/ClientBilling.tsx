@@ -34,6 +34,7 @@ type ClientRow = {
   charged: number; paid: number; outstanding: number; credited: number; balance: number;
   covered: number; credits_owed: number; cancelled: number;
   service: string | null; sms_appointments: number; ads_appointments: number; unknown_appointments: number;
+  assumed_appointments?: number;
 };
 
 type Source = "ads" | "sms" | "unknown";
@@ -63,6 +64,8 @@ type Appointment = {
   event_id: string; outcome: string; booked_at: string; scheduled_at: string | null;
   lead_name: string | null; lead_phone: string | null; calendar: string | null;
   source: Source;
+  /** Nothing was recorded on the booking: the source is what the client runs. */
+  source_assumed?: boolean;
   billing: ApptBilling | null;
 };
 
@@ -906,8 +909,10 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
             {a.scheduled_at && <span style={{ color: FAINT }}> · booked {day(a.booked_at)}</span>}
           </p>
         </div>
-        <Pill text={SOURCE_LABEL[a.source]} color={SOURCE_COLOR[a.source]}
-          title={a.source === "unknown" ? "No ad or SMS source was recorded for this booking" : undefined} />
+        <Pill text={`${SOURCE_LABEL[a.source]}${a.source_assumed ? " · assumed" : ""}`} color={a.source_assumed ? MUTED : SOURCE_COLOR[a.source]}
+          title={a.source === "unknown" ? "No ad or SMS source was recorded for this booking, and this client runs both"
+            : a.source_assumed ? `No source was recorded on this booking. Counted as ${SOURCE_LABEL[a.source]} because that is all this client runs.`
+            : `Recorded on the booking: ${SOURCE_LABEL[a.source]}`} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
         <span style={{ color: a.outcome === "no_show" ? BAD : a.outcome === "show" ? GOOD : MUTED, fontWeight: 600 }}>{OUTCOME[a.outcome] ?? a.outcome}</span>
@@ -1108,7 +1113,6 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   const [flash, setFlash] = useState<{ text: string; bad?: boolean } | null>(null);
   const [tab, setTab] = useState<DetailTab>("appointments");
   const [filter, setFilter] = useState<ApptFilter>("uncharged");
-  const [sourceFilter, setSourceFilter] = useState<Source | "all">("all");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [charging, setCharging] = useState<string[] | null>(null);     // event ids; [] = one-off amount
   const [crediting, setCrediting] = useState<Appointment[] | null>(null);
@@ -1170,11 +1174,10 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   const counts = useMemo(() => {
     const c = { all: 0, uncharged: 0, charged: 0, credited: 0, covered: 0, cancelled: 0 };
     for (const a of detail?.appointments ?? []) {
-      if (sourceFilter !== "all" && a.source !== sourceFilter) continue;
       c.all++; c[stateOf(a)]++;
     }
     return c;
-  }, [detail, sourceFilter]);
+  }, [detail]);
 
   if (!detail) {
     return (
@@ -1185,13 +1188,11 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
     );
   }
 
-  const inSource = detail.appointments.filter(a => sourceFilter === "all" || a.source === sourceFilter);
-  const shown = inSource.filter(a => filter === "all" || stateOf(a) === filter);
-  const sourceCounts = { ads: 0, sms: 0, unknown: 0 };
-  for (const a of detail.appointments) sourceCounts[a.source]++;
-  const sourcesPresent = (["ads", "sms", "unknown"] as const).filter(k => sourceCounts[k] > 0);
+  // No source buttons in here (the owner found them one set too many): each
+  // card carries its source, and the split is on the client list and Return by source.
+  const shown = detail.appointments.filter(a => filter === "all" || stateOf(a) === filter);
   // Ticking is for dealing with several undecided appointments at once.
-  const untracked = inSource.filter(a => !a.billing);
+  const untracked = detail.appointments.filter(a => !a.billing);
   const chosen = untracked.filter(a => picked.has(a.event_id));
   const chosenIds = chosen.map(a => a.event_id);
   const price = detail.settings.price;
@@ -1309,12 +1310,6 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
             { id: "cancelled", label: `${STATE.cancelled.label} (${counts.cancelled})` },
             { id: "all", label: `All (${counts.all})` },
           ]} />
-          {sourcesPresent.length > 1 && (
-            <Segments<Source | "all"> value={sourceFilter} onChange={setSourceFilter} options={[
-              { id: "all", label: "Every source" },
-              ...sourcesPresent.map(k => ({ id: k as Source | "all", label: `${SOURCE_LABEL[k]} (${sourceCounts[k]})` })),
-            ]} />
-          )}
         </div>
 
         <p style={{ fontSize: 12, color: MUTED, display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -1640,10 +1635,12 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
                       <td style={{ ...TD, ...NUM, color: c.price ? INK : FAINT }}>{c.price ? money(c.price) : "not set"}</td>
                       <td style={{ ...TD, ...NUM }}>
                         {c.appointments}
-                        {(c.sms_appointments > 0 || c.unknown_appointments > 0) && (
-                          <span style={{ display: "block", fontSize: 11, color: FAINT, whiteSpace: "nowrap" }}>
-                            {[c.ads_appointments ? `${c.ads_appointments} ads` : null, c.sms_appointments ? `${c.sms_appointments} SMS` : null,
-                              c.unknown_appointments ? `${c.unknown_appointments} no source` : null].filter(Boolean).join(" · ")}
+                        {c.appointments > 0 && (
+                          <span style={{ display: "block", fontSize: 11, color: FAINT, whiteSpace: "nowrap" }}
+                            title={c.assumed_appointments ? `${c.assumed_appointments} had no source recorded on the booking — counted by what this client runs` : undefined}>
+                            {[c.ads_appointments ? `${c.ads_appointments} FB Ads` : null, c.sms_appointments ? `${c.sms_appointments} SMS` : null,
+                              c.unknown_appointments ? `${c.unknown_appointments} no source` : null,
+                              c.assumed_appointments ? `${c.assumed_appointments} assumed` : null].filter(Boolean).join(" · ")}
                           </span>
                         )}
                       </td>

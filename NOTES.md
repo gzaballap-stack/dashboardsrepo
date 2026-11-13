@@ -39,6 +39,14 @@ states told apart.
   three extra reads for the clients listed), its untracked cards read **Use a
   credit** while the client holds one, and a booking a credit paid for shows
   there as Paid with credit.
+- **Source** (owner: "I want to know where the appointments came from", then
+  "too many options" inside a client): the split under Appointments in the
+  **client list** always shows now, even when it is all one source. Inside a
+  client the Every source / FB Ads / SMS buttons are **removed for good** —
+  each card keeps its source tag, and Return by source stays. A booking with
+  nothing recorded on it, counted by what the client runs (`sourceOf`'s
+  fallback), reads **"· assumed"** on its tag (`source_assumed`,
+  `sourceRecorded` in `lib/billing.ts`; `assumed_appointments` in the list).
 - **Old records**: a row "credited" for nothing (`credited_at`, amount 0, no
   charge) is read as **Not billed** everywhere (`notBilled` in the route) and
   its Undo removes it. No data was rewritten; no schema change.

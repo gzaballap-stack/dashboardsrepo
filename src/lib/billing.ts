@@ -155,6 +155,12 @@ type Attributed = {
 
 const isSms = (v: unknown) => typeof v === 'string' && v.trim().toLowerCase() === 'sms';
 
+/** The booking itself says where it came from. false = nothing was recorded
+ *  on it, and `sourceOf` falls back on what the client runs. */
+export const sourceRecorded = (e: Attributed): boolean =>
+  isSms(e.ad_platform) || isSms(e.utm_source) || isSms(e.utm_medium)
+  || !!(e.ad_platform || e.campaign_id || e.adset_id || e.ad_id || e.utm_source || e.utm_campaign);
+
 export function sourceOf(e: Attributed, service: string | null | undefined): Source {
   if (isSms(e.ad_platform) || isSms(e.utm_source) || isSms(e.utm_medium)) return 'sms';
   if (e.ad_platform || e.campaign_id || e.adset_id || e.ad_id || e.utm_source || e.utm_campaign) return 'ads';

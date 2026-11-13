@@ -3,7 +3,7 @@ import { getAuthContext, isAuthError, type AuthContext } from '@/lib/api-auth';
 import {
   APPOINTMENT_TYPES, LIVE_CHARGE_STATUSES, STRIPE_MINIMUM,
   canBill, creditBalance, creditInAppointments, isMissingColumn, isMissingTable, oldestOpenCredit, paidByCredit,
-  namesNote, planCharge, planCovers, returnsBySource, round2, sourceOf, toCents,
+  namesNote, planCharge, planCovers, returnsBySource, round2, sourceOf, sourceRecorded, toCents,
   type BillingState, type Source,
 } from '@/lib/billing';
 import {
@@ -432,6 +432,8 @@ export async function GET(req: Request) {
           outcome: e.event_type, booked_at: e.occurred_at, scheduled_at: e.scheduled_at,
           lead_name: e.lead_name, lead_phone: e.lead_phone, calendar: e.calendar_name,
           source: sourceOf(e, client.service as string | null),
+          // Nothing was recorded on the booking: the source is what the client runs.
+          source_assumed: !sourceRecorded(e) && sourceOf(e, client.service as string | null) !== 'unknown',
           billing: billingView(a, a?.charge_id ? chargeById.get(a.charge_id as string) : undefined),
         };
       }),
@@ -546,6 +548,7 @@ export async function GET(req: Request) {
         event_id: e.id, outcome: e.event_type, booked_at: e.occurred_at, scheduled_at: e.scheduled_at,
         lead_name: e.lead_name, lead_phone: e.lead_phone, calendar: e.calendar_name,
         source: sources.get(e.id as string),
+        source_assumed: !sourceRecorded(e) && sources.get(e.id as string) !== 'unknown',
         billing: billingOf(apptByEvent.get(e.id as string)),
       })),
       ledger,
@@ -631,6 +634,7 @@ export async function GET(req: Request) {
     return {
       client_id: e.client_id as string,
       source: sourceOf(e, serviceOf.get(e.client_id as string)),
+      assumed: !sourceRecorded(e),
       state: stateOf(a), price: num(a?.price),
       clientPrice: num(settings.get(e.client_id as string)?.price_per_appointment),
     };
@@ -656,6 +660,8 @@ export async function GET(req: Request) {
       sms_appointments: bySource.filter(a => a.source === 'sms').length,
       ads_appointments: bySource.filter(a => a.source === 'ads').length,
       unknown_appointments: bySource.filter(a => a.source === 'unknown').length,
+      // Counted as ads or SMS only because that is what the client runs.
+      assumed_appointments: bySource.filter(a => a.assumed && a.source !== 'unknown').length,
       uncharged,
       uncharged_value: round2(uncharged * price),
       charged: sum(mine.filter(r => ['pending', 'paid'].includes(r.status as string) && inPeriod(r.created_at))),
