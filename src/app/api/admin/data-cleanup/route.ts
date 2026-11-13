@@ -578,5 +578,37 @@ export async function POST(req: Request) {
     return NextResponse.json({ op, dry_run: false, sends: sends.length, leads: leads.length });
   }
 
-  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close, remove_stray_closes, remove_test_zaballa, sync_post_call_status, remove_funnel_tests, backfill_sms_oct22_23` }, { status: 400 });
+  // ---- op 17: website funnel tests (tomsimedia.com/check-your-market, from 2026-11-13) ----
+  // Only rows tied to the named test contacts, only from the day the funnel went
+  // live, never a close, and never more than a handful.
+  if (op === 'remove_website_funnel_tests') {
+    const CONTACTS = ['Mb1wlVp7MfHKMDh6g9KE'];                       // "Test Clark"
+    const SINCE = '2026-11-13T00:00:00.000Z';
+    const LIMIT = 20;
+    const tomsiId = await getTomsiClientId(service);
+    if (!tomsiId) return NextResponse.json({ error: 'Tomsi Media client not found' }, { status: 500 });
+    const ors = [...CONTACTS.map(c => `ghl_contact_id.eq.${c}`), ...CONTACTS.map(c => `external_id.ilike.%${c}%`)].join(',');
+    const pick = async (table: 'b2b_events' | 'events') => {
+      let q = service.from(table).select('id, event_type, lead_name, occurred_at').or(ors).gte('occurred_at', SINCE);
+      if (table === 'events') q = q.eq('client_id', tomsiId);
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    };
+    let b2b, mir;
+    try { b2b = await pick('b2b_events'); mir = await pick('events'); }
+    catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 500 }); }
+    const total = b2b.length + mir.length;
+    if (total > LIMIT) return NextResponse.json({ error: `Too many rows (${total} > ${LIMIT}); aborting for safety.` }, { status: 400 });
+    if ([...b2b, ...mir].some(r => r.event_type === 'close' || r.event_type === 'closed')) {
+      return NextResponse.json({ error: 'A close is tied to this contact; aborting for safety.' }, { status: 400 });
+    }
+    const list = (rows: typeof b2b) => rows.map(r => `${r.event_type} | ${r.lead_name ?? ''} | ${r.occurred_at}`);
+    if (dryRun) return NextResponse.json({ op, dry_run: true, would_delete_b2b: list(b2b), would_delete_mirror: list(mir), total });
+    if (b2b.length) await service.from('b2b_events').delete().in('id', b2b.map(r => r.id));
+    if (mir.length) await service.from('events').delete().in('id', mir.map(r => r.id));
+    return NextResponse.json({ op, dry_run: false, deleted_b2b: list(b2b), deleted_mirror: list(mir) });
+  }
+
+  return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close, remove_stray_closes, remove_test_zaballa, sync_post_call_status, remove_funnel_tests, backfill_sms_oct22_23, remove_website_funnel_tests` }, { status: 400 });
 }
