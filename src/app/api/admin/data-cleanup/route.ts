@@ -582,7 +582,7 @@ export async function POST(req: Request) {
   // Only rows tied to the named test contacts, only from the day the funnel went
   // live, never a close, and never more than a handful.
   if (op === 'remove_website_funnel_tests') {
-    const CONTACTS = ['Mb1wlVp7MfHKMDh6g9KE'];                       // "Test Clark"
+    const CONTACTS = ['Mb1wlVp7MfHKMDh6g9KE', 'SyYDdPnvcrt0w03iWJUX'];  // "Test Clark", "Test"
     const SINCE = '2026-11-13T00:00:00.000Z';
     const LIMIT = 20;
     const tomsiId = await getTomsiClientId(service);
