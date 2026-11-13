@@ -559,6 +559,9 @@ create table if not exists billing_clients (
   client_id             uuid primary key references clients(id) on delete cascade,
   price_per_appointment numeric not null default 0,
   stripe_customer_id    text,
+  -- daily: bookings show in "Track today's appointments"; weekly: kept out of
+  -- it and shown together at the end of the week (migrations/add_billing_cycle.sql)
+  billing_cycle         text not null default 'daily' check (billing_cycle in ('daily', 'weekly')),
   updated_at            timestamptz not null default now()
 );
 

@@ -35,6 +35,8 @@ type ClientRow = {
   covered: number; credits_owed: number; cancelled: number;
   service: string | null; sms_appointments: number; ads_appointments: number; unknown_appointments: number;
   assumed_appointments?: number;
+  /** Billed weekly: kept out of the daily list, dealt with on Saturday. */
+  weekly?: boolean;
 };
 
 type Source = "ads" | "sms" | "unknown";
@@ -88,7 +90,7 @@ type Customer = { id: string; name: string | null; email: string | null; payment
 
 type Detail = {
   client: { id: string; name: string; status: string };
-  settings: { price: number; stripe_customer_id: string | null };
+  settings: { price: number; stripe_customer_id: string | null; weekly?: boolean };
   customer: Customer | null; customer_error: string | null;
   balance: number; credits_owed: number;
   appointments: Appointment[]; ledger: LedgerEntry[]; charges: Charge[];
@@ -347,7 +349,10 @@ function ReturnCard({ source, r, smsSent }: { source: "ads" | "sms"; r: SourceRe
       {line(`Not tracked yet${r.untracked ? ` · ${r.untracked}` : ""}`, money(r.to_bill))}
       {line("Revenue", money(r.revenue), true)}
       {sms
-        ? line("Profit", money(r.profit), true, r.profit >= 0 ? GOOD : BAD)
+        ? (<>
+          {line("Profit", money(r.profit), true, r.profit >= 0 ? GOOD : BAD)}
+          {line("Margin · profit ÷ revenue", r.revenue > 0 ? `${Math.round((r.profit / r.revenue) * 100)}%` : "—", true, r.revenue > 0 ? (r.profit >= 0 ? GOOD : BAD) : FAINT)}
+        </>)
         : <p style={{ fontSize: 11.5, color: FAINT, paddingTop: 7, borderTop: "1px solid rgba(0,0,0,0.05)" }}>No cost to you — the client pays the ad spend.</p>}
     </div>
   );
@@ -941,10 +946,14 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
 // week) across every client, and which of those nobody has billed, credited or
 // marked not billed yet. "Today" is the day on this computer's clock.
 /** credits = whole appointments of credit the client still holds. */
-type RecentAppt = Appointment & { client_id: string; client_name: string; price: number; credits: number };
-type RecentSpan = "today" | "yesterday" | "week";
+type RecentAppt = Appointment & { client_id: string; client_name: string; price: number; credits: number; weekly: boolean };
+// "weekly" = the clients billed weekly: their bookings stay out of the three
+// daily views and are dealt with together at the end of the week.
+type RecentSpan = "today" | "yesterday" | "week" | "weekly";
 
 const startOfDay = (back: number) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - back); return d; };
+// The billing week runs Sunday to Saturday; weekly clients are tracked on the Saturday.
+const startOfWeek = (weeksBack = 0) => { const d = startOfDay(0); d.setDate(d.getDate() - d.getDay() - 7 * weeksBack); return d; };
 
 function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
   stripe: StripeState;
@@ -953,7 +962,7 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
   onChanged: () => void; onOpenClient: (id: string) => void;
 }) {
   const [rows, setRows] = useState<RecentAppt[] | null>(null);
-  const [span, setSpan] = useState<RecentSpan>("today");
+  const [pickedSpan, setSpan] = useState<RecentSpan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -963,12 +972,14 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
 
   useEffect(() => {
     let live = true;
-    api(`/api/billing${query({ view: "recent", from: startOfDay(6).toISOString(), to: new Date().toISOString() })}`)
+    api(`/api/billing${// Back to the start of last week, for weekly clients' bookings still waiting.
+    query({ view: "recent", from: startOfWeek(1).toISOString(), to: new Date().toISOString() })}`)
       .then(data => {
         if (!live) return;
         setRows((data.appointments ?? []).map((a: RecentAppt) => ({
           ...a, source: a.source ?? "ads", price: Number(a.price ?? 0) || 0,
           credits: Number((a as { credits_owed?: number }).credits_owed ?? 0) || 0,
+          weekly: a.weekly === true,
         })));
         setError(null);
       })
@@ -999,15 +1010,26 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
   };
   const bill = (clientId: string, eventIds: string[]) => withClient(clientId, detail => setCharging({ detail, eventIds }));
 
-  const today0 = startOfDay(0).getTime(), yesterday0 = startOfDay(1).getTime();
+  const today0 = startOfDay(0).getTime(), yesterday0 = startOfDay(1).getTime(), sevenDays0 = startOfDay(6).getTime();
+  const week0 = startOfWeek().getTime();
   const inSpan = (a: RecentAppt, which: RecentSpan) => {
     const t = new Date(a.booked_at).getTime();
-    return which === "today" ? t >= today0 : which === "yesterday" ? t >= yesterday0 && t < today0 : true;
+    // Weekly clients: this week's bookings, plus any from last week still waiting.
+    if (which === "weekly") return a.weekly && (t >= week0 || !a.billing);
+    if (a.weekly) return false;
+    return which === "today" ? t >= today0 : which === "yesterday" ? t >= yesterday0 && t < today0 : t >= sevenDays0;
   };
   const all = rows ?? [];
   const open = (which: RecentSpan) => all.filter(a => inSpan(a, which) && !a.billing).length;
+  const openToday = open("today"), openYesterday = open("yesterday"), openWeek = open("week"), openWeekly = open("weekly");
+  const hasWeekly = all.some(a => a.weekly);
+  const weeklyCount = all.filter(a => inSpan(a, "weekly")).length;
+  // Weekly clients are due on Saturday — and stay due while last week's are still waiting.
+  const late = all.filter(a => a.weekly && !a.billing && new Date(a.booked_at).getTime() < week0).length;
+  const due = openWeekly > 0 && (new Date().getDay() === 6 || late > 0);
+  // Opens on today; on the day the week is due, with today's already done, on the week.
+  const span: RecentSpan = pickedSpan ?? (due && openToday === 0 ? "weekly" : "today");
   const shown = all.filter(a => inSpan(a, span));
-  const openToday = open("today"), openYesterday = open("yesterday"), openWeek = open("week");
 
   const groups = useMemo(() => {
     const map = new Map<string, RecentAppt[]>();
@@ -1019,26 +1041,35 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
   const todayCount = all.filter(a => inSpan(a, "today")).length;
   const title = rows === null ? "Today's appointments"
     : openToday > 0 ? `Track today's appointments — ${openToday} not tracked`
+    : due ? `Track this week's appointments — ${openWeekly} not tracked`
     : todayCount > 0 ? `Today's ${plural(todayCount, "appointment")} — all tracked`
     : "No appointments booked today";
   const older = openWeek - openToday;
-  const spanWord = span === "today" ? "today" : span === "yesterday" ? "yesterday" : "in the last 7 days";
+  const spanWord = span === "today" ? "today" : span === "yesterday" ? "yesterday" : span === "weekly" ? "this week" : "in the last 7 days";
+  const attention = openToday > 0 || due;
 
   return (
-    <div style={{ ...PANEL, padding: 16, display: "flex", flexDirection: "column", gap: 12, border: openToday > 0 ? "1px solid rgba(138,97,0,0.35)" : BORDER }}>
+    <div style={{ ...PANEL, padding: 16, display: "flex", flexDirection: "column", gap: 12, border: attention ? "1px solid rgba(138,97,0,0.35)" : BORDER }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 220 }}>
-          <p style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", color: openToday > 0 ? WARN : todayCount > 0 ? GOOD : INK }}>{title}</p>
+          <p style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", color: attention ? WARN : todayCount > 0 ? GOOD : INK }}>{title}</p>
           <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
             {rows === null ? "Loading…"
               : older > 0 ? `${plural(older, "appointment")} from earlier this week ${older === 1 ? "is" : "are"} still not tracked.`
               : "Bill, credit or mark each booking not billed as the day ends."}
           </p>
+          {hasWeekly && (
+            <p style={{ fontSize: 12, color: due ? WARN : MUTED, marginTop: 2 }}>
+              {due ? `Weekly clients: ${plural(openWeekly, "appointment")} to track${late > 0 ? ` (${late} from last week)` : " — it's Saturday"}.`
+                : `Weekly clients: ${plural(weeklyCount, "appointment")} this week — tracked together on Saturday, not here each day.`}
+            </p>
+          )}
         </div>
         <Segments<RecentSpan> value={span} onChange={setSpan} options={[
           { id: "today", label: `Today${openToday ? ` (${openToday})` : ""}` },
           { id: "yesterday", label: `Yesterday${openYesterday ? ` (${openYesterday})` : ""}` },
           { id: "week", label: `7 days${openWeek ? ` (${openWeek})` : ""}` },
+          ...(hasWeekly ? [{ id: "weekly" as RecentSpan, label: `Weekly clients${openWeekly ? ` (${openWeekly})` : ""}` }] : []),
         ]} />
       </div>
 
@@ -1122,6 +1153,8 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   const [busy, setBusy] = useState(false);
   const [creditAmount, setCreditAmount] = useState("");
   const [creditReason, setCreditReason] = useState("");
+  // The period whose figures are on screen; behind the one picked while the new ones load.
+  const [loadedFor, setLoadedFor] = useState<PeriodId | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -1144,6 +1177,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load");
     }
+    setLoadedFor(period);
   }, [clientId, period]);
 
   useEffect(() => { load(); }, [load]);
@@ -1223,7 +1257,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, opacity: loadedFor === period ? 1 : 0.45 }} aria-busy={loadedFor !== period}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button onClick={onBack} style={BTN_QUIET}>← All clients</button>
         <h3 style={{ flex: 1, minWidth: 160, fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>{detail.client.name}</h3>
@@ -1242,6 +1276,16 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
             onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
             inputMode="decimal" placeholder="$0" style={FIELD} />
         </label>
+        <div title="Daily: their bookings show in Track today's appointments. Weekly: they are kept out of it and shown together on Saturday.">
+          <p style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, marginBottom: 5 }}>Billed</p>
+          <Segments<"daily" | "weekly"> value={detail.settings.weekly ? "weekly" : "daily"}
+            onChange={v => {
+              if ((v === "weekly") === !!detail.settings.weekly) return;
+              act({ action: "settings", client_id: clientId, billing_cycle: v },
+                v === "weekly" ? "Billed weekly — their bookings show on Saturday, not in today's list" : "Billed daily — their bookings show in today's list");
+            }}
+            options={[{ id: "daily", label: "Daily" }, { id: "weekly", label: "Weekly" }]} />
+        </div>
         <div style={{ flex: 1, minWidth: 220 }}>
           <p style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, marginBottom: 5 }}>Stripe</p>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minHeight: 35 }}>
@@ -1514,6 +1558,10 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
 
   const [version, setVersion] = useState(0);
   const reload = useCallback(() => setVersion(v => v + 1), []);
+  // The period whose figures are on screen. While another is being fetched the
+  // old figures stay up, dimmed — otherwise pressing a period looks like nothing happened.
+  const [shownPeriod, setShownPeriod] = useState<PeriodId | null>(null);
+  const waiting = shownPeriod !== null && shownPeriod !== period;
 
   useEffect(() => {
     let live = true;
@@ -1529,11 +1577,13 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
         // alongside, may have read it a moment too early.
         if (Number(data.covered ?? 0) > 0) setTodayTick(t => t + 1);
         setError(null);
+        setShownPeriod(period);
       })
       .catch(e => {
         if (!live) return;
         setError(e instanceof Error ? e.message : "Could not load");
         setRows(prev => prev ?? []);
+        setShownPeriod(period);
       });
     return () => { live = false; };
   }, [period, version]);
@@ -1566,6 +1616,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
             </span>
           </p>
         </div>
+        {waiting && !openId && <span role="status" style={{ fontSize: 12.5, fontWeight: 600, color: WARN }}>{`Loading ${moneyLabel(period).toLowerCase()}…`}</span>}
         <Segments<PeriodId> value={period} onChange={setPeriod} options={PERIODS} />
       </div>
 
@@ -1584,7 +1635,8 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
         {/* Loads on its own, alongside the figures below — neither waits for the other. */}
         <TodayPanel stripe={stripe} tick={todayTick} onChanged={reload} onOpenClient={setOpenId} />
 
-        {rows === null ? <p style={{ fontSize: 13, color: FAINT }}>Loading the rest…</p> : (<>
+        {rows === null ? <p style={{ fontSize: 13, color: FAINT }}>Loading the rest…</p> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, opacity: waiting ? 0.45 : 1 }} aria-busy={waiting}>
         <div style={TILE_GRID}>
           <Tile label="Not tracked" value={String(totals.uncharged)} tone={totals.uncharged > 0 ? "warn" : undefined}
             sub={totals.uncharged === 0 ? "every appointment is dealt with" : `${money(totals.value)} if billed · ${periodLabel}`} />
@@ -1631,6 +1683,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
                       <td style={{ ...TD, fontWeight: 600 }}>
                         <button onClick={e => { e.stopPropagation(); setOpenId(c.id); }} style={{ fontWeight: 600, color: INK, textAlign: "left" }}>{c.name}</button>
                         {c.status !== "live" && <span style={{ fontSize: 11.5, fontWeight: 400, color: FAINT }}> · {c.status}</span>}
+                        {c.weekly && <span title="Billed weekly: tracked together on Saturday" style={{ fontSize: 11.5, fontWeight: 400, color: FAINT }}> · weekly</span>}
                       </td>
                       <td style={{ ...TD, ...NUM, color: c.price ? INK : FAINT }}>{c.price ? money(c.price) : "not set"}</td>
                       <td style={{ ...TD, ...NUM }}>
@@ -1670,7 +1723,7 @@ export default function ClientBilling({ openClientId, onOpenProfitLoss }: {
             </div>
           )}
         </div>
-        </>)}
+        </div>)}
       </>)}
     </div>
   );

@@ -1,3 +1,36 @@
+## 2026-11-13 — Client Billing: weekly clients, SMS margin, period buttons show they are loading
+
+- **Billed daily or weekly, per client** (`billing_clients.billing_cycle`,
+  `migrations/add_billing_cycle.sql`, `node scripts/migrate-billing-cycle.mjs
+  v1` — **must be run on each database**; until then everyone is daily and
+  switching says a database update is needed, nothing else breaks: settings
+  are read with `select('*')`). Set on the client page next to the price.
+  - A weekly client's bookings are **kept out of Today / Yesterday / 7 days**
+    in Track today's appointments and shown under a **Weekly clients** tab:
+    this week's (Sunday → Saturday, the browser's clock) plus any from last
+    week still not tracked. The panel reads back to the start of last week.
+  - They are **due on Saturday** — the panel turns amber, says so, and opens
+    on that tab once today's are done — and stay due while last week's are
+    still waiting. Other days the tab is there, quiet.
+  - Nothing else changes for them: the client list still counts their
+    untracked appointments, and credit still pays for their bookings.
+- **SMS margin**: the SMS card in Return by source has a **Margin** line
+  (profit ÷ revenue) under Profit.
+- **"The period buttons don't change anything"** (owner). Not reproduced: the
+  browser pane was not signed in, so the live page was never looked at. On a
+  simulated database the four periods do return different figures. What was
+  found and done:
+  - Pressing a period left the old figures up with no sign of loading until
+    the new ones arrived (seconds for 90 days / All time). Now they dim and
+    the header says "Loading …" — list and client page.
+  - Not changed, and can read as "nothing changed": **Billed / Paid go by the
+    day the charge was recorded**, not the appointment's date, so a backlog
+    recorded this month is all "this month" (and This month = 90 days = All
+    time while billing is weeks old); Return by source goes by the
+    appointment's date. Inside a client, Paid / Credit given / Paid with credit
+    / Credits owed are all-time by design. **If he still sees it frozen, look
+    at the live page signed in before changing anything else.**
+
 ## 2026-11-13 — Client Billing: Bill / Credit / Not billed; Match with Stripe removed
 
 Owner's list, in his words: drop Match with Stripe, drop the "This month + all

@@ -360,7 +360,9 @@ export async function GET(req: Request) {
     return (!from || t >= new Date(from).getTime()) && (!to || t <= new Date(to).getTime());
   };
   const stripe = stripeStatus();
-  const readSettings = () => service.from('billing_clients').select('client_id, price_per_appointment, stripe_customer_id');
+  // Every column: a database that has not had `billing_cycle` added yet still
+  // answers, and everyone is billed daily.
+  const readSettings = () => service.from('billing_clients').select('*');
   type Settings = Awaited<ReturnType<typeof readSettings>>;
   const refuse = (allowed: boolean, probe: Settings) => {
     if (!allowed) return bad('Client Billing is not enabled for this account', 403);
@@ -429,6 +431,7 @@ export async function GET(req: Request) {
           event_id: e.id, client_id: client.id, client_name: client.name,
           price: num(settings.get(client.id as string)?.price_per_appointment),
           credits_owed: creditsHeld.get(client.id as string) ?? 0,
+          weekly: settings.get(client.id as string)?.billing_cycle === 'weekly',
           outcome: e.event_type, booked_at: e.occurred_at, scheduled_at: e.scheduled_at,
           lead_name: e.lead_name, lead_phone: e.lead_phone, calendar: e.calendar_name,
           source: sourceOf(e, client.service as string | null),
@@ -539,7 +542,7 @@ export async function GET(req: Request) {
       profile: shared.profile, profile_available: shared.available, profile_key: shared.key,
       pnl: { paid: shared.paid, months: shared.months, last_month: shared.last_month },
       returns: { ...returns, sms_sent: costs.sms_sent },
-      settings: { price, stripe_customer_id: (s?.stripe_customer_id as string | null) ?? null },
+      settings: { price, stripe_customer_id: (s?.stripe_customer_id as string | null) ?? null, weekly: s?.billing_cycle === 'weekly' },
       customer, customer_error: customerError,
       balance,
       // What they are still owed, in appointments: bookings that won't be billed.
@@ -656,6 +659,7 @@ export async function GET(req: Request) {
       id: c.id, name: c.name, status: c.status, service: c.service ?? null,
       price,
       stripe_linked: !!s?.stripe_customer_id,
+      weekly: s?.billing_cycle === 'weekly',
       appointments: (eventsBy.get(c.id) ?? []).length,
       sms_appointments: bySource.filter(a => a.source === 'sms').length,
       ads_appointments: bySource.filter(a => a.source === 'ads').length,
@@ -738,8 +742,15 @@ export async function POST(req: Request) {
       if (id && !/^cus_[A-Za-z0-9]+$/.test(id)) return bad("That doesn't look like a Stripe customer");
       patch.stripe_customer_id = id || null;
     }
+    if (body.billing_cycle !== undefined) {
+      if (body.billing_cycle !== 'daily' && body.billing_cycle !== 'weekly') return bad('Billing is daily or weekly');
+      patch.billing_cycle = body.billing_cycle;
+    }
     const { error } = await service.from('billing_clients').upsert(patch, { onConflict: 'client_id' });
-    if (error) return dbError(error);
+    if (error) {
+      if (isMissingColumn(error, 'billing_cycle')) return bad('Weekly billing needs a one-off database update first', 503);
+      return dbError(error);
+    }
     if (body.price !== undefined) await tryCover(service, clientId);
     return NextResponse.json({ success: true });
   }
