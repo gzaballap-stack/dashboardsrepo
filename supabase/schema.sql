@@ -771,3 +771,25 @@ create index if not exists card_vault_log_user_idx on card_vault_log (user_id, a
 alter table card_vault     enable row level security;
 alter table card_vault_log enable row level security;
 revoke all on card_vault, card_vault_log from anon, authenticated;
+
+-- Card vault, second layer (NOTES.md 2026-11-14): the vault password. Cards are
+-- locked in the browser with public_key; the private key is here locked with a
+-- password that is stored nowhere, and locked again with the server key.
+create table if not exists card_vault_keys (
+  id              smallint primary key default 1 check (id = 1),   -- there is one vault
+  public_key      text not null,
+  ciphertext      text not null,
+  iv              text not null,
+  tag             text not null,
+  created_by      uuid,
+  created_by_name text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+alter table card_vault_keys enable row level security;
+revoke all on card_vault_keys from anon, authenticated;
+
+-- The log also records the vault password being set and changed.
+alter table card_vault_log drop constraint if exists card_vault_log_action_check;
+alter table card_vault_log add constraint card_vault_log_action_check
+  check (action in ('saved', 'replaced', 'revealed', 'denied', 'deleted', 'vault_set', 'password_changed'));

@@ -1,3 +1,53 @@
+## 2026-11-14 — Card vault: the vault password (cards locked in the browser)
+
+Owner asked whether a Railway or Supabase leak would expose the cards. With the
+first build (below) a Railway leak would have: Railway held both the encryption
+key and the database password. He chose to close that with a **vault password
+that only he knows and that is stored nowhere**. This replaces how cards are
+locked; the entry below still holds for the decision, where the feature lives,
+and who may do what.
+
+- **How it works** (`lib/vault-crypto.ts` in the browser, `lib/card-vault.ts`
+  on the server):
+  - Setting the vault password makes a public / private key pair *in the
+    browser*. The public key goes to the server. The private key is locked with
+    the vault password (PBKDF2-SHA256, 600k rounds → AES-GCM) before it leaves
+    the browser.
+  - **Saving** a card locks it in the browser with the public key (RSA-OAEP
+    3072 wrapping a one-off AES-GCM key, bound to the client id). No password —
+    a VA can save and still cannot read it back.
+  - **Showing** a card: the browser fetches the locked card and the locked
+    private key, and the vault password typed there opens them. **The server
+    never sees the vault password, the private key, or a readable card** — at
+    save or at show.
+  - Everything is locked a second time on the server with `CARD_VAULT_KEY`
+    before it reaches the database (`card_vault`, `card_vault_keys`), so a
+    database copy alone gives nothing to even guess passwords against.
+- **What a leak gives:** database only → nothing. Railway (with the database)
+  → locked cards and the locked private key; still needs the vault password.
+  The owner's Mac → same. Only the vault password opens a card.
+- **Forgotten vault password = the stored cards are gone for good.** Nobody can
+  recover it, the assistant included. There is no reset button; if it ever
+  happens, empty `card_vault` and `card_vault_keys` and he sets a new one.
+- **Never ask the owner for the vault password, never have him type it
+  anywhere but the dashboard's own prompt, never write it down in a file,
+  note or memory.** The assistant cannot open a card and must not try.
+- Admin-only: set the password (once), change it (re-locks the same private
+  key — saved cards keep working), fetch a card to open (20 an hour at most,
+  each logged as "Opened" whether or not the password then worked), delete.
+  The dashboard-password prompt and its 5-tries lockout from the first build
+  are gone — the vault password replaces them.
+- Until the vault password is set nothing can be saved: the card panel shows
+  "Set vault password" to admins, and the survey says storage is waiting.
+- **Schema:** `card_vault_keys` (one row) + two new log actions, in
+  `migrations/add_onboarding.sql`; run on V1 2026-11-14.
+- **Checked:** local preview on a made-up database with the real locking code —
+  set / change the password, VA saves but cannot fetch, right and wrong
+  password, a record moved to another client, wrong or missing server key,
+  hourly cap, delete, nothing readable anywhere in the stored data; the
+  set-password, add, show screens. Production build. Not checked signed in on
+  V1 (the owner has to set the password himself).
+
 ## 2026-11-14 — Card vault: clients' cards stored encrypted (owner's decision)
 
 **Decision.** The owner wants full card details kept in the dashboard, to add a

@@ -1,20 +1,25 @@
 "use client";
 
-// A client's card, stored encrypted (lib/card-vault.ts has the rules). This is
-// the only screen that takes a card in or shows one. A card is shown only to an
-// admin who re-enters their password, for a minute, and each view is logged.
+// A client's card, stored locked (lib/card-vault.ts has the rules). This is the
+// only screen that takes a card in or shows one. Cards are locked and unlocked
+// here in the browser (lib/vault-crypto.ts): saving needs no password; showing
+// one takes an admin and the vault password, which never leaves this page.
 
 import { useEffect, useState } from "react";
-import { EMPTY_CARD, cardProblem, cardStarted, formatExp, formatNumber, type CardInput } from "@/lib/card-format";
+import { EMPTY_CARD, brandOf, cardProblem, cardStarted, formatExp, formatNumber, tidyCard, type CardInput } from "@/lib/card-format";
+import { changePassword, createVault, lockCard, openCard, passwordProblem, type Envelope, type KeyMaterial } from "@/lib/vault-crypto";
 
 const BORDER = "1px solid rgba(0,0,0,0.08)";
 const INPUT = { background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" } as const;
 const SHOW_SECONDS = 60;
 
 type Summary = { brand: string; last4: string; saved_by: string | null; saved_at: string | null };
-type Status = { enabled: boolean; ready: boolean; card?: Summary | null; can_reveal?: boolean; history?: { user_name: string; action: string; at: string }[]; error?: string };
+type Status = {
+  enabled: boolean; ready: boolean; setup?: boolean; public_key?: string | null; can_reveal?: boolean;
+  card?: Summary | null; history?: { user_name: string; action: string; at: string }[]; error?: string;
+};
 
-const ACTION: Record<string, string> = { saved: "Saved", replaced: "Replaced", revealed: "Viewed", denied: "Refused", deleted: "Deleted" };
+const ACTION: Record<string, string> = { saved: "Saved", replaced: "Replaced", revealed: "Opened", denied: "Refused", deleted: "Deleted" };
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
 async function call(body: Record<string, unknown>) {
@@ -26,21 +31,30 @@ async function call(body: Record<string, unknown>) {
     return { error: "Could not reach the server" };
   }
 }
+const readStatus = (clientId?: string): Promise<Status> =>
+  fetch(`/api/card-vault${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ""}`, { cache: "no-store" }).then(r => r.json());
 
-/** Whether card storage is switched on here (and its tables exist). */
-export function useCardVault(): { on: boolean; checked: boolean } {
-  const [state, setState] = useState({ on: false, checked: false });
+/** Whether a card can be saved here: storage on, and the vault password set. */
+export function useCardVault(): { on: boolean; waiting: boolean; checked: boolean } {
+  const [state, setState] = useState({ on: false, waiting: false, checked: false });
   useEffect(() => {
-    fetch("/api/card-vault", { cache: "no-store" }).then(r => r.json())
-      .then(d => setState({ on: !!d.enabled && !!d.ready, checked: true }))
-      .catch(() => setState({ on: false, checked: true }));
+    readStatus().then(d => setState({ on: !!d.enabled && !!d.ready && !!d.setup, waiting: !!d.enabled && !!d.ready && !d.setup, checked: true }))
+      .catch(() => setState({ on: false, waiting: false, checked: true }));
   }, []);
   return state;
 }
 
-/** Save a card for a client. Resolves to the summary, or the reason it failed. */
-export async function saveCard(clientId: string, card: CardInput): Promise<{ card?: Summary; error?: string }> {
-  return call({ action: "save", client_id: clientId, card });
+/** Lock a card in this browser and save it for a client. */
+export async function saveCard(clientId: string, card: CardInput, publicKey?: string | null): Promise<{ card?: Summary; error?: string }> {
+  try {
+    const key = publicKey ?? (await readStatus()).public_key;
+    if (!key) return { error: "The vault password has not been set yet" };
+    const clean = tidyCard(card);
+    const envelope = await lockCard(key, clean, clientId);
+    return await call({ action: "save", client_id: clientId, envelope, brand: brandOf(clean.number), last4: clean.number.slice(-4) });
+  } catch {
+    return { error: "This browser could not lock the card" };
+  }
 }
 
 /** The five boxes. Nothing typed here is kept by the browser's own card autofill. */
@@ -81,20 +95,34 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function Secret({ id, label, value, onChange, autoFocus = false }: { id: string; label: string; value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-xs font-semibold mb-1.5" style={{ color: "#4a4a4a" }}>{label}</label>
+      <input id={id} type="password" autoFocus={autoFocus} autoComplete="off" data-lpignore="true" data-1p-ignore value={value} onChange={e => onChange(e.target.value)}
+        className="w-full px-3 py-1.5 rounded-lg text-sm outline-none" style={INPUT} />
+    </div>
+  );
+}
+
+type Mode = "idle" | "add" | "ask" | "confirm-delete" | "setup" | "change";
+
 export default function CardVaultPanel({ clientId }: { clientId: string }) {
   const [status, setStatus] = useState<Status | null>(null);
-  const [mode, setMode] = useState<"idle" | "add" | "ask" | "confirm-delete">("idle");
+  const [mode, setMode] = useState<Mode>("idle");
   const [draft, setDraft] = useState<CardInput>(EMPTY_CARD);
-  const [password, setPassword] = useState("");
+  const [pw, setPw] = useState({ current: "", next: "", again: "" });
+  const [agreed, setAgreed] = useState(false);
   const [shown, setShown] = useState<CardInput | null>(null);
   const [left, setLeft] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
+  const uid = clientId.slice(0, 6);
 
   useEffect(() => {
-    fetch(`/api/card-vault?client_id=${encodeURIComponent(clientId)}`, { cache: "no-store" }).then(r => r.json())
-      .then(d => setStatus(d)).catch(() => setStatus({ enabled: false, ready: false, error: "Could not load the card" }));
+    readStatus(clientId).then(d => setStatus(d)).catch(() => setStatus({ enabled: false, ready: false, error: "Could not load the card" }));
   }, [clientId, reloads]);
 
   // A card on screen hides itself.
@@ -107,25 +135,62 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
     return () => clearInterval(t);
   }, [shown]);
 
-  const reset = () => { setMode("idle"); setDraft(EMPTY_CARD); setPassword(""); setError(null); };
+  const reset = () => { setMode("idle"); setDraft(EMPTY_CARD); setPw({ current: "", next: "", again: "" }); setAgreed(false); setError(null); };
+  const go = (m: Mode) => { setError(null); setNotice(null); setMode(m); };
+  const fail = (e: unknown, fallback: string) => setError(e instanceof Error ? e.message : fallback);
+
+  async function setup() {
+    const problem = passwordProblem(pw.next, pw.again);
+    if (problem) { setError(problem); return; }
+    setBusy(true); setError(null);
+    try {
+      const r = await call({ action: "setup", ...(await createVault(pw.next)) });
+      if (r.error) setError(r.error);
+      else { reset(); setNotice("Vault password set. Cards can be saved now."); setReloads(n => n + 1); }
+    } catch (e) { fail(e, "This browser could not set up the vault"); }
+    setBusy(false);
+  }
+
+  async function change() {
+    const problem = passwordProblem(pw.next, pw.again);
+    if (problem) { setError(problem); return; }
+    setBusy(true); setError(null);
+    try {
+      const got = await call({ action: "key" });
+      if (got.error || !got.key) setError(got.error ?? "Could not reach the vault");
+      else {
+        const r = await call({ action: "rewrap", ...(await changePassword(got.key as KeyMaterial, pw.current, pw.next)) });
+        if (r.error) setError(r.error);
+        else { reset(); setNotice("Vault password changed."); }
+      }
+    } catch (e) { fail(e, "Could not change the vault password"); }
+    setBusy(false);
+  }
 
   async function save() {
     const problem = cardProblem(draft);
     if (problem) { setError(problem); return; }
     setBusy(true); setError(null);
-    const r = await saveCard(clientId, draft);
+    const r = await saveCard(clientId, draft, status?.public_key);
     setBusy(false);
     if (r.error) { setError(r.error); return; }
     reset(); setShown(null); setReloads(n => n + 1);
   }
+
   async function reveal() {
-    if (!password) return;
+    if (!pw.current) return;
     setBusy(true); setError(null);
-    const r = await call({ action: "reveal", client_id: clientId, password });
-    setBusy(false); setPassword("");
-    if (r.error || !r.card) { setError(r.error ?? "Could not show the card"); return; }
-    setMode("idle"); setShown(r.card as CardInput); setLeft(SHOW_SECONDS); setReloads(n => n + 1);
+    try {
+      const r = await call({ action: "open", client_id: clientId });
+      if (r.error || !r.envelope || !r.key) setError(r.error ?? "Could not fetch the card");
+      else {
+        const card = await openCard(r.key as KeyMaterial, pw.current, r.envelope as Envelope, clientId);
+        reset(); setShown(card); setLeft(SHOW_SECONDS); setReloads(n => n + 1);
+      }
+    } catch (e) { fail(e, "Could not open the card"); setPw(p => ({ ...p, current: "" })); }
+    setBusy(false);
   }
+
   async function remove() {
     setBusy(true); setError(null);
     const r = await call({ action: "delete", client_id: clientId });
@@ -136,6 +201,10 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
   if (!status) return null;
   const head = <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Card on file</p>;
+  const btn = "px-3 py-1.5 rounded-lg text-xs font-semibold";
+  const black = { background: "#000000", color: "#ffffff" };
+  const grey = { background: "rgba(0,0,0,0.06)", color: "#111111" };
+
   if (!status.ready || !status.enabled) {
     return (
       <div>
@@ -144,9 +213,45 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
       </div>
     );
   }
-  const card = status.card ?? null;
-  const btn = "px-3 py-1.5 rounded-lg text-xs font-semibold";
 
+  // Nothing can be saved until an admin has chosen the vault password.
+  if (!status.setup) {
+    return (
+      <div>
+        {head}
+        <div className="rounded-xl mt-1.5 px-3 py-3" style={{ background: "#fafafa", border: BORDER }}>
+          {!status.can_reveal ? (
+            <p className="text-xs" style={{ color: "#4a4a4a" }}>Cards can be saved once an admin has set the vault password.</p>
+          ) : mode !== "setup" ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs" style={{ color: "#4a4a4a" }}>Set a vault password before any card can be saved.</span>
+              <button type="button" className={btn} style={black} onClick={() => go("setup")}>Set vault password</button>
+            </div>
+          ) : (
+            <form className="space-y-3" onSubmit={e => { e.preventDefault(); setup(); }}>
+              <p className="text-xs" style={{ color: "#4a4a4a" }}>
+                This password opens every stored card. It is not saved anywhere — not in the dashboard, not by anyone who works on it.
+                <span className="font-semibold" style={{ color: "#b91c1c" }}> If it is forgotten, the stored cards are gone for good.</span> Write it down somewhere safe.
+              </p>
+              <Secret id={`vault-new-${uid}`} label="Vault password (12 characters or more)" value={pw.next} onChange={v => { setError(null); setPw(p => ({ ...p, next: v })); }} autoFocus />
+              <Secret id={`vault-again-${uid}`} label="Type it again" value={pw.again} onChange={v => { setError(null); setPw(p => ({ ...p, again: v })); }} />
+              <label className="flex items-start gap-2 text-xs" style={{ color: "#4a4a4a" }}>
+                <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5" />
+                I have written it down, and I understand it cannot be recovered.
+              </label>
+              <div className="flex items-center justify-end gap-2">
+                <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
+                <button type="submit" disabled={busy || !agreed || !pw.next} className={btn} style={{ ...black, opacity: busy || !agreed || !pw.next ? 0.4 : 1 }}>{busy ? "Setting up…" : "Set vault password"}</button>
+              </div>
+            </form>
+          )}
+          {error && <p className="text-xs mt-2" style={{ color: "#b91c1c" }}>{error}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  const card = status.card ?? null;
   return (
     <div>
       {head}
@@ -160,19 +265,19 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
           ) : <span className="text-xs" style={{ color: "#4a4a4a" }}>No card saved for this client.</span>}
           {mode === "idle" && !shown && (
             <span className="flex items-center gap-1.5">
-              {card && status.can_reveal && <button type="button" className={btn} style={{ background: "#000000", color: "#ffffff" }} onClick={() => { setError(null); setMode("ask"); }}>Show card</button>}
-              <button type="button" className={btn} style={{ background: "rgba(0,0,0,0.06)", color: "#111111" }} onClick={() => { setError(null); setMode("add"); }}>{card ? "Replace" : "Add card"}</button>
-              {card && status.can_reveal && <button type="button" className="text-xs px-1" style={{ color: "#949494" }} onClick={() => { setError(null); setMode("confirm-delete"); }}>Delete</button>}
+              {card && status.can_reveal && <button type="button" className={btn} style={black} onClick={() => go("ask")}>Show card</button>}
+              <button type="button" className={btn} style={grey} onClick={() => go("add")}>{card ? "Replace" : "Add card"}</button>
+              {card && status.can_reveal && <button type="button" className="text-xs px-1" style={{ color: "#949494" }} onClick={() => go("confirm-delete")}>Delete</button>}
             </span>
           )}
         </div>
 
         {mode === "add" && (
           <div className="mt-3">
-            <CardFields value={draft} onChange={c => { setError(null); setDraft(c); }} idPrefix={`vault-${clientId.slice(0, 6)}`} />
+            <CardFields value={draft} onChange={c => { setError(null); setDraft(c); }} idPrefix={`vault-${uid}`} />
             <div className="flex items-center justify-end gap-2 mt-3">
               <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
-              <button type="button" disabled={busy || !cardStarted(draft)} className={btn} style={{ background: "#000000", color: "#ffffff", opacity: busy || !cardStarted(draft) ? 0.4 : 1 }} onClick={save}>
+              <button type="button" disabled={busy || !cardStarted(draft)} className={btn} style={{ ...black, opacity: busy || !cardStarted(draft) ? 0.4 : 1 }} onClick={save}>
                 {busy ? "Saving…" : "Save card"}
               </button>
             </div>
@@ -181,14 +286,26 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
         {mode === "ask" && (
           <form className="mt-3" onSubmit={e => { e.preventDefault(); reveal(); }}>
-            <label htmlFor={`vault-pw-${clientId.slice(0, 6)}`} className="block text-xs font-semibold mb-1.5" style={{ color: "#4a4a4a" }}>Your dashboard password, to show this card</label>
-            <div className="flex gap-2">
-              <input id={`vault-pw-${clientId.slice(0, 6)}`} type="password" autoFocus autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)}
-                className="flex-1 px-3 py-1.5 rounded-lg text-sm outline-none" style={{ ...INPUT, minWidth: 0 }} />
-              <button type="submit" disabled={busy || !password} className={btn} style={{ background: "#000000", color: "#ffffff", opacity: busy || !password ? 0.4 : 1 }}>{busy ? "Checking…" : "Show"}</button>
-              <button type="button" className="text-xs px-1" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
+            <div className="flex items-end gap-2">
+              <div className="flex-1" style={{ minWidth: 0 }}>
+                <Secret id={`vault-pw-${uid}`} label="Vault password" value={pw.current} onChange={v => { setError(null); setPw(p => ({ ...p, current: v })); }} autoFocus />
+              </div>
+              <button type="submit" disabled={busy || !pw.current} className={btn} style={{ ...black, opacity: busy || !pw.current ? 0.4 : 1 }}>{busy ? "Opening…" : "Show"}</button>
+              <button type="button" className="text-xs px-1 pb-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
             </div>
-            <p className="text-xs mt-1.5" style={{ color: "#949494" }}>Each view is logged with your name and the time.</p>
+            <p className="text-xs mt-1.5" style={{ color: "#949494" }}>Each opening is logged with your name and the time.</p>
+          </form>
+        )}
+
+        {mode === "change" && (
+          <form className="mt-3 space-y-3" onSubmit={e => { e.preventDefault(); change(); }}>
+            <Secret id={`vault-old-${uid}`} label="Current vault password" value={pw.current} onChange={v => { setError(null); setPw(p => ({ ...p, current: v })); }} autoFocus />
+            <Secret id={`vault-new-${uid}`} label="New vault password (12 characters or more)" value={pw.next} onChange={v => { setError(null); setPw(p => ({ ...p, next: v })); }} />
+            <Secret id={`vault-again-${uid}`} label="Type the new one again" value={pw.again} onChange={v => { setError(null); setPw(p => ({ ...p, again: v })); }} />
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
+              <button type="submit" disabled={busy || !pw.current || !pw.next} className={btn} style={{ ...black, opacity: busy || !pw.current || !pw.next ? 0.4 : 1 }}>{busy ? "Changing…" : "Change vault password"}</button>
+            </div>
           </form>
         )}
 
@@ -209,12 +326,13 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
             <CopyRow label="Billing zip code" value={shown.zip} />
             <div className="flex items-center justify-between pt-2" style={{ borderTop: BORDER }}>
               <span className="text-xs" style={{ color: "#949494" }}>Hides itself in {left}s</span>
-              <button type="button" className={btn} style={{ background: "rgba(0,0,0,0.06)", color: "#111111" }} onClick={() => setShown(null)}>Hide now</button>
+              <button type="button" className={btn} style={grey} onClick={() => setShown(null)}>Hide now</button>
             </div>
           </div>
         )}
 
         {error && <p className="text-xs mt-2" style={{ color: "#b91c1c" }}>{error}</p>}
+        {notice && <p className="text-xs mt-2" style={{ color: "#15803d" }}>{notice}</p>}
 
         {!!status.history?.length && (
           <details className="mt-2">
@@ -227,7 +345,10 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
           </details>
         )}
       </div>
-      <p className="text-xs mt-1.5" style={{ color: "#949494" }}>Stored encrypted. Only an admin can view it, with their password.</p>
+      <p className="text-xs mt-1.5" style={{ color: "#949494" }}>
+        Locked with the vault password. Only an admin who knows it can open a card.
+        {status.can_reveal && mode === "idle" && <> <button type="button" className="underline" onClick={() => go("change")}>Change vault password</button></>}
+      </p>
     </div>
   );
 }

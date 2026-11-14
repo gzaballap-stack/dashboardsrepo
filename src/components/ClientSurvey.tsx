@@ -199,7 +199,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
     if (r.error || !r.client) { setSaving(false); setError(r.error ?? "Could not save the survey"); return; }
     if (withCard) {
       const saved = await saveCard(r.client.id, card);
-      setCardNote(saved.card ? { ok: `Card saved, encrypted (${saved.card.brand} •••• ${saved.card.last4})` } : { error: `The card was not saved (${saved.error ?? "unknown reason"}) — add it from the client's onboarding card` });
+      setCardNote(saved.card ? { ok: `Card saved, locked (${saved.card.brand} •••• ${saved.card.last4})` } : { error: `The card was not saved (${saved.error ?? "unknown reason"}) — add it from the client's onboarding card` });
       setCard(EMPTY_CARD);
     }
     setSaving(false);
@@ -300,7 +300,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
         <fieldset className="rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
           <legend className="sr-only">Card on file</legend>
           <p className="text-sm font-semibold" style={{ color: "#111111" }} aria-hidden>Card on file</p>
-          <p className="text-xs mt-0.5 mb-3" style={{ color: "#949494" }}>Optional. Stored encrypted — only an admin can view it afterwards, with their password, and every view is logged.</p>
+          <p className="text-xs mt-0.5 mb-3" style={{ color: "#949494" }}>Optional. Locked with the vault password — only an admin who knows it can open it afterwards, and every opening is logged.</p>
           <CardFields value={card} onChange={c => { setError(null); setCard(c); }} idPrefix="survey-card" />
         </fieldset>
       )}
@@ -308,7 +308,9 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
         <div className="rounded-2xl p-5" style={{ background: "#fafafa", border: BORDER }}>
           <p className="text-sm font-semibold" style={{ color: "#111111" }}>Card on file</p>
           <p className="text-sm mt-1" style={{ color: "#767676" }}>
-            Card storage is not switched on here, so there is no card number to fill in. After you submit you get a secure Stripe link for the card instead.
+            {vault.waiting
+              ? "Card storage is waiting for its vault password. An admin sets it from any onboarding card (Card on file), and then a card can be added here."
+              : "Card storage is not switched on here, so there is no card number to fill in. After you submit you get a secure Stripe link for the card instead."}
           </p>
         </div>
       )}
