@@ -96,12 +96,15 @@ Owner: the main dashboard must not count a reschedule as a new booking either
   `tm-funnel:ready` and the section clicked (`tm-funnel:picked`). The frame only
   listens to the dashboard's own origins (list in `FunnelEditView.tsx`).
   Sections list with drag / arrows, add under the picked one, phone / desktop,
-  undo for structural and AI changes, form step switcher.
-- **Ask AI** (`/api/funnels/ai`, `src/lib/funnel-ai.ts`): Claude returns the
-  whole draft changed through a tool call; cleaned with `normalizeContent`;
-  nothing is saved until Save. Model `claude-sonnet-5-5` with
-  `tool_choice: auto` (that model rejects a forced tool), falling back to the
-  Haiku this app already uses. About 10 s per change.
+  undo for structural changes, form step switcher.
+- **AI edits happen in a Claude chat session, not in the dashboard** (user's
+  decision, 2026-11-14: no paid API calls for this; the in-editor "Ask AI" and
+  `/api/funnels/ai` were built and removed the same day). When the user asks
+  for a funnel change in chat: `node scripts/funnel-draft.mjs get --out <file>`
+  reads the live wording, edit the JSON, `create --file <file> --name "..."
+  --notes "..."` saves it as a **draft** (`/api/webhooks/funnel/draft`, admin
+  secret). It cannot publish: the user opens the draft in Funnels, checks it,
+  and presses Make live. Never write invented facts, results or video ids.
 - Live check visitor `wtestclaude0001` is in `remove_website_funnel_tests`.
 - Not built: typing straight onto the page (edits happen in the side panel),
   images, colours / fonts per version, free-form AI pages, client funnels.

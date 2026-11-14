@@ -357,12 +357,10 @@ function VersionDetail({ v, s, liveCount, previewUrl, act, busy, editing, setEdi
    A full-screen editor for a draft: the real page in the middle (the website
    itself, in an editor mode that takes its wording from here as it is typed),
    the list of sections on the left, and on the right what the picked section
-   says, or the AI, which changes the draft from a plain request. Nothing
-   reaches visitors until the draft is saved and made live.
+   says. Nothing reaches visitors until the draft is saved and made live.
    ──────────────────────────────────────────────────────────────────────────── */
 
 type PageKey = "landing" | "booked";
-type ChatLine = { role: "user" | "assistant"; text: string };
 
 const FORM_STEPS: [number, string][] = [[1, "Question 1"], [2, "Revenue"], [3, "Company"], [4, "Contact"], [5, "Calendar"], [0, "Not qualified"]];
 
@@ -373,14 +371,10 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
   const [page, setPage] = useState<PageKey>("landing");
   const [selected, setSelected] = useState<string | null>(null);
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
-  const [panel, setPanel] = useState<"edit" | "ai">("edit");
   const [undo, setUndo] = useState<FunnelContent[]>([]);
   const [saved, setSaved] = useState(false);
   const [ready, setReady] = useState(0);                 // bumps each time the page in the frame says it is ready
   const [formStep, setFormStep] = useState<number | null>(null);
-  const [chat, setChat] = useState<ChatLine[]>([]);
-  const [ask, setAsk] = useState("");
-  const [thinking, setThinking] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const dirty = useMemo(() => JSON.stringify(content) !== JSON.stringify(v.content), [content, v.content]);
@@ -395,7 +389,7 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
       if (e.origin !== site.origin || e.source !== frame.current?.contentWindow) return;
       const d = (e.data ?? {}) as { type?: string; id?: string };
       if (d.type === "tm-funnel:ready") setReady(n => n + 1);
-      if (d.type === "tm-funnel:picked" && d.id) { setSelected(d.id); setPanel("edit"); }
+      if (d.type === "tm-funnel:picked" && d.id) { setSelected(d.id); }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -433,25 +427,9 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
     if (type === "booked_heading") { fresh.heading = "New heading"; fresh.sub = ""; }
     const at = selected ? sections.findIndex(s => s.id === selected) : -1;
     const list = [...sections]; list.splice(at === -1 ? list.length : at + 1, 0, fresh);
-    setSections(list, true); setSelected(fresh.id); setPanel("edit");
+    setSections(list, true); setSelected(fresh.id);
   };
   const close = () => { if (!dirty || window.confirm("Close without saving your changes?")) onClose(); };
-
-  const askAi = async () => {
-    const message = ask.trim();
-    if (!message || thinking) return;
-    setAsk(""); setThinking(true);
-    const history = chat.slice(-6);
-    setChat(c => [...c, { role: "user", text: message }]);
-    try {
-      const res = await fetch("/api/funnels/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content, message, history, page }) });
-      const out = await res.json();
-      if (!res.ok) throw new Error(out.error || "The AI could not do that");
-      if (out.content) change(out.content as FunnelContent, true);
-      setChat(c => [...c, { role: "assistant", text: String(out.reply || "Done.") }]);
-    } catch (e) { setChat(c => [...c, { role: "assistant", text: `Sorry, that did not work: ${(e as Error).message}` }]); }
-    setThinking(false);
-  };
 
   const sel = sections.find(s => s.id === selected) ?? null;
   const side: React.CSSProperties = { background: CARD, borderRight: BORDER, overflowY: "auto", padding: 14 };
@@ -489,7 +467,7 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
           {sections.map((s, i) => (
             <div key={s.id} draggable onDragStart={() => setDragFrom(i)} onDragOver={e => e.preventDefault()}
               onDrop={() => { if (dragFrom !== null) move(dragFrom, i); setDragFrom(null); }}
-              onClick={() => { setSelected(s.id); setPanel("edit"); }}
+              onClick={() => { setSelected(s.id); }}
               style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 8px", borderRadius: 8, marginBottom: 4, cursor: "grab", fontSize: 13,
                 background: selected === s.id ? "rgba(255,90,31,0.10)" : "transparent", border: selected === s.id ? "1px solid rgba(255,90,31,0.5)" : "1px solid transparent", color: INK }}>
               <span style={{ color: FAINT, fontSize: 11 }}>⋮⋮</span>
@@ -516,14 +494,9 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
 
         {/* What it says / the AI */}
         <div style={{ ...side, borderRight: "none", borderLeft: BORDER, display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-            <button style={pill(panel === "edit")} onClick={() => setPanel("edit")}>Edit</button>
-            <button style={pill(panel === "ai")} onClick={() => setPanel("ai")}>Ask AI</button>
-          </div>
+          {!sel && <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.6 }}>Click any part of the page to change it. Put *asterisks* around words to highlight them.</p>}
 
-          {panel === "edit" && !sel && <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.6 }}>Click any part of the page to change it. Put *asterisks* around words to highlight them.</p>}
-
-          {panel === "edit" && sel && (
+          {sel && (
             <div style={{ display: "grid", gap: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <p style={{ fontSize: 14, fontWeight: 700, color: INK }}>{SECTION_INFO[sel.type].label}</p>
@@ -571,26 +544,6 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
                   </Labeled>
                 </>
               )}
-            </div>
-          )}
-
-          {panel === "ai" && (
-            <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-              <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start", marginBottom: 10 }}>
-                {chat.length === 0 && (
-                  <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
-                    Tell the AI what to change, in your own words. For example: “Make the headline about pay-per-sit and shorter”, “Add a text section under the form about how it works”, “Rewrite the questions to sound friendlier”.
-                    It changes this draft only. Use Undo if you don&apos;t like it.
-                  </p>
-                )}
-                {chat.map((m, i) => (
-                  <div key={i} style={{ justifySelf: m.role === "user" ? "end" : "start", maxWidth: "92%", background: m.role === "user" ? "#111" : "rgba(0,0,0,0.05)", color: m.role === "user" ? "#fff" : INK, borderRadius: 12, padding: "8px 11px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{m.text}</div>
-                ))}
-                {thinking && <div style={{ fontSize: 13, color: MUTED }}>Working on it…</div>}
-              </div>
-              <textarea value={ask} onChange={e => setAsk(e.target.value)} rows={3} placeholder="What should change?"
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askAi(); } }} style={{ ...inputStyle, resize: "none" }} />
-              <button disabled={thinking || !ask.trim()} style={{ ...btn(true), marginTop: 8, opacity: thinking || !ask.trim() ? 0.5 : 1 }} onClick={askAi}>Make the change</button>
             </div>
           )}
         </div>
