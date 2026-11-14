@@ -164,7 +164,7 @@ export async function onboardingPost(ctx: AuthContext, body: Record<string, unkn
         const r = await ensureRoster(service, card);
         if (r.error || !r.client_id) return bad(r.error ?? 'Could not add the client to the roster', 500);
         patch.client_id = r.client_id;
-        const customer = await ensureStripeCustomer(service, r.client_id, card.client_name, card.contact_email);
+        const customer = await ensureStripeCustomer(service, r.client_id, card.client_name, card.contact_email, card.contact_phone);
         if (customer.error || !customer.id) return bad(customer.error ?? 'Could not reach Stripe', 502);
         let payment: { label: string } | null = null;
         try { payment = (await getCustomer(customer.id))?.payment ?? null; }

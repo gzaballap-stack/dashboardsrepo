@@ -42,7 +42,7 @@ export async function readSurvey(service: Service, clientId: string): Promise<Ou
  * who has paid before is not given a second record), else a new one.
  */
 export async function ensureStripeCustomer(
-  service: Service, clientId: string, name: string, email: string | null,
+  service: Service, clientId: string, name: string, email: string | null, phone: string | null = null,
 ): Promise<{ id?: string; made?: 'existing' | 'linked' | 'created'; error?: string }> {
   if (!stripeStatus().configured) return { error: 'Stripe is not connected here' };
   const { data, error } = await service.from('billing_clients').select('stripe_customer_id').eq('client_id', clientId).maybeSingle();
@@ -55,7 +55,7 @@ export async function ensureStripeCustomer(
   try {
     const same = email ? (await findCustomers(email)).filter(c => (c.email ?? '').toLowerCase() === email.toLowerCase()) : [];
     if (same.length === 1) { id = same[0].id; made = 'linked'; }
-    else id = (await createCustomer(name, email)).id;
+    else id = (await createCustomer(name, email, phone)).id;
   } catch (e) {
     return { error: e instanceof StripeError || e instanceof Error ? e.message : "Couldn't reach Stripe" };
   }
@@ -71,7 +71,7 @@ export async function cardLink(service: Service, card: Card, origin: string): Pr
   const roster = await ensureRoster(service, card);
   if (roster.error || !roster.client_id) return fail(roster.error ?? 'Could not add the client to the roster', 500);
   if (!card.client_id) await service.from('onboarding_cards').update({ client_id: roster.client_id, updated_at: now() }).eq('id', card.id);
-  const customer = await ensureStripeCustomer(service, roster.client_id, card.client_name, card.contact_email);
+  const customer = await ensureStripeCustomer(service, roster.client_id, card.client_name, card.contact_email, card.contact_phone);
   if (customer.error || !customer.id) return fail(customer.error ?? 'Could not set the client up in Stripe', 502);
   try {
     const url = await createCardSetupLink(customer.id, `${origin}/report/card-saved`);
@@ -245,7 +245,7 @@ export async function submitSurvey(ctx: AuthContext, body: Record<string, unknow
 
   const stripe: Row = { configured: stripeStatus().configured };
   if (stripe.configured) {
-    const customer = await ensureStripeCustomer(service, clientId, String(rosterRow?.name ?? name), billingEmail(a) || null);
+    const customer = await ensureStripeCustomer(service, clientId, String(rosterRow?.name ?? name), billingEmail(a) || null, mainPhone(a) || null);
     if (customer.error) { stripe.error = customer.error; warnings.push(`Stripe: ${customer.error}`); }
     else stripe.made = customer.made;
   }

@@ -45,6 +45,14 @@ back" note. Do not re-argue it; do keep every safeguard below.
 - **The assistant must not** read a stored card, print the key, generate the
   key into chat, or build an export / bulk-reveal. One client at a time, by an
   admin, with a password.
+- **Card → Stripe automatically: not possible as things stand** (asked
+  2026-11-14). Stripe refuses card numbers typed into another system unless the
+  account is approved for "raw card data" access, which needs the card-security
+  certification the owner does not have. So the Stripe customer is created with
+  name, email and (since today) phone, and the card itself still goes in through
+  the Stripe link. If Stripe ever grants that access, the place to send the card
+  on is the vault's save. Do not send a card number to Stripe's API without it —
+  Stripe rejects it and warns the account.
 - The Stripe card link stays as it was — Client Billing can only charge a card
   that is in Stripe, so that step is unchanged (the survey's result screen now
   calls it "Card for billing (Stripe)").

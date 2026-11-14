@@ -95,8 +95,8 @@ export async function findCustomers(q: string): Promise<StripeCustomer[]> {
   return found.slice(0, 50);
 }
 
-export async function createCustomer(name: string, email: string | null): Promise<StripeCustomer> {
-  const c = await call('POST', '/customers', { name, email: email || undefined });
+export async function createCustomer(name: string, email: string | null, phone: string | null = null): Promise<StripeCustomer> {
+  const c = await call('POST', '/customers', { name, email: email || undefined, phone: phone || undefined });
   return { id: c.id, name: c.name ?? null, email: c.email ?? null };
 }
 
