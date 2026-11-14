@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import type { Pin, ZipPerfCircle } from "@/components/ZipMap";
 import { scorePerformanceZips, perfGrade, percentileLabel } from "@/lib/zip-score";
+import { displayName } from "@/lib/display-name";
 
 const ZipMap = dynamic(() => import("@/components/ZipMap"), { ssr: false });
 
@@ -259,7 +260,7 @@ function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfD
         {!loading && activeTab === "performance" && clientName && (
           <div style={{ padding: "12px 14px" }}>
             <div style={{ fontSize: 9, fontWeight: 700, color: "#949494", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
-              {clientName} · ZIP {zip}
+              {displayName(clientName)} · ZIP {zip}
             </div>
             {perfData ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -283,11 +284,11 @@ function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfD
                         return (
                           <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
                             <div>
-                              <div style={{ fontSize: 9, color: "#949494" }}>Close rate</div>
+                              <div style={{ fontSize: 9, color: "#949494" }}>Close Rate</div>
                               <div style={{ fontSize: 12, fontWeight: 700, color: "#111111", fontFamily: "monospace" }}>{pct(perfData.closes)}</div>
                             </div>
                             <div>
-                              <div style={{ fontSize: 9, color: "#949494" }}>Appt rate</div>
+                              <div style={{ fontSize: 9, color: "#949494" }}>Appt Rate</div>
                               <div style={{ fontSize: 12, fontWeight: 700, color: "#111111", fontFamily: "monospace" }}>{pct(perfData.appointments)}</div>
                             </div>
                           </div>
@@ -427,7 +428,7 @@ function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfD
           <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(0,0,0,0.095)" }}>
             <div style={{ fontSize: 9, fontWeight: 700, color: "#949494", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>K&B Job Volume / Year</div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: "#767676" }}>Total estimate</span>
+              <span style={{ fontSize: 10, color: "#767676" }}>Total Estimate</span>
               <span style={{ fontSize: 12, fontWeight: 800, color: "#000000" }}>{data.job_volume.total_est.toLocaleString()}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -435,11 +436,11 @@ function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfD
               <span style={{ fontSize: 11, fontWeight: 700, color: "#111111" }}>{data.job_volume.digital_est.toLocaleString()}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: "#767676" }}>Market density</span>
+              <span style={{ fontSize: 10, color: "#767676" }}>Market Density</span>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#111111" }}>{data.job_volume.market_density} / 1k residents</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-              <span style={{ fontSize: 10, color: "#767676" }}>Total residents</span>
+              <span style={{ fontSize: 10, color: "#767676" }}>Total Residents</span>
               <span style={{ fontSize: 11, fontWeight: 700, color: "#111111" }}>{data.population.toLocaleString()}</span>
             </div>
             <button onClick={() => setShowPlatforms(p => !p)} style={{
@@ -488,9 +489,9 @@ function ZipDataPanel({ data, loading, zip, onClose, clientId, clientName, perfD
             <div style={{ padding: "10px 14px" }}>
               <div style={{ fontSize: 9, fontWeight: 700, color: "#949494", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>ROI Projector</div>
               {[
-                { label: "Avg project ticket",        value: fmt$(data.roi.avg_ticket) },
-                { label: "Close rate",                value: `${Math.round(data.roi.close_rate * 100)}%` },
-                { label: "Total addressable revenue", value: fmt$(data.roi.total_addressable_revenue) },
+                { label: "Avg Project Ticket",        value: fmt$(data.roi.avg_ticket) },
+                { label: "Close Rate",                value: `${Math.round(data.roi.close_rate * 100)}%` },
+                { label: "Total Addressable Revenue", value: fmt$(data.roi.total_addressable_revenue) },
               ].map(row => (
                 <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5 }}>
                   <span style={{ fontSize: 10, color: "#767676" }}>{row.label}</span>
@@ -1351,7 +1352,7 @@ export default function ZipTool() {
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: hasActive ? "#000000" : "#111111", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {client?.name ?? "Unknown client"}
+                            {client?.name ?? "Unknown Client"}
                           </div>
                           <div style={{ fontSize: 10, color: "#949494", marginTop: 1 }}>
                             {csList.length} session{csList.length !== 1 ? "s" : ""}
@@ -1495,7 +1496,7 @@ export default function ZipTool() {
                           client promotes this session into a real, shared client record */}
                       {isExpanded && (
                         <div style={{ padding: "0 10px 8px", borderTop: "1px solid rgba(0,0,0,0.068)" }}>
-                          <div style={{ fontSize: 9, color: "#767676", textTransform: "uppercase", letterSpacing: "0.07em", margin: "6px 0 4px" }}>Attach to client</div>
+                          <div style={{ fontSize: 9, color: "#767676", textTransform: "uppercase", letterSpacing: "0.07em", margin: "6px 0 4px" }}>Attach to Client</div>
                           <select
                             value=""
                             onClick={e => e.stopPropagation()}
@@ -1509,9 +1510,9 @@ export default function ZipTool() {
                               color: "#6b6b6b", cursor: "pointer", outline: "none",
                             }}
                           >
-                            <option value="">— Choose a client —</option>
+                            <option value="">— Choose a Client —</option>
                             {clients.filter(c => c.is_live).map(c => (
-                              <option key={c.id} value={c.id}>{c.name}</option>
+                              <option key={c.id} value={c.id}>{displayName(c.name)}</option>
                             ))}
                           </select>
                         </div>
@@ -1565,7 +1566,7 @@ export default function ZipTool() {
                           </div>
                           {isExpanded && (
                             <div style={{ padding: "0 10px 8px", borderTop: "1px solid rgba(0,0,0,0.068)" }}>
-                              <div style={{ fontSize: 9, color: "#767676", textTransform: "uppercase", letterSpacing: "0.07em", margin: "6px 0 4px" }}>Assign to client</div>
+                              <div style={{ fontSize: 9, color: "#767676", textTransform: "uppercase", letterSpacing: "0.07em", margin: "6px 0 4px" }}>Assign to Client</div>
                               <select value="" onClick={e => e.stopPropagation()}
                                 onChange={e => { if (e.target.value) assignSession(cs, e.target.value); setExpandedSessionId(null); }}
                                 style={{
@@ -1573,9 +1574,9 @@ export default function ZipTool() {
                                   background: "rgba(0,0,0,0.068)", border: "1px solid rgba(0,0,0,0.135)",
                                   color: "#6b6b6b", cursor: "pointer", outline: "none",
                                 }}>
-                                <option value="">— Choose a client —</option>
+                                <option value="">— Choose a Client —</option>
                                 {clients.filter(c => c.is_live).map(c => (
-                                  <option key={c.id} value={c.id}>{c.name}</option>
+                                  <option key={c.id} value={c.id}>{displayName(c.name)}</option>
                                 ))}
                               </select>
                             </div>
@@ -1593,7 +1594,7 @@ export default function ZipTool() {
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                     <input
                       autoFocus
-                      placeholder="Session name…"
+                      placeholder="Session Name…"
                       value={newSessionName}
                       onChange={e => setNewSessionName(e.target.value)}
                       onKeyDown={e => { if (e.key === "Enter") saveSession(); if (e.key === "Escape") setSavingSession(false); }}
@@ -1621,9 +1622,9 @@ export default function ZipTool() {
                       color: saveTargetClientId ? "#000000" : "#6b6b6b", cursor: "pointer", outline: "none",
                     }}
                   >
-                    <option value="">— No client (local session) —</option>
+                    <option value="">— No Client (local session) —</option>
                     {clients.filter(c => c.is_live).map(c => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
+                      <option key={c.id} value={c.id}>{displayName(c.name)}</option>
                     ))}
                   </select>
                 </div>
@@ -1637,7 +1638,7 @@ export default function ZipTool() {
                     background: "transparent", color: pins.length ? "#767676" : "#c2c2c2",
                   }}
                 >
-                  {pins.length ? "+ Save Current Session" : "Drop pins to save a session"}
+                  {pins.length ? "+ Save Current Session" : "Drop Pins to Save a Session"}
                 </button>
               )}
             </div>
@@ -1652,7 +1653,7 @@ export default function ZipTool() {
               type="text"
               inputMode="numeric"
               maxLength={5}
-              placeholder="Search zip code…"
+              placeholder="Search Zip Code…"
               value={searchInput}
               onChange={e => { setSearchInput(e.target.value.replace(/\D/g, "")); setSearchError(null); }}
               style={{
@@ -1943,7 +1944,7 @@ export default function ZipTool() {
                 fontSize: 12, fontWeight: 600, cursor: reportLoading ? "default" : "pointer",
                 opacity: reportLoading ? 0.6 : 1, transition: "all 0.15s",
               }}>
-              {reportLoading ? "Building report…" : "Get Report"}
+              {reportLoading ? "Building Report…" : "Get Report"}
             </button>
           )}
         </div>

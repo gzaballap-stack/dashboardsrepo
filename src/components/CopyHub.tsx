@@ -20,7 +20,7 @@ type TextPerf = { ads: number; spend: number; impressions: number; clicks: numbe
 
 // What one text did on its own, across every ad that rotated it (Meta's split).
 function TextStats({ p }: { p?: TextPerf }) {
-  if (!p || !p.ads) return <div className="text-[10px] mt-1.5" style={{ color: "#b8b8b8" }}>Not run yet</div>;
+  if (!p || !p.ads) return <div className="text-[10px] mt-1.5" style={{ color: "#b8b8b8" }}>Not Run Yet</div>;
   const items: [string, string][] = [
     ["Spend", fmt$(p.spend)], ["Impr", p.impressions.toLocaleString()], ["CTR", `${p.ctr.toFixed(2)}%`], ["CPC", fmt$(p.cpc, 2)],
     ["Leads", String(p.leads)], ["CPL", p.cost_per_lead ? fmt$(p.cost_per_lead) : "—"], ["Ads", String(p.ads)],
@@ -71,7 +71,7 @@ const CARD = {
 const INPUT = { background: "#f7f7f7", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" };
 
 const GROUPS: { id: "bodies" | "headlines" | "descriptions"; label: string; single: string; rows: number; hint: string }[] = [
-  { id: "bodies",       label: "Primary texts", single: "primary text", rows: 5, hint: "The main copy above the creative. Facebook rotates through these." },
+  { id: "bodies",       label: "Primary Texts", single: "primary text", rows: 5, hint: "The main copy above the creative. Facebook rotates through these." },
   { id: "headlines",    label: "Headlines",     single: "headline",     rows: 1, hint: "Bold line under the creative. ~40 characters shows in full." },
   { id: "descriptions", label: "Descriptions",  single: "description",  rows: 1, hint: "Small line under the headline. Not shown in every placement." },
 ];
@@ -123,7 +123,7 @@ export default function CopyHub({ scope }: { scope: Scope }) {
       <div className="rounded-2xl p-4 flex items-center gap-3 flex-wrap" style={CARD}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search sets, texts, campaigns…" className="px-3 py-1.5 rounded-lg text-xs outline-none w-64" style={INPUT} />
         <span className="text-xs" style={{ color: "#6b6b6b" }}>Each set is one combination: up to {limit} primary texts, {limit} headlines and {limit} descriptions.</span>
-        <button onClick={() => setCreating(true)} className="ml-auto px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff" }}>+ New copy set</button>
+        <button onClick={() => setCreating(true)} className="ml-auto px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff" }}>+ New Copy Set</button>
       </div>
 
       {error && <div className="rounded-2xl p-4 text-sm" style={{ background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)", color: "#b91c1c" }}>{error}</div>}
@@ -242,10 +242,10 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
       <div className="h-full w-full md:w-[760px] max-w-full overflow-y-auto" style={{ background: "#ffffff" }} onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 z-10 flex items-center gap-3 px-5 py-3 flex-wrap" style={{ background: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
           <div className="min-w-0 mr-auto">
-            <div className="text-base font-semibold truncate" style={{ color: "#111111" }}>{set?.name ?? "New copy set"}</div>
+            <div className="text-base font-semibold truncate" style={{ color: "#111111" }}>{set?.name ?? "New Copy Set"}</div>
             {set && <div className="flex items-center gap-1.5 mt-1 flex-wrap">{set.campaign_label && <Chip>{set.campaign_label}</Chip>}{set.cta && <Chip>{set.cta.replace(/_/g, " ").toLowerCase()}</Chip>}</div>}
           </div>
-          {!editing && set && <CopyButton text={all(set)} label="Copy everything" />}
+          {!editing && set && <CopyButton text={all(set)} label="Copy Everything" />}
           {editing ? (<>
             {set && <button onClick={() => { setForm(blank()); setEditing(false); setErr(""); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: "#4a4a4a", border: "1px solid rgba(0,0,0,0.162)" }}>Cancel</button>}
             <button onClick={save} disabled={saving || !form.name.trim()} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: saving || !form.name.trim() ? 0.5 : 1 }}>{saving ? "Saving…" : "Save"}</button>
@@ -264,13 +264,13 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
             <div className="rounded-xl p-3 flex items-center gap-3 flex-wrap" style={{ background: "#f7f7f7" }}>
               <span className="text-xs" style={{ color: "#4a4a4a" }}>Already running an ad with this copy?</span>
               <select onFocus={loadAds} onChange={e => importFrom(e.target.value)} disabled={importing} className="px-3 py-1.5 rounded-lg text-xs font-medium outline-none max-w-xs" style={INPUT} defaultValue="">
-                <option value="">{importing ? "Reading…" : "Pull the texts off an ad…"}</option>
+                <option value="">{importing ? "Reading…" : "Pull the Texts Off an Ad…"}</option>
                 {(ads ?? []).map(a => <option key={a.ad_id} value={a.ad_id}>{a.label}</option>)}
               </select>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
-                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Set name</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Set Name</span>
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. $1 Down — garbage leads angle" className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
               </label>
               <label className="block">
@@ -315,14 +315,14 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
               <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Notes</span>
               <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...INPUT, lineHeight: 1.5 }} />
             </label>
-            {set && <button onClick={remove} disabled={saving} className="text-xs font-semibold" style={{ color: "#b91c1c" }}>Delete this copy set</button>}
+            {set && <button onClick={remove} disabled={saving} className="text-xs font-semibold" style={{ color: "#b91c1c" }}>Delete This Copy Set</button>}
           </>) : set && (<>
             {GROUPS.map(g => (
               <section key={g.id}>
                 <div className="flex items-center gap-2 mb-1.5">
                   <h3 className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>{g.label}</h3>
                   <span className="text-[10px]" style={{ color: "#b8b8b8" }}>{set[g.id].length}</span>
-                  {set[g.id].length > 1 && <span className="ml-auto"><CopyButton text={set[g.id].join("\n\n")} label="Copy all" /></span>}
+                  {set[g.id].length > 1 && <span className="ml-auto"><CopyButton text={set[g.id].join("\n\n")} label="Copy All" /></span>}
                 </div>
                 {set[g.id].length === 0
                   ? <button onClick={() => setEditing(true)} className="text-xs" style={{ color: "#949494" }}>+ Add {g.single}</button>
@@ -348,7 +348,7 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
             )}
             {set.used_by?.length > 0 && (
               <section>
-                <h3 className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#949494" }}>Runs on</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#949494" }}>Runs On</h3>
                 <div className="flex gap-1.5 flex-wrap">{set.used_by.map(u => <Chip key={u}>{u}</Chip>)}</div>
               </section>
             )}

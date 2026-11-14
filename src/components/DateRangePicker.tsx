@@ -12,7 +12,7 @@ const short = (s: string) => parse(s).toLocaleString("en-US", { month: "short", 
 
 /** "Sep 1 – Sep 28" for a chip label; "Pick dates" when nothing is chosen. */
 export function fmtRange(start: string, end: string) {
-  if (!start || !end) return "Pick dates";
+  if (!start || !end) return "Pick Dates";
   return `${short(start)} – ${short(end)}`;
 }
 

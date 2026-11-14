@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { displayName } from "@/lib/display-name";
 
 type Agent = { id: string; name: string; phone: string };
 type Client = { id: string; name: string; is_live?: boolean };
@@ -496,7 +497,7 @@ function AvailabilityTab({ agents }: { agents: Agent[] }) {
           <div className="flex flex-col gap-1">
             <label className="text-xs" style={{ color: "#767676" }}>Setter</label>
             <Sel value={agentId} onChange={setAgentId}>
-              <option value="">Select setter…</option>
+              <option value="">Select Setter…</option>
               {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </Sel>
           </div>
@@ -622,8 +623,8 @@ function ClientWindowsTab({ clients }: { clients: Client[] }) {
           <div className="flex flex-col gap-1">
             <label className="text-xs" style={{ color: "#767676" }}>Client</label>
             <Sel value={clientId} onChange={setClientId}>
-              <option value="">Select client…</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              <option value="">Select Client…</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}</option>)}
             </Sel>
           </div>
           <div className="flex flex-col gap-1">

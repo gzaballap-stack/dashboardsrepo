@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { displayName } from "@/lib/display-name";
 
 type Client = { id: string; name: string };
 type Row = {
@@ -77,7 +78,7 @@ export default function RecordingBrowser({ clients, startDate, endDate }: Props)
       <div className="flex flex-wrap items-center gap-3">
         <select style={selectStyle} value={clientFilter} onChange={e => setClientFilter(e.target.value)}>
           <option value="">All Clients</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {clients.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}</option>)}
         </select>
         <select style={selectStyle} value={agentFilter} onChange={e => setAgentFilter(e.target.value)}>
           <option value="">All Agents</option>

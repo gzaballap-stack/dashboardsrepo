@@ -357,7 +357,7 @@ function CallForm({ initial, pitches, onSave, onDelete, onClose }: {
       <div onClick={e => e.stopPropagation()} role="dialog" aria-label={d.id ? "Edit call" : "Log a call"}
         style={{ background: CARD, borderRadius: 18, boxShadow: "0 24px 60px -12px rgba(0,0,0,0.35)", width: "100%", maxWidth: 640, maxHeight: "90vh", overflowY: "auto", padding: 20 }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: INK, flex: 1 }}>{d.id ? "Edit call" : "Log a call"}</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: INK, flex: 1 }}>{d.id ? "Edit Call" : "Log a Call"}</h2>
           <button onClick={onClose} aria-label="Close" style={{ padding: 6, color: MUTED, lineHeight: 0 }}>
             <svg width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
@@ -379,12 +379,12 @@ function CallForm({ initial, pitches, onSave, onDelete, onClose }: {
             <input style={FIELD} list="sales-pitches" value={d.pitch} onChange={e => set("pitch", e.target.value)} placeholder="e.g. 5 PPA x 200" />
             <datalist id="sales-pitches">{pitches.map(p => <option key={p} value={p} />)}</datalist>
           </Field>
-          <Field label="Call length (min)"><input style={FIELD} inputMode="numeric" value={d.call_minutes} onChange={e => set("call_minutes", e.target.value)} /></Field>
-          <Field label="Recording link" wide><input style={FIELD} value={d.recording_url} onChange={e => set("recording_url", e.target.value)} placeholder="https://fathom.video/…" /></Field>
-          <Field label="My emotions" wide><input style={FIELD} value={d.emotions} onChange={e => set("emotions", e.target.value)} placeholder="How did the call feel?" /></Field>
+          <Field label="Call Length (min)"><input style={FIELD} inputMode="numeric" value={d.call_minutes} onChange={e => set("call_minutes", e.target.value)} /></Field>
+          <Field label="Recording Link" wide><input style={FIELD} value={d.recording_url} onChange={e => set("recording_url", e.target.value)} placeholder="https://fathom.video/…" /></Field>
+          <Field label="My Emotions" wide><input style={FIELD} value={d.emotions} onChange={e => set("emotions", e.target.value)} placeholder="How did the call feel?" /></Field>
           <Field label="Conclusion" wide><textarea style={{ ...FIELD, minHeight: 90, resize: "vertical" }} value={d.conclusion} onChange={e => set("conclusion", e.target.value)} /></Field>
           <Field label="Notes" wide><textarea style={{ ...FIELD, minHeight: 60, resize: "vertical" }} value={d.notes} onChange={e => set("notes", e.target.value)} placeholder="Objections, follow-ups…" /></Field>
-          <Field label="Contact information" wide><input style={FIELD} value={d.contact} onChange={e => set("contact", e.target.value)} placeholder="Phone / email" /></Field>
+          <Field label="Contact Information" wide><input style={FIELD} value={d.contact} onChange={e => set("contact", e.target.value)} placeholder="Phone / Email" /></Field>
         </div>
 
         {error && <p style={{ fontSize: 12.5, color: BAD, marginTop: 12 }}>{error}</p>}
@@ -575,32 +575,32 @@ export default function SalesTracker() {
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <select value={frame} onChange={e => setFrame(e.target.value)} aria-label="Time frame"
           style={{ ...FIELD, width: "auto", fontWeight: 600 }}>
-          <option value="all">All time</option>
+          <option value="all">All Time</option>
           <optgroup label="Year">{frames.years.map(y => <option key={y} value={y}>{y}</option>)}</optgroup>
           <optgroup label="Month">{frames.months.map(m => <option key={m} value={m}>{monthName(m)}</option>)}</optgroup>
         </select>
         <span style={{ flex: 1 }} />
         <button onClick={() => setEditing(blankDraft())}
           style={{ padding: "8px 14px", borderRadius: 9, fontSize: 13, fontWeight: 600, background: INK, color: "#ffffff" }}>
-          + Log a call
+          + Log a Call
         </button>
       </div>
 
       {/* totals */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
-        <Tile label="Total calls" value={String(decided)} sub={`${frameLabel} · won + lost`} />
-        <Tile label="Total won" value={String(t.won)} tone="good" />
-        <Tile label="Total lost" value={String(t.lost)} tone="bad" />
+        <Tile label="Total Calls" value={String(decided)} sub={`${frameLabel} · won + lost`} />
+        <Tile label="Total Won" value={String(t.won)} tone="good" />
+        <Tile label="Total Lost" value={String(t.lost)} tone="bad" />
         <Tile label="Closing %" value={pct(t.won, decided)}
           sub={decided < EFFICACY_MIN ? `Little meaning under ${EFFICACY_MIN} calls` : undefined} />
         <Tile label="DQ / N/A / Pending" value={`${t.dq} / ${t.na} / ${t.pending}`} sub="Not in closing %" />
-        <Tile label="Avg call length" value={t.timed ? `${Math.round(t.minutes / t.timed)} min` : "n/a"} />
+        <Tile label="Avg Call Length" value={t.timed ? `${Math.round(t.minutes / t.timed)} min` : "n/a"} />
       </div>
 
       {/* breakdowns */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
-        <Panel title="By month"><BreakdownTable label="Month" rows={byMonth} /></Panel>
-        <Panel title={current.length && !allPitches && !editPitches ? "By pricing / pitch · current" : "By pricing / pitch"}
+        <Panel title="By Month"><BreakdownTable label="Month" rows={byMonth} /></Panel>
+        <Panel title={current.length && !allPitches && !editPitches ? "By Pricing / Pitch · Current" : "By Pricing / Pitch"}
           action={!editPitches && (
             <button onClick={() => setEditPitches(true)} style={{ fontSize: 12.5, fontWeight: 600, color: MUTED }}>Edit</button>
           )}>
@@ -614,7 +614,7 @@ export default function SalesTracker() {
               <BreakdownTable label="Pitch" rows={byPitch} />
               {current.length > 0 && (
                 <button onClick={() => setAllPitches(v => !v)} style={{ fontSize: 12, fontWeight: 600, color: MUTED, marginTop: 10 }}>
-                  {allPitches ? "Show current pricing only" : "Show past pricing too"}
+                  {allPitches ? "Show Current Pricing Only" : "Show Past Pricing Too"}
                 </button>
               )}
             </>
@@ -651,7 +651,7 @@ export default function SalesTracker() {
                 <th style={TH}>Pricing / Pitch</th>
                 <th style={{ ...TH, ...NUM }}>Min</th>
                 <th style={TH}>Outcome</th>
-                <th style={TH}>My emotions</th>
+                <th style={TH}>My Emotions</th>
                 <th style={TH}>Conclusion</th>
                 <th style={TH} />
               </tr></thead>
@@ -713,7 +713,7 @@ function FragmentRow({ c, expanded, onToggle, onEdit }: { c: Call; expanded: boo
             {c.contact && <Note label="Contact" text={c.contact} />}
             {c.recording_url && (
               <a href={c.recording_url} target="_blank" rel="noopener noreferrer"
-                style={{ display: "inline-block", marginTop: 10, color: "#2f5da8", fontWeight: 600, fontSize: 12.5 }}>Watch recording</a>
+                style={{ display: "inline-block", marginTop: 10, color: "#2f5da8", fontWeight: 600, fontSize: 12.5 }}>Watch Recording</a>
             )}
           </td>
         </tr>

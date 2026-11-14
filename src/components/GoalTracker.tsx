@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { displayName } from "@/lib/display-name";
 
 type Client = { id: string; name: string };
 type Goal = { id: string; client_id: string; agent_name: string | null; metric: string; target: number; period: string };
@@ -99,8 +100,8 @@ export default function GoalTracker({ clients, startDate, endDate, lockClientId 
         </div>
         <div className="flex items-center gap-3">
           <select style={{ ...selectStyle, width: "auto", minWidth: "11rem" }} value={clientId} onChange={e => setClientId(e.target.value)}>
-            <option value="">Select a client</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <option value="">Select a Client</option>
+            {clients.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}</option>)}
           </select>
           {clientId && !adding && (
             <button onClick={() => setAdding(true)}

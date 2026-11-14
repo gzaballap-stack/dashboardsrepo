@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { displayName } from "@/lib/display-name";
 
 type Client = { id: string; name: string };
 
@@ -129,7 +130,7 @@ export default function RawDataTable({ type, clients: allClients, preset, startD
         >
           <option value="">All Clients</option>
           <option value="__live__">Live Clients</option>
-          {allClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {allClients.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}</option>)}
         </select>}
         <span className="text-sm" style={{ color: "#949494" }}>{total.toLocaleString()} rows</span>
       </div>

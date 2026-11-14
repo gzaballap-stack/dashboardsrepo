@@ -1,3 +1,29 @@
+## 2026-11-14 — Title Case on buttons, labels and headings; typed names capitalised on screen
+
+Owner's request: capital first letters on buttons, names and headlines.
+Choices made with the owner: **every word capitalised, small words (a, an,
+the, and, of, to, for, in, on, per, by, vs…) lowercase** ("Add a Client",
+"Profit Margin"), and **typed client / expense names capitalised on screen**.
+
+- **Wording**: applied once across `src/components` and `src/app` pages by a
+  one-off script — text of buttons, headings, table headers, options,
+  labels, tabs, tile / field / nav `label`s, heading-style `title`s on
+  Modal / Sheet / Panel / BarChart, and short placeholders. Left alone on
+  purpose: sentences and help text, tooltips and aria-labels, "Loading…" /
+  "No … yet" messages, units beside numbers ("12 m", "3 d ago"), text inside
+  (parentheses), anything already capitalised (SMS, GHL, iPhone). Every
+  changed line differs from the old only in letter case. **New wording should
+  follow the same style.**
+- **Names**: `src/lib/display-name.ts` → `displayName()`; display only, the
+  stored name is untouched. Only all-lowercase words change ("dave" →
+  "Dave"; "AEGIS (Matt)", "iFood" as typed); short forms like llc / ghl / sms
+  come out as LLC / GHL / SMS. Used for client names on the Client Roster,
+  Profit and Loss (clients, month lines, suggestions — an edited line saves
+  only if its text really changed), Client Billing, Onboarding, CSM, Campaign
+  Overview, SMS payout and the client pickers.
+- The Tomsi stat-tile catalog is keyed by tile label; those labels were
+  already Title Case, so nothing there moved.
+
 ## 2026-11-14 — Card vault: the vault password (cards locked in the browser)
 
 Owner asked whether a Railway or Supabase leak would expose the cards. With the

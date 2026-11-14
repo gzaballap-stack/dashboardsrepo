@@ -64,7 +64,7 @@ export function CardLink({ cardId, compact = false }: { cardId: string; compact?
         <button type="button" onClick={make} disabled={busy}
           className={`${compact ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"} rounded-lg font-semibold`}
           style={{ background: "#000000", color: "#ffffff", opacity: busy ? 0.5 : 1 }}>
-          {busy ? "Making the link…" : "Get secure card link"}
+          {busy ? "Making the Link…" : "Get Secure Card Link"}
         </button>
       ) : (
         <div className="space-y-1.5">
@@ -245,7 +245,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
 
         {cards.length > 0 && (
           <div className="rounded-2xl p-6" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
-            <h3 className="text-sm font-semibold" style={{ color: "#111111" }}>Card for billing (Stripe)</h3>
+            <h3 className="text-sm font-semibold" style={{ color: "#111111" }}>Card for Billing (Stripe)</h3>
             {stripe.configured ? (
               <>
                 <p className="text-sm mt-1 mb-3" style={{ color: "#767676" }}>To charge the client from Client Billing, the card also has to be in Stripe. This link is Stripe&rsquo;s own page for typing it in.</p>
@@ -259,11 +259,11 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
 
         <div className="flex items-center justify-end gap-2">
           <button type="button" onClick={() => { setResult(null); setA({}); setCardNote(null); }} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
-            New survey
+            New Survey
           </button>
           {onDone && (
             <button type="button" onClick={() => onDone(result)} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: "#000000", color: "#ffffff" }}>
-              {cards.length ? "Open the card" : "Done"}
+              {cards.length ? "Open the Card" : "Done"}
             </button>
           )}
         </div>
@@ -275,7 +275,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
     <form onSubmit={submit} className="w-full max-w-2xl mx-auto space-y-4" noValidate>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>{clientId ? "Client survey" : "New client survey"}</h2>
+          <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>{clientId ? "Client Survey" : "New Client Survey"}</h2>
           <p className="text-sm mt-0.5" style={{ color: "#767676" }}>
             {clientId ? "Correct the answers and save." : "Fill it in on the onboarding call. Submitting sets the client up across the dashboard."}
           </p>
@@ -298,15 +298,15 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
 
       {!clientId && vault.on && (
         <fieldset className="rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
-          <legend className="sr-only">Card on file</legend>
-          <p className="text-sm font-semibold" style={{ color: "#111111" }} aria-hidden>Card on file</p>
+          <legend className="sr-only">Card on File</legend>
+          <p className="text-sm font-semibold" style={{ color: "#111111" }} aria-hidden>Card on File</p>
           <p className="text-xs mt-0.5 mb-3" style={{ color: "#949494" }}>Optional. Locked with the vault password — only an admin who knows it can open it afterwards, and every opening is logged.</p>
           <CardFields value={card} onChange={c => { setError(null); setCard(c); }} idPrefix="survey-card" />
         </fieldset>
       )}
       {!clientId && vault.checked && !vault.on && (
         <div className="rounded-2xl p-5" style={{ background: "#fafafa", border: BORDER }}>
-          <p className="text-sm font-semibold" style={{ color: "#111111" }}>Card on file</p>
+          <p className="text-sm font-semibold" style={{ color: "#111111" }}>Card on File</p>
           <p className="text-sm mt-1" style={{ color: "#767676" }}>
             {vault.waiting
               ? "Card storage is waiting for its vault password. An admin sets it from any onboarding card (Card on file), and then a card can be added here."
@@ -319,7 +319,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
         {error && <span className="text-sm" style={{ color: "#b91c1c" }}>{error}</span>}
         {onCancel && <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm" style={{ color: "#767676" }}>Cancel</button>}
         <button type="submit" disabled={saving} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: saving ? 0.5 : 1 }}>
-          {saving ? "Saving…" : clientId ? "Save answers" : "Submit survey"}
+          {saving ? "Saving…" : clientId ? "Save Answers" : "Submit Survey"}
         </button>
       </div>
     </form>

@@ -93,7 +93,7 @@ export default function SetupPage() {
               onChange={e => setPassword(e.target.value)}
               required
               className="w-full bg-white border border-black/15 rounded px-4 py-2.5 text-black placeholder-black/25 focus:outline-none focus:border-black transition-colors"
-              placeholder="Min 8 characters"
+              placeholder="Min 8 Characters"
             />
           </div>
 

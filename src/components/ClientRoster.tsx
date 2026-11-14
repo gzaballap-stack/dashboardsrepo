@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { displayName } from "@/lib/display-name";
 
 type Status = "live" | "paused" | "offline" | "setup";
 type Service = "facebook_ads" | "sms" | "both";
@@ -154,7 +155,7 @@ export default function ClientRoster() {
   ];
   const serviceCounts: { id: Service | "none" | null; label: string; n: number }[] = [
     ...SERVICES.map(s => ({ id: s.id as Service | "none" | null, label: s.label, n: byStatus.filter(c => c.service === s.id).length })),
-    { id: "none", label: "Not set", n: byStatus.filter(c => !c.service).length },
+    { id: "none", label: "Not Set", n: byStatus.filter(c => !c.service).length },
     { id: null,   label: "All",     n: byStatus.length },
   ];
 
@@ -213,7 +214,7 @@ export default function ClientRoster() {
             {statusFilter ? ` · ${statusCounts.find(x => x.id === statusFilter)?.label}` : ""}
             {serviceFilter ? ` · ${serviceCounts.find(x => x.id === serviceFilter)?.label}` : ""}
             {" — "}
-            <button onClick={() => { setStatusFilter(null); setServiceFilter(null); }} className="underline">show all</button>
+            <button onClick={() => { setStatusFilter(null); setServiceFilter(null); }} className="underline">Show All</button>
           </p>
         )}
       </div>
@@ -237,7 +238,7 @@ export default function ClientRoster() {
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STATUS_STYLE[statusOf(c)].dot }} />
-                    <span className="font-medium" style={{ color: "#111111" }}>{c.name}</span>
+                    <span className="font-medium" style={{ color: "#111111" }}>{displayName(c.name)}</span>
                   </div>
                 </td>
                 <td className="px-4 py-3">

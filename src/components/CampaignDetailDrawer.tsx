@@ -1069,7 +1069,7 @@ export default function CampaignDetailDrawer({ entity, onClose, onExclusionsChan
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendMessage())}
-          placeholder={`Ask about ${name}…`}
+          placeholder={`Ask About ${name}…`}
           className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
           style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}
         />

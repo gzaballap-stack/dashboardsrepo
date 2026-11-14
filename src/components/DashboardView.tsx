@@ -38,6 +38,7 @@ import CreativeLeaderboard from "./CreativeLeaderboard";
 import CSMDashboard from "./CSMDashboard";
 import CreativeHub from "./CreativeHub";
 import CopyHub from "./CopyHub";
+import { displayName } from "@/lib/display-name";
 
 type Client = { id: string; name: string; is_live?: boolean; is_internal?: boolean; service?: 'facebook_ads' | 'sms' | 'both' | null };
 type Channel = 'ads' | 'sms';
@@ -353,7 +354,7 @@ function ShareReports({ clients }: { clients: Client[] }) {
           <div key={c.id} className="rounded-2xl px-5 py-4 flex items-center justify-between gap-4"
             style={{ background: "#fafafa", border: "1px solid rgba(0,0,0,0.06)", boxShadow: "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)" }}>
             <div>
-              <p className="text-sm font-medium" style={{ color: "#111111" }}>{c.name}</p>
+              <p className="text-sm font-medium" style={{ color: "#111111" }}>{displayName(c.name)}</p>
               {c.share_token && (
                 <p className="text-xs mt-0.5 font-mono truncate max-w-xs" style={{ color: "#949494" }}>
                   {getUrl(c.share_token)}
@@ -1278,7 +1279,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                 <div className="absolute right-0 mt-2 z-50 rounded-xl py-1 w-56" style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.1)", boxShadow: "0 12px 32px -12px rgba(0,0,0,0.25)" }}>
                   <a href="/api/meta-b2b-report?mode=full&download=1" onClick={() => setShowReportMenu(false)}
                     className="block px-3 py-2 text-sm" style={{ color: "#111" }}>
-                    Full brief
+                    Full Brief
                     <span className="block text-[11px]" style={{ color: "#767676" }}>Everything, for a chat with no context</span>
                   </a>
                   <a href="/api/meta-b2b-report?mode=update&download=1" onClick={() => setShowReportMenu(false)}
@@ -1354,7 +1355,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
                   <Select value={selectedClientId} onChange={v => setSelectedClientId(v)}>
                     <option value="">All Clients</option>
                     <option value="__live__">Live Clients</option>
-                    {channelClients.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_live === false ? " (offline)" : ""}</option>)}
+                    {channelClients.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}{c.is_live === false ? " (offline)" : ""}</option>)}
                   </Select>
                 </>
               )}
@@ -1409,15 +1410,15 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
               {!inTomsi && <Select value={heatmapClientId} onChange={v => setHeatmapClientId(v)}>
                 <option value="">All Clients</option>
                 <option value="__live__">Live Clients</option>
-                {publicClients.map(c => <option key={c.id} value={c.id}>{c.name}{c.is_live === false ? " (offline)" : ""}</option>)}
+                {publicClients.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}{c.is_live === false ? " (offline)" : ""}</option>)}
               </Select>}
               <Select value={heatmapDays} onChange={v => setHeatmapDays(Number(v))}>
                 <option value={0}>All Time</option>
-                <option value={7}>Last 7 days</option>
-                <option value={14}>Last 14 days</option>
-                <option value={30}>Last 30 days</option>
-                <option value={60}>Last 60 days</option>
-                <option value={90}>Last 90 days</option>
+                <option value={7}>Last 7 Days</option>
+                <option value={14}>Last 14 Days</option>
+                <option value={30}>Last 30 Days</option>
+                <option value={60}>Last 60 Days</option>
+                <option value={90}>Last 90 Days</option>
               </Select>
             </>
           )}

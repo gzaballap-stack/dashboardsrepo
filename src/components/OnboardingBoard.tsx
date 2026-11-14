@@ -13,6 +13,7 @@ import {
 import { SURVEY_SECTIONS, showAnswer, type Answers } from "@/lib/client-survey";
 import ClientSurvey, { CardLink } from "./ClientSurvey";
 import CardVaultPanel from "./CardVault";
+import { displayName } from "@/lib/display-name";
 
 /** Where the survey lives on its own — the link the owner keeps for onboarding calls. */
 const SURVEY_PATH = "/dashboard/clients/new-client-survey";
@@ -48,7 +49,7 @@ function age(iso: string): string {
 }
 
 function TrackChip({ track }: { track: Track | null }) {
-  if (!track) return <span className="text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap flex-shrink-0" style={{ color: "#949494", background: "rgba(0,0,0,0.05)" }}>Pick a service</span>;
+  if (!track) return <span className="text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap flex-shrink-0" style={{ color: "#949494", background: "rgba(0,0,0,0.05)" }}>Pick a Service</span>;
   const s = TRACK_STYLE[track];
   return <span className="text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap flex-shrink-0" style={{ color: s.color, background: s.bg }}>{s.short}</span>;
 }
@@ -155,7 +156,7 @@ export default function OnboardingBoard() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setSurvey({})} className="px-4 py-2 rounded-lg text-sm font-semibold flex-shrink-0" style={{ background: "#000000", color: "#fff" }}>
-            New client survey
+            New Client Survey
           </button>
           <button
             onClick={async () => {
@@ -164,12 +165,12 @@ export default function OnboardingBoard() {
             }}
             title="A link that opens the survey on its own, for onboarding calls"
             className="px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
-            {linkCopied ? "Link copied" : "Copy survey link"}
+            {linkCopied ? "Link Copied" : "Copy Survey Link"}
           </button>
           {isAdmin && (
             <button onClick={() => setEditing(true)} className="px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0"
               style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
-              Edit checklists
+              Edit Checklists
             </button>
           )}
         </div>
@@ -179,26 +180,26 @@ export default function OnboardingBoard() {
         <span className="text-xs" style={{ color: "#767676" }}>Survey already done somewhere else? Add a card by name:</span>
         <input
           value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") add(); }}
-          placeholder="Client name…" aria-label="Client name for a card without a survey"
+          placeholder="Client Name…" aria-label="Client name for a card without a survey"
           className="px-3 py-1.5 rounded-lg text-sm outline-none" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111", width: 200 }} />
         <button onClick={add} disabled={!newName.trim() || adding}
           className="px-3 py-1.5 rounded-lg text-sm font-medium flex-shrink-0"
           style={{ background: "rgba(0,0,0,0.06)", color: "#111111", opacity: !newName.trim() || adding ? 0.5 : 1 }}>
-          {adding ? "Adding…" : "Add card"}
+          {adding ? "Adding…" : "Add Card"}
         </button>
       </div>
 
       {error && (
         <p className="text-sm px-3 py-2 rounded-lg flex items-center justify-between gap-3" style={{ color: "#b91c1c", background: "rgba(185,28,28,0.08)" }}>
           {error}
-          <button onClick={() => setError(null)} className="text-xs underline flex-shrink-0">dismiss</button>
+          <button onClick={() => setError(null)} className="text-xs underline flex-shrink-0">Dismiss</button>
         </p>
       )}
 
       {notice && (
         <p className="text-sm px-3 py-2 rounded-lg flex items-center justify-between gap-3" style={{ color: "#4a4a4a", background: "rgba(0,0,0,0.05)" }}>
           {notice}
-          <button onClick={() => setNotice(null)} className="text-xs underline flex-shrink-0">dismiss</button>
+          <button onClick={() => setNotice(null)} className="text-xs underline flex-shrink-0">Dismiss</button>
         </p>
       )}
 
@@ -235,7 +236,7 @@ export default function OnboardingBoard() {
                         className="rounded-xl p-3 cursor-pointer select-none"
                         style={{ background: "#ffffff", border: BORDER, boxShadow: "0 1px 2px rgba(0,0,0,0.04)", opacity: dragId === c.id ? 0.4 : 1 }}>
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-semibold leading-snug" style={{ color: "#111111", wordBreak: "break-word" }}>{c.client_name}</p>
+                          <p className="text-sm font-semibold leading-snug" style={{ color: "#111111", wordBreak: "break-word" }}>{displayName(c.client_name)}</p>
                           <TrackChip track={c.track} />
                         </div>
                         {c.track && <div className="mt-2.5"><Bar done={p.done} total={p.total} /></div>}
@@ -382,14 +383,14 @@ function CardPanel({ card, templates, onChange, onClose, onStage, onDelete, onSu
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2">
                   <TrackChip track={card.track} />
-                  <button onClick={() => setSwitching(true)} className="text-xs underline" style={{ color: "#949494" }}>change</button>
+                  <button onClick={() => setSwitching(true)} className="text-xs underline" style={{ color: "#949494" }}>Change</button>
                 </div>
                 <div style={{ width: 150 }}><Bar done={p.done} total={p.total} /></div>
               </div>
               {stale && (
                 <p className="text-xs mb-2 px-3 py-2 rounded-lg" style={{ color: "#92400e", background: "rgba(245,158,11,0.12)" }}>
                   The checklist has been edited since this card started.{" "}
-                  <button className="underline font-semibold" disabled={!!busy} onClick={() => send("refresh", { action: "refresh" })}>Update this card</button> (ticks are kept).
+                  <button className="underline font-semibold" disabled={!!busy} onClick={() => send("refresh", { action: "refresh" })}>Update This Card</button> (ticks are kept).
                 </p>
               )}
               <ul className="space-y-1">
@@ -403,7 +404,7 @@ function CardPanel({ card, templates, onChange, onClose, onStage, onDelete, onSu
               </ul>
               {allDone && card.stage !== "done" && (
                 <button onClick={() => onStage("done")} className="w-full mt-4 py-2.5 rounded-lg text-sm font-semibold" style={{ background: "#15803d", color: "#ffffff" }}>
-                  Everything is ticked — move to Done
+                  Everything Is Ticked — Move to Done
                 </button>
               )}
             </div>
@@ -414,7 +415,7 @@ function CardPanel({ card, templates, onChange, onClose, onStage, onDelete, onSu
               <span className="text-xs" style={{ color: "#4a4a4a" }}>No client survey on file for this card.</span>
               <button className="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0" style={{ background: "#000000", color: "#ffffff" }}
                 onClick={() => onSurvey({ cardId: card.id, initial: { business_name: card.client_name, ...(card.track ? { service: card.track === "sms" ? "sms" : "facebook_ads" } : {}) } })}>
-                Fill in the survey
+                Fill in the Survey
               </button>
             </div>
           )}
@@ -460,7 +461,7 @@ function CardPanel({ card, templates, onChange, onClose, onStage, onDelete, onSu
           <span className="text-xs" style={{ color: "#949494" }}>Added {day(card.created_at)}{card.source === "ghl_form" ? " from the onboarding form" : ""}</span>
           {confirmDelete ? (
             <span className="flex items-center gap-2">
-              <button onClick={onDelete} className="text-xs font-semibold px-2 py-1 rounded" style={{ color: "#b91c1c", background: "rgba(185,28,28,0.12)" }}>Delete card</button>
+              <button onClick={onDelete} className="text-xs font-semibold px-2 py-1 rounded" style={{ color: "#b91c1c", background: "rgba(185,28,28,0.12)" }}>Delete Card</button>
               <button onClick={() => setConfirmDelete(false)} className="text-xs" style={{ color: "#767676" }}>Cancel</button>
             </span>
           ) : (
@@ -513,7 +514,7 @@ function Step({ item, cardId, busy, onTick, onValue }: {
         <div className="flex gap-2 mt-1.5" style={{ paddingLeft: 28 }}>
           <input id={`onb-${item.id}`} value={value} onChange={e => setValue(e.target.value)} disabled={busy}
             onKeyDown={e => { if (e.key === "Enter") commit(); }}
-            placeholder={item.auto === "ad_account" ? "act_… or paste the Ads Manager link" : "Type it in…"}
+            placeholder={item.auto === "ad_account" ? "act_… or paste the Ads Manager link" : "Type It In…"}
             className="flex-1 px-3 py-1.5 rounded-lg text-sm outline-none" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111", minWidth: 0 }} />
           <button onClick={commit} disabled={busy || value.trim() === saved}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
@@ -630,15 +631,15 @@ function TemplateEditor({ templates, onClose, onSaved }: {
                 }}
                 className="outline-none flex-shrink-0" style={{ padding: "6px 6px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#111111", background: "#ffffff", border: "1px solid rgba(0,0,0,0.14)", width: 118 }}>
                 <option value="check">Tick</option>
-                <option value="text">Fill in</option>
+                <option value="text">Fill In</option>
                 <option value="heading">Heading</option>
-                <option value="auto:roster">Auto: roster</option>
-                <option value="auto:ad_account">Auto: ad account</option>
-                <option value="auto:card">Auto: card on file</option>
+                <option value="auto:roster">Auto: Roster</option>
+                <option value="auto:ad_account">Auto: Ad Account</option>
+                <option value="auto:card">Auto: Card on File</option>
               </select>
               <div className="flex-1" style={{ minWidth: 0 }}>
                 <input value={r.label} onChange={e => edit(i, { label: e.target.value })} aria-label="Step" autoFocus={r.id === focusId}
-                  placeholder={r.kind === "heading" ? "Section name…" : "What needs doing…"}
+                  placeholder={r.kind === "heading" ? "Section Name…" : "What Needs Doing…"}
                   className="w-full px-3 py-1.5 rounded-lg text-sm outline-none"
                   style={{ background: r.kind === "heading" ? "#fafafa" : "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111", fontWeight: r.kind === "heading" ? 600 : 400 }} />
                 {r.auto && <p className="text-xs mt-0.5" style={{ color: "#15803d" }}>{AUTO_NOTE[r.auto]}</p>}
@@ -650,13 +651,13 @@ function TemplateEditor({ templates, onClose, onSaved }: {
           ))}
           <div className="flex gap-2 pt-2">
             <button onClick={() => addRow("check")} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "rgba(0,0,0,0.06)", color: "#111111" }}>+ Step</button>
-            <button onClick={() => addRow("text")} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "rgba(0,0,0,0.06)", color: "#111111" }}>+ Fill-in step</button>
+            <button onClick={() => addRow("text")} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "rgba(0,0,0,0.06)", color: "#111111" }}>+ Fill-in Step</button>
             <button onClick={() => addRow("heading")} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "rgba(0,0,0,0.06)", color: "#111111" }}>+ Heading</button>
           </div>
         </div>
 
         <div className="px-5 py-3 flex items-center justify-between gap-3" style={{ borderTop: BORDER }}>
-          <button onClick={() => save(null)} disabled={saving} className="text-xs underline" style={{ color: "#949494" }}>Reset to the starter list</button>
+          <button onClick={() => save(null)} disabled={saving} className="text-xs underline" style={{ color: "#949494" }}>Reset to the Starter List</button>
           <div className="flex items-center gap-3">
             {error && <span className="text-xs" style={{ color: "#b91c1c" }}>{error}</span>}
             {savedAt === track && !dirty && <span className="text-xs" style={{ color: "#15803d" }}>Saved</span>}

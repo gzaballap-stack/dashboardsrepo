@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { displayName } from "@/lib/display-name";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Profit and Loss
@@ -196,14 +197,14 @@ function Row({ line, euro, onPatch, onRemove, move }: {
   onRemove: (id: string) => void;
   move?: { title: string; onMove: () => void };
 }) {
-  const [label, setLabel] = useState(line.label);
+  const [label, setLabel] = useState(displayName(line.label));
   const [amount, setAmount] = useState(line.amount ? String(line.amount) : "");
   const [bad, setBad] = useState(false);
   const [cur, setCur] = useState<Currency>("USD");   // what the figure being typed is in
 
   const commitLabel = () => {
     const next = label.trim();
-    if (next !== line.label) onPatch(line.id, { label: next });
+    if (next !== line.label && next !== displayName(line.label)) onPatch(line.id, { label: next });
   };
   const commitAmount = () => {
     const next = parseAmount(amount);
@@ -419,7 +420,7 @@ function ClientAddRow({ suggestions, onAdd }: {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6 }}>
       <SuggestInput value={name} onChange={setName} suggestions={suggestions} inputRef={nameRef}
-        placeholder="Add a client" ariaLabel="Add a client" onSubmit={submit} />
+        placeholder="Add a Client" ariaLabel="Add a client" onSubmit={submit} />
       <span style={{ fontSize: 13, color: FAINT }}>$</span>
       <input ref={amountRef} value={amount} onChange={e => { setAmount(e.target.value); setBad(false); }}
         onKeyDown={e => { if (e.key === "Enter") submit(); }}
@@ -580,8 +581,8 @@ const FIELD: React.CSSProperties = {
 };
 
 const FORM_FIELDS: { id: keyof ClientForm; label: string; type?: string; placeholder?: string }[] = [
-  { id: "name", label: "Client name" },
-  { id: "contact_name", label: "Contact name" },
+  { id: "name", label: "Client Name" },
+  { id: "contact_name", label: "Contact Name" },
   { id: "email", label: "Email (optional)", type: "email" },
   { id: "phone", label: "Phone (optional)", type: "tel" },
   { id: "website", label: "Website (optional)" },
@@ -680,10 +681,10 @@ function ClientPanel({ name, display, profile, roster, lines, months, otherKeys,
               </label>
             ))}
             <label style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, display: "flex", flexDirection: "column", gap: 5 }}>
-              Client Roster record
+              Client Roster Record
               <select value={form.client_id} onChange={e => set("client_id", e.target.value)} style={{ ...FIELD, cursor: "pointer" }}>
-                <option value="">Not on the roster</option>
-                {roster.map(c => <option key={c.id} value={c.id}>{c.name} — {STATUS_LABEL[c.status]}</option>)}
+                <option value="">Not on the Roster</option>
+                {roster.map(c => <option key={c.id} value={c.id}>{displayName(c.name)} — {STATUS_LABEL[c.status]}</option>)}
               </select>
               <span style={{ fontSize: 11, fontWeight: 400, color: FAINT }}>Linked, the roster name is used everywhere.</span>
             </label>
@@ -708,14 +709,14 @@ function ClientPanel({ name, display, profile, roster, lines, months, otherKeys,
           <p style={{ fontSize: 13, color: MUTED, padding: "4px 2px" }}>No payments logged for this client.</p>
         ) : (<>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
-            <Tile label="Total paid" value={money(total)} />
-            <Tile label="Months paid" value={String(paidMonths.length)} sub={`of ${since.length} since ${monthName(first, true)}`} />
-            <Tile label="Average per month" value={money(Math.round(total / paidMonths.length))} />
-            <Tile label="Last paid" value={monthName(last, true)}
+            <Tile label="Total Paid" value={money(total)} />
+            <Tile label="Months Paid" value={String(paidMonths.length)} sub={`of ${since.length} since ${monthName(first, true)}`} />
+            <Tile label="Average per Month" value={money(Math.round(total / paidMonths.length))} />
+            <Tile label="Last Paid" value={monthName(last, true)}
               sub={last === latest ? "Paying now" : `Not paying in ${monthName(latest, true)}`} />
           </div>
 
-          <BarChart title="Payments by month" legend={[]} onPick={onOpenMonth}
+          <BarChart title="Payments by Month" legend={[]} onPick={onOpenMonth}
             top={niceCeil(Math.max(...paid.values()))} tick={compact}
             cols={since.map(m => ({
               month: m,
@@ -792,7 +793,7 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
     const key = clientKey(label);
     const p = profiles[key];
     const r = (p?.client_id ? rosterById.get(p.client_id) : undefined) ?? rosterByKey.get(key);
-    return r?.name ?? label.trim();
+    return displayName(r?.name ?? label.trim());
   }, [profiles, rosterById, rosterByKey]);
 
   const load = useCallback(async (pickMonth: boolean) => {
@@ -1014,7 +1015,7 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
       .map(c => {
         // A roster client whose lines carry another name keeps that name on new lines.
         const viaProfile = Object.values(profiles).find(p => p.client_id === c.id);
-        return { name: c.name, value: viaProfile?.name ?? c.name, hint: STATUS_LABEL[c.status].toLowerCase() };
+        return { name: displayName(c.name), value: viaProfile?.name ?? c.name, hint: STATUS_LABEL[c.status].toLowerCase() };
       })
       .filter(sg => !have.has(clientKey(sg.value)));
     const past = [...clientStats.names.entries()]
@@ -1056,14 +1057,14 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
     const have = new Set(current.filter(l => l.kind === kind).map(l => clientKey(l.label)));
     const seen = new Map<string, string>();
     for (const l of all) if (l.kind === kind && l.label.trim() && !have.has(clientKey(l.label)) && !seen.has(clientKey(l.label))) seen.set(clientKey(l.label), l.label.trim());
-    return [...seen.values()].sort((a, b) => a.localeCompare(b)).map(name => ({ name }));
+    return [...seen.values()].sort((a, b) => a.localeCompare(b)).map(name => ({ name: displayName(name), value: name }));
   };
 
   // Time-frame shortcuts. "Last N months" counts back from the latest month logged.
   const frames = useMemo(() => {
     const clamp = (f: string, t: string) => ({ from: f < firstMonth ? firstMonth : f, to: t > latestMonth ? latestMonth : t });
     return [
-      { label: "All time", ...clamp(firstMonth, latestMonth) },
+      { label: "All Time", ...clamp(firstMonth, latestMonth) },
       ...years.map(y => ({ label: String(y), ...clamp(monthKey(y, 0), monthKey(y, 11)) })),
       ...[3, 6, 12].map(n => ({ label: `Last ${n} months`, ...clamp(shiftMonth(latestMonth, -(n - 1)), latestMonth) })),
     ];
@@ -1159,7 +1160,7 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
           <h3 style={{ fontSize: 16, fontWeight: 700, color: INK, minWidth: 150, textAlign: "center" }}>{monthName(month)}</h3>
           <button onClick={() => setMonth(shiftMonth(month, 1))} aria-label="Next month" style={{ ...BTN_QUIET, padding: "7px 11px" }}>›</button>
           {month !== thisMonth && (
-            <button onClick={() => setMonth(thisMonth)} style={BTN_QUIET}>This month</button>
+            <button onClick={() => setMonth(thisMonth)} style={BTN_QUIET}>This Month</button>
           )}
           <span style={{ flex: 1 }} />
           {todayRate && (
@@ -1177,7 +1178,7 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
             <button onClick={startFromPrevious} disabled={starting}
               style={{ padding: "9px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, background: "#000000", color: "#ffffff", opacity: starting ? 0.5 : 1 }}
               title={`Lists ${monthName(previous)}'s clients and expenses here with the amounts left blank`}>
-              {starting ? "Setting up…" : `Start from ${monthName(previous, true)}'s names`}
+              {starting ? "Setting Up…" : `Start From ${monthName(previous, true)}'s Names`}
             </button>
           </div>
         )}
@@ -1186,7 +1187,7 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
           <Tile label="Revenue" value={money(totals.revenue)} />
           <Tile label="Expenses" value={money(totals.expenses)} />
           <Tile label="Profit" value={money(totals.profit)} tone={totals.profit < 0 ? "bad" : totals.profit > 0 ? "good" : undefined} />
-          <Tile label="Profit margin" value={pct(totals.margin)} />
+          <Tile label="Profit Margin" value={pct(totals.margin)} />
           <Tile label="Personal" value={money(totals.personal)}
             sub={`Necessary ${money(totals.necessary)} · Leisure ${money(totals.leisure)}`} />
         </div>
@@ -1196,7 +1197,7 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
             {list("revenue", false, "Add a client")}
           </Section>
           <Section title="LOSS" caption="Expenses" total={totals.expenses}>
-            {list("expense", false, "Add an expense")}
+            {list("expense", false, "Add an Expense")}
           </Section>
           <Section title="PERSONAL" caption="Expenses" total={totals.personal}>
             {([["Necessary", false, totals.necessary], ["Leisure", true, totals.leisure]] as const).map(([name, leisure, sum], i) => (
@@ -1205,7 +1206,7 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
                   <span style={{ fontSize: 11, fontWeight: 700, color: MUTED, letterSpacing: "0.06em", flex: 1 }}>{name.toUpperCase()}</span>
                   <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, fontVariantNumeric: "tabular-nums" }}>{money(sum)}</span>
                 </div>
-                {list("personal", leisure, `Add ${name.toLowerCase()}`)}
+                {list("personal", leisure, `Add ${name}`)}
               </div>
             ))}
           </Section>
@@ -1224,7 +1225,7 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
                 background: scope === y ? "#000000" : "rgba(0,0,0,0.06)",
                 color: scope === y ? "#ffffff" : "#4a4a4a",
               }}>
-              {y === "all" ? "All time" : y}
+              {y === "all" ? "All Time" : y}
             </button>
           ))}
         </div>
@@ -1233,11 +1234,11 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
           <Tile label="Revenue" value={money(scopedTotals.revenue)} />
           <Tile label="Expenses" value={money(scopedTotals.expenses)} />
           <Tile label="Profit" value={money(scopedTotals.profit)} tone={scopedTotals.profit < 0 ? "bad" : scopedTotals.profit > 0 ? "good" : undefined} />
-          <Tile label="Profit margin" value={pct(scopedTotals.margin)} />
+          <Tile label="Profit Margin" value={pct(scopedTotals.margin)} />
           <Tile label="Personal" value={money(scopedTotals.personal)} />
         </div>
 
-        <BarChart title="Revenue and expenses by month" onPick={openMonth}
+        <BarChart title="Revenue and Expenses by Month" onPick={openMonth}
           legend={[{ c: INK, l: "Revenue" }, { c: GREY_BAR, l: "Expenses" }]}
           top={niceCeil(Math.max(...scoped.map(r => Math.max(r.revenue, r.expenses)), 0))} tick={compact}
           cols={scoped.map(r => ({
@@ -1283,13 +1284,13 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
                 const summary = [
                   { label: `Total · ${n} month${n === 1 ? "" : "s"}`, ...scopedTotals, strong: true },
                   {
-                    label: "Monthly average", strong: false,
+                    label: "Monthly Average", strong: false,
                     revenue: scopedTotals.revenue / n, expenses: scopedTotals.expenses / n,
                     personal: scopedTotals.personal / n, profit: scopedTotals.profit / n,
                     margin: margins.length ? margins.reduce((s, m) => s + m, 0) / margins.length : null,
                   },
-                  { label: "Highest month", strong: false, ...pick(Math.max) },
-                  { label: "Lowest month", strong: false, ...pick(Math.min) },
+                  { label: "Highest Month", strong: false, ...pick(Math.max) },
+                  { label: "Lowest Month", strong: false, ...pick(Math.min) },
                 ];
                 return summary.map((s, i) => (
                   <tr key={s.label} style={{ background: "rgba(0,0,0,0.025)" }}>
@@ -1344,19 +1345,19 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
         <div style={TILE_GRID}>
           <Tile label="Clients" value={String(cs.list.length)}
             sub={`${cs.newCount} new · ${cs.payingNow} paying in ${monthName(cs.lastMonth, true)}`} />
-          <Tile label="Client revenue" value={money(cs.total)}
+          <Tile label="Client Revenue" value={money(cs.total)}
             sub={`${cs.months.length} month${cs.months.length === 1 ? "" : "s"}`} />
-          <Tile label="Average value per client" value={cs.list.length ? money(Math.round(cs.total / cs.list.length)) : "n/a"} />
-          <Tile label="Average monthly per client" value={cs.clientMonths ? money(Math.round(cs.total / cs.clientMonths)) : "n/a"}
+          <Tile label="Average Value per Client" value={cs.list.length ? money(Math.round(cs.total / cs.list.length)) : "n/a"} />
+          <Tile label="Average Monthly per Client" value={cs.clientMonths ? money(Math.round(cs.total / cs.clientMonths)) : "n/a"}
             sub={cs.list.length ? `${(cs.clientMonths / cs.list.length).toFixed(1)} months per client` : undefined} />
-          <Tile label="Retention rate" value={pct(cs.retention)}
+          <Tile label="Retention Rate" value={pct(cs.retention)}
             sub={cs.base ? `${cs.kept} of ${cs.base} paid again the next month` : "Needs two months in a row"} />
-          <Tile label="Churn rate" value={pct(cs.retention === null ? null : 1 - cs.retention)}
+          <Tile label="Churn Rate" value={pct(cs.retention === null ? null : 1 - cs.retention)}
             sub={cs.base ? `${cs.base - cs.kept} of ${cs.base} did not pay the next month` : undefined} />
         </div>
 
-        <BarChart title="Paying clients by month" onPick={openMonth}
-          legend={[{ c: INK, l: "Stayed from last month" }, { c: GREY_BAR, l: "New or back" }]}
+        <BarChart title="Paying Clients by Month" onPick={openMonth}
+          legend={[{ c: INK, l: "Stayed From Last Month" }, { c: GREY_BAR, l: "New or Back" }]}
           top={Math.max(4, Math.ceil(Math.max(...cs.byMonth.map(r => r.paying), 0) / 4) * 4)} tick={n => String(n)}
           cols={cs.byMonth.map(r => ({
             month: r.month,
@@ -1378,7 +1379,7 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
                 <tr>
                   <th style={{ ...TH, textAlign: "left" }}>Client</th>
                   <th style={TH}>Paid</th><th style={TH}>Share</th><th style={TH}>Months</th>
-                  <th style={TH}>Avg / month</th><th style={TH}>First paid</th><th style={TH}>Last paid</th>
+                  <th style={TH}>Avg / Month</th><th style={TH}>First Paid</th><th style={TH}>Last Paid</th>
                   <th style={TH}>Paying in {monthName(cs.lastMonth, true)}</th>
                   <th style={TH} aria-label="Edit" />
                 </tr>
@@ -1413,7 +1414,7 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
                 {rosterOnly.map(c => (
                   <tr key={`roster:${c.id}`}>
                     <td style={{ ...TD, textAlign: "left", fontWeight: 600 }}>
-                      <button onClick={() => setEditing(clientKey(c.name))} style={{ fontWeight: 600, color: INK, textAlign: "left" }}>{c.name}</button>
+                      <button onClick={() => setEditing(clientKey(c.name))} style={{ fontWeight: 600, color: INK, textAlign: "left" }}>{displayName(c.name)}</button>
                       <div style={{ fontSize: 11.5, fontWeight: 400, color: MUTED, marginTop: 2 }}>
                         {STATUS_LABEL[c.status]} on the roster · no payments logged
                       </div>

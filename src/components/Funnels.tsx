@@ -37,7 +37,7 @@ const BLUE = "#2563eb";
 const PREVIEW_KEY = "tomsi";
 
 const RANGES = [
-  { id: "all", label: "All time", days: null },
+  { id: "all", label: "All Time", days: null },
   { id: "today", label: "Today", days: 0 },
   { id: "7", label: "7 days", days: 6 },
   { id: "30", label: "30 days", days: 29 },
@@ -175,7 +175,7 @@ function FunnelCard({ funnel, open, setOpen, editing, setEditing, act, busy, sho
           const out = await act({ action: "new_version", funnel_id: funnel.id, from_version_id: live[0]?.id });
           const v = out?.version as Version | undefined;
           if (v) { setOpen(v.id); setEditing(v.id); }
-        }}>+ New version</button>
+        }}>+ New Version</button>
       </div>
 
       <div style={{ overflowX: "auto", borderTop: BORDER }}>
@@ -183,9 +183,9 @@ function FunnelCard({ funnel, open, setOpen, editing, setEditing, act, busy, sho
           <thead>
             <tr style={{ background: "rgba(0,0,0,0.018)" }}>
               <th style={{ ...th, textAlign: "left", paddingLeft: 20 }}>Version</th>
-              <th style={th}>Visitors</th><th style={th}>Started form</th><th style={th}>Leads</th><th style={th}>Lead rate</th>
-              <th style={th}>Booked</th><th style={th}>Booking rate</th><th style={th}>Shows</th><th style={th}>Closed</th>
-              <th style={th}>Ad spend</th><th style={th}>Cost / lead</th><th style={{ ...th, paddingRight: 20 }}>Cost / booked</th>
+              <th style={th}>Visitors</th><th style={th}>Started Form</th><th style={th}>Leads</th><th style={th}>Lead Rate</th>
+              <th style={th}>Booked</th><th style={th}>Booking Rate</th><th style={th}>Shows</th><th style={th}>Closed</th>
+              <th style={th}>Ad Spend</th><th style={th}>Cost / Lead</th><th style={{ ...th, paddingRight: 20 }}>Cost / Booked</th>
             </tr>
           </thead>
           <tbody>
@@ -236,8 +236,8 @@ function FunnelCard({ funnel, open, setOpen, editing, setEditing, act, busy, sho
                 <tr style={{ borderTop: "2px solid rgba(0,0,0,0.08)", background: "rgba(0,0,0,0.018)" }}>
                   <td style={{ ...td, textAlign: "left", paddingLeft: 20 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontWeight: 700 }}>Old funnel</span>
-                      <span style={{ color: MUTED }}>GoHighLevel pages</span>
+                      <span style={{ fontWeight: 700 }}>Old Funnel</span>
+                      <span style={{ color: MUTED }}>GoHighLevel Pages</span>
                       <span style={{ fontSize: 11, fontWeight: 700, color: MUTED, background: "rgba(0,0,0,0.06)", borderRadius: 999, padding: "2px 8px" }}>Before</span>
                     </div>
                     {s.first_seen && <p style={{ fontSize: 11, color: FAINT, marginTop: 3 }}>{day(s.first_seen)} – {day(s.last_seen)}</p>}
@@ -289,25 +289,25 @@ function VersionDetail({ v, s, liveCount, previewUrl, act, busy, editing, setEdi
     <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <a href={previewUrl} target="_blank" rel="noreferrer" style={{ ...btn(), textDecoration: "none" }}>Preview</a>
-        {!locked && <button style={btn(true)} onClick={() => setEditing(true)}>Open editor</button>}
+        {!locked && <button style={btn(true)} onClick={() => setEditing(true)}>Open Editor</button>}
         <button disabled={busy} style={btn()} onClick={async () => {
           const out = await act({ action: "new_version", funnel_id: v.funnel_id, from_version_id: v.id });
           const made = out?.version as Version | undefined;
           if (made) onCopied(made.id);
-        }}>{locked ? "Copy to change it" : "Duplicate"}</button>
+        }}>{locked ? "Copy to Change It" : "Duplicate"}</button>
         {v.status !== "live" && v.status !== "archived" && (
           <>
-            <button disabled={busy} style={btn(true)} onClick={() => { if (window.confirm(`Make version ${v.number} the only live version? The current one is paused.`)) act({ action: "publish", id: v.id, mode: "replace" }); }}>Make live</button>
-            {liveCount > 0 && <button disabled={busy} style={btn()} onClick={() => { if (window.confirm(`Send half of the traffic to version ${v.number} as a split test?`)) act({ action: "publish", id: v.id, mode: "split", weight: 50 }); }}>Add to split test</button>}
+            <button disabled={busy} style={btn(true)} onClick={() => { if (window.confirm(`Make version ${v.number} the only live version? The current one is paused.`)) act({ action: "publish", id: v.id, mode: "replace" }); }}>Make Live</button>
+            {liveCount > 0 && <button disabled={busy} style={btn()} onClick={() => { if (window.confirm(`Send half of the traffic to version ${v.number} as a split test?`)) act({ action: "publish", id: v.id, mode: "split", weight: 50 }); }}>Add to Split Test</button>}
           </>
         )}
         {v.status === "live" && liveCount > 1 && (
           <>
-            <span style={{ fontSize: 12, color: MUTED }}>Traffic weight</span>
+            <span style={{ fontSize: 12, color: MUTED }}>Traffic Weight</span>
             <input value={weight} onChange={e => setWeight(e.target.value)} style={{ ...inputStyle, width: 64 }} inputMode="numeric" />
             <button disabled={busy || weight === String(v.weight)} style={btn()} onClick={() => act({ action: "weight", id: v.id, weight: Number(weight) })}>Set</button>
             <button disabled={busy} style={btn()} onClick={() => act({ action: "pause", id: v.id })}>Pause</button>
-            <button disabled={busy} style={btn(true)} onClick={() => { if (window.confirm(`End the split test and send all traffic to version ${v.number}?`)) act({ action: "publish", id: v.id, mode: "replace" }); }}>Make it the winner</button>
+            <button disabled={busy} style={btn(true)} onClick={() => { if (window.confirm(`End the split test and send all traffic to version ${v.number}?`)) act({ action: "publish", id: v.id, mode: "replace" }); }}>Make It the Winner</button>
           </>
         )}
         {v.status === "archived"
@@ -320,7 +320,7 @@ function VersionDetail({ v, s, liveCount, previewUrl, act, busy, editing, setEdi
 
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1fr)", gap: 20 }}>
         <div style={{ background: CARD, border: BORDER, borderRadius: 12, padding: 16 }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: INK, marginBottom: 12 }}>Where people stop</p>
+          <p style={{ fontSize: 12, fontWeight: 700, color: INK, marginBottom: 12 }}>Where People Stop</p>
           {steps.map(([label, n], i) => (
             <div key={label} style={{ marginBottom: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: INK }}>
@@ -339,8 +339,8 @@ function VersionDetail({ v, s, liveCount, previewUrl, act, busy, editing, setEdi
           </p>
         </div>
         <div style={{ background: CARD, border: BORDER, borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: INK }}>Name and notes</p>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="Name of this version" style={inputStyle} />
+          <p style={{ fontSize: 12, fontWeight: 700, color: INK }}>Name and Notes</p>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Name of This Version" style={inputStyle} />
           <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="What changed in this version, and why" rows={4} style={{ ...inputStyle, resize: "vertical" }} />
           <div>
             <button disabled={busy || (name === v.name && notes === v.notes)} style={btn(true)} onClick={() => act({ action: "save", id: v.id, name, notes })}>Save</button>
@@ -444,8 +444,8 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
         <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Version {v.number}</span>
         <span style={{ fontSize: 13, color: MUTED, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.name}</span>
         <div style={{ display: "flex", gap: 6, marginLeft: 14 }}>
-          <button style={pill(page === "landing")} onClick={() => { setPage("landing"); setSelected(null); setReady(0); }}>Landing page</button>
-          <button style={pill(page === "booked")} onClick={() => { setPage("booked"); setSelected(null); setFormStep(null); setReady(0); }}>Booked page</button>
+          <button style={pill(page === "landing")} onClick={() => { setPage("landing"); setSelected(null); setReady(0); }}>Landing Page</button>
+          <button style={pill(page === "booked")} onClick={() => { setPage("booked"); setSelected(null); setFormStep(null); setReady(0); }}>Booked Page</button>
         </div>
         <div style={{ display: "flex", gap: 6, marginLeft: 14 }}>
           <button style={pill(device === "desktop")} onClick={() => setDevice("desktop")}>Desktop</button>
@@ -453,9 +453,9 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
           {saved && !dirty && <span style={{ fontSize: 12, color: GOOD }}>Saved</span>}
-          {dirty && <span style={{ fontSize: 12, color: MUTED }}>Unsaved changes</span>}
+          {dirty && <span style={{ fontSize: 12, color: MUTED }}>Unsaved Changes</span>}
           <button style={btn()} disabled={!undo.length} onClick={() => { const last = undo[undo.length - 1]; setUndo(u => u.slice(0, -1)); setContent(last); setSaved(false); }}>Undo</button>
-          <a href={previewUrl} target="_blank" rel="noreferrer" style={{ ...btn(), textDecoration: "none" }}>Open saved page</a>
+          <a href={previewUrl} target="_blank" rel="noreferrer" style={{ ...btn(), textDecoration: "none" }}>Open Saved Page</a>
           <button disabled={busy || !dirty} style={{ ...btn(true), opacity: dirty ? 1 : 0.4 }} onClick={async () => { if (await act({ action: "save", id: v.id, content })) setSaved(true); }}>Save</button>
         </div>
       </div>
@@ -477,7 +477,7 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
             </div>
           ))}
           <select value="" onChange={e => { if (e.target.value) add(e.target.value as SectionType); }} style={{ ...inputStyle, marginTop: 8 }}>
-            <option value="">+ Add a section…</option>
+            <option value="">+ Add a Section…</option>
             {(Object.keys(SECTION_INFO) as SectionType[]).filter(t => t !== "form" && SECTION_INFO[t].pages.includes(page)).map(t => (
               <option key={t} value={t}>{SECTION_INFO[t].label}</option>
             ))}
@@ -509,8 +509,8 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
                   {f.kind === "lines" && <textarea rows={Math.max(3, ((sel[f.key] as string[]) ?? []).length + 1)} value={((sel[f.key] as string[]) ?? []).join("\n")} onChange={e => patch(sel.id, { [f.key]: e.target.value.split("\n") })} style={{ ...inputStyle, resize: "vertical" }} />}
                   {f.kind === "layout" && (
                     <select value={sel.layout ?? "grid"} onChange={e => patch(sel.id, { layout: e.target.value as "grid" | "stack" })} style={inputStyle}>
-                      <option value="grid">Two per row</option>
-                      <option value="stack">One per row</option>
+                      <option value="grid">Two per Row</option>
+                      <option value="stack">One per Row</option>
                     </select>
                   )}
                   {f.kind === "videos" && <Videos videos={sel.videos ?? []} onChange={videos => patch(sel.id, { videos })} />}
@@ -520,7 +520,7 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
 
               {sel.type === "form" && (
                 <>
-                  <Labeled label="Show this step on the page">
+                  <Labeled label="Show This Step on the Page">
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {FORM_STEPS.map(([n, label]) => <button key={n} style={pill(formStep === n)} onClick={() => setFormStep(n)}>{label}</button>)}
                     </div>
@@ -568,12 +568,12 @@ function Videos({ videos, onChange }: { videos: FunnelVideo[]; onChange: (v: Fun
     <div style={{ display: "grid", gap: 8 }}>
       {videos.map((v, i) => (
         <div key={i} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,2fr) auto", gap: 8 }}>
-          <input value={v.id} onChange={e => set(i, { id: e.target.value })} placeholder="YouTube link or id" style={inputStyle} />
+          <input value={v.id} onChange={e => set(i, { id: e.target.value })} placeholder="YouTube Link or ID" style={inputStyle} />
           <input value={v.headline} onChange={e => set(i, { headline: e.target.value, title: e.target.value })} placeholder="Line shown with the video" style={inputStyle} />
           <button style={btn(false, true)} onClick={() => onChange(videos.filter((_, j) => j !== i))}>Remove</button>
         </div>
       ))}
-      <div><button style={btn()} onClick={() => onChange([...videos, { id: "", title: "", headline: "" }])}>+ Add a video</button></div>
+      <div><button style={btn()} onClick={() => onChange([...videos, { id: "", title: "", headline: "" }])}>+ Add a Video</button></div>
     </div>
   );
 }

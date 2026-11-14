@@ -1064,7 +1064,7 @@ export default function TaskBoard() {
                 onClick={jumpToToday}
                 style={{ fontSize: 11, fontWeight: 700, color: "#000000", cursor: "pointer", whiteSpace: "nowrap" }}
               >
-                {view === "day" ? "Today" : view === "week" ? "This week" : "This month"}
+                {view === "day" ? "Today" : view === "week" ? "This Week" : "This Month"}
               </button>
             )}
             <div style={{ display: "flex", gap: 4 }}>
@@ -1206,7 +1206,7 @@ export default function TaskBoard() {
             onClick={() => setCatchUpIds(stranded.map(t => t.id))}
             style={{ fontSize: 11, fontWeight: 700, color: "#000000", cursor: "pointer", whiteSpace: "nowrap" }}
           >
-            Review them
+            Review Them
           </button>
         </div>
       )}
@@ -1300,7 +1300,7 @@ export default function TaskBoard() {
           onClick={() => setHideDone(v => !v)}
           style={{ fontSize: 10.5, fontWeight: 600, color: hideDone ? "#000000" : "#767676", cursor: "pointer" }}
         >
-          {hideDone ? "Show completed" : "Hide completed"}
+          {hideDone ? "Show Completed" : "Hide Completed"}
         </button>
       </div>
 
@@ -1997,7 +1997,7 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
               <LockIcon size={10} /> Weekly non-negotiable — it stays on its day. Done that day, or not done.
             </p>
           ) : (
-          <Field label={ctx.scope === "day" ? "Move to day" : "Move to week"}>
+          <Field label={ctx.scope === "day" ? "Move to Day" : "Move to Week"}>
             <input
               type="date"
               value={task.task_date ?? ""}
@@ -2038,7 +2038,7 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
             />
           </Field>
           {task.bucket === "D" && (
-            <Field label="Delegate to">
+            <Field label="Delegate To">
               <input
                 defaultValue={task.delegate_to ?? ""}
                 onBlur={e => { if (e.target.value !== (task.delegate_to ?? "")) ctx.patch(task.id, { delegate_to: e.target.value }); }}
@@ -2077,7 +2077,7 @@ function Card({ task, accent, ctx }: { task: Task; accent: string; ctx: BoardCtx
             onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#111111"}
             onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#767676"}
           >
-            ← Back to big projects
+            ← Back to Big Projects
           </button>
           )}
         </div>
@@ -2357,7 +2357,7 @@ function CatchUp({ ids, tasks, label, anchor, onTick, onMove, onPark, onReAdd, o
       >
         <div style={{ padding: "16px 20px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>Unfinished from earlier</p>
+            <p style={{ fontSize: 15, fontWeight: 800, color: "#111111" }}>Unfinished From Earlier</p>
             <p style={{ fontSize: 11, color: "#949494" }}>
               Everything still open from any earlier day. Tick what you did, move what still matters
               to {label}, or leave the rest where they are.
@@ -2491,7 +2491,7 @@ function CatchUp({ ids, tasks, label, anchor, onTick, onMove, onPark, onReAdd, o
               cursor: remaining.length === 0 ? "default" : "pointer", whiteSpace: "nowrap",
             }}
           >
-            Move all to {label}
+            Move All to {label}
           </button>
         </div>
       </div>
@@ -2661,7 +2661,7 @@ function NonNegotiables({ templates, onAdd, onUpdate, onRemove, onReorder, onClo
                   })}
                 </div>
                 <span style={{ fontSize: 10.5, color: "#949494" }}>
-                  {t.days.length === 0 ? "Any day this week" : t.days.length === 7 ? "Every day" : `${t.days.length}× a week`}
+                  {t.days.length === 0 ? "Any day this week" : t.days.length === 7 ? "Every Day" : `${t.days.length}× a week`}
                 </span>
               </div>
             </div>
@@ -2836,7 +2836,7 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
               </span>
             )}
             <button onClick={onManage} style={{ fontSize: 10.5, fontWeight: 700, color: "#767676", cursor: "pointer" }}>
-              {copies.length === 0 && todays.length === 0 ? "Set up" : "Edit"}
+              {copies.length === 0 && todays.length === 0 ? "Set Up" : "Edit"}
             </button>
           </span>
         </div>
@@ -2984,7 +2984,7 @@ function ProjectBoard({ projects, onToggle, onLetter, onAdd, onDragStart, dragId
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") commit(); }}
-            placeholder="Add a project…"
+            placeholder="Add a Project…"
             style={{ ...fieldStyle, flex: 1, minWidth: 220, fontSize: 12.5, padding: "8px 11px" }}
           />
           <div style={{ display: "flex", gap: 3 }}>
@@ -3039,7 +3039,7 @@ function ProjectBoard({ projects, onToggle, onLetter, onAdd, onDragStart, dragId
 
                   <div style={{ padding: 7, flex: 1 }}>
                     {mine.length === 0 && (
-                      <p style={{ fontSize: 10, color: "#c2c2c2", textAlign: "center", padding: "16px 4px" }}>Drop here</p>
+                      <p style={{ fontSize: 10, color: "#c2c2c2", textAlign: "center", padding: "16px 4px" }}>Drop Here</p>
                     )}
                     {mine.map(t => (
                       <div

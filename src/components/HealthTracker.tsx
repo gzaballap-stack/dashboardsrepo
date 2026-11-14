@@ -1056,7 +1056,7 @@ function WeekCard({ monday, entry, whoop, isNow, big, unit, lengthUnit, onOpen, 
               fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
               padding: "2px 7px", borderRadius: 20, background: INK, color: "#ffffff",
             }}>
-              This week
+              This Week
             </span>
           ) : <span>· now</span>
         )}
@@ -1216,7 +1216,7 @@ function Calendar({ year, setYear, month, setMonth, weeks, byWeek, whoopByWeek, 
         </div>
 
         <button onClick={() => onOpen(thisMonday)} style={{ ...BTN_PRIMARY, marginLeft: "auto", padding: "8px 16px", fontSize: 13 }}>
-          Log this week
+          Log This Week
         </button>
       </div>
 
@@ -1551,7 +1551,7 @@ function EntrySheet({ weekStart, entry, history, exercises, unit, lengthUnit, on
             <button
               onClick={handleClear}
               style={{ ...BTN_QUIET, background: "rgba(180,71,46,0.09)", color: "#b4472e" }}>
-              Clear week
+              Clear Week
             </button>
           )}
           <div style={{ flex: 1 }} />
@@ -1983,7 +1983,7 @@ function PlanHeader({ name, isActive, noun, onBack, onRename, onSetActive, onDup
             color: isActive ? MUTED : "#ffffff",
             cursor: isActive ? "default" : "pointer",
           }}>
-          {isActive ? "Active" : "Make active"}
+          {isActive ? "Active" : "Make Active"}
         </button>
         <button onClick={onDuplicate} style={{ ...BTN_QUIET }}>Duplicate</button>
         <button onClick={onDelete}
@@ -2043,7 +2043,7 @@ function DietTab({ doc, onChange }: { doc: DietDoc; onChange: (d: DietDoc) => vo
         <p style={{ fontSize: 12, color: FAINT, marginTop: 6, marginBottom: 16 }}>
           Make one for each way you eat — bulk, cut, maintenance — and mark the one you&apos;re on.
         </p>
-        <AddButton label="Create a diet plan" onClick={addPlan} />
+        <AddButton label="Create a Diet Plan" onClick={addPlan} />
       </div>
     );
   }
@@ -2148,7 +2148,7 @@ function DietPlanEditor({ plan, onChange: update }: {
           below, so it can never drift from what the plan actually is. */}
       <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 18 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: INK }}>Daily macros</p>
+          <p style={{ fontSize: 13, fontWeight: 700, color: INK }}>Daily Macros</p>
           <div style={{ display: "flex", gap: 12, marginLeft: "auto" }}>
             {([["showCarbs", "Carbs"], ["showFat", "Fat"]] as const).map(([key, label]) => (
               <label key={key} style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
@@ -2244,7 +2244,7 @@ function DietPlanEditor({ plan, onChange: update }: {
                       </label>
                     ))}
                   </div>
-                  <IconButton label="Remove item"
+                  <IconButton label="Remove Item"
                     onClick={() => patchMeal(meal.id, { items: meal.items.filter(i => i.id !== item.id) })} />
                 </div>
               </div>
@@ -2252,7 +2252,7 @@ function DietPlanEditor({ plan, onChange: update }: {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-            <AddButton label="Add food"
+            <AddButton label="Add Food"
               onClick={() => patchMeal(meal.id, {
                 items: [...meal.items, { id: uid(), name: "", qty: "", kcal: null, protein: null, carbs: null, fat: null }],
               })} />
@@ -2261,7 +2261,7 @@ function DietPlanEditor({ plan, onChange: update }: {
       ))}
 
       <div>
-        <AddButton label="Add meal"
+        <AddButton label="Add Meal"
           onClick={() => setMeals([...plan.meals, { id: uid(), name: "", time: "", items: [] }])} />
       </div>
 
@@ -2300,7 +2300,7 @@ function SplitTab({ doc, trackedExercises, onChange }: {
           Build one per way of training — low volume high intensity, an Arnold
           split, push pull legs — and mark the one you&apos;re running.
         </p>
-        <AddButton label="Create a programme" onClick={addProgramme} />
+        <AddButton label="Create a Programme" onClick={addProgramme} />
       </div>
     );
   }
@@ -2530,7 +2530,7 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
             ...BTN_PRIMARY, padding: "8px 16px", fontSize: 13,
             opacity: !exerciseCount || (!bulkSets.trim() && !bulkReps.trim()) ? 0.4 : 1,
           }}>
-          Apply to all {exerciseCount || ""}
+          Apply to All {exerciseCount || ""}
         </button>
         <span style={{ fontSize: 11, color: FAINT, flexBasis: "100%" }}>
           Overwrites sets and reps on every exercise in {plan.name || "this programme"}.
@@ -2567,7 +2567,7 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
             <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexShrink: 0 }}>
               <input type="checkbox" checked={day.rest}
                 onChange={e => patchDay(day.id, { rest: e.target.checked })} />
-              <span style={{ fontSize: 11.5, color: MUTED }}>Rest day</span>
+              <span style={{ fontSize: 11.5, color: MUTED }}>Rest Day</span>
             </label>
           </div>
 
@@ -2644,7 +2644,7 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
                               exercises: day.exercises.map(e => (e.id === ex.id ? { ...e, reps: v } : e)),
                             })}
                             placeholder="Reps" style={{ width: 78, fontSize: 13, textAlign: "center" }} />
-                          <IconButton label="Remove exercise"
+                          <IconButton label="Remove Exercise"
                             onClick={() => patchDay(day.id, { exercises: day.exercises.filter(e => e.id !== ex.id) })} />
                         </div>
                       </div>
@@ -2673,7 +2673,7 @@ function ProgrammeEditor({ prog, trackedExercises, onChange: update }: {
                 </div>
               )}
               <div style={{ marginTop: 12 }}>
-                <AddButton label="Add exercise"
+                <AddButton label="Add Exercise"
                   onClick={() => patchDay(day.id, {
                     exercises: [...day.exercises,
                       { id: uid(), name: "", sets: "", reps: "", notes: "", muscle: "" as MuscleId, optional: false }],
@@ -2719,7 +2719,7 @@ function WeeklyVolume({ prog }: { prog: SplitProgramme }) {
   return (
     <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 18 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-        <p style={{ fontSize: 13, fontWeight: 700, color: INK }}>Weekly sets</p>
+        <p style={{ fontSize: 13, fontWeight: 700, color: INK }}>Weekly Sets</p>
         <p style={{ fontSize: 11, color: FAINT }}>
           {total || optionalTotal
             ? `${fmt(total, 0)} sets a week${optionalTotal ? `, plus ${fmt(optionalTotal, 0)} if you do the optional work` : ""}`
@@ -2854,7 +2854,7 @@ function WhoopTab({ status, notice, syncing, year, setYear, month, setMonth, thi
     return (
       <div style={{ background: CARD, border: BORDER, boxShadow: SHADOW, borderRadius: 18, padding: 40, textAlign: "center" }}>
         {Notice}
-        <p style={{ fontSize: 15, fontWeight: 700, color: INK }}>Connect your Whoop</p>
+        <p style={{ fontSize: 15, fontWeight: 700, color: INK }}>Connect Your Whoop</p>
         <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55, maxWidth: 440, margin: "8px auto 0" }}>
           Recovery, sleep, HRV, resting heart rate and strain, pulled in each day and
           laid out by week. Each week&apos;s averages also land on your calendar cards,
@@ -2879,7 +2879,7 @@ function WhoopTab({ status, notice, syncing, year, setYear, month, setMonth, thi
           background: "rgba(180,71,46,0.08)", color: "#b4472e",
         }}>
           {status.last_error}
-          {needsReconnect && <> — <a href="/api/whoop/connect" style={{ fontWeight: 600, color: "#b4472e" }}>reconnect</a></>}
+          {needsReconnect && <> — <a href="/api/whoop/connect" style={{ fontWeight: 600, color: "#b4472e" }}>Reconnect</a></>}
         </p>
       )}
 
@@ -2895,7 +2895,7 @@ function WhoopTab({ status, notice, syncing, year, setYear, month, setMonth, thi
           {syncing || status.syncing ? "Syncing…" : `Synced ${agoText(status.last_synced_at)}`}
         </span>
         <button onClick={onSync} disabled={syncing || !!status.syncing} style={{ ...BTN_QUIET, opacity: syncing ? 0.6 : 1 }}>
-          Sync now
+          Sync Now
         </button>
       </div>
 
@@ -2929,7 +2929,7 @@ function WhoopTab({ status, notice, syncing, year, setYear, month, setMonth, thi
                   <span style={{
                     fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
                     padding: "2px 7px", borderRadius: 20, background: INK, color: "#ffffff",
-                  }}>This week</span>
+                  }}>This Week</span>
                 )}
                 {wk && (
                   <span style={{ marginLeft: "auto", display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: MUTED }}>
@@ -2986,7 +2986,7 @@ function WhoopTab({ status, notice, syncing, year, setYear, month, setMonth, thi
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 22 }}>
         <button onClick={onBackfill} disabled={syncing} style={{ ...BTN_QUIET, fontSize: 12 }}>
-          {syncing ? "Pulling…" : "Pull all history"}
+          {syncing ? "Pulling…" : "Pull All History"}
         </button>
         <span style={{ fontSize: 11, color: FAINT }}>Everything Whoop has, up to three years. Takes a minute or two.</span>
         <span style={{ flex: 1 }} />
@@ -2999,7 +2999,7 @@ function WhoopTab({ status, notice, syncing, year, setYear, month, setMonth, thi
             <span style={{ fontSize: 11.5, color: MUTED }}>Keeps the days already pulled.</span>
             <button onClick={async () => { await onDisconnect(); setConfirmDisconnect(false); }}
               style={{ ...BTN_QUIET, fontSize: 12, color: "#ffffff", background: "#b4472e" }}>
-              Yes, disconnect
+              Yes, Disconnect
             </button>
             <button onClick={() => setConfirmDisconnect(false)} style={{ ...BTN_QUIET, fontSize: 12 }}>Cancel</button>
           </span>
@@ -3050,14 +3050,14 @@ function WhoopDaySheet({ day, onClose }: { day: WhoopDay; onClose: () => void })
 
       <WhoopHead>Recovery</WhoopHead>
       <WhoopRow label="HRV" value={day.hrv_ms} unit="ms" />
-      <WhoopRow label="Resting heart rate" value={day.resting_hr} unit="bpm" />
-      <WhoopRow label="Blood oxygen" value={day.spo2} unit="%" />
-      <WhoopRow label="Skin temperature" value={day.skin_temp_c} unit="°C" />
+      <WhoopRow label="Resting Heart Rate" value={day.resting_hr} unit="bpm" />
+      <WhoopRow label="Blood Oxygen" value={day.spo2} unit="%" />
+      <WhoopRow label="Skin Temperature" value={day.skin_temp_c} unit="°C" />
 
       <WhoopHead>Sleep</WhoopHead>
       {(day.bed_time_local || day.wake_time_local) && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "7px 0", borderBottom: "1px solid rgba(0,0,0,0.05)" }}>
-          <span style={{ fontSize: 12.5, color: MUTED }}>In bed</span>
+          <span style={{ fontSize: 12.5, color: MUTED }}>In Bed</span>
           <span style={{ fontSize: 14, fontWeight: 700, color: INK }}>
             {day.bed_time_local ?? "—"} <span style={{ fontSize: 10, fontWeight: 500, color: FAINT }}>to</span> {day.wake_time_local ?? "—"}
           </span>
@@ -3065,14 +3065,14 @@ function WhoopDaySheet({ day, onClose }: { day: WhoopDay; onClose: () => void })
       )}
       <WhoopRow label="Asleep" value={day.sleep_hours} unit="h" />
       <WhoopRow label="Needed" value={day.sleep_need_hours} unit="h" />
-      <WhoopRow label="Sleep debt" value={day.sleep_debt_hours} unit="h"
+      <WhoopRow label="Sleep Debt" value={day.sleep_debt_hours} unit="h"
         color={day.sleep_debt_hours != null && day.sleep_debt_hours >= 1 ? "#b4472e" : undefined} />
       {day.nap_hours != null && day.nap_hours > 0 && <WhoopRow label="Naps" value={day.nap_hours} unit="h" />}
-      <WhoopRow label="Sleep performance" value={day.sleep_performance} unit="%" />
+      <WhoopRow label="Sleep Performance" value={day.sleep_performance} unit="%" />
       <WhoopRow label="Efficiency" value={day.sleep_efficiency} unit="%" />
       <WhoopRow label="Consistency" value={day.sleep_consistency} unit="%" />
-      <WhoopRow label="Respiratory rate" value={day.respiratory_rate} unit="/min" />
-      <WhoopRow label="Sleep cycles" value={day.sleep_cycles} />
+      <WhoopRow label="Respiratory Rate" value={day.respiratory_rate} unit="/min" />
+      <WhoopRow label="Sleep Cycles" value={day.sleep_cycles} />
       <WhoopRow label="Disturbances" value={day.disturbances} />
       {day.sleep_stages && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginTop: 10 }}>
@@ -3086,11 +3086,11 @@ function WhoopDaySheet({ day, onClose }: { day: WhoopDay; onClose: () => void })
       )}
 
       <WhoopHead>Strain</WhoopHead>
-      <WhoopRow label="Day strain" value={day.strain} />
+      <WhoopRow label="Day Strain" value={day.strain} />
       <WhoopRow label="Steps" value={day.steps} />
-      <WhoopRow label="Calories burned" value={kcal} unit="kcal" />
-      <WhoopRow label="Average heart rate" value={day.avg_hr} unit="bpm" />
-      <WhoopRow label="Max heart rate" value={day.max_hr} unit="bpm" />
+      <WhoopRow label="Calories Burned" value={kcal} unit="kcal" />
+      <WhoopRow label="Average Heart Rate" value={day.avg_hr} unit="bpm" />
+      <WhoopRow label="Max Heart Rate" value={day.max_hr} unit="bpm" />
 
       {(day.workouts?.length ?? 0) > 0 && (
         <>
@@ -3110,7 +3110,7 @@ function WhoopDaySheet({ day, onClose }: { day: WhoopDay; onClose: () => void })
               </div>
               {w.zones && w.zones.some(z => z != null && z > 0) && (
                 <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ color: FAINT }}>HR zones</span>
+                  <span style={{ color: FAINT }}>HR Zones</span>
                   {w.zones.map((z, zi) => (zi > 0 && z != null && z > 0) ? <span key={zi}>Z{zi} {z}m</span> : null)}
                 </div>
               )}
@@ -3163,7 +3163,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
 
   return (
     <Sheet
-      title="Tracker settings"
+      title="Tracker Settings"
       onClose={onClose}
       footer={
         <>
@@ -3219,7 +3219,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
       />
 
       <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: FAINT, margin: "20px 0 8px" }}>
-        Share your log
+        Share Your Log
       </p>
       {shareUrl ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -3237,14 +3237,14 @@ function SettingsSheet({ settings, onClose, onSaved }: {
                 setTimeout(() => setCopied(false), 1600);
               }}
               style={{ ...BTN_QUIET }}>
-              {copied ? "Copied" : "Copy link"}
+              {copied ? "Copied" : "Copy Link"}
             </button>
             <a href={shareUrl} target="_blank" rel="noreferrer" style={{ ...BTN_QUIET, display: "inline-block" }}>
               Open CSV
             </a>
             <button onClick={() => patch({ share: false })}
               style={{ ...BTN_QUIET, background: "rgba(180,71,46,0.09)", color: "#b4472e" }}>
-              Turn off
+              Turn Off
             </button>
           </div>
           <p style={{ fontSize: 11, color: FAINT, lineHeight: 1.5 }}>
@@ -3257,7 +3257,7 @@ function SettingsSheet({ settings, onClose, onSaved }: {
       ) : (
         <div>
           <button onClick={() => patch({ share: true })} style={{ ...BTN_QUIET }}>
-            Create a read-only link
+            Create a Read-Only Link
           </button>
           <p style={{ fontSize: 11, color: FAINT, marginTop: 8, lineHeight: 1.5 }}>
             Makes a private URL that returns your weekly log as a spreadsheet — and,

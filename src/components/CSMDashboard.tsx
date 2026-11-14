@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties } from "react";
+import { displayName } from "@/lib/display-name";
 
 type ClientCSMRow = {
   client_id: string;
@@ -257,7 +258,7 @@ export default function CSMDashboard() {
                     fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                   </svg>
-                  <span className="font-semibold text-sm flex-shrink-0" style={{ color: "#111111", minWidth: 200 }}>{row.client_name}</span>
+                  <span className="font-semibold text-sm flex-shrink-0" style={{ color: "#111111", minWidth: 200 }}>{displayName(row.client_name)}</span>
                   <span className="px-2 py-1 rounded-full text-xs font-semibold flex-shrink-0" style={{ color: statusStyle.color, background: statusStyle.bg }}>
                     {statusStyle.label}
                   </span>
@@ -295,7 +296,7 @@ export default function CSMDashboard() {
                         </select>
                         <input type="date" value={logDate} onChange={e => setLogDate(e.target.value)}
                           className="px-2 py-1.5 rounded-lg text-xs outline-none" style={inputStyle()} />
-                        <input type="text" value={logCsm} onChange={e => setLogCsm(e.target.value)} placeholder="CSM name"
+                        <input type="text" value={logCsm} onChange={e => setLogCsm(e.target.value)} placeholder="CSM Name"
                           className="px-2 py-1.5 rounded-lg text-xs outline-none w-32" style={inputStyle()} />
                         <textarea value={logSummary} onChange={e => setLogSummary(e.target.value)} placeholder="What was discussed..."
                           className="px-2 py-1.5 rounded-lg text-xs outline-none flex-1 min-w-[200px]" style={{ ...inputStyle(), minHeight: 34 }} rows={1} />
@@ -323,7 +324,7 @@ export default function CSMDashboard() {
                           <input type="text" defaultValue={row.review_platform ?? ""} placeholder="Platform (Google, Yelp...)"
                             onBlur={e => updateStatus(row, { review_platform: e.target.value || null })}
                             className="px-2 py-1 rounded text-xs outline-none w-36" style={inputStyle()} />
-                          <input type="text" defaultValue={row.review_link ?? ""} placeholder="Review link"
+                          <input type="text" defaultValue={row.review_link ?? ""} placeholder="Review Link"
                             onBlur={e => updateStatus(row, { review_link: e.target.value || null })}
                             className="px-2 py-1 rounded text-xs outline-none flex-1" style={inputStyle()} />
                         </div>
@@ -346,7 +347,7 @@ export default function CSMDashboard() {
                     {/* Cadence + CSM assignment */}
                     <div className="flex items-center gap-4 flex-wrap text-xs" style={{ color: "#4a4a4a" }}>
                       <label className="flex items-center gap-2">
-                        Contact cadence:
+                        Contact Cadence:
                         <input type="number" min={1} defaultValue={row.cadence_days}
                           onBlur={e => updateStatus(row, { cadence_days: Math.max(1, parseInt(e.target.value) || 14) })}
                           className="px-2 py-1 rounded text-xs outline-none w-16" style={inputStyle()} /> days

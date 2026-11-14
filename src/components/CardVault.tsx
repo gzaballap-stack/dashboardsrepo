@@ -200,7 +200,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
   }
 
   if (!status) return null;
-  const head = <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Card on file</p>;
+  const head = <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Card on File</p>;
   const btn = "px-3 py-1.5 rounded-lg text-xs font-semibold";
   const black = { background: "#000000", color: "#ffffff" };
   const grey = { background: "rgba(0,0,0,0.06)", color: "#111111" };
@@ -225,7 +225,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
           ) : mode !== "setup" ? (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs" style={{ color: "#4a4a4a" }}>Set a vault password before any card can be saved.</span>
-              <button type="button" className={btn} style={black} onClick={() => go("setup")}>Set vault password</button>
+              <button type="button" className={btn} style={black} onClick={() => go("setup")}>Set Vault Password</button>
             </div>
           ) : (
             <form className="space-y-3" onSubmit={e => { e.preventDefault(); setup(); }}>
@@ -233,15 +233,15 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
                 This password opens every stored card. It is not saved anywhere — not in the dashboard, not by anyone who works on it.
                 <span className="font-semibold" style={{ color: "#b91c1c" }}> If it is forgotten, the stored cards are gone for good.</span> Write it down somewhere safe.
               </p>
-              <Secret id={`vault-new-${uid}`} label="Vault password (12 characters or more)" value={pw.next} onChange={v => { setError(null); setPw(p => ({ ...p, next: v })); }} autoFocus />
-              <Secret id={`vault-again-${uid}`} label="Type it again" value={pw.again} onChange={v => { setError(null); setPw(p => ({ ...p, again: v })); }} />
+              <Secret id={`vault-new-${uid}`} label="Vault Password (12 characters or more)" value={pw.next} onChange={v => { setError(null); setPw(p => ({ ...p, next: v })); }} autoFocus />
+              <Secret id={`vault-again-${uid}`} label="Type It Again" value={pw.again} onChange={v => { setError(null); setPw(p => ({ ...p, again: v })); }} />
               <label className="flex items-start gap-2 text-xs" style={{ color: "#4a4a4a" }}>
                 <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5" />
                 I have written it down, and I understand it cannot be recovered.
               </label>
               <div className="flex items-center justify-end gap-2">
                 <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
-                <button type="submit" disabled={busy || !agreed || !pw.next} className={btn} style={{ ...black, opacity: busy || !agreed || !pw.next ? 0.4 : 1 }}>{busy ? "Setting up…" : "Set vault password"}</button>
+                <button type="submit" disabled={busy || !agreed || !pw.next} className={btn} style={{ ...black, opacity: busy || !agreed || !pw.next ? 0.4 : 1 }}>{busy ? "Setting Up…" : "Set Vault Password"}</button>
               </div>
             </form>
           )}
@@ -265,8 +265,8 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
           ) : <span className="text-xs" style={{ color: "#4a4a4a" }}>No card saved for this client.</span>}
           {mode === "idle" && !shown && (
             <span className="flex items-center gap-1.5">
-              {card && status.can_reveal && <button type="button" className={btn} style={black} onClick={() => go("ask")}>Show card</button>}
-              <button type="button" className={btn} style={grey} onClick={() => go("add")}>{card ? "Replace" : "Add card"}</button>
+              {card && status.can_reveal && <button type="button" className={btn} style={black} onClick={() => go("ask")}>Show Card</button>}
+              <button type="button" className={btn} style={grey} onClick={() => go("add")}>{card ? "Replace" : "Add Card"}</button>
               {card && status.can_reveal && <button type="button" className="text-xs px-1" style={{ color: "#949494" }} onClick={() => go("confirm-delete")}>Delete</button>}
             </span>
           )}
@@ -278,7 +278,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
             <div className="flex items-center justify-end gap-2 mt-3">
               <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
               <button type="button" disabled={busy || !cardStarted(draft)} className={btn} style={{ ...black, opacity: busy || !cardStarted(draft) ? 0.4 : 1 }} onClick={save}>
-                {busy ? "Saving…" : "Save card"}
+                {busy ? "Saving…" : "Save Card"}
               </button>
             </div>
           </div>
@@ -288,7 +288,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
           <form className="mt-3" onSubmit={e => { e.preventDefault(); reveal(); }}>
             <div className="flex items-end gap-2">
               <div className="flex-1" style={{ minWidth: 0 }}>
-                <Secret id={`vault-pw-${uid}`} label="Vault password" value={pw.current} onChange={v => { setError(null); setPw(p => ({ ...p, current: v })); }} autoFocus />
+                <Secret id={`vault-pw-${uid}`} label="Vault Password" value={pw.current} onChange={v => { setError(null); setPw(p => ({ ...p, current: v })); }} autoFocus />
               </div>
               <button type="submit" disabled={busy || !pw.current} className={btn} style={{ ...black, opacity: busy || !pw.current ? 0.4 : 1 }}>{busy ? "Opening…" : "Show"}</button>
               <button type="button" className="text-xs px-1 pb-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
@@ -299,12 +299,12 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
         {mode === "change" && (
           <form className="mt-3 space-y-3" onSubmit={e => { e.preventDefault(); change(); }}>
-            <Secret id={`vault-old-${uid}`} label="Current vault password" value={pw.current} onChange={v => { setError(null); setPw(p => ({ ...p, current: v })); }} autoFocus />
-            <Secret id={`vault-new-${uid}`} label="New vault password (12 characters or more)" value={pw.next} onChange={v => { setError(null); setPw(p => ({ ...p, next: v })); }} />
-            <Secret id={`vault-again-${uid}`} label="Type the new one again" value={pw.again} onChange={v => { setError(null); setPw(p => ({ ...p, again: v })); }} />
+            <Secret id={`vault-old-${uid}`} label="Current Vault Password" value={pw.current} onChange={v => { setError(null); setPw(p => ({ ...p, current: v })); }} autoFocus />
+            <Secret id={`vault-new-${uid}`} label="New Vault Password (12 characters or more)" value={pw.next} onChange={v => { setError(null); setPw(p => ({ ...p, next: v })); }} />
+            <Secret id={`vault-again-${uid}`} label="Type the New One Again" value={pw.again} onChange={v => { setError(null); setPw(p => ({ ...p, again: v })); }} />
             <div className="flex items-center justify-end gap-2">
               <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
-              <button type="submit" disabled={busy || !pw.current || !pw.next} className={btn} style={{ ...black, opacity: busy || !pw.current || !pw.next ? 0.4 : 1 }}>{busy ? "Changing…" : "Change vault password"}</button>
+              <button type="submit" disabled={busy || !pw.current || !pw.next} className={btn} style={{ ...black, opacity: busy || !pw.current || !pw.next ? 0.4 : 1 }}>{busy ? "Changing…" : "Change Vault Password"}</button>
             </div>
           </form>
         )}
@@ -312,21 +312,21 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
         {mode === "confirm-delete" && (
           <div className="flex items-center justify-end gap-2 mt-3">
             <span className="text-xs" style={{ color: "#4a4a4a" }}>Delete this card for good?</span>
-            <button type="button" disabled={busy} className={btn} style={{ color: "#b91c1c", background: "rgba(185,28,28,0.12)" }} onClick={remove}>{busy ? "Deleting…" : "Delete card"}</button>
+            <button type="button" disabled={busy} className={btn} style={{ color: "#b91c1c", background: "rgba(185,28,28,0.12)" }} onClick={remove}>{busy ? "Deleting…" : "Delete Card"}</button>
             <button type="button" className="text-xs px-1" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
           </div>
         )}
 
         {shown && (
           <div className="mt-3">
-            <CopyRow label="Name on card" value={shown.name} />
-            <CopyRow label="Card number" value={formatNumber(shown.number)} />
+            <CopyRow label="Name on Card" value={shown.name} />
+            <CopyRow label="Card Number" value={formatNumber(shown.number)} />
             <CopyRow label="Expiry" value={shown.exp} />
-            <CopyRow label="Security code" value={shown.cvc} />
-            <CopyRow label="Billing zip code" value={shown.zip} />
+            <CopyRow label="Security Code" value={shown.cvc} />
+            <CopyRow label="Billing Zip Code" value={shown.zip} />
             <div className="flex items-center justify-between pt-2" style={{ borderTop: BORDER }}>
               <span className="text-xs" style={{ color: "#949494" }}>Hides itself in {left}s</span>
-              <button type="button" className={btn} style={grey} onClick={() => setShown(null)}>Hide now</button>
+              <button type="button" className={btn} style={grey} onClick={() => setShown(null)}>Hide Now</button>
             </div>
           </div>
         )}
@@ -336,7 +336,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
         {!!status.history?.length && (
           <details className="mt-2">
-            <summary className="text-xs cursor-pointer" style={{ color: "#949494" }}>Who has touched this card</summary>
+            <summary className="text-xs cursor-pointer" style={{ color: "#949494" }}>Who Has Touched This Card</summary>
             <ul className="mt-1 space-y-0.5">
               {status.history.map((h, i) => (
                 <li key={i} className="text-xs" style={{ color: h.action === "denied" ? "#b91c1c" : "#4a4a4a" }}>{ACTION[h.action] ?? h.action} by {h.user_name} · {when(h.at)}</li>
@@ -347,7 +347,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
       </div>
       <p className="text-xs mt-1.5" style={{ color: "#949494" }}>
         Locked with the vault password. Only an admin who knows it can open a card.
-        {status.can_reveal && mode === "idle" && <> <button type="button" className="underline" onClick={() => go("change")}>Change vault password</button></>}
+        {status.can_reveal && mode === "idle" && <> <button type="button" className="underline" onClick={() => go("change")}>Change Vault Password</button></>}
       </p>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { PayoutRow } from "@/lib/sms-payout";
+import { displayName } from "@/lib/display-name";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Johnny's Payout (SMS Dashboard)
@@ -92,7 +93,7 @@ export default function SmsPayout({ startDate, endDate }: { startDate: string; e
       </div>
       {data?.ready && (
         <label className="flex items-center gap-2 text-xs" style={{ color: MUTED }}>
-          Default share
+          Default Share
           <input type="number" min={0} max={100} step={0.5} style={{ ...inputStyle, width: 72 }}
             value={defaultDraft ?? String(data.default_pct)}
             onChange={e => setDefaultDraft(e.target.value)}
@@ -151,7 +152,7 @@ export default function SmsPayout({ startDate, endDate }: { startDate: string; e
               return (
                 <tr key={r.id} style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
                   <td className="px-3 py-2 font-medium" style={{ color: INK }}>
-                    {r.client_name}
+                    {displayName(r.client_name)}
                     {r.cash_at_close > 0 && <div className="text-[11px]" style={{ color: FAINT }}>{money(r.cash_at_close)} collected at the close (not counted)</div>}
                   </td>
                   <td className="px-3 py-2" style={{ color: "#4a4a4a" }}>{date(r.signed_on)}</td>
@@ -160,8 +161,8 @@ export default function SmsPayout({ startDate, endDate }: { startDate: string; e
                       title={r.start_source === "blast" ? "First text blast — change it to set the start by hand" : r.start_source === "manual" ? "Set by hand" : "No blast sent yet — set a start by hand if needed"}
                       onChange={e => act(r.id, { action: "update", id: r.id, started_on: e.target.value || null })} />
                     <div className="text-[11px]" style={{ color: FAINT }}>
-                      {r.start_source === "blast" ? "First blast" : r.start_source === "manual" ? (
-                        <>Set by hand · <button className="underline" onClick={() => act(r.id, { action: "update", id: r.id, started_on: null })}>use first blast</button></>
+                      {r.start_source === "blast" ? "First Blast" : r.start_source === "manual" ? (
+                        <>Set by hand · <button className="underline" onClick={() => act(r.id, { action: "update", id: r.id, started_on: null })}>Use First Blast</button></>
                       ) : "Waiting for the first blast"}
                     </div>
                   </td>
@@ -208,8 +209,8 @@ export default function SmsPayout({ startDate, endDate }: { startDate: string; e
       <div className="flex items-center gap-2 mt-3 text-xs" style={{ color: MUTED }}>
         Signed a client without a close here?
         <select style={{ ...inputStyle, maxWidth: 260 }} value={addId} onChange={e => setAddId(e.target.value)}>
-          <option value="">Pick a client…</option>
-          {free.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <option value="">Pick a Client…</option>
+          {free.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}</option>)}
         </select>
         <button className="px-3 py-1 rounded-lg text-xs font-medium" style={{ background: "#000", color: "#fff", opacity: addId ? 1 : 0.4 }} disabled={!addId || busy === "add"}
           onClick={() => { act("add", { action: "add", client_id: addId }); setAddId(""); }}>Add</button>
@@ -228,14 +229,14 @@ export default function SmsPayout({ startDate, endDate }: { startDate: string; e
               return (
                 <div key={u.id} className="flex items-center gap-3 flex-wrap px-4 py-3" style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
                   <div className="flex-1 min-w-[180px]">
-                    <div className="text-sm font-medium" style={{ color: INK }}>{u.lead_name || "Name not recorded"}</div>
+                    <div className="text-sm font-medium" style={{ color: INK }}>{u.lead_name || "Name Not Recorded"}</div>
                     <div className="text-[11px]" style={{ color: FAINT }}>
                       Closed {date(u.occurred_at)}{u.revenue > 0 ? ` · ${money(u.revenue)} collected` : ""}{u.lead_email ? ` · ${u.lead_email}` : ""}
                     </div>
                   </div>
                   <select style={{ ...inputStyle, maxWidth: 260 }} value={chosen} onChange={e => setPick(p => ({ ...p, [u.id]: e.target.value }))}>
                     <option value="">Which client did they become?</option>
-                    {free.map(c => <option key={c.id} value={c.id}>{c.name}{c.id === u.suggested_client_id ? " (looks like a match)" : ""}</option>)}
+                    {free.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}{c.id === u.suggested_client_id ? " (looks like a match)" : ""}</option>)}
                   </select>
                   <button className="px-3 py-1.5 rounded-lg text-xs font-medium" style={{ background: "#000", color: "#fff", opacity: chosen ? 1 : 0.4 }} disabled={!chosen || busy === u.id}
                     onClick={() => act(u.id, { action: "link", close_event_id: u.id, client_id: chosen })}>Link</button>

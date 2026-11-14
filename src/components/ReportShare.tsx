@@ -30,7 +30,7 @@ export default function ReportShare({ onClose }: { onClose: () => void }) {
   const links = token ? [
     // "STAMP" is for the AI to replace with the current date-time on every fetch — its
     // fetch tool caches by URL, so a new path each time guarantees a fresh copy.
-    { label: "Full brief (live)", url: `${origin}/api/meta-b2b-report/STAMP?mode=full&token=${token}` },
+    { label: "Full Brief (live)", url: `${origin}/api/meta-b2b-report/STAMP?mode=full&token=${token}` },
   ] : [];
 
   const BTN: React.CSSProperties = { padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "rgba(0,0,0,0.06)", border: "1px solid rgba(0,0,0,0.12)", color: "#111", cursor: "pointer" };
@@ -64,12 +64,12 @@ export default function ReportShare({ onClose }: { onClose: () => void }) {
             The Update download is only for chats that can&apos;t open links. Turning the link off kills it
             for good; turning it on again makes a new one.
           </p>
-          <button disabled={busy} onClick={() => set(false)} style={{ ...BTN, background: "rgba(180,71,46,0.09)", color: "#b4472e" }}>Turn off</button>
+          <button disabled={busy} onClick={() => set(false)} style={{ ...BTN, background: "rgba(180,71,46,0.09)", color: "#b4472e" }}>Turn Off</button>
         </div>
       ) : (
         <div className="space-y-2">
           <p className="text-xs" style={{ color: "#6b6b6b" }}>No link yet. Create one to let a Claude project (or any AI that can open a URL) read the live Full brief without signing in.</p>
-          <button disabled={busy} onClick={() => set(true)} style={BTN}>Create a read-only link</button>
+          <button disabled={busy} onClick={() => set(true)} style={BTN}>Create a Read-Only Link</button>
         </div>
       )}
     </div>

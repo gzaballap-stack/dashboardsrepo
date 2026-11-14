@@ -117,10 +117,10 @@ export default function CreativeLeaderboard({ startDate, endDate, clientId }: {
             {(health.alerts.regressed.length > 0 || health.alerts.low.length > 0) && (
               <div className="text-xs text-right" style={{ color: "#b91c1c" }}>
                 {health.alerts.regressed.length > 0 && (
-                  <div><strong>Dropped recently:</strong> {health.alerts.regressed.join(", ")}</div>
+                  <div><strong>Dropped Recently:</strong> {health.alerts.regressed.join(", ")}</div>
                 )}
                 {health.alerts.low.length > 0 && (
-                  <div><strong>Low coverage:</strong> {health.alerts.low.join(", ")}</div>
+                  <div><strong>Low Coverage:</strong> {health.alerts.low.join(", ")}</div>
                 )}
               </div>
             )}
@@ -157,7 +157,7 @@ export default function CreativeLeaderboard({ startDate, endDate, clientId }: {
         </div>
 
         <label className="text-xs flex items-center gap-2" style={{ color: "#6b6b6b" }}>
-          Min spend
+          Min Spend
           <input type="number" value={minSpend} min={0} step={50}
             onChange={e => setMinSpend(Number(e.target.value) || 0)}
             className="w-24 px-2 py-1.5 rounded-lg text-xs"

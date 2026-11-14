@@ -130,7 +130,7 @@ function NewFolderModal({ ask, scope, categoryLabel, onClose }: { ask: FolderAsk
           <div className="text-xs mt-0.5" style={{ color: "#767676" }}>A style, an angle or a batch — whatever you&apos;d group creatives by.</div>
         </div>
         <label className="block">
-          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Folder name</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Folder Name</span>
           <input autoFocus value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") create(); if (e.key === "Escape") onClose(); }}
             placeholder="e.g. Slop, Realistic, Billboard" className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
           <span className="text-[10px]" style={{ color: "#949494" }}>
@@ -146,7 +146,7 @@ function NewFolderModal({ ask, scope, categoryLabel, onClose }: { ask: FolderAsk
         {err && <div className="text-xs" style={{ color: "#b91c1c" }}>{err}</div>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: "#4a4a4a", border: "1px solid rgba(0,0,0,0.162)" }}>Cancel</button>
-          <button onClick={create} disabled={busy || !name.trim()} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "Creating…" : "Create folder"}</button>
+          <button onClick={create} disabled={busy || !name.trim()} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy || !name.trim() ? 0.5 : 1 }}>{busy ? "Creating…" : "Create Folder"}</button>
         </div>
       </div>
     </div>
@@ -181,7 +181,7 @@ const statusOf = (c: Creative) => (c.live ? "live" : c.ads.length > 0 ? "off" : 
 const STATUS: Record<string, { label: string; color: string; bg: string }> = {
   live:  { label: "Live",         color: "#15803d", bg: "rgba(21,128,61,0.10)" },
   off:   { label: "Off",          color: "#6b6b6b", bg: "rgba(0,0,0,0.06)" },
-  draft: { label: "Not launched", color: "#92400e", bg: "rgba(217,119,6,0.12)" },
+  draft: { label: "Not Launched", color: "#92400e", bg: "rgba(217,119,6,0.12)" },
 };
 
 // What we know that Meta doesn't — used for the "what's filled in" marks.
@@ -446,7 +446,7 @@ export default function CreativeHub({ scope, tab, clients }: {
       {(tab === "library" || scope === "b2c") && <div className="rounded-2xl p-4 flex items-center gap-3 flex-wrap" style={CARD}>
         {scope === "b2c" && (
           <select value={clientId} onChange={e => setClientId(e.target.value)} className="px-3 py-1.5 rounded-lg text-xs font-medium outline-none" style={INPUT}>
-            <option value="">All clients</option>
+            <option value="">All Clients</option>
             {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         )}
@@ -461,15 +461,15 @@ export default function CreativeHub({ scope, tab, clients }: {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search code, name, copy, script, tags…"
             className="px-3 py-1.5 rounded-lg text-xs outline-none w-56" style={INPUT} />
           <select value={sort} onChange={e => setSort(e.target.value as typeof sort)} className="px-3 py-1.5 rounded-lg text-xs font-medium outline-none" style={INPUT}>
-            <option value="code">By code</option>
-            <option value="recent">Most recent</option>
-            <option value="spend">Most spend</option>
-            <option value="cost">Best cost per {scope === "b2b" ? "demo" : "appt"}</option>
+            <option value="code">By Code</option>
+            <option value="recent">Most Recent</option>
+            <option value="spend">Most Spend</option>
+            <option value="cost">Best Cost per {scope === "b2b" ? "demo" : "appt"}</option>
           </select>
         </>)}
         {tab === "library" && (
           <button onClick={() => setCreating(true)} className="ml-auto px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff" }}>
-            + New creative
+            + New Creative
           </button>
         )}
       </div>}
@@ -487,12 +487,12 @@ export default function CreativeHub({ scope, tab, clients }: {
           {folderSel && (<>
             <span style={{ color: "#c2c2c2" }}>›</span>
             {folderSel === "root" || !folders.some(f => f.id === folderSel)
-              ? <span className="font-semibold" style={{ color: "#111111" }}>Needs a folder</span>
+              ? <span className="font-semibold" style={{ color: "#111111" }}>Needs a Folder</span>
               : <FolderName key={folderSel} folder={folders.find(f => f.id === folderSel)!} count={(data?.creatives ?? []).filter(c => c.folder_id === folderSel).length}
                   onChanged={async deleted => { await load(); if (deleted) setFolderSel(""); }} />}
           </>)}
           {cat && cat !== UNFILED && (
-            <button onClick={newFolder} className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ color: "#111111", border: "1px dashed rgba(0,0,0,0.25)" }}>+ New folder</button>
+            <button onClick={newFolder} className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ color: "#111111", border: "1px dashed rgba(0,0,0,0.25)" }}>+ New Folder</button>
           )}
           {cat && cat !== UNFILED && (
             <span className="text-[10px] ml-auto" style={{ color: "#949494" }}>
@@ -539,9 +539,9 @@ export default function CreativeHub({ scope, tab, clients }: {
             );
           })}
           {rootCount > 0 && (
-            <FolderBox label="Needs a folder" items={rootItems} sub={`${rootCount} not in a folder yet`} onClick={() => { setFolderSel("root"); setSelected(new Set()); }} />
+            <FolderBox label="Needs a Folder" items={rootItems} sub={`${rootCount} not in a folder yet`} onClick={() => { setFolderSel("root"); setSelected(new Set()); }} />
           )}
-          <FolderBox label="New folder" sub="" items={[]} dashed onClick={newFolder} />
+          <FolderBox label="New Folder" sub="" items={[]} dashed onClick={newFolder} />
         </div>
       )}
 
@@ -562,7 +562,7 @@ export default function CreativeHub({ scope, tab, clients }: {
         <div className="rounded-2xl p-3 text-xs flex items-center gap-3 flex-wrap" style={{ ...CARD, color: "#4a4a4a" }}>
           {needsRename} ad{needsRename === 1 ? " is" : "s are"} still named the old way in Facebook.
           {data.can_rename
-            ? <button onClick={renameAll} disabled={!!busy} className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy ? 0.6 : 1 }}>{busy || "Rename them in Facebook"}</button>
+            ? <button onClick={renameAll} disabled={!!busy} className="px-2.5 py-1 rounded-md text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy ? 0.6 : 1 }}>{busy || "Rename Them in Facebook"}</button>
             : <span style={{ color: "#949494" }}>Open each one and copy its Facebook name into Ads Manager — automatic renaming needs a Facebook token that can edit ads.</span>}
         </div>
       )}
@@ -649,7 +649,7 @@ export default function CreativeHub({ scope, tab, clients }: {
       {data && selected.size > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap" style={{ ...CARD, boxShadow: "0 12px 40px -8px rgba(0,0,0,0.3)", maxWidth: "calc(100vw - 32px)" }}>
           <span className="text-xs font-semibold" style={{ color: "#111111" }}>{selected.size} selected</span>
-          <span className="text-xs" style={{ color: "#6b6b6b" }}>File in</span>
+          <span className="text-xs" style={{ color: "#6b6b6b" }}>File In</span>
           <select value={fileTo.category} onChange={e => setFileTo({ category: e.target.value, folder_id: "" })} className="px-2.5 py-1.5 rounded-lg text-xs font-medium outline-none" style={INPUT}>
             <option value="">Category…</option>
             {categories.map(c => <option key={c.code} value={c.code}>{c.label} ({c.code})</option>)}
@@ -666,7 +666,7 @@ export default function CreativeHub({ scope, tab, clients }: {
           </button>
           {(data.copy_sets ?? []).length > 0 && (<>
             <span style={{ color: "#e0e0e0" }}>|</span>
-            <span className="text-xs" style={{ color: "#6b6b6b" }}>Copy set</span>
+            <span className="text-xs" style={{ color: "#6b6b6b" }}>Copy Set</span>
             <select value={copySetTo} onChange={e => setCopySetTo(e.target.value)} className="px-2.5 py-1.5 rounded-lg text-xs font-medium outline-none max-w-[200px]" style={INPUT}>
               <option value="">Choose…</option>
               {data.copy_sets.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -811,7 +811,7 @@ function Timeline({ data, scope, showClient, onOpen }: {
           <div className="flex" style={{ borderBottom: "1px solid rgba(0,0,0,0.07)", background: "#f7f7f7" }}>
             <div className="sticky left-0 z-10 flex-shrink-0 px-3 py-2 text-[10px] font-bold uppercase tracking-wider"
               style={{ width: LABEL_W, background: "#f7f7f7", color: "#6b6b6b", borderRight: "1px solid rgba(0,0,0,0.07)" }}>
-              {mode === "creative" ? "Creative" : showClient ? "Client · campaign" : "Campaign"}
+              {mode === "creative" ? "Creative" : showClient ? "Client · Campaign" : "Campaign"}
             </div>
             <div className="relative" style={{ width: trackW, height: 40 }}>
               {months.map(m => (
@@ -928,13 +928,13 @@ function ChangeLog({ scope, data, changes, onChanged }: {
           <div className="flex gap-2 flex-wrap items-start">
             <input type="date" value={day} onChange={e => setDay(e.target.value)} className="px-3 py-2 rounded-lg text-xs outline-none" style={INPUT} />
             <select value={tie} onChange={e => setTie(e.target.value)} className="px-3 py-2 rounded-lg text-xs font-medium outline-none max-w-[260px]" style={INPUT}>
-              <option value="">Whole account</option>
+              <option value="">Whole Account</option>
               {campaignOptions.length > 0 && <optgroup label="Campaign">{campaignOptions.map(o => <option key={o.id} value={`c:${o.id}`}>{o.label}</option>)}</optgroup>}
               {creativeOptions.length > 0 && <optgroup label="Creative">{creativeOptions.map(o => <option key={o.id} value={`e:${o.id}`}>{o.label}</option>)}</optgroup>}
             </select>
             <input value={note} onChange={e => setNote(e.target.value)} onKeyDown={e => { if (e.key === "Enter") add(); }}
               placeholder="What changed? e.g. Paused AI/SLOP/004, budget up to $150/day" className="flex-1 min-w-[240px] px-3 py-2 rounded-lg text-xs outline-none" style={INPUT} />
-            <button onClick={add} disabled={busy || !note.trim()} className="px-3 py-2 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy || !note.trim() ? 0.5 : 1 }}>{busy ? "Saving…" : "Log it"}</button>
+            <button onClick={add} disabled={busy || !note.trim()} className="px-3 py-2 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy || !note.trim() ? 0.5 : 1 }}>{busy ? "Saving…" : "Log It"}</button>
           </div>
           {err && <div className="text-xs" style={{ color: "#b91c1c" }}>{err}</div>}
           {changes.length > 0 && (
@@ -1149,7 +1149,7 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
             )}
             <div className="flex gap-2 flex-wrap">
               {m?.preview_link && <a href={m.preview_link} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>View on Facebook ↗</a>}
-              {entry?.media_url && <a href={entry.media_url} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>Source file ↗</a>}
+              {entry?.media_url && <a href={entry.media_url} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>Source File ↗</a>}
             </div>
             {stats.length > 0 && (
               <div className="grid grid-cols-2 gap-2">
@@ -1182,7 +1182,7 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
                   <label className="block">
                     <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Category</span>
                     <select value={form.category} onChange={e => { set("category", e.target.value); set("folder_id", ""); }} className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT}>
-                      <option value="">Not filed</option>
+                      <option value="">Not Filed</option>
                       {categories.map(c => <option key={c.code} value={c.code}>{c.label} ({c.code})</option>)}
                     </select>
                   </label>
@@ -1190,7 +1190,7 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
                     <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Folder</span>
                     <div className="flex gap-2 mt-1">
                       <select value={form.folder_id} onChange={e => set("folder_id", e.target.value)} disabled={!form.category} className="flex-1 min-w-0 px-3 py-2 rounded-lg text-sm outline-none" style={{ ...INPUT, opacity: form.category ? 1 : 0.6 }}>
-                        <option value="">{formFolders.length ? "Choose a folder…" : "No folders in this category"}</option>
+                        <option value="">{formFolders.length ? "Choose a Folder…" : "No folders in this category"}</option>
                         {formFolders.map(f => <option key={f.id} value={f.id}>{f.name} ({form.category}/{f.slug})</option>)}
                       </select>
                       <button type="button" onClick={addFolder} disabled={!form.category} className="px-2.5 rounded-lg text-xs font-semibold" style={{ border: "1px dashed rgba(0,0,0,0.25)", color: "#111111", opacity: form.category ? 1 : 0.5 }}>+ New</button>
@@ -1204,9 +1204,9 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
                     <span className="text-[10px]" style={{ color: "#949494" }}>Comma-separated. What it&apos;s made of and what angle it takes — searchable.</span>
                   </label>
                   <label className="block sm:col-span-2">
-                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Copy set</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Copy Set</span>
                     <select value={form.copy_set_id} onChange={e => set("copy_set_id", e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT}>
-                      <option value="">None — show what Facebook has</option>
+                      <option value="">None — Show What Facebook Has</option>
                       {copySets.map(s => <option key={s.id} value={s.id}>{s.name}{s.campaign_label ? ` · ${s.campaign_label}` : ""}</option>)}
                     </select>
                     <span className="text-[10px]" style={{ color: "#949494" }}>The combination of primary texts, headlines and descriptions this creative runs with. Sets live on the Copy page.</span>
@@ -1218,18 +1218,18 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
                     <datalist id="creative-kinds">{KINDS.map(k => <option key={k} value={k} />)}</datalist>
                   </label>
                   <label className="block">
-                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Campaign / batch</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Campaign / Batch</span>
                     <input value={form.campaign_label} onChange={e => set("campaign_label", e.target.value)} placeholder="e.g. Campaign V1"
                       className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
                   </label>
                   <label className="block">
-                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Launch date</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Launch Date</span>
                     <input type="date" value={form.launch_date} onChange={e => set("launch_date", e.target.value)}
                       className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
                   </label>
                   <label className="block">
-                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Source file link</span>
-                    <input value={form.media_url} onChange={e => set("media_url", e.target.value)} placeholder="Drive / Dropbox link"
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Source File Link</span>
+                    <input value={form.media_url} onChange={e => set("media_url", e.target.value)} placeholder="Drive / Dropbox Link"
                       className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
                   </label>
                 </div>
@@ -1246,7 +1246,7 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
                 ))}
                 {entry && (
                   <button onClick={remove} disabled={saving} className="text-xs font-semibold" style={{ color: "#b91c1c" }}>
-                    {hasAds ? "Clear saved details" : "Delete this creative"}
+                    {hasAds ? "Clear Saved Details" : "Delete This Creative"}
                   </button>
                 )}
               </div>
@@ -1276,14 +1276,14 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
                 <section className="rounded-xl p-3 space-y-3" style={{ background: "#f7f7f7" }}>
                   <button onClick={() => setCopyOpen(o => !o)} className="w-full flex items-center gap-2 flex-wrap text-left">
                     <svg className="w-3 h-3 flex-shrink-0" style={{ transform: copyOpen ? "rotate(90deg)" : "none", transition: "transform 150ms ease", color: "#949494" }} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Copy set</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Copy Set</span>
                     <span className="text-sm font-semibold" style={{ color: "#111111" }}>{creative.copy_set.name}</span>
                     {creative.copy_set.campaign_label && <Chip>{creative.copy_set.campaign_label}</Chip>}
                     <span className="text-[10px] ml-auto" style={{ color: "#949494" }}>
                       {creative.copy_set.bodies.length} primary · {creative.copy_set.headlines.length} headline{creative.copy_set.headlines.length === 1 ? "" : "s"} · {creative.copy_set.descriptions.length} description{creative.copy_set.descriptions.length === 1 ? "" : "s"}
                     </span>
                   </button>
-                  {copyOpen && <div className="flex justify-end -mt-1"><button onClick={() => setEditing(true)} className="text-[10px] font-semibold" style={{ color: "#767676" }}>Change set</button></div>}
+                  {copyOpen && <div className="flex justify-end -mt-1"><button onClick={() => setEditing(true)} className="text-[10px] font-semibold" style={{ color: "#767676" }}>Change Set</button></div>}
                   {copyOpen && ([["Primary texts", creative.copy_set.bodies], ["Headlines", creative.copy_set.headlines], ["Descriptions", creative.copy_set.descriptions]] as const).filter(([, l]) => l.length).map(([label, list]) => (
                     <div key={label}>
                       <div className="text-[10px] font-semibold mb-1" style={{ color: "#949494" }}>{label} · {list.length}</div>
@@ -1302,11 +1302,11 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
                   <div className="rounded-xl p-3 text-xs flex items-center gap-3 flex-wrap" style={{ background: "rgba(217,119,6,0.10)", color: "#92400e" }}>
                     This ad&apos;s copy matches the set <b>{copySets.find(s => s.id === creative.suggested_copy_set_id)!.name}</b>.
                     <button onClick={async () => { set("copy_set_id", creative.suggested_copy_set_id!); try { await postJson("/api/creative-hub", { id: entry?.id, scope, name: creative.name, copy_set_id: creative.suggested_copy_set_id, assign: entry ? undefined : [{ name: creative.name }] }); await onSaved(creative.key); } catch (e) { setErr((e as Error).message); } }}
-                      className="px-2.5 py-1 rounded-md text-[11px] font-semibold" style={{ background: "#111111", color: "#ffffff" }}>Attach it</button>
+                      className="px-2.5 py-1 rounded-md text-[11px] font-semibold" style={{ background: "#111111", color: "#ffffff" }}>Attach It</button>
                   </div>
                 )}
                 <TextBlock label="Headline" text={m?.headline ?? null} source="from Facebook" onAdd={() => setEditing(true)} />
-                <TextBlock label="Primary text" text={m?.primary_text ?? null} source="from Facebook" onAdd={() => setEditing(true)} />
+                <TextBlock label="Primary Text" text={m?.primary_text ?? null} source="from Facebook" onAdd={() => setEditing(true)} />
               </>)}
               <TextBlock label="Script" text={entry?.script ?? null} onAdd={() => setEditing(true)} />
               <TextBlock label="Prompt" text={entry?.prompt ?? null} onAdd={() => setEditing(true)} />
@@ -1315,7 +1315,7 @@ function Drawer({ creative, scope, apptWord, folders, categories, copySets, canR
 
               {creative.ads.length > 0 && (
                 <section>
-                  <h3 className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#949494" }}>Where it ran</h3>
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#949494" }}>Where It Ran</h3>
                   <div className="rounded-xl overflow-x-auto" style={{ border: "1px solid rgba(0,0,0,0.07)" }}>
                     <table className="w-full text-xs" style={{ borderCollapse: "collapse", minWidth: 520 }}>
                       <thead style={{ background: "#f7f7f7" }}>

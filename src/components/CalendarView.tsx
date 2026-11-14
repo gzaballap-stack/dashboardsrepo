@@ -170,7 +170,7 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
           cursor: saving || !newUrl.trim() ? "default" : "pointer",
         }}
       >
-        {saving ? "Checking…" : "Connect calendar"}
+        {saving ? "Checking…" : "Connect Calendar"}
       </button>
       {addError && <p style={{ fontSize: 11.5, color: "#c0392b", lineHeight: 1.5 }}>{addError}</p>}
     </div>
@@ -322,7 +322,7 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
       {!loading && !connected && (
         <div style={{ background: PANEL, border: BORDER, borderRadius: 12, padding: 24, display: "flex", flexDirection: "column", gap: 18, maxWidth: 640 }}>
           <div>
-            <p style={{ fontSize: 17, fontWeight: 800, color: "#111111", marginBottom: 4 }}>Connect your calendar</p>
+            <p style={{ fontSize: 17, fontWeight: 800, color: "#111111", marginBottom: 4 }}>Connect Your Calendar</p>
             <p style={{ fontSize: 12.5, color: "#767676", lineHeight: 1.6 }}>
               Your calls will show up here automatically. This is read-only — nothing is ever
               added, changed or removed in Google Calendar.
@@ -333,8 +333,8 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
             <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: "#949494", marginBottom: 10 }}>WHERE TO FIND THE LINK</p>
             <ol style={{ fontSize: 12.5, color: "#4a4a4a", lineHeight: 1.85, paddingLeft: 20, margin: 0, listStyle: "decimal" }}>
               <li>Open Google Calendar on a computer.</li>
-              <li>Hover the calendar you want in the left list, click the three dots, then <strong>Settings and sharing</strong>.</li>
-              <li>Scroll to <strong>Integrate calendar</strong>.</li>
+              <li>Hover the calendar you want in the left list, click the three dots, then <strong>Settings and Sharing</strong>.</li>
+              <li>Scroll to <strong>Integrate Calendar</strong>.</li>
               <li>Copy <strong>Secret address in iCal format</strong> — the long link ending in <strong>.ics</strong>.</li>
               <li>Paste it below.</li>
             </ol>

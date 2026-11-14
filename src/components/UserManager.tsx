@@ -108,7 +108,7 @@ function AccessEditor({ user, onSave, onCancel }: {
                     })}
                     className="text-[10px] font-semibold"
                     style={{ color: "#767676" }}>
-                    {allOn ? "none" : "all"}
+                    {allOn ? "None" : "All"}
                   </button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
@@ -141,7 +141,7 @@ function AccessEditor({ user, onSave, onCancel }: {
           disabled={saving}
           className="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
           style={{ background: "#000000", color: "#fff" }}>
-          {saving ? "Saving..." : "Save access"}
+          {saving ? "Saving..." : "Save Access"}
         </button>
         <button onClick={onCancel} className="px-3 py-2 rounded-lg text-sm font-medium" style={{ color: "#767676" }}>
           Cancel
@@ -267,7 +267,7 @@ export default function UserManager() {
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={newIsAdmin} onChange={e => setNewIsAdmin(e.target.checked)}
               className="rounded" />
-            <span className="text-sm" style={{ color: "#4a4a4a" }}>Admin access</span>
+            <span className="text-sm" style={{ color: "#4a4a4a" }}>Admin Access</span>
           </label>
           {!newIsAdmin && (
             <p className="text-xs" style={{ color: "#a8a8a8" }}>
