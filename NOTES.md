@@ -31,6 +31,12 @@ back" note. Do not re-argue it; do keep every safeguard below.
     card and the client.
   - No key = off: nothing can be saved or read, the survey shows no card
     boxes. **Never set the key on V2.**
+- **Switched on 2026-11-14.** Tables created on V1 and `CARD_VAULT_KEY` set on
+  the V1 Railway service by the assistant through the Railway CLI (generated in
+  the shell and piped in — never printed). V2 has no key, on purpose. A backup
+  copy of the key is in the owner's Mac login Keychain, item "CARD_VAULT_KEY -
+  Tomsi dashboard card vault (V1)". The owner asked for updates like these to
+  be done for him rather than handed over as commands.
 - **Kept until deleted** — the owner asked to store them, so there is no
   auto-delete. Offered; not chosen.
 - **If the key is lost or changed, every saved card is unreadable for good.**
