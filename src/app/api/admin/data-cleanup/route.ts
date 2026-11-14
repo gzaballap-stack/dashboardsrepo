@@ -583,11 +583,12 @@ export async function POST(req: Request) {
   // live, never a close, and never more than a handful.
   if (op === 'remove_website_funnel_tests') {
     const CONTACTS = ['Mb1wlVp7MfHKMDh6g9KE', 'SyYDdPnvcrt0w03iWJUX'];  // "Test Clark", "Test"
+    const VISITORS = ['wtestclaude0001'];                            // the check run after Funnels went live (2026-11-14)
     const SINCE = '2026-11-13T00:00:00.000Z';
     const LIMIT = 20;
     const tomsiId = await getTomsiClientId(service);
     if (!tomsiId) return NextResponse.json({ error: 'Tomsi Media client not found' }, { status: 500 });
-    const ors = [...CONTACTS.map(c => `ghl_contact_id.eq.${c}`), ...CONTACTS.map(c => `external_id.ilike.%${c}%`)].join(',');
+    const ors = [...CONTACTS.map(c => `ghl_contact_id.eq.${c}`), ...[...CONTACTS, ...VISITORS].map(c => `external_id.ilike.%${c}%`)].join(',');
     const pick = async (table: 'b2b_events' | 'events') => {
       let q = service.from(table).select('id, event_type, lead_name, occurred_at').or(ors).gte('occurred_at', SINCE);
       if (table === 'events') q = q.eq('client_id', tomsiId);
@@ -604,10 +605,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'A close is tied to this contact; aborting for safety.' }, { status: 400 });
     }
     const list = (rows: typeof b2b) => rows.map(r => `${r.event_type} | ${r.lead_name ?? ''} | ${r.occurred_at}`);
-    if (dryRun) return NextResponse.json({ op, dry_run: true, would_delete_b2b: list(b2b), would_delete_mirror: list(mir), total });
+    // The test visitors' own steps on the Funnels page.
+    const { data: steps } = await service.from('funnel_events').select('id, event_type, step, visitor_id').in('visitor_id', VISITORS);
+    const stepList = (steps ?? []).map(r => `${r.event_type}${r.step ? ' ' + r.step : ''} | ${r.visitor_id}`);
+    if ((steps?.length ?? 0) > LIMIT) return NextResponse.json({ error: 'Too many funnel steps; aborting for safety.' }, { status: 400 });
+    if (dryRun) return NextResponse.json({ op, dry_run: true, would_delete_b2b: list(b2b), would_delete_mirror: list(mir), would_delete_funnel_steps: stepList, total });
     if (b2b.length) await service.from('b2b_events').delete().in('id', b2b.map(r => r.id));
     if (mir.length) await service.from('events').delete().in('id', mir.map(r => r.id));
-    return NextResponse.json({ op, dry_run: false, deleted_b2b: list(b2b), deleted_mirror: list(mir) });
+    if (steps?.length) await service.from('funnel_events').delete().in('id', steps.map(r => r.id));
+    return NextResponse.json({ op, dry_run: false, deleted_b2b: list(b2b), deleted_mirror: list(mir), deleted_funnel_steps: stepList });
   }
 
   return NextResponse.json({ error: `Unknown op. Allowed: relabel_intros_to_demos, dedupe_bookings, restore_early_intros, reconcile_b2b, mirror_tomsi_demos, pull_b2b_attribution, set_booked_by, dedupe_shows, dedupe_mirror_leads, mark_test_leads, remove_alexi_close, remove_stray_closes, remove_test_zaballa, sync_post_call_status, remove_funnel_tests, backfill_sms_oct22_23, remove_website_funnel_tests` }, { status: 400 });
