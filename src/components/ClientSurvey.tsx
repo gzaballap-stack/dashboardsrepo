@@ -10,6 +10,8 @@ import {
   SURVEY_SECTIONS, cleanAnswers, surveyProblem, type Answers, type SurveyField,
 } from "@/lib/client-survey";
 import type { Card } from "@/lib/onboarding";
+import { EMPTY_CARD, cardProblem, cardStarted, type CardInput } from "@/lib/card-format";
+import { CardFields, saveCard, useCardVault } from "./CardVault";
 
 const BORDER = "1px solid rgba(0,0,0,0.08)";
 const SHADOW = "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)";
@@ -176,6 +178,12 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SurveyResult | null>(null);
+  // The card never travels with the answers: it goes to the card vault on its
+  // own, once the client exists, and is dropped from memory straight after.
+  const vault = useCardVault();
+  const [card, setCard] = useState<CardInput>(EMPTY_CARD);
+  const [cardNote, setCardNote] = useState<{ ok?: string; error?: string } | null>(null);
+  const withCard = vault.on && !clientId && cardStarted(card);
 
   const set = (key: string, v: string | string[]) => { setError(null); setA(prev => ({ ...prev, [key]: v })); };
 
@@ -184,10 +192,17 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
     const clean = cleanAnswers(a);
     const problem = surveyProblem(clean);
     if (problem) { setError(problem); return; }
+    const cardWrong = withCard ? cardProblem(card) : null;
+    if (cardWrong) { setError(cardWrong); return; }
     setSaving(true); setError(null);
     const r = await post({ action: "survey_submit", answers: clean, ...(clientId ? { client_id: clientId } : cardId ? { card_id: cardId } : {}) });
+    if (r.error || !r.client) { setSaving(false); setError(r.error ?? "Could not save the survey"); return; }
+    if (withCard) {
+      const saved = await saveCard(r.client.id, card);
+      setCardNote(saved.card ? { ok: `Card saved, encrypted (${saved.card.brand} •••• ${saved.card.last4})` } : { error: `The card was not saved (${saved.error ?? "unknown reason"}) — add it from the client's onboarding card` });
+      setCard(EMPTY_CARD);
+    }
     setSaving(false);
-    if (r.error || !r.client) { setError(r.error ?? "Could not save the survey"); return; }
     setResult(r as SurveyResult);
     onSaved?.(r as SurveyResult);
   }
@@ -201,7 +216,9 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
       "Contact details saved to the client profile (Profit and Loss and Client Billing)",
       ...(stripe.configured && !stripe.error ? [stripe.made === "created" ? "Customer created in Stripe" : stripe.made === "linked" ? "Linked to their existing Stripe customer" : "Already linked to Stripe"] : []),
       ...(result.done ?? []),
+      ...(cardNote?.ok ? [cardNote.ok] : []),
     ];
+    const problems = [...warnings, ...(cardNote?.error ? [cardNote.error] : [])];
     return (
       <div className="w-full max-w-2xl mx-auto space-y-4">
         <div className="rounded-2xl p-6" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
@@ -220,7 +237,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
                 <span style={{ color: "#15803d" }}>✓</span>{l}
               </li>
             ))}
-            {warnings.map(w => (
+            {problems.map(w => (
               <li key={w} className="flex items-start gap-2 text-sm" style={{ color: "#92400e" }}><span>!</span>{w}</li>
             ))}
           </ul>
@@ -228,10 +245,10 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
 
         {cards.length > 0 && (
           <div className="rounded-2xl p-6" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
-            <h3 className="text-sm font-semibold" style={{ color: "#111111" }}>Card on file</h3>
+            <h3 className="text-sm font-semibold" style={{ color: "#111111" }}>Card for billing (Stripe)</h3>
             {stripe.configured ? (
               <>
-                <p className="text-sm mt-1 mb-3" style={{ color: "#767676" }}>The card is typed straight into Stripe, never into the dashboard. Once it is in, Client Billing can charge it.</p>
+                <p className="text-sm mt-1 mb-3" style={{ color: "#767676" }}>To charge the client from Client Billing, the card also has to be in Stripe. This link is Stripe&rsquo;s own page for typing it in.</p>
                 <CardLink cardId={cards[0].id} />
               </>
             ) : (
@@ -241,7 +258,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
         )}
 
         <div className="flex items-center justify-end gap-2">
-          <button type="button" onClick={() => { setResult(null); setA({}); }} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
+          <button type="button" onClick={() => { setResult(null); setA({}); setCardNote(null); }} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
             New survey
           </button>
           {onDone && (
@@ -279,11 +296,19 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
         );
       })}
 
-      {!clientId && (
+      {!clientId && vault.on && (
+        <fieldset className="rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
+          <legend className="sr-only">Card on file</legend>
+          <p className="text-sm font-semibold" style={{ color: "#111111" }} aria-hidden>Card on file</p>
+          <p className="text-xs mt-0.5 mb-3" style={{ color: "#949494" }}>Optional. Stored encrypted — only an admin can view it afterwards, with their password, and every view is logged.</p>
+          <CardFields value={card} onChange={c => { setError(null); setCard(c); }} idPrefix="survey-card" />
+        </fieldset>
+      )}
+      {!clientId && vault.checked && !vault.on && (
         <div className="rounded-2xl p-5" style={{ background: "#fafafa", border: BORDER }}>
           <p className="text-sm font-semibold" style={{ color: "#111111" }}>Card on file</p>
           <p className="text-sm mt-1" style={{ color: "#767676" }}>
-            No card number here. After you submit you get a secure Stripe link — type the card in there on the call, or send it to the client. It lands on their Stripe customer, ready for Client Billing.
+            Card storage is not switched on here, so there is no card number to fill in. After you submit you get a secure Stripe link for the card instead.
           </p>
         </div>
       )}

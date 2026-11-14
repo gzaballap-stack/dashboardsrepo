@@ -1,12 +1,11 @@
 // New client survey (Clients > Onboarding) — the questions, and what counts as
 // a usable answer. Pure: the form (browser) and the API both read this file.
 //
-// The questions mirror the GHL onboarding form the owner used before, with two
-// differences: it asks which service we are setting up (the form never did, and
-// the roster, the checklist and billing all need it), and it never asks for a
-// card number. Cards go on file through Stripe's own page (see NOTES.md
-// 2026-11-12) — a card number and CVC typed into our database is something we
-// must not hold.
+// The questions mirror the GHL onboarding form the owner used before, plus the
+// service we are setting up (the roster, the checklist and billing need it).
+// Card details are NOT part of these answers: the survey screen takes them in
+// its own section and sends them to the card vault (lib/card-vault.ts), which
+// encrypts them. Never add a card field here — answers are stored readable.
 
 import type { Track } from './onboarding';
 

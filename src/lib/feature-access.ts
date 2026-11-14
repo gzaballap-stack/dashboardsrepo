@@ -106,6 +106,7 @@ const API_GATES: { prefix: string; features: FeatureId[] }[] = [
   { prefix: "/api/watch-schedule",     features: ["schedule"] },
   { prefix: "/api/client-windows",     features: ["schedule"] },
   { prefix: "/api/onboarding",         features: ["onboarding"] },
+  { prefix: "/api/card-vault",         features: ["onboarding"] },
   { prefix: "/api/csm-dashboard",      features: ["csm_dashboard"] },
   { prefix: "/api/client-csm-status",  features: ["csm_dashboard"] },
   { prefix: "/api/client-touchpoints", features: ["csm_dashboard"] },

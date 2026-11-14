@@ -1,3 +1,58 @@
+## 2026-11-14 — Card vault: clients' cards stored encrypted (owner's decision)
+
+**Decision.** The owner wants full card details kept in the dashboard, to add a
+client's card to their Facebook ad account. He was told three times that this
+is not a certified card store (card rules forbid keeping a security code at
+all; a leak is his liability; Stripe may object) and that a password manager
+is the better home, and chose to build it anyway. This **supersedes** the
+2026-11-12 "card details are deliberately not asked / do not add card fields
+back" note. Do not re-argue it; do keep every safeguard below.
+
+- **Where:** a **Card on file** section in the New client survey (optional),
+  and on every onboarding card whose client is on the roster (add / replace /
+  show / delete). `CardVault.tsx`, `lib/card-vault.ts`, `lib/card-format.ts`,
+  `/api/card-vault`.
+- **How it is kept** (`lib/card-vault.ts`):
+  - AES-256-GCM under **`CARD_VAULT_KEY`** (32 random bytes, base64), which
+    lives only in Railway's V1 variables — never in the database, the repo,
+    `.env` files in the repo, or chat. A database copy alone is unreadable.
+  - Each record is bound to its client id; a row copied to another client
+    does not open.
+  - Only brand + last four are stored readable (`card_vault`). The card is
+    **never** in `client_surveys`, the survey request, logs, or any response
+    other than a reveal.
+  - **Saving:** anyone with Onboarding access. **Viewing / deleting:** admins
+    only; viewing also needs the admin's own password re-entered (checked on a
+    throwaway session, `signOut({ scope: 'local' })` — never the global scope,
+    which would sign the person out everywhere). 5 wrong passwords = locked
+    for 15 minutes. A shown card hides itself after 60 seconds.
+  - `card_vault_log`: every save, replace, view, refusal and delete, with who
+    and when. Admins see it under "Who has touched this card". It outlives the
+    card and the client.
+  - No key = off: nothing can be saved or read, the survey shows no card
+    boxes. **Never set the key on V2.**
+- **Kept until deleted** — the owner asked to store them, so there is no
+  auto-delete. Offered; not chosen.
+- **If the key is lost or changed, every saved card is unreadable for good.**
+  The owner keeps a copy outside Railway. To rotate: `key_version` exists for
+  it, but no re-encrypt tool is written yet.
+- **The assistant must not** read a stored card, print the key, generate the
+  key into chat, or build an export / bulk-reveal. One client at a time, by an
+  admin, with a password.
+- The Stripe card link stays as it was — Client Billing can only charge a card
+  that is in Stripe, so that step is unchanged (the survey's result screen now
+  calls it "Card for billing (Stripe)").
+- **Schema:** `card_vault`, `card_vault_log` in `migrations/add_onboarding.sql`
+  (browser roles' table rights revoked as well as row security) — same command
+  again: `node scripts/migrate-onboarding.mjs v1`.
+- **Checked:** local preview on a made-up database with a throwaway key and a
+  stand-in password — save (Visa, Amex), bad number / expired / short code
+  refused, nothing readable stored, VA cannot view or delete, wrong password,
+  lockout (also refuses the right password), moved row and wrong key do not
+  open, replace, delete, log kept, key missing = off; survey with a card; show
+  / copy / auto-hide on the card; production build. **Not checked:** the real
+  password check against Supabase, and nothing signed in on V1.
+
 ## 2026-11-14 — Ad spend sets itself up for a new client; Campaign Overview is ads-only
 
 **Why.** SAS Home Solutions went live 2026-10-28 and showed $0 ad spend until

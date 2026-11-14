@@ -12,6 +12,7 @@ import {
 } from "@/lib/onboarding";
 import { SURVEY_SECTIONS, showAnswer, type Answers } from "@/lib/client-survey";
 import ClientSurvey, { CardLink } from "./ClientSurvey";
+import CardVaultPanel from "./CardVault";
 
 /** Where the survey lives on its own — the link the owner keeps for onboarding calls. */
 const SURVEY_PATH = "/dashboard/clients/new-client-survey";
@@ -443,6 +444,8 @@ function CardPanel({ card, templates, onChange, onClose, onStage, onDelete, onSu
               {[card.contact_name, card.contact_email, card.contact_phone].filter(Boolean).join(" · ")}
             </div>
           )}
+
+          {card.client_id && <CardVaultPanel clientId={card.client_id} />}
 
           <div>
             <label htmlFor="onb-notes" className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#949494" }}>Notes</label>

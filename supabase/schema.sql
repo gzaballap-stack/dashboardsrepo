@@ -734,3 +734,40 @@ grant execute on function public.sms_totals(date, date, uuid) to service_role;
 
 -- So the API sees the new function straight away.
 notify pgrst, 'reload schema';
+
+-- Card vault (NOTES.md 2026-11-14): a client's card, encrypted by the app
+-- before it gets here. The key is in the server's environment, never in this
+-- database — these rows are unreadable on their own. Only brand + last four
+-- are kept readable. Read lib/card-vault.ts before touching this.
+create table if not exists card_vault (
+  client_id     uuid primary key references clients(id) on delete cascade,
+  ciphertext    text not null,
+  iv            text not null,
+  tag           text not null,
+  key_version   integer not null default 1,
+  brand         text,
+  last4         text,
+  saved_by      uuid,
+  saved_by_name text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+-- Every save, view, refused attempt and removal. Outlives the card and the client.
+create table if not exists card_vault_log (
+  id          uuid primary key default gen_random_uuid(),
+  client_id   uuid,
+  client_name text,
+  user_id     uuid,
+  user_name   text,
+  action      text not null check (action in ('saved', 'replaced', 'revealed', 'denied', 'deleted')),
+  at          timestamptz not null default now()
+);
+create index if not exists card_vault_log_client_idx on card_vault_log (client_id, at desc);
+create index if not exists card_vault_log_user_idx on card_vault_log (user_id, at desc);
+
+-- Server only: row security on with no policy, and the browser-facing roles
+-- lose their table rights as well.
+alter table card_vault     enable row level security;
+alter table card_vault_log enable row level security;
+revoke all on card_vault, card_vault_log from anon, authenticated;
