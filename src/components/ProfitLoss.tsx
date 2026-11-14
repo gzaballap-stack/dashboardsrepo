@@ -656,7 +656,7 @@ function ClientPanel({ name, display, profile, roster, lines, months, otherKeys,
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 style={{ fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>{display}</h3>
             <p style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>
-              {[display !== name ? `on the sheet as “${name}”` : null, profile?.contact_name,
+              {[display.toLowerCase() !== name.trim().toLowerCase() ? `on the sheet as “${name}”` : null, profile?.contact_name,
                 profile?.client_id ? "on the Client Roster" : "not on the Client Roster"].filter(Boolean).join(" · ")}
             </p>
           </div>
@@ -1387,7 +1387,7 @@ export default function ProfitLoss({ openClientKey, onOpenBilling }: {
               <tbody>
                 {cs.list.map(c => {
                   const shown = displayOf(c.name);
-                  const about = [shown !== c.name ? c.name : null, profiles[c.key]?.contact_name,
+                  const about = [shown.toLowerCase() !== c.name.trim().toLowerCase() ? c.name : null, profiles[c.key]?.contact_name,
                     profiles[c.key]?.client_id || rosterByKey.has(c.key) ? null : "not on roster"].filter(Boolean).join(" · ");
                   return (
                   <tr key={c.key}>
