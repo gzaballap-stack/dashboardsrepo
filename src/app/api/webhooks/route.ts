@@ -5,6 +5,7 @@ import { pickAttribution, inheritAttribution, inheritZip } from '@/lib/attributi
 import { ensureLeadForContact, removeSyntheticLead } from '@/lib/funnel-integrity';
 import { normalizeZip } from '@/lib/zip-rollup';
 import { resolveClientId } from '@/lib/client-lookup';
+import { classifyBooking, refusesRescheduled, RESCHEDULED, type ArrivingBooking } from '@/lib/reschedule';
 
 const VALID_EVENT_TYPES = ['dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked', 'closed', 'funnel_visit', 'vsl_watch', 'precall_watch', 'visit_landing', 'visit_calendar', 'visit_thankyou'] as const;
 
@@ -158,6 +159,28 @@ export async function POST(req: Request) {
       }
     }
 
+    // A reschedule is not a new booking (see lib/reschedule). Best effort: if
+    // this can't be worked out the booking is stored exactly as it always was.
+    let arriving: ArrivingBooking = { kind: 'new' };
+    if (payload.event_type === 'appointment_booked') {
+      try {
+        arriving = await classifyBooking(service, {
+          client_id, external_id: eventData.external_id, ghl_contact_id: eventData.ghl_contact_id,
+          lead_phone: eventData.lead_phone, occurred_at: eventData.occurred_at,
+        });
+      } catch { arriving = { kind: 'new' }; }
+      if (arriving.kind === 'same') {
+        // Sent again under the same appointment id: it stays on the day it was
+        // first booked, and stays a reschedule if that is what it is.
+        eventData.occurred_at = arriving.first_booked_at;
+        if (arriving.event_type === RESCHEDULED) eventData.event_type = RESCHEDULED;
+        eventData.raw = { ...payload, _rebooked: arriving.times, _last_sent_at: new Date().toISOString() };
+      } else if (arriving.kind === 'rescheduled') {
+        eventData.event_type = RESCHEDULED;
+        eventData.raw = { ...payload, _reschedule_of: arriving.original_id };
+      }
+    }
+
     // Upsert on external_id when provided so rescheduled appointments don't duplicate
     const write = (row: typeof eventData | Omit<typeof eventData, 'zip_code'>) =>
       payload.external_id
@@ -171,6 +194,14 @@ export async function POST(req: Request) {
     if (error && /zip_code/.test(error.message)) {
       const { zip_code: _zip, ...withoutZip } = eventData;
       ({ error } = await write(withoutZip));
+    }
+
+    // A database that has not been told about `rescheduled` yet refuses it:
+    // store it as the booking it arrived as, the way it always was.
+    if (error && arriving.kind === 'rescheduled' && refusesRescheduled(error)) {
+      eventData.event_type = 'appointment_booked';
+      arriving = { kind: 'new' };
+      ({ error } = await write(eventData));
     }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -203,7 +234,7 @@ export async function POST(req: Request) {
       }
     } catch { /* funnel backfill is secondary */ }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, ...(arriving.kind === 'new' ? {} : { booking: arriving.kind }) });
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }

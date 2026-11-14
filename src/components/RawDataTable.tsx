@@ -66,6 +66,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   show: "Show",
   no_show: "No Show",
   callback_booked: "Callback",
+  rescheduled: "Rescheduled",
 };
 
 function formatCell(key: string, value: unknown): string {

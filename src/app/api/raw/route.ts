@@ -48,7 +48,8 @@ export async function GET(req: Request) {
   const eventTypeMap: Record<string, string[]> = {
     leads:          ['lead'],
     dials:          ['dial'],
-    appointments:   ['appointment_booked', 'show', 'no_show', 'callback_booked'],
+    // `rescheduled` = the same lead booking again: listed and labelled, counted nowhere.
+    appointments:   ['appointment_booked', 'show', 'no_show', 'callback_booked', 'rescheduled'],
     speed_to_lead:  ['dial'],
   };
 

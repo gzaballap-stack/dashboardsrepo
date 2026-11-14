@@ -380,7 +380,9 @@ function rescheduleView(moved: ReturnType<typeof findReschedules>, id: string) {
   return {
     // kind 'outcome' = the show / no-show row of that appointment: screens leave it out.
     reschedule_of: original ? { event_id: original.id, booked_at: original.at, scheduled_at: original.scheduled_at ?? null, kind: moved.kind.get(id) ?? 'reschedule' } : null,
-    rescheduled_to: latest ? (latest.scheduled_at ?? latest.booked_at) : null,
+    // GHL does not send the appointment's time today, so usually only the day it was moved is known.
+    rescheduled_to: latest?.scheduled_at ?? null,
+    rescheduled_on: latest?.booked_at ?? null,
     reschedules: latest?.count ?? 0,
   };
 }

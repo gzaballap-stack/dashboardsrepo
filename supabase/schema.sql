@@ -115,7 +115,7 @@ create table if not exists events (
   revenue         numeric not null default 0,
 
   constraint events_event_type_check check (
-    event_type in ('dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked', 'closed', 'funnel_visit', 'vsl_watch', 'precall_watch', 'visit_landing', 'visit_calendar', 'visit_thankyou', 'spam_lead', 'spam_appointment')
+    event_type in ('dial', 'lead', 'appointment_booked', 'show', 'no_show', 'callback_booked', 'closed', 'funnel_visit', 'vsl_watch', 'precall_watch', 'visit_landing', 'visit_calendar', 'visit_thankyou', 'spam_lead', 'spam_appointment', 'rescheduled')
   )
 );
 

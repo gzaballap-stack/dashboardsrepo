@@ -74,6 +74,7 @@ type Appointment = {
   reschedule_of?: { event_id: string; booked_at: string; scheduled_at: string | null; kind?: "reschedule" | "outcome" } | null;
   /** This appointment was rescheduled: where to, and how many times. */
   rescheduled_to?: string | null;
+  rescheduled_on?: string | null;
   reschedules?: number;
   billing: ApptBilling | null;
 };
@@ -229,7 +230,7 @@ function newRequestId(): string {
   return `req-${Date.now()}-${idCounter}`;
 }
 
-const OUTCOME: Record<string, string> = { appointment_booked: "Booked", show: "Showed", no_show: "No-show" };
+const OUTCOME: Record<string, string> = { appointment_booked: "Booked", show: "Showed", no_show: "No-show", rescheduled: "Booked again" };
 
 const METHOD_LABEL: Record<Method, string> = { card: "Card", invoice: "Invoice", manual: "Recorded" };
 
@@ -937,10 +938,10 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
             {day(a.scheduled_at ?? a.booked_at)}
             {a.scheduled_at && <span style={{ color: FAINT }}> · booked {day(a.booked_at)}</span>}
           </p>
-          {a.rescheduled_to && (
+          {(a.rescheduled_to || a.rescheduled_on) && (
             <p style={{ fontSize: 12, fontWeight: 600, color: FREE, marginTop: 2 }}
               title="The same lead booked again. It is this appointment, moved — not a new one, and not billed again.">
-              {`Rescheduled to ${day(a.rescheduled_to)}${(a.reschedules ?? 0) > 1 ? ` · ${a.reschedules} times` : ""}`}
+              {`${a.rescheduled_to ? `Rescheduled to ${day(a.rescheduled_to)}` : `Rescheduled on ${day(a.rescheduled_on)}`}${(a.reschedules ?? 0) > 1 ? ` · ${a.reschedules} times` : ""}`}
             </p>
           )}
         </div>

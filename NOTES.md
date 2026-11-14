@@ -1,3 +1,50 @@
+## 2026-11-14 — A reschedule is not a new booking — main dashboard (on arrival)
+
+Owner: the main dashboard must not count a reschedule as a new booking either
+("some sort of system that fixes that"). Billing was done on 2026-11-13.
+
+- **What V1 actually holds** (`node scripts/appointment-repeats.mjs v1`, last 90
+  days, run by the owner 2026-11-14): 238 `appointment_booked`, **every one with
+  an appointment id and a lead**; **no `show` / `no_show` rows at all** for
+  clients (so the "outcome row" worry of 2026-11-13 does not occur — that code
+  is harmless and stays); 235 leads, **3 of whom booked twice** (2 at Mr Handy
+  Plus, 1 at Greystone), each under a new appointment id; **no appointment time
+  is ever stored** (`scheduled_at` is null — `ghl-direct.ts` does not send one).
+- **The rule, applied as a booking arrives** (`src/lib/reschedule.ts`, called
+  from `webhooks/route.ts` for `appointment_booked` only):
+  - **Same appointment id** already stored → still one row (as before), but it
+    now **keeps the day it was first booked**. Before, the upsert overwrote
+    `occurred_at` with "now", so a moved appointment jumped to the day it was
+    moved and looked like that day's booking. `raw._rebooked` counts the times.
+  - **Same lead** (GHL contact, else last 10 digits of the phone), same client,
+    a booking in the **last 60 days**, different id → stored with
+    `event_type = 'rescheduled'` and `raw._reschedule_of`. Every metric filters
+    on the types it counts, so nothing counts it; it is still on record.
+    Beyond 60 days it is a new booking.
+  - Best effort: any failure working it out, or a database that refuses the
+    type (`events_event_type_check`), and the booking is stored exactly as
+    before. Nothing is ever dropped.
+- **Where a `rescheduled` row shows**: Raw Data → Appointments, Status
+  "Rescheduled"; Client Billing reads it (`APPOINTMENT_TYPES`) and folds it
+  into the lead's appointment like any other reschedule ("Rescheduled on
+  <day>" — "to" only when a time is known, which today it never is).
+- **Database** (`migrations/add_rescheduled_type.sql`,
+  `node scripts/migrate-reschedules.mjs v1`): adds `'rescheduled'` to the
+  allowed types **by reading the constraint as it stands on that database and
+  appending** — it never rewrites the list from the repo. It then lists the
+  bookings already stored that the rule would have caught, and changes none.
+  `--fix-existing` relabels those (never one Client Billing has dealt with in
+  its own right, never Tomsi Media's), stamping `raw._retagged_from` so it can
+  be undone; nothing is deleted. **Until it is run the new type is refused and
+  second-id reschedules are stored as bookings, as before** — the same-id fix
+  works without it.
+- **Not done**: the appointment's time is still not sent by GHL, so nothing can
+  say *when* it was moved to. Stored phones are matched as `%<10 digits>`, so a
+  phone stored with punctuation only matches through the contact id. B2B
+  (`webhooks/b2b`) is untouched.
+- Tested on a simulated database (6 intake scenarios + the billing ones). The
+  SQL has **not been run anywhere** before the owner runs it.
+
 ## 2026-11-13 — Funnels: versions of the website funnel and what each produced (phase 1)
 
 Tomsi Media > **Funnels** (`src/components/Funnels.tsx`, gated on `b2b_tracking`).

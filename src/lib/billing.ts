@@ -18,7 +18,9 @@
 
 import type { AuthContext } from './api-auth';
 
-export const APPOINTMENT_TYPES = ['appointment_booked', 'show', 'no_show'];
+// `rescheduled` is the same lead booking again (lib/reschedule): read so it can
+// be shown on the appointment it belongs to, folded in by `findReschedules`.
+export const APPOINTMENT_TYPES = ['appointment_booked', 'show', 'no_show', 'rescheduled'];
 
 /** Charges whose used credit still counts as used. A failed or cancelled
  *  charge gives its credit back. */
