@@ -45,6 +45,34 @@ Owner: the main dashboard must not count a reschedule as a new booking either
 - Tested on a simulated database (6 intake scenarios + the billing ones). The
   SQL has **not been run anywhere** before the owner runs it.
 
+## 2026-11-14 — Funnels: visual editor, AI edits, old-funnel row (phases 2 and 3)
+
+- **Tables are live on V1** (the user ran `migrate-funnels.mjs v1` on 2026-11-14;
+  V2 still has none, the page there says "not set up"). Ads were pointed at
+  `tomsimedia.com/check-your-market` on 2026-11-13 evening; counting started
+  when the tables were created, so the gap's visits were never counted and its
+  leads / spend sit under the old-funnel row.
+- **Old funnel row** (`legacyStats`, `src/lib/funnels.ts`): the GoHighLevel pages
+  as one comparison line = `b2b_events` (ads only) minus everything that
+  belongs to a version of the new funnel, from the first `visit_landing` on.
+  Checked against the Ads Dashboard for the same dates: identical.
+- **Visual editor** (`Editor` in `Funnels.tsx`, drafts only): full screen, the
+  real website page in an iframe (`?preview=tomsi&version=<id>&edit=1` →
+  `FunnelEditView` in the website repo). The editor posts the draft to the frame
+  as it is typed (`tm-funnel:content` / `:select` / `:step`), the frame reports
+  `tm-funnel:ready` and the section clicked (`tm-funnel:picked`). The frame only
+  listens to the dashboard's own origins (list in `FunnelEditView.tsx`).
+  Sections list with drag / arrows, add under the picked one, phone / desktop,
+  undo for structural and AI changes, form step switcher.
+- **Ask AI** (`/api/funnels/ai`, `src/lib/funnel-ai.ts`): Claude returns the
+  whole draft changed through a tool call; cleaned with `normalizeContent`;
+  nothing is saved until Save. Model `claude-sonnet-5-5` with
+  `tool_choice: auto` (that model rejects a forced tool), falling back to the
+  Haiku this app already uses. About 10 s per change.
+- Live check visitor `wtestclaude0001` is in `remove_website_funnel_tests`.
+- Not built: typing straight onto the page (edits happen in the side panel),
+  images, colours / fonts per version, free-form AI pages, client funnels.
+
 ## 2026-11-13 — Funnels: versions of the website funnel and what each produced (phase 1)
 
 Tomsi Media > **Funnels** (`src/components/Funnels.tsx`, gated on `b2b_tracking`).

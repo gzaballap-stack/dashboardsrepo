@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FORM_FIELDS, REVENUE_OPTIONS, SECTION_INFO,
   type FunnelContent, type FunnelSection, type FunnelVideo, type SectionType,
@@ -288,7 +288,7 @@ function VersionDetail({ v, s, liveCount, previewUrl, act, busy, editing, setEdi
     <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <a href={previewUrl} target="_blank" rel="noreferrer" style={{ ...btn(), textDecoration: "none" }}>Preview</a>
-        {!locked && <button style={btn(editing)} onClick={() => setEditing(!editing)}>{editing ? "Close editor" : "Edit"}</button>}
+        {!locked && <button style={btn(true)} onClick={() => setEditing(true)}>Open editor</button>}
         <button disabled={busy} style={btn()} onClick={async () => {
           const out = await act({ action: "new_version", funnel_id: v.funnel_id, from_version_id: v.id });
           const made = out?.version as Version | undefined;
@@ -347,117 +347,252 @@ function VersionDetail({ v, s, liveCount, previewUrl, act, busy, editing, setEdi
         </div>
       </div>
 
-      {editing && !locked && <Editor v={v} act={act} busy={busy} previewUrl={previewUrl} />}
+      {editing && !locked && <Editor v={v} act={act} busy={busy} previewUrl={previewUrl} onClose={() => setEditing(false)} />}
     </div>
   );
 }
 
-/* ── Editor ─────────────────────────────────────────────────────────────── */
+/* ── Editor ─────────────────────────────────────────────────────────────────
+   A full-screen editor for a draft: the real page in the middle (the website
+   itself, in an editor mode that takes its wording from here as it is typed),
+   the list of sections on the left, and on the right what the picked section
+   says, or the AI, which changes the draft from a plain request. Nothing
+   reaches visitors until the draft is saved and made live.
+   ──────────────────────────────────────────────────────────────────────────── */
 
-type PageKey = "landing" | "form" | "booked";
+type PageKey = "landing" | "booked";
+type ChatLine = { role: "user" | "assistant"; text: string };
 
-function Editor({ v, act, busy, previewUrl }: { v: Version; act: (b: Record<string, unknown>) => Promise<Record<string, unknown> | null>; busy: boolean; previewUrl: string }) {
+const FORM_STEPS: [number, string][] = [[1, "Question 1"], [2, "Revenue"], [3, "Company"], [4, "Contact"], [5, "Calendar"], [0, "Not qualified"]];
+
+function Editor({ v, act, busy, previewUrl, onClose }: {
+  v: Version; act: (b: Record<string, unknown>) => Promise<Record<string, unknown> | null>; busy: boolean; previewUrl: string; onClose: () => void;
+}) {
   const [content, setContent] = useState<FunnelContent>(v.content);
   const [page, setPage] = useState<PageKey>("landing");
+  const [selected, setSelected] = useState<string | null>(null);
+  const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  const [panel, setPanel] = useState<"edit" | "ai">("edit");
+  const [undo, setUndo] = useState<FunnelContent[]>([]);
   const [saved, setSaved] = useState(false);
+  const [ready, setReady] = useState(0);                 // bumps each time the page in the frame says it is ready
+  const [formStep, setFormStep] = useState<number | null>(null);
+  const [chat, setChat] = useState<ChatLine[]>([]);
+  const [ask, setAsk] = useState("");
+  const [thinking, setThinking] = useState(false);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
   const dirty = useMemo(() => JSON.stringify(content) !== JSON.stringify(v.content), [content, v.content]);
 
-  const setSections = (key: "landing" | "booked", next: FunnelSection[]) => { setContent(c => ({ ...c, [key]: next })); setSaved(false); };
-  const patchSection = (key: "landing" | "booked", id: string, patch: Partial<FunnelSection>) =>
-    setSections(key, content[key].map(s => (s.id === id ? { ...s, ...patch } : s)));
-  const move = (key: "landing" | "booked", i: number, by: number) => {
-    const list = [...content[key]]; const j = i + by;
-    if (j < 0 || j >= list.length) return;
-    [list[i], list[j]] = [list[j], list[i]];
-    setSections(key, list);
+  const site = useMemo(() => new URL(previewUrl), [previewUrl]);
+  const frameUrl = `${site.origin}${site.pathname}${page === "booked" ? "/booked" : ""}${site.search}&edit=1`;
+  const send = useCallback((msg: Record<string, unknown>) => frame.current?.contentWindow?.postMessage(msg, site.origin), [site.origin]);
+
+  // The page in the frame: it says when it is ready, and which section was clicked.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== site.origin || e.source !== frame.current?.contentWindow) return;
+      const d = (e.data ?? {}) as { type?: string; id?: string };
+      if (d.type === "tm-funnel:ready") setReady(n => n + 1);
+      if (d.type === "tm-funnel:picked" && d.id) { setSelected(d.id); setPanel("edit"); }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [site.origin]);
+
+  // Keep the page in the frame showing exactly what is being typed here.
+  useEffect(() => {
+    if (!ready) return;
+    const t = window.setTimeout(() => send({ type: "tm-funnel:content", content }), 120);
+    return () => window.clearTimeout(t);
+  }, [content, ready, send]);
+  useEffect(() => { if (ready) send({ type: "tm-funnel:select", id: selected }); }, [selected, ready, send]);
+  useEffect(() => { if (ready) send({ type: "tm-funnel:step", step: formStep }); }, [formStep, ready, send]);
+
+  const change = (next: FunnelContent, undoable = false) => {
+    if (undoable) setUndo(u => [...u.slice(-19), content]);
+    setContent(next); setSaved(false);
   };
-  const add = (key: "landing" | "booked", type: SectionType) => {
+  const sections = content[page];
+  const setSections = (next: FunnelSection[], undoable = false) => change({ ...content, [page]: next }, undoable);
+  const patch = (id: string, p: Partial<FunnelSection>) => setSections(sections.map(s => (s.id === id ? { ...s, ...p } : s)));
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= sections.length || from === to) return;
+    const list = [...sections]; const [it] = list.splice(from, 1); list.splice(to, 0, it);
+    setSections(list, true);
+  };
+  const add = (type: SectionType) => {
     const fresh: FunnelSection = { id: `${type}-${Date.now().toString(36)}`, type };
-    if (type === "testimonials") { fresh.layout = key === "booked" ? "stack" : "grid"; fresh.videos = []; fresh.heading = ""; fresh.sub = ""; }
+    if (type === "testimonials") { fresh.layout = page === "booked" ? "stack" : "grid"; fresh.videos = []; fresh.heading = ""; fresh.sub = ""; }
     if (type === "headline") fresh.lines = ["New headline"];
+    if (type === "text") { fresh.heading = "New heading"; fresh.text = "Your text here."; }
+    if (type === "badge" || type === "pill" || type === "button" || type === "subline") fresh.text = "New text";
     if (type === "steps") { fresh.heading = "Your Next Steps:"; fresh.items = ["First step"]; }
-    setSections(key, [...content[key], fresh]);
+    if (type === "link") { fresh.text = "Learn more"; fresh.url = "https://"; }
+    if (type === "booked_heading") { fresh.heading = "New heading"; fresh.sub = ""; }
+    const at = selected ? sections.findIndex(s => s.id === selected) : -1;
+    const list = [...sections]; list.splice(at === -1 ? list.length : at + 1, 0, fresh);
+    setSections(list, true); setSelected(fresh.id); setPanel("edit");
   };
+  const close = () => { if (!dirty || window.confirm("Close without saving your changes?")) onClose(); };
+
+  const askAi = async () => {
+    const message = ask.trim();
+    if (!message || thinking) return;
+    setAsk(""); setThinking(true);
+    const history = chat.slice(-6);
+    setChat(c => [...c, { role: "user", text: message }]);
+    try {
+      const res = await fetch("/api/funnels/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content, message, history, page }) });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error || "The AI could not do that");
+      if (out.content) change(out.content as FunnelContent, true);
+      setChat(c => [...c, { role: "assistant", text: String(out.reply || "Done.") }]);
+    } catch (e) { setChat(c => [...c, { role: "assistant", text: `Sorry, that did not work: ${(e as Error).message}` }]); }
+    setThinking(false);
+  };
+
+  const sel = sections.find(s => s.id === selected) ?? null;
+  const side: React.CSSProperties = { background: CARD, borderRight: BORDER, overflowY: "auto", padding: 14 };
+  const pill = (on: boolean): React.CSSProperties => ({ ...btn(on), borderRadius: 999 });
+  const setForm = (key: string, value: unknown) => change({ ...content, form: { ...content.form, [key]: value } });
 
   return (
-    <div style={{ background: CARD, border: BORDER, borderRadius: 12, padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-        <div style={{ display: "flex", gap: 6 }}>
-          {([["landing", "Landing page"], ["form", "Form"], ["booked", "Booked page"]] as [PageKey, string][]).map(([k, label]) => (
-            <button key={k} onClick={() => setPage(k)} style={{ ...btn(page === k), borderRadius: 999 }}>{label}</button>
-          ))}
+    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#f1f1f2", display: "flex", flexDirection: "column" }}>
+      <div style={{ height: 54, flexShrink: 0, background: CARD, borderBottom: BORDER, display: "flex", alignItems: "center", gap: 10, padding: "0 14px" }}>
+        <button style={btn()} onClick={close}>← Back</button>
+        <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Version {v.number}</span>
+        <span style={{ fontSize: 13, color: MUTED, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.name}</span>
+        <div style={{ display: "flex", gap: 6, marginLeft: 14 }}>
+          <button style={pill(page === "landing")} onClick={() => { setPage("landing"); setSelected(null); setReady(0); }}>Landing page</button>
+          <button style={pill(page === "booked")} onClick={() => { setPage("booked"); setSelected(null); setFormStep(null); setReady(0); }}>Booked page</button>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, marginLeft: 14 }}>
+          <button style={pill(device === "desktop")} onClick={() => setDevice("desktop")}>Desktop</button>
+          <button style={pill(device === "mobile")} onClick={() => setDevice("mobile")}>Phone</button>
+        </div>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
           {saved && !dirty && <span style={{ fontSize: 12, color: GOOD }}>Saved</span>}
-          <a href={previewUrl} target="_blank" rel="noreferrer" style={{ ...btn(), textDecoration: "none" }}>Preview</a>
-          <button disabled={busy || !dirty} style={{ ...btn(true), opacity: dirty ? 1 : 0.4 }} onClick={async () => { if (await act({ action: "save", id: v.id, content })) setSaved(true); }}>Save changes</button>
+          {dirty && <span style={{ fontSize: 12, color: MUTED }}>Unsaved changes</span>}
+          <button style={btn()} disabled={!undo.length} onClick={() => { const last = undo[undo.length - 1]; setUndo(u => u.slice(0, -1)); setContent(last); setSaved(false); }}>Undo</button>
+          <a href={previewUrl} target="_blank" rel="noreferrer" style={{ ...btn(), textDecoration: "none" }}>Open saved page</a>
+          <button disabled={busy || !dirty} style={{ ...btn(true), opacity: dirty ? 1 : 0.4 }} onClick={async () => { if (await act({ action: "save", id: v.id, content })) setSaved(true); }}>Save</button>
         </div>
       </div>
-      <p style={{ fontSize: 12, color: MUTED, marginBottom: 14 }}>Put *asterisks* around words to highlight them. Save, then Preview to see the page.</p>
 
-      {page === "form" ? (
-        <div style={{ display: "grid", gap: 12 }}>
-          {FORM_FIELDS.map(f => (
-            <Labeled key={f.key} label={f.label}>
-              {f.kind === "long"
-                ? <textarea rows={3} value={content.form[f.key]} onChange={e => { setContent(c => ({ ...c, form: { ...c.form, [f.key]: e.target.value } })); setSaved(false); }} style={{ ...inputStyle, resize: "vertical" }} />
-                : <input value={content.form[f.key]} onChange={e => { setContent(c => ({ ...c, form: { ...c.form, [f.key]: e.target.value } })); setSaved(false); }} style={inputStyle} />}
-            </Labeled>
-          ))}
-          <Labeled label="Revenue answers that end the form (they do not qualify)">
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              {REVENUE_OPTIONS.map(o => (
-                <label key={o} style={{ fontSize: 13, color: INK, display: "flex", gap: 6, alignItems: "center" }}>
-                  <input type="checkbox" checked={content.form.disqualify.includes(o)} onChange={e => {
-                    const next = e.target.checked ? [...content.form.disqualify, o] : content.form.disqualify.filter(x => x !== o);
-                    setContent(c => ({ ...c, form: { ...c.form, disqualify: next } })); setSaved(false);
-                  }} />
-                  {o}
-                </label>
-              ))}
+      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "230px minmax(0,1fr) 340px" }}>
+        {/* Sections */}
+        <div style={side}>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: FAINT, marginBottom: 8 }}>Sections</p>
+          {sections.map((s, i) => (
+            <div key={s.id} draggable onDragStart={() => setDragFrom(i)} onDragOver={e => e.preventDefault()}
+              onDrop={() => { if (dragFrom !== null) move(dragFrom, i); setDragFrom(null); }}
+              onClick={() => { setSelected(s.id); setPanel("edit"); }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 8px", borderRadius: 8, marginBottom: 4, cursor: "grab", fontSize: 13,
+                background: selected === s.id ? "rgba(255,90,31,0.10)" : "transparent", border: selected === s.id ? "1px solid rgba(255,90,31,0.5)" : "1px solid transparent", color: INK }}>
+              <span style={{ color: FAINT, fontSize: 11 }}>⋮⋮</span>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{SECTION_INFO[s.type].label}</span>
+              <button title="Move up" style={{ ...btn(), padding: "1px 6px" }} disabled={i === 0} onClick={e => { e.stopPropagation(); move(i, i - 1); }}>↑</button>
+              <button title="Move down" style={{ ...btn(), padding: "1px 6px" }} disabled={i === sections.length - 1} onClick={e => { e.stopPropagation(); move(i, i + 1); }}>↓</button>
             </div>
-          </Labeled>
+          ))}
+          <select value="" onChange={e => { if (e.target.value) add(e.target.value as SectionType); }} style={{ ...inputStyle, marginTop: 8 }}>
+            <option value="">+ Add a section…</option>
+            {(Object.keys(SECTION_INFO) as SectionType[]).filter(t => t !== "form" && SECTION_INFO[t].pages.includes(page)).map(t => (
+              <option key={t} value={t}>{SECTION_INFO[t].label}</option>
+            ))}
+          </select>
+          <p style={{ fontSize: 11, color: FAINT, marginTop: 10, lineHeight: 1.5 }}>Click a section on the page or here to edit it. Drag to reorder. A new section goes under the picked one.</p>
         </div>
-      ) : (
-        <div style={{ display: "grid", gap: 12 }}>
-          {content[page].map((s, i) => (
-            <div key={s.id} style={{ border: BORDER, borderRadius: 10, padding: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: SECTION_INFO[s.type].fields.length ? 10 : 0 }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: INK }}>{i + 1}. {SECTION_INFO[s.type].label}</p>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button style={btn()} disabled={i === 0} onClick={() => move(page, i, -1)}>↑</button>
-                  <button style={btn()} disabled={i === content[page].length - 1} onClick={() => move(page, i, 1)}>↓</button>
-                  {s.type !== "form" && <button style={btn(false, true)} onClick={() => setSections(page, content[page].filter(x => x.id !== s.id))}>Remove</button>}
-                </div>
-              </div>
-              <div style={{ display: "grid", gap: 10 }}>
-                {SECTION_INFO[s.type].fields.map(f => (
-                  <Labeled key={String(f.key)} label={f.label}>
-                    {f.kind === "text" && <input value={(s[f.key] as string) ?? ""} onChange={e => patchSection(page, s.id, { [f.key]: e.target.value })} style={inputStyle} />}
-                    {f.kind === "long" && <textarea rows={3} value={(s[f.key] as string) ?? ""} onChange={e => patchSection(page, s.id, { [f.key]: e.target.value })} style={{ ...inputStyle, resize: "vertical" }} />}
-                    {f.kind === "lines" && <textarea rows={Math.max(2, ((s[f.key] as string[]) ?? []).length + 1)} value={((s[f.key] as string[]) ?? []).join("\n")} onChange={e => patchSection(page, s.id, { [f.key]: e.target.value.split("\n") })} style={{ ...inputStyle, resize: "vertical" }} />}
-                    {f.kind === "layout" && (
-                      <select value={s.layout ?? "grid"} onChange={e => patchSection(page, s.id, { layout: e.target.value as "grid" | "stack" })} style={{ ...inputStyle, width: 220 }}>
-                        <option value="grid">Two per row</option>
-                        <option value="stack">One per row</option>
-                      </select>
-                    )}
-                    {f.kind === "videos" && <Videos videos={s.videos ?? []} onChange={videos => patchSection(page, s.id, { videos })} />}
-                  </Labeled>
-                ))}
-              </div>
-            </div>
-          ))}
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <select value="" onChange={e => { if (e.target.value) add(page, e.target.value as SectionType); }} style={{ ...inputStyle, width: 240 }}>
-              <option value="">+ Add a section…</option>
-              {(Object.keys(SECTION_INFO) as SectionType[]).filter(t => t !== "form" && SECTION_INFO[t].pages.includes(page)).map(t => (
-                <option key={t} value={t}>{SECTION_INFO[t].label}</option>
-              ))}
-            </select>
+
+        {/* The page */}
+        <div style={{ overflow: "auto", display: "flex", justifyContent: "center", padding: device === "mobile" ? "18px 0" : 0 }}>
+          <iframe ref={frame} key={frameUrl} src={frameUrl} title="Funnel preview"
+            style={{ border: device === "mobile" ? "1px solid rgba(0,0,0,0.15)" : "none", borderRadius: device === "mobile" ? 18 : 0, background: "#fff",
+              width: device === "mobile" ? 390 : "100%", height: device === "mobile" ? 780 : "100%", flexShrink: 0 }} />
+        </div>
+
+        {/* What it says / the AI */}
+        <div style={{ ...side, borderRight: "none", borderLeft: BORDER, display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+            <button style={pill(panel === "edit")} onClick={() => setPanel("edit")}>Edit</button>
+            <button style={pill(panel === "ai")} onClick={() => setPanel("ai")}>Ask AI</button>
           </div>
+
+          {panel === "edit" && !sel && <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.6 }}>Click any part of the page to change it. Put *asterisks* around words to highlight them.</p>}
+
+          {panel === "edit" && sel && (
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: INK }}>{SECTION_INFO[sel.type].label}</p>
+                {sel.type !== "form" && <button style={btn(false, true)} onClick={() => { setSections(sections.filter(s => s.id !== sel.id), true); setSelected(null); }}>Remove</button>}
+              </div>
+              {SECTION_INFO[sel.type].fields.map(f => (
+                <Labeled key={String(f.key)} label={f.label}>
+                  {f.kind === "text" && <input value={(sel[f.key] as string) ?? ""} onChange={e => patch(sel.id, { [f.key]: e.target.value })} style={inputStyle} />}
+                  {f.kind === "long" && <textarea rows={4} value={(sel[f.key] as string) ?? ""} onChange={e => patch(sel.id, { [f.key]: e.target.value })} style={{ ...inputStyle, resize: "vertical" }} />}
+                  {f.kind === "lines" && <textarea rows={Math.max(3, ((sel[f.key] as string[]) ?? []).length + 1)} value={((sel[f.key] as string[]) ?? []).join("\n")} onChange={e => patch(sel.id, { [f.key]: e.target.value.split("\n") })} style={{ ...inputStyle, resize: "vertical" }} />}
+                  {f.kind === "layout" && (
+                    <select value={sel.layout ?? "grid"} onChange={e => patch(sel.id, { layout: e.target.value as "grid" | "stack" })} style={inputStyle}>
+                      <option value="grid">Two per row</option>
+                      <option value="stack">One per row</option>
+                    </select>
+                  )}
+                  {f.kind === "videos" && <Videos videos={sel.videos ?? []} onChange={videos => patch(sel.id, { videos })} />}
+                </Labeled>
+              ))}
+              {SECTION_INFO[sel.type].fields.length === 0 && sel.type !== "form" && <p style={{ fontSize: 13, color: MUTED }}>Nothing to change here. You can move it or remove it.</p>}
+
+              {sel.type === "form" && (
+                <>
+                  <Labeled label="Show this step on the page">
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {FORM_STEPS.map(([n, label]) => <button key={n} style={pill(formStep === n)} onClick={() => setFormStep(n)}>{label}</button>)}
+                    </div>
+                  </Labeled>
+                  {FORM_FIELDS.map(f => (
+                    <Labeled key={f.key} label={f.label}>
+                      {f.kind === "long"
+                        ? <textarea rows={3} value={content.form[f.key]} onChange={e => setForm(f.key, e.target.value)} style={{ ...inputStyle, resize: "vertical" }} />
+                        : <input value={content.form[f.key]} onChange={e => setForm(f.key, e.target.value)} style={inputStyle} />}
+                    </Labeled>
+                  ))}
+                  <Labeled label="Revenue answers that end the form (they do not qualify)">
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {REVENUE_OPTIONS.map(o => (
+                        <label key={o} style={{ fontSize: 13, color: INK, display: "flex", gap: 6, alignItems: "center" }}>
+                          <input type="checkbox" checked={content.form.disqualify.includes(o)} onChange={e => setForm("disqualify", e.target.checked ? [...content.form.disqualify, o] : content.form.disqualify.filter(x => x !== o))} />
+                          {o}
+                        </label>
+                      ))}
+                    </div>
+                  </Labeled>
+                </>
+              )}
+            </div>
+          )}
+
+          {panel === "ai" && (
+            <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+              <div style={{ flex: 1, overflowY: "auto", display: "grid", gap: 8, alignContent: "start", marginBottom: 10 }}>
+                {chat.length === 0 && (
+                  <p style={{ fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
+                    Tell the AI what to change, in your own words. For example: “Make the headline about pay-per-sit and shorter”, “Add a text section under the form about how it works”, “Rewrite the questions to sound friendlier”.
+                    It changes this draft only. Use Undo if you don&apos;t like it.
+                  </p>
+                )}
+                {chat.map((m, i) => (
+                  <div key={i} style={{ justifySelf: m.role === "user" ? "end" : "start", maxWidth: "92%", background: m.role === "user" ? "#111" : "rgba(0,0,0,0.05)", color: m.role === "user" ? "#fff" : INK, borderRadius: 12, padding: "8px 11px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{m.text}</div>
+                ))}
+                {thinking && <div style={{ fontSize: 13, color: MUTED }}>Working on it…</div>}
+              </div>
+              <textarea value={ask} onChange={e => setAsk(e.target.value)} rows={3} placeholder="What should change?"
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askAi(); } }} style={{ ...inputStyle, resize: "none" }} />
+              <button disabled={thinking || !ask.trim()} style={{ ...btn(true), marginTop: 8, opacity: thinking || !ask.trim() ? 0.5 : 1 }} onClick={askAi}>Make the change</button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
