@@ -518,6 +518,7 @@ function Step({ item, cardId, busy, onTick, onValue }: {
             {busy ? "Saving…" : "Save"}
           </button>
         </div>
+        {item.auto === "ad_account" && !item.done && <p className="text-xs mt-1" style={{ paddingLeft: 28, color: "#949494" }}>Fills itself in once their account shows up on Facebook (checked three times a day). Paste it only if it doesn&apos;t.</p>}
         {item.note && <p className="text-xs mt-1" style={{ paddingLeft: 28, color: "#15803d" }}>{item.note}</p>}
       </li>
     );

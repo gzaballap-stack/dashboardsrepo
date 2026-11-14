@@ -4,6 +4,7 @@ import { cleanTemplate, isStage, isTrack, parseAdAccount, snapshot, steps, type 
 import { coveredSteps, createCard, ensureRoster, fillFromRoster, lookupAdAccount, readTemplates, tablesMissing } from './onboarding-server';
 import { cardLink, ensureStripeCustomer, readSurvey, submitSurvey, whoIs, type Outcome } from './client-survey-server';
 import { getCustomer, stripeStatus } from './stripe';
+import { linkAdAccounts } from './ad-account-link';
 
 // Onboarding board (Clients > Onboarding) — what /api/onboarding does, once the
 // caller is known. Rules in onboarding.ts, database helpers in onboarding-server.ts.
@@ -199,6 +200,14 @@ export async function onboardingPost(ctx: AuthContext, body: Record<string, unkn
       next = value ? { ...item, value, done: true, ...stamp } : { ...item, ...cleared, value: undefined };
     } else {
       next = body.done ? { ...item, done: true, ...stamp } : { ...item, ...cleared };
+    }
+
+    // Access just came through: look for their ad account now rather than at
+    // the next scheduled sync. fillFromRoster below ticks the step if it linked.
+    const accessIn = !item.auto && next.done && (item.id === 'fb_access' || /facebook access/i.test(item.label));
+    if (accessIn && card.client_id && card.items.some(i => i.auto === 'ad_account' && !i.done)) {
+      const found = await linkAdAccounts(service, { clientId: card.client_id, cards: false }).catch(() => null);
+      if (found?.linked.length) { patch.client_id = card.client_id; message = 'Ad account found on Facebook and linked — ad spend syncs on its own'; }
     }
 
     let items = card.items.map(i => i.id === item.id ? next : i);

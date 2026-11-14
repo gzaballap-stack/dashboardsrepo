@@ -143,7 +143,11 @@ export async function GET(req: Request) {
       .in('client_id', clientIds)
       .in('event_type', isB2b
         ? ['lead', 'appointment_booked', 'show', 'no_show', 'closed', 'visit_landing', 'visit_thankyou']
-        : ['lead', 'appointment_booked', 'show', 'no_show', 'closed']);
+        : ['lead', 'appointment_booked', 'show', 'no_show', 'closed'])
+      // This is an ads view: leads that came in by text (and the bookings that
+      // inherit that channel) are not what the spend bought. They live on the
+      // SMS side of the dashboard.
+      .or('ad_platform.is.null,ad_platform.neq.sms');
     if (start_date) evQuery = evQuery.gte('occurred_at', `${start_date}T00:00:00.000Z`);
     if (end_date)   evQuery = evQuery.lte('occurred_at', `${end_date}T23:59:59.999Z`);
 

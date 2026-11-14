@@ -1,3 +1,36 @@
+## 2026-11-14 — Ad spend sets itself up for a new client; Campaign Overview is ads-only
+
+**Why.** SAS Home Solutions went live 2026-10-28 and showed $0 ad spend until
+2026-11-11: the spend sync only reads clients with `clients.meta_account_id`,
+and the only ways to fill it were a database edit or pasting it on the
+Onboarding card. Nobody did. (Fixed by hand on 2026-11-11 — linked
+`act_1040858231640825`, backfilled Oct 28 →; the same day the sync stopped
+reading only Meta's first page of 25 ads.) Owner: "the setup is done
+automatically without having to tell you".
+
+- **`src/lib/ad-account-link.ts`** — `linkAdAccounts()` lists every ad account
+  our Meta token can see and matches it to roster clients with no account, by
+  name (`nameKey`: lowercase, `&`/`+` → and, drops "ad account", LLC, Inc…;
+  same name, or one is the start of the other and ≥ 8 characters; the account's
+  business name counts too). It links only a **one-to-one** match and only ever
+  fills an **empty** `meta_account_id`; SMS-only, offline and internal clients
+  are skipped. Dry-run against V1's 11 linked clients: 9 picked correctly, 0
+  wrong, 3 not found by name (those still need pasting on the card).
+- **Where it runs:** every scheduled spend sync (`cron/sync-spend`, 3× a day —
+  the response lists `auto_linked` / `waiting_for_account`); when the new client
+  survey is submitted (Facebook Ads or Both); when "Facebook access received"
+  is ticked on a card. It ticks the card's "Ad account ID" step itself.
+- **Late links lose nothing:** `missedSpendDays()` — a linked client with no
+  stored spend at all gets the days it already spent (from its first event or
+  roster date, 30 days at most), on the next scheduled sync. Covers a pasted
+  account too.
+- **Still by hand:** an account whose name on Facebook does not read like the
+  client's (e.g. "Do Your Bath") — paste it on the card. WRH Craft has no
+  account visible to our token yet.
+- **Campaign Overview** counted every lead and booking of a client, SMS
+  included (SAS, November: 29 leads = 9 ads + 20 SMS). It now leaves out
+  `ad_platform = sms`, like the Facebook Ads side of the dashboard.
+
 ## 2026-11-14 — A reschedule is not a new booking — main dashboard (on arrival)
 
 Owner: the main dashboard must not count a reschedule as a new booking either

@@ -9,6 +9,7 @@ import {
   billingEmail, cashOf, cleanAnswers, contactName, mainPhone, prepaidOf, priceOf, serviceOf, str, surveyProblem, tracksOf,
   type Answers,
 } from './client-survey';
+import { linkAdAccounts } from './ad-account-link';
 import { markClosedInGhl } from './ghl-close';
 import { snapshot, type Card } from './onboarding';
 import { coveredSteps, createCard, ensureRoster, ensureRosterFor, readTemplates, tablesMissing } from './onboarding-server';
@@ -208,6 +209,13 @@ export async function submitSurvey(ctx: AuthContext, body: Record<string, unknow
   const clientId = roster.client_id;
   const { data: rosterRow } = await service.from('clients').select('id, name, status, service').eq('id', clientId).maybeSingle();
 
+  // 1b. Facebook Ads: link their ad account now if Meta already shows it. If
+  //     access has not come through yet, the scheduled spend sync keeps looking
+  //     (three times a day) and links it then — nobody has to remember.
+  const autoLinked = wanted && wanted !== 'sms'
+    ? (await linkAdAccounts(service, { clientId, cards: false }).catch(() => null))?.linked[0] ?? null
+    : null;
+
   // 2. The answers themselves
   const { data: before } = await service.from('client_surveys').select('client_id').eq('client_id', clientId).maybeSingle();
   const by = await whoIs(ctx);
@@ -231,6 +239,7 @@ export async function submitSurvey(ctx: AuthContext, body: Record<string, unknow
   }
   // 4b. What they paid on signing: credits for the prepaid appointments, and the cash.
   const done: string[] = [];
+  if (autoLinked) done.push(`Facebook ad account found and linked (${autoLinked.account_name || autoLinked.account}) — ad spend syncs on its own`);
   const prepaid = await applyPrepaid(ctx, clientId, String(rosterRow?.name ?? name), a, price);
   done.push(...prepaid.done); warnings.push(...prepaid.warnings);
 
