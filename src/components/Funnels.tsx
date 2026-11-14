@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   FORM_FIELDS, REVENUE_OPTIONS, SECTION_INFO,
   type FunnelContent, type FunnelSection, type FunnelVideo, type SectionType,
@@ -457,8 +458,9 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
   const pill = (on: boolean): React.CSSProperties => ({ ...btn(on), borderRadius: 999 });
   const setForm = (key: string, value: unknown) => change({ ...content, form: { ...content.form, [key]: value } });
 
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#f1f1f2", display: "flex", flexDirection: "column" }}>
+  // Drawn over the whole window, above the dashboard's own menu.
+  return createPortal(
+    <div style={{ position: "fixed", inset: 0, zIndex: 100000, background: "#f1f1f2", display: "flex", flexDirection: "column" }}>
       <div style={{ height: 54, flexShrink: 0, background: CARD, borderBottom: BORDER, display: "flex", alignItems: "center", gap: 10, padding: "0 14px" }}>
         <button style={btn()} onClick={close}>← Back</button>
         <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Version {v.number}</span>
@@ -593,7 +595,8 @@ function Editor({ v, act, busy, previewUrl, onClose }: {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
