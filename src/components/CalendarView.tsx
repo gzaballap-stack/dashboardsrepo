@@ -17,7 +17,7 @@ type CalEvent = {
   feed: string | null;
 };
 
-type Feed = { id: string; label: string | null; error: string | null };
+type Feed = { id: string; label: string | null; error: string | null; calendar_id?: string | null };
 
 const PANEL = "#ffffff";
 const BORDER = "1px solid rgba(0,0,0,0.07)";
@@ -79,6 +79,7 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
   const [fuNote, setFuNote] = useState("");
   const [fuSaving, setFuSaving] = useState(false);
   const [fuMsg, setFuMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [showGcal, setShowGcal] = useState(false);
 
   const load = useCallback(async (d: string) => {
     try {
@@ -300,16 +301,39 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
             {fuMsg && <p style={{ fontSize: 11, lineHeight: 1.5, color: fuMsg.ok ? "#111111" : "#c0392b" }}>{fuMsg.text}</p>}
           </div>
         ) : (
-          <button
-            onClick={() => { setFuOpen(true); setFuDate(date); setFuMsg(null); }}
-            style={{
-              alignSelf: "flex-start", fontSize: 11, fontWeight: 700, padding: "6px 11px", borderRadius: 7, cursor: "pointer",
-              background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
-            }}
-          >
-            + Follow-up call
-          </button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={() => { setFuOpen(true); setFuDate(date); setFuMsg(null); }}
+              style={{
+                fontSize: 11, fontWeight: 700, padding: "6px 11px", borderRadius: 7, cursor: "pointer",
+                background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
+              }}
+            >
+              + Follow-up call
+            </button>
+            <button
+              onClick={() => setShowGcal(true)}
+              title="See your Google Calendar"
+              style={{
+                display: "flex", alignItems: "center", gap: 5,
+                fontSize: 11, fontWeight: 700, padding: "6px 11px", borderRadius: 7, cursor: "pointer",
+                background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
+              }}
+            >
+              <svg style={{ width: 12, height: 12 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Google Calendar
+            </button>
+          </div>
         )
+      )}
+
+      {showGcal && (
+        <GoogleCalendarPopup
+          calendarIds={feeds.map(f => f.calendar_id).filter((x): x is string => !!x)}
+          onClose={() => setShowGcal(false)}
+        />
       )}
 
       {!embedded && (<>
@@ -578,6 +602,84 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+
+/* ── Google Calendar itself, in a pop-up ──
+   Google's own embed. It shows the private calendar only to someone signed into
+   Google in this browser with access to it — which is the owner, on their own
+   machine. If the browser blocks it, the link opens the full calendar instead. */
+function GoogleCalendarPopup({ calendarIds, onClose }: { calendarIds: string[]; onClose: () => void }) {
+  const [mode, setMode] = useState<"WEEK" | "MONTH" | "AGENDA">("WEEK");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const params = new URLSearchParams({ ctz: tz, mode, showPrint: "0", showTitle: "0", showTz: "0", wkst: "2" });
+  calendarIds.forEach(id => params.append("src", id));
+  const src = `https://calendar.google.com/calendar/embed?${params.toString()}`;
+
+  const openFull = () => window.open(
+    "https://calendar.google.com/calendar/r/week",
+    "google-calendar",
+    "width=1280,height=860,noopener",
+  );
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: "#ffffff", borderRadius: 14, width: "100%", maxWidth: 1200, height: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.28)" }}
+      >
+        <div style={{ padding: "12px 16px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <p style={{ fontSize: 15, fontWeight: 800, color: "#111111", marginRight: "auto" }}>Google Calendar</p>
+          <div style={{ display: "flex", background: "rgba(0,0,0,0.054)", borderRadius: 8, padding: 2 }}>
+            {(["WEEK", "MONTH", "AGENDA"] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                style={{
+                  padding: "5px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                  background: mode === m ? "#000000" : "transparent", color: mode === m ? "#fff" : "#767676",
+                }}
+              >
+                {m === "WEEK" ? "Week" : m === "MONTH" ? "Month" : "Agenda"}
+              </button>
+            ))}
+          </div>
+          <button onClick={openFull} style={{ fontSize: 11, fontWeight: 700, color: "#767676", cursor: "pointer" }}>
+            Open full Google Calendar ↗
+          </button>
+          <button
+            onClick={onClose}
+            style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#949494", cursor: "pointer", background: "rgba(0,0,0,0.045)" }}
+          >
+            <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {calendarIds.length === 0 ? (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 30 }}>
+            <p style={{ fontSize: 12.5, color: "#767676", textAlign: "center", lineHeight: 1.6 }}>
+              Connect your calendar in the Calls panel first, or{" "}
+              <button onClick={openFull} style={{ fontWeight: 700, color: "#111111", cursor: "pointer", textDecoration: "underline" }}>open Google Calendar</button>.
+            </p>
+          </div>
+        ) : (
+          <iframe key={src} src={src} title="Google Calendar" style={{ flex: 1, width: "100%", border: 0 }} />
+        )}
+      </div>
     </div>
   );
 }

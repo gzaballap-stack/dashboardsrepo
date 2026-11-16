@@ -6,6 +6,18 @@ import { parseIcs } from '@/lib/ics';
 // is only ever read server-side and never sent back to the browser.
 const SAFE_COLS = 'id, label, created_at, last_error, last_synced';
 
+/**
+ * The calendar's own id (usually an email address) from its secret feed URL —
+ * .../calendar/ical/<id>/private-<key>/basic.ics. The id is not a secret: it is
+ * what Google's embed needs, and it opens nothing on its own. The key never
+ * leaves the server.
+ */
+function calendarIdOf(url: string): string | null {
+  const m = /\/calendar\/ical\/([^/]+)\//.exec(url);
+  if (!m) return null;
+  try { return decodeURIComponent(m[1]); } catch { return null; }
+}
+
 function normaliseUrl(raw: string): string | null {
   let url = raw.trim();
   if (!url) return null;
@@ -60,7 +72,7 @@ export async function GET(req: Request) {
     .eq('user_id', ctx.userId)));
 
   return NextResponse.json({
-    feeds: results.map(r => ({ id: r.feed.id, label: r.feed.label, error: r.error })),
+    feeds: results.map(r => ({ id: r.feed.id, label: r.feed.label, error: r.error, calendar_id: calendarIdOf(r.feed.url) })),
     events: results.flatMap(r => r.events).sort((a, b) => a.start.localeCompare(b.start)),
   });
 }
