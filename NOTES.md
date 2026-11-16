@@ -1,3 +1,58 @@
+## 2026-11-14 — When an appointment is for; weekly clients go by the day it happens
+
+Owner: until now only the day a lead **booked** was stored, never the day the
+appointment is **for**. He wants that stored, and weekly clients' Saturday list
+to be the appointments that **happened that week**, not the ones booked that
+week ("booked one week, happens the next → shows on next week's").
+
+- **Captured on arrival** (`src/lib/appointment-time.ts`, read in
+  `ghl-direct.ts` for `appointment_booked`): GHL's workflow webhook carries
+  `calendar.startTime` as a wall-clock time in `calendar.selectedTimezone`, no
+  offset. Custom Data `appointment_time` (+ `appointment_timezone`) wins if a
+  workflow sends it. Stored as `events.scheduled_at` (the instant, UTC) **and**
+  `raw.appointment_local` ("2026-11-20T14:00", the day and time where the
+  appointment is) — the local one decides which day/week it is on, so a
+  Saturday-evening appointment in the US is not pushed into Sunday by UTC or by
+  the timezone the dashboard is read in. `raw.ghl_calendar` keeps what GHL said
+  (times, timezone, ids, status — never notes or address) so the reading can be
+  checked against real bookings.
+  - ⚠️ **The field names come from GHL's documentation and a third-party mirror,
+    not from a real payload.** Nothing has been seen arrive yet. After the first
+    real booking: `select raw->'ghl_calendar', scheduled_at, raw->>'appointment_local'
+    from events where event_type = 'appointment_booked' order by occurred_at desc limit 3`.
+    If `ghl_calendar` is empty, GHL is not sending it: add Custom Data
+    `appointment_time` = the appointment start time to the booking workflow.
+  - No time sent → stored exactly as before (`scheduled_at` null).
+  - The 238 bookings already stored have no time and are not backfilled.
+- **Moved under the same GHL appointment** (same row): the new time replaces the
+  old, `raw._moved_from` / `_moves` remember it, the booked day does not change;
+  sent again with no time, the known one is kept. Billing's card says
+  "Rescheduled · was <day>". A lead booking again under a new id is unchanged
+  (`rescheduled` row), and now "Rescheduled **to** <day>" when it carries a time.
+- **Billing shows it**: cards read "For Nov 20, 2:00 PM · booked Nov 13", or
+  "Booked Nov 13" when no time is known. The API adds `appointment_day`,
+  `appointment_time`, `when_day` (the day it now stands on — its own, or the one
+  a reschedule moved it to), `when_fallback_at`, `moved_from_day`.
+- **Weekly clients tab** (Track today's appointments): an appointment is listed
+  in the week (Sunday → Saturday) **it happens**; one happening next week waits
+  until then; one from before still not tracked stays. **No time known → the
+  day it was booked stands in**, i.e. the old behaviour, so nothing changes for
+  existing bookings. `?view=recent` now also reads weekly clients' appointments
+  by `scheduled_at` (start of last week → `until`, the end of this week) —
+  whenever they were booked — and brings in the first booking of one that was
+  moved into the window. Daily clients, the client page and its period tabs
+  still go by the booked day.
+- **Reading the time out of `events.raw`** uses `raw->>appointment_local` in the
+  REST select. It could not be tried against V1 from the session (blocked), so
+  it is **probed once per server start** on one row; if the database refuses
+  it, Billing carries on without appointment times instead of failing
+  (`probeWhen`, a warning in the logs).
+- The 8 old double bookings were relabelled `rescheduled` on V1 today
+  (3 Mr Handy Plus, 3 Carpets By Conrad, 1 Greystone, 1 Legacy).
+- Tested on a simulated database (5 scenarios: reading GHL's time, storing it,
+  moves, the old no-time path, the weekly list) and a made-up-data preview. The
+  earlier test files were lost when the app restarted and were not re-run.
+
 ## 2026-11-14 — Title Case on buttons, labels and headings; typed names capitalised on screen
 
 Owner's request: capital first letters on buttons, names and headlines.
@@ -1956,6 +2011,25 @@ the team the scenarios live in is 875675.
 Append-only log of decisions and state that isn't obvious from the code or git
 history. Newest entries at the top. Read this before starting work; add to it
 when you make a call that a future session would otherwise have to re-derive.
+
+---
+
+## 2026-11-16 — Follow-up calls from the Calls panel go onto Google Calendar
+
+The Task Board's Calls panel has **+ Follow-up call** (name, date, time,
+length, optional guest email, note). It posts to `POST /api/calendar/event`,
+which calls the Apps Script bridge's new `create_event` action
+(`scripts/google-docs-bridge.gs`) — the event lands on the default calendar of
+the Google account the script runs as, titled `<Name> | Follow-up call`, and a
+guest gets Google's invite. The app still holds no Google credentials; the
+calendar feed stays read-only. That title shape is what the booking tool uses,
+so the non-negotiables strip picks the person's name out the same way, and a
+follow-up counts as a call there even with no guest or meeting link.
+
+**Needs the deployed script updated once** (paste the new `.gs`, Deploy →
+Manage deployments → edit → New version, which keeps the same /exec URL, and
+approve the Calendar permission). Until then the panel says the Google link
+needs its one-time update (the old script answers "unknown action").
 
 ---
 

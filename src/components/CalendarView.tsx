@@ -37,6 +37,7 @@ const time = (s: string) =>
 // parser drops them.
 function isCall(e: CalEvent): boolean {
   if (e.allDay) return false;
+  if (/\|\s*follow-up call\s*$/i.test(e.title)) return true;
   return e.attendees.length > 0 || !!e.meetUrl;
 }
 
@@ -67,6 +68,17 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
   const [addError, setAddError] = useState<string | null>(null);
   const [manage, setManage] = useState(false);
   const [callsOnly, setCallsOnly] = useState(false);
+
+  // Booking a follow-up call straight onto Google Calendar.
+  const [fuOpen, setFuOpen] = useState(false);
+  const [fuName, setFuName] = useState("");
+  const [fuDate, setFuDate] = useState("");
+  const [fuTime, setFuTime] = useState("10:00");
+  const [fuMinutes, setFuMinutes] = useState(30);
+  const [fuGuest, setFuGuest] = useState("");
+  const [fuNote, setFuNote] = useState("");
+  const [fuSaving, setFuSaving] = useState(false);
+  const [fuMsg, setFuMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(async (d: string) => {
     try {
@@ -120,6 +132,40 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
       };
     });
   }, [date]);
+
+  async function bookFollowUp() {
+    const name = fuName.trim();
+    const day = fuDate || date;
+    if (!name || !fuTime) return;
+    setFuSaving(true); setFuMsg(null);
+    const start = new Date(`${day}T${fuTime}:00`);
+    try {
+      const res = await fetch("/api/calendar/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, start: start.toISOString(), minutes: fuMinutes, guest: fuGuest, note: fuNote }),
+      });
+      const d = await res.json();
+      if (!res.ok || d.error) {
+        setFuMsg({ ok: false, text: d.error ?? "Could not add it to Google Calendar." });
+      } else {
+        // Show it straight away; Google's feed can take a few minutes to catch up.
+        if (day === date) {
+          setEvents(prev => [...prev, {
+            uid: d.id ?? `fu-${start.getTime()}`, title: `${name} | Follow-up call`, start: d.start, end: d.end,
+            allDay: false, location: null, description: fuNote || null, organizer: null,
+            attendees: fuGuest ? [fuGuest] : [], meetUrl: null, status: null, feed: null,
+          }].sort((a, b) => a.start.localeCompare(b.start)));
+        }
+        setFuMsg({ ok: true, text: `Added to Google Calendar${fuGuest ? " — invite sent" : ""}.` });
+        setFuName(""); setFuGuest(""); setFuNote("");
+        setTimeout(() => { setFuOpen(false); setFuMsg(null); }, 1600);
+      }
+    } catch {
+      setFuMsg({ ok: false, text: "Could not reach Google Calendar." });
+    }
+    setFuSaving(false);
+  }
 
   async function addFeed() {
     const url = newUrl.trim();
@@ -210,6 +256,60 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
             </button>
           )}
         </div>
+      )}
+
+      {embedded && (
+        fuOpen ? (
+          <div style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: "#949494" }}>NEW FOLLOW-UP CALL</p>
+            <input value={fuName} onChange={e => setFuName(e.target.value)} placeholder="Who with — e.g. Derick Garner" style={{ ...field, fontSize: 12 }} autoFocus />
+            <div style={{ display: "flex", gap: 6 }}>
+              <input type="date" value={fuDate || date} onChange={e => setFuDate(e.target.value)} style={{ ...field, fontSize: 11.5, flex: 1.3 }} />
+              <input type="time" value={fuTime} onChange={e => setFuTime(e.target.value)} style={{ ...field, fontSize: 11.5, flex: 1 }} />
+            </div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {[15, 30, 45, 60].map(m => (
+                <button
+                  key={m}
+                  onClick={() => setFuMinutes(m)}
+                  style={{
+                    flex: 1, height: 26, borderRadius: 6, fontSize: 10.5, fontWeight: 700, cursor: "pointer",
+                    background: fuMinutes === m ? "#111111" : "rgba(0,0,0,0.05)", color: fuMinutes === m ? "#ffffff" : "#767676",
+                  }}
+                >{m} min</button>
+              ))}
+            </div>
+            <input value={fuGuest} onChange={e => setFuGuest(e.target.value)} placeholder="Their email (optional — sends an invite)" style={{ ...field, fontSize: 11.5 }} />
+            <textarea value={fuNote} onChange={e => setFuNote(e.target.value)} placeholder="Note (optional)" rows={2} style={{ ...field, fontSize: 11.5, resize: "vertical" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                onClick={bookFollowUp}
+                disabled={fuSaving || !fuName.trim()}
+                style={{
+                  background: fuSaving || !fuName.trim() ? "rgba(0,0,0,0.15)" : "#000000", color: "#fff",
+                  fontSize: 11.5, fontWeight: 700, padding: "7px 14px", borderRadius: 7,
+                  cursor: fuSaving || !fuName.trim() ? "default" : "pointer",
+                }}
+              >
+                {fuSaving ? "Adding…" : "Add to Google Calendar"}
+              </button>
+              <button onClick={() => { setFuOpen(false); setFuMsg(null); }} style={{ fontSize: 11, fontWeight: 700, color: "#767676", cursor: "pointer" }}>
+                Cancel
+              </button>
+            </div>
+            {fuMsg && <p style={{ fontSize: 11, lineHeight: 1.5, color: fuMsg.ok ? "#111111" : "#c0392b" }}>{fuMsg.text}</p>}
+          </div>
+        ) : (
+          <button
+            onClick={() => { setFuOpen(true); setFuDate(date); setFuMsg(null); }}
+            style={{
+              alignSelf: "flex-start", fontSize: 11, fontWeight: 700, padding: "6px 11px", borderRadius: 7, cursor: "pointer",
+              background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
+            }}
+          >
+            + Follow-up call
+          </button>
+        )
       )}
 
       {!embedded && (<>

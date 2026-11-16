@@ -76,7 +76,7 @@ export async function POST(req: Request) {
   };
 
   const rows = events
-    .filter(e => !e.allDay && (othersOn(e).length > 0 || !!e.meetUrl))
+    .filter(e => !e.allDay && (othersOn(e).length > 0 || !!e.meetUrl || /\|\s*follow-up call\s*$/i.test(e.title)))
     .map(e => ({ e, day: localDay(e.start) }))
     .filter((x): x is { e: CalEvent; day: string } => !!x.day)
     .map(({ e, day }) => ({

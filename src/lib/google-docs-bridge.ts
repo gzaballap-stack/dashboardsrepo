@@ -28,6 +28,11 @@ async function call(body: Record<string, unknown>): Promise<BridgeResult> {
 export const createFromTemplate = (templateId: string, name: string, values: Record<string, string>) =>
   call({ action: 'create_from_template', templateId, name, values });
 
+/** Add an event to the calendar of the Google account the script runs as. */
+export const createCalendarEvent = (e: {
+  title: string; start: string; end: string; description?: string; location?: string; guests?: string;
+}) => call({ action: 'create_event', ...e });
+
 /** Replace literal text in an existing doc. */
 export const replaceText = (docId: string, replacements: { find: string; replace: string }[]) =>
   call({ action: 'replace_text', docId, replacements });

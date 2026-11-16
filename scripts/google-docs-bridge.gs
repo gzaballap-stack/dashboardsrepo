@@ -1,5 +1,5 @@
-// Google Apps Script — the app's bridge to Google Docs (replaces Make's Google
-// Docs modules). Paste into a new project at script.google.com, set TOKEN to the
+// Google Apps Script — the app's bridge to Google Docs and Google Calendar
+// (replaces Make's Google Docs modules; adds follow-up calls to the calendar). Paste into a new project at script.google.com, set TOKEN to the
 // DIRECT_WEBHOOK_TOKEN value, then Deploy → New deployment → Web app,
 // Execute as: Me, Who has access: Anyone. Put the /exec URL in Railway as
 // GOOGLE_DOCS_SCRIPT_URL. See src/lib/google-docs-bridge.ts.
@@ -26,6 +26,16 @@ function doPost(e) {
         if (r.find) body.replaceText(escapeRe(r.find), String(r.replace == null ? '' : r.replace));
       });
       return out({ ok: true, replaced: (req.replacements || []).length });
+    }
+    if (req.action === 'create_event') {
+      // A follow-up call booked from the Task Board's Calls panel. Lands on the
+      // calendar of the account this script runs as; a guest gets Google's invite.
+      const opts = { description: req.description || '' };
+      if (req.location) opts.location = req.location;
+      if (req.guests) { opts.guests = req.guests; opts.sendInvites = true; }
+      const ev = CalendarApp.getDefaultCalendar()
+        .createEvent(req.title || 'Follow-up call', new Date(req.start), new Date(req.end), opts);
+      return out({ ok: true, id: ev.getId() });
     }
     return out({ ok: false, error: 'unknown action' });
   } catch (err) {
