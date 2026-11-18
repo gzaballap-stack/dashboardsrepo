@@ -174,7 +174,20 @@ export async function POST(req: Request) {
         // first booked, and stays a reschedule if that is what it is.
         eventData.occurred_at = arriving.first_booked_at;
         if (arriving.event_type === RESCHEDULED) eventData.event_type = RESCHEDULED;
-        eventData.raw = { ...payload, _rebooked: arriving.times, _last_sent_at: new Date().toISOString() };
+        // A different time than the one stored = the appointment was moved:
+        // the new time replaces it, and what it was is kept.
+        const was = arriving.prev_scheduled_at ? new Date(arriving.prev_scheduled_at).getTime() : null;
+        const is = eventData.scheduled_at ? new Date(eventData.scheduled_at).getTime() : null;
+        const movedNow = was !== null && is !== null && was !== is;
+        const kept: Record<string, unknown> = movedNow
+          ? { _moved_from: arriving.prev_local ?? arriving.prev_scheduled_at, _moves: arriving.prev_moves + 1 }
+          : arriving.prev_moved_from ? { _moved_from: arriving.prev_moved_from, _moves: arriving.prev_moves } : {};
+        // Sent again with no time: the one already known is not lost.
+        if (is === null && arriving.prev_scheduled_at) {
+          eventData.scheduled_at = arriving.prev_scheduled_at;
+          if (arriving.prev_local) kept.appointment_local = arriving.prev_local;
+        }
+        eventData.raw = { ...payload, _rebooked: arriving.times, _last_sent_at: new Date().toISOString(), ...kept };
       } else if (arriving.kind === 'rescheduled') {
         eventData.event_type = RESCHEDULED;
         eventData.raw = { ...payload, _reschedule_of: arriving.original_id };

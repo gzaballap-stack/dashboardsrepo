@@ -31,7 +31,9 @@ const BOOKING_TYPES = ['appointment_booked', 'show', 'no_show', RESCHEDULED];
 export type ArrivingBooking =
   | { kind: 'new' }
   /** Already stored under this appointment id: keep its first booked date and what it is. */
-  | { kind: 'same'; first_booked_at: string; event_type: string; times: number }
+  | { kind: 'same'; first_booked_at: string; event_type: string; times: number;
+      /** What was stored before this arrival: its time, and whether it had already been moved. */
+      prev_scheduled_at: string | null; prev_local: string | null; prev_moved_from: string | null; prev_moves: number }
   /** The lead already has a booking with this client: this one is it, moved. */
   | { kind: 'rescheduled'; original_id: string; original_booked_at: string };
 
@@ -40,11 +42,15 @@ export async function classifyBooking(service: Service, b: {
 }): Promise<ArrivingBooking> {
   if (b.external_id) {
     const { data } = await service.from('events')
-      .select('id, client_id, event_type, occurred_at, raw')
+      .select('id, client_id, event_type, occurred_at, scheduled_at, raw')
       .eq('external_id', b.external_id).limit(1);
     const row = data?.[0];
     if (row && row.client_id === b.client_id && BOOKING_TYPES.includes(row.event_type)) {
-      return { kind: 'same', first_booked_at: row.occurred_at, event_type: row.event_type, times: (Number(row.raw?._rebooked) || 0) + 1 };
+      return {
+        kind: 'same', first_booked_at: row.occurred_at, event_type: row.event_type, times: (Number(row.raw?._rebooked) || 0) + 1,
+        prev_scheduled_at: row.scheduled_at ?? null, prev_local: row.raw?.appointment_local ?? null,
+        prev_moved_from: row.raw?._moved_from ?? null, prev_moves: Number(row.raw?._moves) || 0,
+      };
     }
     if (row) return { kind: 'new' };      // that id belongs to something else: leave it to the write as before
   }

@@ -13,11 +13,28 @@ function extractCustomField(fields: GHLCustomField[] | undefined, key: string): 
   return fields?.find(f => f.key === key)?.value?.trim() ?? '';
 }
 
-function parseZipList(raw: string): string[] {
-  return raw
-    .split(/[\n,\s]+/)
-    .map(z => z.replace(/\D/g, '').slice(0, 5))
-    .filter(z => /^\d{5}$/.test(z));
+// The Zip Tool loads a pasted list in one request, capped at this many zips.
+const MAX_LIST_ZIPS = 600;
+
+function parseZipList(raw: unknown): string[] {
+  return [...new Set(
+    String(raw ?? '')
+      .split(/[\n,;\s]+/)
+      .map(z => z.replace(/\D/g, '').slice(0, 5))
+      .filter(z => /^\d{5}$/.test(z))
+  )].slice(0, MAX_LIST_ZIPS);
+}
+
+// GHL sends a contact field under its label ("Zip Code List"), a workflow's
+// custom data under whatever it was typed as. Take the first non-empty value
+// whose key reads like the one wanted, whichever name it came under.
+function valueLike(sources: Record<string, unknown>[], pattern: RegExp): string {
+  for (const src of sources) {
+    for (const [k, v] of Object.entries(src)) {
+      if (pattern.test(k) && typeof v !== 'object' && String(v ?? '').trim()) return String(v);
+    }
+  }
+  return '';
 }
 
 // The last few onboarding payloads, shape only — readable via GET with the admin
@@ -122,11 +139,15 @@ export async function POST(req: Request) {
   // ── Determine scenario ────────────────────────────────────────────────────
 
   // Scenario 3: explicit zip list (multi-line field)
-  const rawList = body.zip_code_list ?? extractCustomField(customFields, 'zip_code_list');
+  const rawList =
+    body.zip_code_list || extractCustomField(customFields, 'zip_code_list') ||
+    valueLike([customData, body], /zip.*list|list.*zip/i);
   const zipList = parseZipList(rawList);
 
   // Scenario 2: two zips (comma/space separated)
-  const rawTargeted = body.zip_code_targeted ?? extractCustomField(customFields, 'zip_code_targeted');
+  const rawTargeted =
+    body.zip_code_targeted || extractCustomField(customFields, 'zip_code_targeted') ||
+    valueLike([customData, body], /zip.*(targeted|multiple)/i);
   const targetedZips = parseZipList(rawTargeted);
 
   // Scenario 1: single postal code
@@ -146,7 +167,20 @@ export async function POST(req: Request) {
   if (zipList.length > 0) {
     // Scenario 3 — explicit list, no radius lookup needed
     allZips = zipList;
-    // No pins — territory is defined by the explicit list itself
+    // The list itself is the territory: a "Zip List" pin with no circle, carrying
+    // its zips, which the Zip Tool draws polygon by polygon. Its position is only
+    // nominal — nothing is drawn at it — so one lookup on the first zip is enough.
+    const anchor = await geocodeZip(zipList[0]).catch(() => null);
+    pins = [{
+      id: 'ziplist-1',
+      lat: anchor?.lat ?? 39,
+      lng: anchor?.lng ?? -98,
+      label: 'Zip List',
+      radius: 0,
+      type: 'include' as const,
+      color: PIN_COLOR,
+      zips: zipList,
+    }];
 
   } else if (targetedZips.length > 0) {
     // Scenario 2 — one or two center zips + radius

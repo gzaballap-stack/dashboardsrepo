@@ -252,6 +252,8 @@ export type Booking = {
   /** appointment_booked | show | no_show */
   type?: string | null;
   contact_id?: string | null; phone?: string | null; scheduled_at?: string | null;
+  /** The day the appointment is on, where it is ("2026-11-20"); null = not known. */
+  day?: string | null;
 };
 
 /** The same lead at the same client: their GHL contact, else their phone. */
@@ -270,7 +272,7 @@ export type Reschedules = {
   /** appointment → how it went, from the show / no-show row posted after it */
   outcome: Map<string, string>;
   /** appointment → its latest reschedule, and how many there were */
-  latest: Map<string, { booked_at: string; scheduled_at: string | null; count: number }>;
+  latest: Map<string, { booked_at: string; scheduled_at: string | null; day: string | null; count: number }>;
 };
 
 export function findReschedules(
@@ -306,7 +308,7 @@ export function findReschedules(
         const closed = (row?.cancelled_at ?? row?.credited_at) as string | null | undefined;
         if (!closed || time(b.at) <= time(closed)) {
           of.set(b.id, original); kind.set(b.id, 'reschedule');
-          latest.set(original.id, { booked_at: b.at, scheduled_at: b.scheduled_at ?? null, count: (latest.get(original.id)?.count ?? 0) + 1 });
+          latest.set(original.id, { booked_at: b.at, scheduled_at: b.scheduled_at ?? null, day: b.day ?? null, count: (latest.get(original.id)?.count ?? 0) + 1 });
           continue;
         }
       }

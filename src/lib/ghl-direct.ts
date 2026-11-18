@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { mapGhlAttribution } from './ghl-attribution';
+import { parseAppointmentTime } from './appointment-time';
 
 // GHL workflows post straight to the app (no Make). GHL's Webhook action sends
 // its standard contact payload — flat contact fields (contact_id, first_name,
@@ -113,7 +114,26 @@ export function clientEvent(event: (typeof CLIENT_EVENTS)[number], p: GhlPayload
     ...attribution(p),
   };
   if (event === 'lead') body.occurred_at = when(str(p.date_created));
-  if (event === 'appointment_booked') body.external_id = orNull(field(p, 'appointment_id'));
+  if (event === 'appointment_booked') {
+    body.external_id = orNull(field(p, 'appointment_id'));
+    // When the appointment is for (lib/appointment-time): Custom Data if the
+    // workflow sends it, else what GHL puts under `calendar` on its own.
+    const cal = (p.calendar && typeof p.calendar === 'object' ? p.calendar : {}) as Record<string, unknown>;
+    const time = parseAppointmentTime(
+      field(p, 'appointment_time', 'Appointment Time', 'appointment_start', 'start_time') || cal.startTime,
+      field(p, 'appointment_timezone', 'Appointment Timezone') || cal.selectedTimezone || p.timezone,
+    );
+    if (time) {
+      body.scheduled_at = time.at;
+      body.appointment_local = time.local;
+      if (time.tz) body.appointment_tz = time.tz;
+    }
+    const calendarName = str(cal.calendarName);
+    if (calendarName) body.calendar_name = calendarName;
+    // What GHL said about the appointment, as it said it — so the reading above can be checked against real bookings.
+    const said = Object.fromEntries(['startTime', 'endTime', 'selectedTimezone', 'appointmentId', 'status', 'appoinmentStatus'].filter(k => cal[k] != null).map(k => [k, cal[k]]));
+    if (Object.keys(said).length) body.ghl_calendar = said;
+  }
   if (event === 'dial') {
     const secs = Number(field(p, 'Call Duration', 'call_duration')) || 0;
     body.occurred_at = when(field(p, 'Phone Call Start Time', 'phone_call_start_time'));

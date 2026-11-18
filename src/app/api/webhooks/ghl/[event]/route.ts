@@ -28,6 +28,7 @@ import { POST as salesCallGoals } from '@/app/api/admin/sales-call-goals/route';
 
 const TERRITORY_TEMPLATE = '1vS4eekVHI2ULhezVGheiCQBJxihqHOctg0kSZmZ3pkE';
 const DOC_URL_FIELD = '2iC8q2ndjpWgGd9uqKAl'; // Tomsi contact field "Custom Area Breakdown URL"
+const WORST_ZIP_FIELD = 'IDHQJygUStdKoWv49G4W'; // Tomsi contact field "Worst Performing Zip Code"
 
 type Handler = (req: Request) => Promise<Response>;
 
@@ -57,24 +58,29 @@ async function territory(req: Request, p: GhlPayload) {
   const radius = field(p, 'targeting_radius', 'Targeting Radius', 'radius');
   const res = await forward(req, onboard, '/api/admin/onboard', {
     contact_name: name, company_name: field(p, 'company_name'),
-    zip_code: field(p, 'postal_code'), zip_code_targeted: field(p, 'zip_code_targeted'),
-    zip_code_list: field(p, 'zip_code_list'), radius_miles: radius, targeting_radius: radius,
+    zip_code: field(p, 'postal_code'),
+    zip_code_targeted: field(p, 'zip_code_targeted', 'Zip Codes (Multiple) Targeted'),
+    zip_code_list: field(p, 'zip_code_list', 'Zip Code List'),
+    radius_miles: radius, targeting_radius: radius,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return NextResponse.json(data, { status: res.status });
 
   const contactId = field(p, 'contact_id');
   const zipWritten = data.worst_zip
-    ? await ghlUpdateContact(contactId, [{ key: 'worst_performing_zip_code', field_value: String(data.worst_zip) }])
+    ? await ghlUpdateContact(contactId, [{ id: WORST_ZIP_FIELD, field_value: String(data.worst_zip) }])
     : false;
 
-  let doc: { id?: string; error?: string } = {};
+  let doc: { id?: string; error?: string; linked?: boolean } = {};
   if (data.doc) {
     const { title, company, ...rest } = data.doc as Record<string, string>;
     const made = await createFromTemplate(TERRITORY_TEMPLATE, title ?? name, { ...rest, 'contact.company_name': company ?? '' });
     doc = made.ok ? { id: made.id } : { error: made.error };
     if (made.ok && made.id) {
-      await ghlUpdateContact(contactId, [{ id: DOC_URL_FIELD, field_value: `https://docs.google.com/document/d/${made.id}/edit` }]);
+      doc.linked = await ghlUpdateContact(contactId, [{ id: DOC_URL_FIELD, field_value: `https://docs.google.com/document/d/${made.id}/edit` }]);
+      // The doc existing but its link not reaching the contact used to pass
+      // unnoticed for days; say so.
+      if (!doc.linked) console.warn('[webhooks/ghl] territory doc made but not linked on the contact', JSON.stringify({ contactId, doc: made.id }));
     }
   }
   if (doc.error) console.warn('[webhooks/ghl] territory doc failed', doc.error);
@@ -122,8 +128,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ event: 
   if (!validateDirectToken(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { event } = await params;
 
+  // A multi-line contact field (the zip list) relayed inside a JSON string arrives
+  // with raw line breaks, which strict JSON refuses. They can only sit inside a
+  // value, so flattening them to spaces is safe — tried only when the body fails.
   let p: GhlPayload;
-  try { p = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  const text = await req.text();
+  try { p = JSON.parse(text); } catch {
+    try { p = JSON.parse(text.replace(/[\u0000-\u001f]+/g, ' ')); }
+    catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  }
 
   if ((CLIENT_EVENTS as readonly string[]).includes(event)) {
     return forward(req, clientWebhook, '/api/webhooks', clientEvent(event as (typeof CLIENT_EVENTS)[number], p));

@@ -77,6 +77,14 @@ type Appointment = {
   rescheduled_to?: string | null;
   rescheduled_on?: string | null;
   reschedules?: number;
+  /** The day (and time) the appointment is for, where it is — null when GHL sent no time. */
+  appointment_day?: string | null;
+  appointment_time?: string | null;
+  /** The day it now stands on: its own, or the one a reschedule moved it to. */
+  when_day?: string | null;
+  when_fallback_at?: string | null;
+  /** Moved under the same GHL appointment: the day it was on before. */
+  moved_from_day?: string | null;
   billing: ApptBilling | null;
 };
 
@@ -84,6 +92,8 @@ type Appointment = {
  *  own, but it is that appointment's outcome (already on its card), so no
  *  screen lists it. */
 const isOutcomeRow = (a: Appointment) => !a.billing && a.reschedule_of?.kind === "outcome";
+/** The day an appointment happens. Where no time is known for it, the day it was booked stands in. */
+const whenDay = (a: Appointment) => a.when_day ?? ymd(new Date(a.when_fallback_at ?? a.booked_at));
 /** A lead's reschedule that nobody has billed in its own right: nothing to decide. */
 const isReschedule = (a: Appointment) => !a.billing && !!a.reschedule_of;
 /** Still waiting for someone to bill it, credit it or mark it not billed. */
@@ -163,11 +173,19 @@ const cents = (n: number) => Math.round(n * 100);
 
 function day(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const d = new Date(iso);
+  // A plain day ("2026-11-20") is that day wherever it is read — never shifted by this computer's timezone.
+  const plain = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const d = plain ? new Date(Number(plain[1]), Number(plain[2]) - 1, Number(plain[3])) : new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   const sameYear = d.getFullYear() === new Date().getFullYear();
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(sameYear ? {} : { year: "numeric" }) });
 }
+
+/** "14:00" → "2:00 PM" */
+const clock = (hhmm: string) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+};
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -936,9 +954,15 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 14, fontWeight: 700, color: undecided ? INK : "#4a4a4a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.lead_name ?? "No name"}</p>
           <p style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-            {day(a.scheduled_at ?? a.booked_at)}
-            {a.scheduled_at && <span style={{ color: FAINT }}> · booked {day(a.booked_at)}</span>}
+            {a.appointment_day
+              ? (<>{`For ${day(a.appointment_day)}${a.appointment_time ? `, ${clock(a.appointment_time)}` : ""}`}<span style={{ color: FAINT }}> · booked {day(a.booked_at)}</span></>)
+              : `Booked ${day(a.booked_at)}`}
           </p>
+          {!a.rescheduled_to && !a.rescheduled_on && a.moved_from_day && (
+            <p style={{ fontSize: 12, fontWeight: 600, color: FREE, marginTop: 2 }} title="Moved in GHL. Still the same appointment — not a new one.">
+              {`Rescheduled · was ${day(a.moved_from_day)}`}
+            </p>
+          )}
           {(a.rescheduled_to || a.rescheduled_on) && (
             <p style={{ fontSize: 12, fontWeight: 600, color: FREE, marginTop: 2 }}
               title="The same lead booked again. It is this appointment, moved — not a new one, and not billed again.">
@@ -1007,7 +1031,7 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
   useEffect(() => {
     let live = true;
     api(`/api/billing${// Back to the start of last week, for weekly clients' bookings still waiting.
-    query({ view: "recent", from: startOfWeek(1).toISOString(), to: new Date().toISOString() })}`)
+    query({ view: "recent", from: startOfWeek(1).toISOString(), to: new Date().toISOString(), until: startOfWeek(-1).toISOString() })}`)
       .then(data => {
         if (!live) return;
         setRows((data.appointments ?? []).filter((a: RecentAppt) => !isOutcomeRow(a)).map((a: RecentAppt) => ({
@@ -1045,11 +1069,19 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
   const bill = (clientId: string, eventIds: string[]) => withClient(clientId, detail => setCharging({ detail, eventIds }));
 
   const today0 = startOfDay(0).getTime(), yesterday0 = startOfDay(1).getTime(), sevenDays0 = startOfDay(6).getTime();
-  const week0 = startOfWeek().getTime();
+  // The billing week, as days: Sunday to Saturday.
+  const weekFirst = ymd(startOfWeek()), weekLast = ymd(new Date(startOfWeek(-1).getTime() - 43_200_000));
   const inSpan = (a: RecentAppt, which: RecentSpan) => {
     const t = new Date(a.booked_at).getTime();
     // Weekly clients: this week's bookings, plus any from last week still waiting.
-    if (which === "weekly") return a.weekly && (t >= week0 || pending(a));
+    // Weekly clients go by the day the appointment HAPPENS, not the day it was
+    // booked: this week's, plus any from before still waiting. One booked this
+    // week for next week is not here until next week.
+    if (which === "weekly") {
+      if (!a.weekly) return false;
+      const d = whenDay(a);
+      return (d >= weekFirst && d <= weekLast) || (d < weekFirst && pending(a));
+    }
     if (a.weekly) return false;
     return which === "today" ? t >= today0 : which === "yesterday" ? t >= yesterday0 && t < today0 : t >= sevenDays0;
   };
@@ -1059,7 +1091,7 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
   const hasWeekly = all.some(a => a.weekly);
   const weeklyCount = all.filter(a => inSpan(a, "weekly")).length;
   // Weekly clients are due on Saturday — and stay due while last week's are still waiting.
-  const late = all.filter(a => a.weekly && pending(a) && new Date(a.booked_at).getTime() < week0).length;
+  const late = all.filter(a => a.weekly && pending(a) && whenDay(a) < weekFirst).length;
   const due = openWeekly > 0 && (new Date().getDay() === 6 || late > 0);
   // Opens on today; on the day the week is due, with today's already done, on the week.
   const span: RecentSpan = pickedSpan ?? (due && openToday === 0 ? "weekly" : "today");
@@ -1097,7 +1129,7 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
           {hasWeekly && (
             <p style={{ fontSize: 12, color: due ? WARN : MUTED, marginTop: 2 }}>
               {due ? `Weekly clients: ${plural(openWeekly, "appointment")} to track${late > 0 ? ` (${late} from last week)` : " — it's Saturday"}.`
-                : `Weekly clients: ${plural(weeklyCount, "appointment")} this week — tracked together on Saturday, not here each day.`}
+                : `Weekly clients: ${plural(weeklyCount, "appointment")} happening this week — tracked together on Saturday, not here each day.`}
             </p>
           )}
         </div>
