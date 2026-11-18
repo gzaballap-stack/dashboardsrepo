@@ -34,14 +34,18 @@ async function call(body: Record<string, unknown>) {
 const readStatus = (clientId?: string): Promise<Status> =>
   fetch(`/api/card-vault${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ""}`, { cache: "no-store" }).then(r => r.json());
 
-/** Whether a card can be saved here: storage on, and the vault password set. */
-export function useCardVault(): { on: boolean; waiting: boolean; checked: boolean } {
-  const [state, setState] = useState({ on: false, waiting: false, checked: false });
+/**
+ * Whether a card can be saved here: storage on, and the vault password set.
+ * `waiting` = on but no vault password yet; `admin` = this person may set it.
+ */
+export function useCardVault(): { on: boolean; waiting: boolean; admin: boolean; checked: boolean; refresh: () => void } {
+  const [state, setState] = useState({ on: false, waiting: false, admin: false, checked: false });
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    readStatus().then(d => setState({ on: !!d.enabled && !!d.ready && !!d.setup, waiting: !!d.enabled && !!d.ready && !d.setup, checked: true }))
-      .catch(() => setState({ on: false, waiting: false, checked: true }));
-  }, []);
-  return state;
+    readStatus().then(d => setState({ on: !!d.enabled && !!d.ready && !!d.setup, waiting: !!d.enabled && !!d.ready && !d.setup, admin: !!d.can_reveal, checked: true }))
+      .catch(() => setState({ on: false, waiting: false, admin: false, checked: true }));
+  }, [tick]);
+  return { ...state, refresh: () => setTick(n => n + 1) };
 }
 
 /** Lock a card in this browser and save it for a client. */
@@ -105,14 +109,70 @@ function Secret({ id, label, value, onChange, autoFocus = false }: { id: string;
   );
 }
 
-type Mode = "idle" | "add" | "ask" | "confirm-delete" | "setup" | "change";
+/**
+ * Choosing the vault password, once. Shown to admins wherever a card would be
+ * saved — the survey and the onboarding card — until it has been set. Not a
+ * <form> on purpose: it sits inside the survey's own form.
+ */
+export function VaultSetup({ onDone, idPrefix = "vault-setup" }: { onDone: () => void; idPrefix?: string }) {
+  const [open, setOpen] = useState(false);
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const [agreed, setAgreed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ready = !busy && agreed && !!next;
+
+  async function submit() {
+    if (!ready) return;
+    const problem = passwordProblem(next, again);
+    if (problem) { setError(problem); return; }
+    setBusy(true); setError(null);
+    try {
+      const r = await call({ action: "setup", ...(await createVault(next)) });
+      if (r.error) setError(r.error);
+      else { setNext(""); setAgain(""); onDone(); }
+    } catch (e) { setError(e instanceof Error ? e.message : "This browser could not set up the vault"); }
+    setBusy(false);
+  }
+  const onEnter = (e: React.KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); submit(); } };
+
+  if (!open) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-xs" style={{ color: "#4a4a4a" }}>Set a vault password before any card can be saved.</span>
+        <button type="button" className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff" }} onClick={() => setOpen(true)}>Set Vault Password</button>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3" onKeyDown={onEnter}>
+      <p className="text-xs" style={{ color: "#4a4a4a" }}>
+        This password opens every stored card. It is not saved anywhere — not in the dashboard, not by anyone who works on it.
+        <span className="font-semibold" style={{ color: "#b91c1c" }}> If it is forgotten, the stored cards are gone for good.</span> Write it down somewhere safe.
+      </p>
+      <Secret id={`${idPrefix}-new`} label="Vault Password (12 characters or more)" value={next} onChange={v => { setError(null); setNext(v); }} autoFocus />
+      <Secret id={`${idPrefix}-again`} label="Type It Again" value={again} onChange={v => { setError(null); setAgain(v); }} />
+      <label className="flex items-start gap-2 text-xs" style={{ color: "#4a4a4a" }}>
+        <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5" />
+        I have written it down, and I understand it cannot be recovered.
+      </label>
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={() => { setOpen(false); setNext(""); setAgain(""); setAgreed(false); setError(null); }}>Cancel</button>
+        <button type="button" disabled={!ready} onClick={submit} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: ready ? 1 : 0.4 }}>{busy ? "Setting Up…" : "Set Vault Password"}</button>
+      </div>
+      {error && <p className="text-xs" style={{ color: "#b91c1c" }}>{error}</p>}
+    </div>
+  );
+}
+
+type Mode = "idle" | "add" | "ask" | "confirm-delete" | "change";
 
 export default function CardVaultPanel({ clientId }: { clientId: string }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [mode, setMode] = useState<Mode>("idle");
   const [draft, setDraft] = useState<CardInput>(EMPTY_CARD);
   const [pw, setPw] = useState({ current: "", next: "", again: "" });
-  const [agreed, setAgreed] = useState(false);
   const [shown, setShown] = useState<CardInput | null>(null);
   const [left, setLeft] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -135,21 +195,9 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
     return () => clearInterval(t);
   }, [shown]);
 
-  const reset = () => { setMode("idle"); setDraft(EMPTY_CARD); setPw({ current: "", next: "", again: "" }); setAgreed(false); setError(null); };
+  const reset = () => { setMode("idle"); setDraft(EMPTY_CARD); setPw({ current: "", next: "", again: "" }); setError(null); };
   const go = (m: Mode) => { setError(null); setNotice(null); setMode(m); };
   const fail = (e: unknown, fallback: string) => setError(e instanceof Error ? e.message : fallback);
-
-  async function setup() {
-    const problem = passwordProblem(pw.next, pw.again);
-    if (problem) { setError(problem); return; }
-    setBusy(true); setError(null);
-    try {
-      const r = await call({ action: "setup", ...(await createVault(pw.next)) });
-      if (r.error) setError(r.error);
-      else { reset(); setNotice("Vault password set. Cards can be saved now."); setReloads(n => n + 1); }
-    } catch (e) { fail(e, "This browser could not set up the vault"); }
-    setBusy(false);
-  }
 
   async function change() {
     const problem = passwordProblem(pw.next, pw.again);
@@ -222,28 +270,8 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
         <div className="rounded-xl mt-1.5 px-3 py-3" style={{ background: "#fafafa", border: BORDER }}>
           {!status.can_reveal ? (
             <p className="text-xs" style={{ color: "#4a4a4a" }}>Cards can be saved once an admin has set the vault password.</p>
-          ) : mode !== "setup" ? (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs" style={{ color: "#4a4a4a" }}>Set a vault password before any card can be saved.</span>
-              <button type="button" className={btn} style={black} onClick={() => go("setup")}>Set Vault Password</button>
-            </div>
           ) : (
-            <form className="space-y-3" onSubmit={e => { e.preventDefault(); setup(); }}>
-              <p className="text-xs" style={{ color: "#4a4a4a" }}>
-                This password opens every stored card. It is not saved anywhere — not in the dashboard, not by anyone who works on it.
-                <span className="font-semibold" style={{ color: "#b91c1c" }}> If it is forgotten, the stored cards are gone for good.</span> Write it down somewhere safe.
-              </p>
-              <Secret id={`vault-new-${uid}`} label="Vault Password (12 characters or more)" value={pw.next} onChange={v => { setError(null); setPw(p => ({ ...p, next: v })); }} autoFocus />
-              <Secret id={`vault-again-${uid}`} label="Type It Again" value={pw.again} onChange={v => { setError(null); setPw(p => ({ ...p, again: v })); }} />
-              <label className="flex items-start gap-2 text-xs" style={{ color: "#4a4a4a" }}>
-                <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5" />
-                I have written it down, and I understand it cannot be recovered.
-              </label>
-              <div className="flex items-center justify-end gap-2">
-                <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
-                <button type="submit" disabled={busy || !agreed || !pw.next} className={btn} style={{ ...black, opacity: busy || !agreed || !pw.next ? 0.4 : 1 }}>{busy ? "Setting Up…" : "Set Vault Password"}</button>
-              </div>
-            </form>
+            <VaultSetup idPrefix={`vault-setup-${uid}`} onDone={() => { setNotice("Vault password set. Cards can be saved now."); setReloads(n => n + 1); }} />
           )}
           {error && <p className="text-xs mt-2" style={{ color: "#b91c1c" }}>{error}</p>}
         </div>

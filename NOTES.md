@@ -118,8 +118,11 @@ and who may do what.
   each logged as "Opened" whether or not the password then worked), delete.
   The dashboard-password prompt and its 5-tries lockout from the first build
   are gone — the vault password replaces them.
-- Until the vault password is set nothing can be saved: the card panel shows
-  "Set vault password" to admins, and the survey says storage is waiting.
+- Until the vault password is set nothing can be saved. Admins get **Set Vault
+  Password** wherever a card would go — the survey's Card on File section and
+  the onboarding card (`VaultSetup`; since 2026-11-18, after the owner found the
+  survey only told him to go elsewhere). Everyone else is told it is waiting.
+  Saving a card never asks for a password; only opening one does.
 - **Schema:** `card_vault_keys` (one row) + two new log actions, in
   `migrations/add_onboarding.sql`; run on V1 2026-11-14.
 - **Checked:** local preview on a made-up database with the real locking code —

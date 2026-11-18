@@ -11,7 +11,7 @@ import {
 } from "@/lib/client-survey";
 import type { Card } from "@/lib/onboarding";
 import { EMPTY_CARD, cardProblem, cardStarted, type CardInput } from "@/lib/card-format";
-import { CardFields, saveCard, useCardVault } from "./CardVault";
+import { CardFields, VaultSetup, saveCard, useCardVault } from "./CardVault";
 
 const BORDER = "1px solid rgba(0,0,0,0.08)";
 const SHADOW = "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)";
@@ -307,11 +307,16 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
       {!clientId && vault.checked && !vault.on && (
         <div className="rounded-2xl p-5" style={{ background: "#fafafa", border: BORDER }}>
           <p className="text-sm font-semibold" style={{ color: "#111111" }}>Card on File</p>
-          <p className="text-sm mt-1" style={{ color: "#767676" }}>
-            {vault.waiting
-              ? "Card storage is waiting for its vault password. An admin sets it from any onboarding card (Card on file), and then a card can be added here."
-              : "Card storage is not switched on here, so there is no card number to fill in. After you submit you get a secure Stripe link for the card instead."}
-          </p>
+          {vault.waiting && vault.admin ? (
+            // One-off: the admin picks the vault password right here, then the card boxes appear.
+            <div className="mt-2"><VaultSetup idPrefix="survey-vault" onDone={vault.refresh} /></div>
+          ) : (
+            <p className="text-sm mt-1" style={{ color: "#767676" }}>
+              {vault.waiting
+                ? "Card storage is waiting for an admin to set the vault password. Until then, submit without a card and add it from the client's onboarding card later."
+                : "Card storage is not switched on here, so there is no card number to fill in. After you submit you get a secure Stripe link for the card instead."}
+            </p>
+          )}
         </div>
       )}
 
