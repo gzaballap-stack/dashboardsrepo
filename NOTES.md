@@ -1,3 +1,40 @@
+## 2026-11-18 — Card vault: fingerprint unlock for Show Card (Touch ID / Face ID)
+
+Owner asked for Touch ID / Face ID instead of typing the vault password each
+time. Also decided the same day: **the non-card survey answers stay visible**
+to anyone with Onboarding access — no password on them.
+
+- **What it is.** An admin who knows the vault password can turn on
+  **Fingerprint Unlock** on their own device (link under any Card on File
+  panel). It takes the vault password once; after that **Show Card** asks the
+  sensor instead. The vault password keeps working and is still the only way in
+  on a device that has not been set up. Saving a card is unchanged (no password).
+- **How it stays as strong as before.** The device makes a passkey; a second
+  copy of the vault's private key is locked with a secret only that passkey can
+  produce (WebAuthn `prf`), in the browser, and stored in
+  `card_vault_passkeys` under the server key. The server can open that copy no
+  more than the password copy, so a Railway + Supabase leak still opens nothing.
+  What changes: a card can now be opened by the vault password **or** by that
+  admin's signed-in dashboard plus their unlocked device (a passkey may sync
+  through iCloud Keychain / Google Password Manager — the owner's own account).
+- **Rules kept.** Admins only; one's own devices only; sensor first, so nothing
+  is fetched or logged until it has been touched; a fingerprint opening returns
+  only that admin's own copy, never the password copy; same 20-an-hour limit
+  and "Opened" log line. **Changing the vault password turns fingerprint unlock
+  off for everyone** (`rewrap` deletes every row) — it is turned on again with
+  the new password. "Turn Off Fingerprint Unlock" removes that admin's devices.
+- **Per address.** A passkey belongs to the address it was made on, so
+  app.tomsimedia.com and the old dashboard.tomsimedia.com are set up separately
+  (`rp_id` on the row; the panel only offers the ones for the current address).
+- **Not tested with a real sensor.** Checked end to end locally against a
+  stand-in sensor (on, show, cancel → password box, password change, off,
+  non-admin refused). The real Touch ID prompt, and whether the owner's
+  browser hands over the `prf` secret, can only be seen by him on V1. A device
+  that cannot do it says so and the password still works.
+- Table `card_vault_passkeys` + two new log actions (`fingerprint_added`,
+  `fingerprint_removed`) in `migrations/add_onboarding.sql`; run on V1
+  2026-11-18. Not on V2 (no vault there).
+
 ## 2026-11-14 — When an appointment is for; weekly clients go by the day it happens
 
 Owner: until now only the day a lead **booked** was stored, never the day the

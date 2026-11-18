@@ -25,7 +25,15 @@
 // delete is logged; only the brand and last four digits are stored readable.
 // No server key, or no vault password set yet = nothing can be saved.
 //
-// Tables card_vault, card_vault_keys, card_vault_log (migrations/add_onboarding.sql).
+// FINGERPRINT UNLOCK (2026-11-18): an admin who knows the vault password can
+// let their own device open the vault with Touch ID / Face ID. The device keeps
+// a secret; a second copy of the private key, locked with that secret, is kept
+// here (card_vault_passkeys) under the server key like everything else. This
+// server can open that copy no more than it can open the password one. Changing
+// the vault password turns fingerprint unlock off for everyone.
+//
+// Tables card_vault, card_vault_keys, card_vault_passkeys, card_vault_log
+// (migrations/add_onboarding.sql).
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
@@ -35,9 +43,11 @@ type Row = Record<string, unknown>;
 type Sealed = { ciphertext: string; iv: string; tag: string };
 type KeyMaterial = { wrapped_private: string; salt: string; iv: string; iterations: number };
 type Envelope = { wk: string; iv: string; ct: string };
+type PasskeyWrap = { wrapped_private: string; iv: string };
 
 const FORMAT = 2;                 // 1 was server-key only (never held a card)
 const OPENS_PER_HOUR = 20;
+const PASSKEYS_PER_USER = 10;
 const BRANDS = ['Visa', 'Mastercard', 'Amex', 'Discover', 'Card'];
 
 const json = (body: Row, status = 200) =>
@@ -115,6 +125,15 @@ async function readVault(ctx: AuthContext): Promise<{ row: (Row & Sealed) | null
   return { row: (data as (Row & Sealed) | null) ?? null, error };
 }
 
+/** What ties a fingerprint copy of the key to one admin and one device. */
+const passkeyBind = (userId: string, credentialId: string) => `passkey:${userId}:${credentialId}`;
+
+/** This admin's devices with fingerprint unlock on. `ready: false` = the table is not there yet. */
+async function myPasskeys(ctx: AuthContext): Promise<{ ready: boolean; credentials: Row[] }> {
+  const { data, error } = await ctx.service.from('card_vault_passkeys').select('credential_id, rp_id').eq('user_id', ctx.userId);
+  return error ? { ready: false, credentials: [] } : { ready: true, credentials: (data ?? []) as Row[] };
+}
+
 const summary = (row: Row | null) => row ? {
   brand: row.brand ?? 'Card', last4: row.last4 ?? '', saved_by: row.saved_by_name ?? null, saved_at: row.updated_at ?? row.created_at ?? null,
 } : null;
@@ -125,7 +144,10 @@ export async function cardVaultGet(ctx: AuthContext, clientId: string | null) {
   const vault = await readVault(ctx);
   if (vault.error) return missing(vault.error) ? json({ enabled, ready: false, error: NEEDS_SETUP }) : bad(vault.error.message ?? 'Could not reach the database', 500);
   const me = await who(ctx);
-  const base = { enabled, ready: true, setup: !!vault.row, public_key: vault.row?.public_key ?? null, can_reveal: me.admin };
+  // Only an admin has any use for these: who they are (to name the passkey) and
+  // which of their devices can open the vault by fingerprint.
+  const mine = me.admin && enabled && vault.row ? { me: { id: ctx.userId, name: me.name }, fingerprint: await myPasskeys(ctx) } : {};
+  const base = { enabled, ready: true, setup: !!vault.row, public_key: vault.row?.public_key ?? null, can_reveal: me.admin, ...mine };
   if (!clientId) return json(base);
 
   const { data } = await ctx.service.from('card_vault')
@@ -145,6 +167,9 @@ export async function cardVaultGet(ctx: AuthContext, clientId: string | null) {
  *      { action: 'rewrap', wrapped_private, salt, iv, iterations }               admins — vault password changed
  *      { action: 'save',   client_id, envelope: { wk, iv, ct }, brand, last4 }   a card locked in the browser
  *      { action: 'open',   client_id }                                           admins — the locked card + locked key
+ *      { action: 'open',   client_id, credential_id }                            admins — the locked card + their fingerprint copy of the key
+ *      { action: 'passkey_add', credential_id, rp_id, wrapped_private, iv }      admins — fingerprint unlock on for this device
+ *      { action: 'passkey_remove' }                                              admins — fingerprint unlock off (their own devices)
  *      { action: 'delete', client_id }                                           admins
  * Nothing here can open a card: that takes the vault password, in the browser.
  */
@@ -191,7 +216,32 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
     if (!next) return bad('That did not look like a vault password change');
     const { error } = await service.from('card_vault_keys').update({ ...seal(next, 'vault-key'), updated_at: new Date().toISOString() }).eq('id', 1);
     if (error) return bad(error.message ?? 'Could not change the vault password', 500);
+    // A new password should shut out whoever only had the old way in: every
+    // fingerprint copy goes, and is made again with the new password.
+    await service.from('card_vault_passkeys').delete().not('id', 'is', null);
     await log(ctx, me, null, 'Vault', 'password_changed');
+    return json({ ok: true });
+  }
+
+  if (action === 'passkey_add') {
+    const rpId = typeof body.rp_id === 'string' && /^[a-z0-9.-]{1,255}$/i.test(body.rp_id) ? body.rp_id.toLowerCase() : '';
+    if (!isB64(body.credential_id, 1400) || !isB64(body.wrapped_private, 8000) || !isB64(body.iv, 40) || !rpId) return bad('That did not look like a fingerprint setup');
+    const mine = await myPasskeys(ctx);
+    if (!mine.ready) return bad(NEEDS_SETUP, 503);
+    if (mine.credentials.length >= PASSKEYS_PER_USER) return bad('Too many devices. Turn fingerprint unlock off, then on again.', 409);
+    const wrap: PasskeyWrap = { wrapped_private: body.wrapped_private, iv: body.iv };
+    const { error } = await service.from('card_vault_passkeys').insert({
+      user_id: ctx.userId, user_name: me.name, credential_id: body.credential_id, rp_id: rpId, ...seal(wrap, passkeyBind(ctx.userId, body.credential_id)),
+    });
+    if (error) return bad(error.message ?? 'Could not turn fingerprint unlock on', 500);
+    await log(ctx, me, null, 'Vault', 'fingerprint_added');
+    return json({ ok: true });
+  }
+
+  if (action === 'passkey_remove') {
+    const { error } = await service.from('card_vault_passkeys').delete().eq('user_id', ctx.userId);
+    if (error) return bad(error.message ?? 'Could not turn fingerprint unlock off', 500);
+    await log(ctx, me, null, 'Vault', 'fingerprint_removed');
     return json({ ok: true });
   }
 
@@ -235,6 +285,20 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
     if (!row) return bad('No card saved for this client', 404);
     const envelope = unseal<Envelope>(row as Sealed, clientId);
     if (!envelope || !envelope.wk) return bad('This card could not be read — the server key has changed since it was saved, or the record was altered', 500);
+
+    // By fingerprint: hand back this admin's own copy of the key for the device
+    // that was just touched — never the password copy, never anyone else's.
+    if (body.credential_id !== undefined) {
+      const credentialId = isB64(body.credential_id, 1400) ? body.credential_id : '';
+      const { data: mine } = credentialId ? await service.from('card_vault_passkeys').select('ciphertext, iv, tag')
+        .eq('user_id', ctx.userId).eq('credential_id', credentialId).maybeSingle() : { data: null };
+      const passkey = mine ? unseal<PasskeyWrap>(mine as Sealed, passkeyBind(ctx.userId, credentialId)) : null;
+      if (!passkey) return bad('Fingerprint unlock is not set up for this device — use the vault password', 404);
+      await service.from('card_vault_passkeys').update({ last_used_at: new Date().toISOString() }).eq('user_id', ctx.userId).eq('credential_id', credentialId);
+      await log(ctx, me, clientId, clientName, 'revealed');
+      return json({ envelope, passkey });
+    }
+
     await log(ctx, me, clientId, clientName, 'revealed');
     return json({ envelope, key: material });
   }

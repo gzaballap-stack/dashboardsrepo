@@ -3,11 +3,15 @@
 // A client's card, stored locked (lib/card-vault.ts has the rules). This is the
 // only screen that takes a card in or shows one. Cards are locked and unlocked
 // here in the browser (lib/vault-crypto.ts): saving needs no password; showing
-// one takes an admin and the vault password, which never leaves this page.
+// one takes an admin and the vault password, which never leaves this page — or,
+// on a device where that admin has turned it on, their fingerprint / face.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EMPTY_CARD, brandOf, cardProblem, cardStarted, formatExp, formatNumber, tidyCard, type CardInput } from "@/lib/card-format";
-import { changePassword, createVault, lockCard, openCard, passwordProblem, type Envelope, type KeyMaterial } from "@/lib/vault-crypto";
+import {
+  FINGERPRINT_FAILED, changePassword, createPasskey, createVault, fingerprintAvailable, lockCard, openCard, openCardWithPasskey,
+  passwordProblem, touchPasskey, unlockVaultKey, wrapForPasskey, type Envelope, type KeyMaterial, type PasskeyWrap,
+} from "@/lib/vault-crypto";
 
 const BORDER = "1px solid rgba(0,0,0,0.08)";
 const INPUT = { background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" } as const;
@@ -17,7 +21,11 @@ type Summary = { brand: string; last4: string; saved_by: string | null; saved_at
 type Status = {
   enabled: boolean; ready: boolean; setup?: boolean; public_key?: string | null; can_reveal?: boolean;
   card?: Summary | null; history?: { user_name: string; action: string; at: string }[]; error?: string;
+  // Admins only: who they are, and which of their devices open the vault by fingerprint.
+  me?: { id: string; name: string }; fingerprint?: { ready: boolean; credentials: { credential_id: string; rp_id: string }[] };
 };
+/** Turning fingerprint unlock on, part-way: the opened key, then the passkey this device made. */
+type Enrolling = { key: CryptoKey; made?: { credential_id: string; output: BufferSource | null } };
 
 const ACTION: Record<string, string> = { saved: "Saved", replaced: "Replaced", revealed: "Opened", denied: "Refused", deleted: "Deleted" };
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
@@ -166,7 +174,7 @@ export function VaultSetup({ onDone, idPrefix = "vault-setup" }: { onDone: () =>
   );
 }
 
-type Mode = "idle" | "add" | "ask" | "confirm-delete" | "change";
+type Mode = "idle" | "add" | "ask" | "confirm-delete" | "change" | "finger";
 
 export default function CardVaultPanel({ clientId }: { clientId: string }) {
   const [status, setStatus] = useState<Status | null>(null);
@@ -179,7 +187,12 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
+  const [canFinger, setCanFinger] = useState(false);   // this device has a sensor the browser can use
+  const [touching, setTouching] = useState(false);     // vault password accepted; waiting on the sensor
+  const enrolling = useRef<Enrolling | null>(null);
   const uid = clientId.slice(0, 6);
+
+  useEffect(() => { fingerprintAvailable().then(setCanFinger); }, []);
 
   useEffect(() => {
     readStatus(clientId).then(d => setStatus(d)).catch(() => setStatus({ enabled: false, ready: false, error: "Could not load the card" }));
@@ -195,7 +208,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
     return () => clearInterval(t);
   }, [shown]);
 
-  const reset = () => { setMode("idle"); setDraft(EMPTY_CARD); setPw({ current: "", next: "", again: "" }); setError(null); };
+  const reset = () => { setMode("idle"); setDraft(EMPTY_CARD); setPw({ current: "", next: "", again: "" }); setError(null); setTouching(false); enrolling.current = null; };
   const go = (m: Mode) => { setError(null); setNotice(null); setMode(m); };
   const fail = (e: unknown, fallback: string) => setError(e instanceof Error ? e.message : fallback);
 
@@ -209,7 +222,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
       else {
         const r = await call({ action: "rewrap", ...(await changePassword(got.key as KeyMaterial, pw.current, pw.next)) });
         if (r.error) setError(r.error);
-        else { reset(); setNotice("Vault password changed."); }
+        else { reset(); setNotice("Vault password changed. Fingerprint unlock is now off for everyone — turn it on again with the new password."); setReloads(n => n + 1); }
       }
     } catch (e) { fail(e, "Could not change the vault password"); }
     setBusy(false);
@@ -237,6 +250,60 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
       }
     } catch (e) { fail(e, "Could not open the card"); setPw(p => ({ ...p, current: "" })); }
     setBusy(false);
+  }
+
+  // A passkey only works on the address it was made on (the live site, or the old one).
+  const credentials = status?.fingerprint?.credentials ?? [];
+  const here = typeof window === "undefined" ? "" : window.location.hostname;
+  const mine = credentials.filter(c => c.rp_id === here).map(c => c.credential_id);
+
+  /** Show Card by fingerprint. The sensor comes first: nothing is fetched, or logged, until it has been touched. */
+  async function touchReveal() {
+    setBusy(true); setError(null); setNotice(null);
+    try {
+      const touch = await touchPasskey(mine);
+      const r = await call({ action: "open", client_id: clientId, credential_id: touch.credential_id });
+      if (r.error || !r.envelope || !r.passkey) throw new Error(r.error ?? "Could not fetch the card");
+      const card = await openCardWithPasskey(r.passkey as PasskeyWrap, touch.output, r.envelope as Envelope, clientId);
+      reset(); setShown(card); setLeft(SHOW_SECONDS); setReloads(n => n + 1);
+    } catch (e) { setMode("ask"); fail(e, FINGERPRINT_FAILED); }
+    setBusy(false);
+  }
+
+  /** Turning it on, first half: the vault password, once. */
+  async function fingerStart() {
+    if (!pw.current) return;
+    setBusy(true); setError(null);
+    try {
+      const got = await call({ action: "key" });
+      if (got.error || !got.key) throw new Error(got.error ?? "Could not reach the vault");
+      enrolling.current = { key: await unlockVaultKey(got.key as KeyMaterial, pw.current) };
+    } catch (e) { fail(e, "Could not open the vault"); setPw(p => ({ ...p, current: "" })); setBusy(false); return; }
+    setPw(p => ({ ...p, current: "" })); setTouching(true);
+    await fingerFinish();
+  }
+
+  /** Second half: the sensor. Safe to press again — it picks up where it stopped. */
+  async function fingerFinish() {
+    const e = enrolling.current;
+    if (!e || !status?.me) return;
+    setBusy(true); setError(null);
+    try {
+      e.made ??= await createPasskey(status.me, credentials.map(c => c.credential_id));
+      e.made.output ??= (await touchPasskey([e.made.credential_id])).output;
+      const r = await call({ action: "passkey_add", credential_id: e.made.credential_id, rp_id: here, ...(await wrapForPasskey(e.key, e.made.output)) });
+      if (r.error) throw new Error(r.error);
+      reset(); setNotice("Fingerprint unlock is on for this device."); setReloads(n => n + 1);
+    } catch (err) { fail(err, FINGERPRINT_FAILED); }
+    setBusy(false);
+  }
+
+  async function fingerOff() {
+    setBusy(true); setError(null); setNotice(null);
+    const r = await call({ action: "passkey_remove" });
+    setBusy(false);
+    if (r.error) { setError(r.error); return; }
+    setNotice("Fingerprint unlock is off."); setReloads(n => n + 1);
   }
 
   async function remove() {
@@ -280,6 +347,8 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
   }
 
   const card = status.card ?? null;
+  const fingerReady = !!status.fingerprint?.ready && canFinger;   // can be turned on here
+  const byTouch = fingerReady && mine.length > 0;                  // is on, on this device
   return (
     <div>
       {head}
@@ -293,7 +362,11 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
           ) : <span className="text-xs" style={{ color: "#4a4a4a" }}>No card saved for this client.</span>}
           {mode === "idle" && !shown && (
             <span className="flex items-center gap-1.5">
-              {card && status.can_reveal && <button type="button" className={btn} style={black} onClick={() => go("ask")}>Show Card</button>}
+              {card && status.can_reveal && (
+                <button type="button" disabled={busy} className={btn} style={{ ...black, opacity: busy ? 0.4 : 1 }} onClick={() => (byTouch ? touchReveal() : go("ask"))}>
+                  {busy && byTouch ? "Waiting for Fingerprint…" : "Show Card"}
+                </button>
+              )}
               <button type="button" className={btn} style={grey} onClick={() => go("add")}>{card ? "Replace" : "Add Card"}</button>
               {card && status.can_reveal && <button type="button" className="text-xs px-1" style={{ color: "#949494" }} onClick={() => go("confirm-delete")}>Delete</button>}
             </span>
@@ -321,8 +394,36 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
               <button type="submit" disabled={busy || !pw.current} className={btn} style={{ ...black, opacity: busy || !pw.current ? 0.4 : 1 }}>{busy ? "Opening…" : "Show"}</button>
               <button type="button" className="text-xs px-1 pb-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
             </div>
-            <p className="text-xs mt-1.5" style={{ color: "#949494" }}>Each opening is logged with your name and the time.</p>
+            <p className="text-xs mt-1.5" style={{ color: "#949494" }}>
+              Each opening is logged with your name and the time.
+              {byTouch && <> <button type="button" disabled={busy} className="underline" onClick={touchReveal}>Use Fingerprint Instead</button></>}
+            </p>
           </form>
+        )}
+
+        {mode === "finger" && !touching && (
+          <form className="mt-3" onSubmit={e => { e.preventDefault(); fingerStart(); }}>
+            <p className="text-xs mb-2" style={{ color: "#4a4a4a" }}>
+              Type the vault password once. After that, this device opens cards with your fingerprint or face. The vault password keeps working.
+            </p>
+            <div className="flex items-end gap-2">
+              <div className="flex-1" style={{ minWidth: 0 }}>
+                <Secret id={`vault-finger-${uid}`} label="Vault Password" value={pw.current} onChange={v => { setError(null); setPw(p => ({ ...p, current: v })); }} autoFocus />
+              </div>
+              <button type="submit" disabled={busy || !pw.current} className={btn} style={{ ...black, opacity: busy || !pw.current ? 0.4 : 1 }}>{busy ? "Checking…" : "Continue"}</button>
+              <button type="button" className="text-xs px-1 pb-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
+            </div>
+          </form>
+        )}
+
+        {mode === "finger" && touching && (
+          <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+            <span className="text-xs" style={{ color: "#4a4a4a" }}>{busy ? "Follow the prompt on your device — it may ask twice." : "The fingerprint step did not finish."}</span>
+            <span className="flex items-center gap-2">
+              {!busy && <button type="button" className={btn} style={black} onClick={fingerFinish}>Try Again</button>}
+              <button type="button" className="text-xs px-1" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
+            </span>
+          </div>
         )}
 
         {mode === "change" && (
@@ -376,6 +477,8 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
       <p className="text-xs mt-1.5" style={{ color: "#949494" }}>
         Locked with the vault password. Only an admin who knows it can open a card.
         {status.can_reveal && mode === "idle" && <> <button type="button" className="underline" onClick={() => go("change")}>Change Vault Password</button></>}
+        {status.can_reveal && mode === "idle" && fingerReady && !mine.length && <> · <button type="button" className="underline" onClick={() => go("finger")}>Turn On Fingerprint Unlock</button></>}
+        {status.can_reveal && mode === "idle" && !!credentials.length && <> · <button type="button" disabled={busy} className="underline" onClick={fingerOff}>Turn Off Fingerprint Unlock</button></>}
       </p>
     </div>
   );

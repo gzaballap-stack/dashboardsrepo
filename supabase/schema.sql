@@ -793,3 +793,26 @@ revoke all on card_vault_keys from anon, authenticated;
 alter table card_vault_log drop constraint if exists card_vault_log_action_check;
 alter table card_vault_log add constraint card_vault_log_action_check
   check (action in ('saved', 'replaced', 'revealed', 'denied', 'deleted', 'vault_set', 'password_changed'));
+
+-- Fingerprint unlock (NOTES.md 2026-11-18): an admin's device can open the vault
+-- with Touch ID / Face ID. Each row is a copy of the vault's private key locked
+-- with a secret that stays on that device, and locked again with the server key.
+create table if not exists card_vault_passkeys (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       uuid not null,
+  user_name     text,
+  credential_id text not null unique,
+  rp_id         text not null,
+  ciphertext    text not null,
+  iv            text not null,
+  tag           text not null,
+  created_at    timestamptz not null default now(),
+  last_used_at  timestamptz
+);
+create index if not exists card_vault_passkeys_user_idx on card_vault_passkeys (user_id);
+alter table card_vault_passkeys enable row level security;
+revoke all on card_vault_passkeys from anon, authenticated;
+
+alter table card_vault_log drop constraint if exists card_vault_log_action_check;
+alter table card_vault_log add constraint card_vault_log_action_check
+  check (action in ('saved', 'replaced', 'revealed', 'denied', 'deleted', 'vault_set', 'password_changed', 'fingerprint_added', 'fingerprint_removed'));
