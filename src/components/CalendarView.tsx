@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type CalEvent = {
   uid: string;
@@ -331,7 +332,7 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
 
       {showGcal && (
         <GoogleCalendarPopup
-          calendarIds={feeds.map(f => f.calendar_id).filter((x): x is string => !!x)}
+          startDate={date}
           onClose={() => setShowGcal(false)}
         />
       )}
@@ -607,79 +608,267 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
 }
 
 
-/* ── Google Calendar itself, in a pop-up ──
-   Google's own embed. It shows the private calendar only to someone signed into
-   Google in this browser with access to it — which is the owner, on their own
-   machine. If the browser blocks it, the link opens the full calendar instead. */
-function GoogleCalendarPopup({ calendarIds, onClose }: { calendarIds: string[]; onClose: () => void }) {
-  const [mode, setMode] = useState<"WEEK" | "MONTH" | "AGENDA">("WEEK");
+/* ── Your calendar, a week at a time, in a pop-up ──
+   Built from the same private feed as the Calls panel. Google's own embed can't
+   be used here: inside another site Google shows a private calendar as empty.
+   Rendered into <body> so it sits above the dashboard's top bar. */
+
+const HOUR_PX = 58;
+
+type Placed = CalEvent & { top: number; height: number; col: number; cols: number };
+
+/** Lays out one day's events, splitting the width where they overlap. */
+function placeDay(list: CalEvent[]): Placed[] {
+  const items = list
+    .map(e => {
+      const s = new Date(e.start), en = new Date(e.end);
+      const startMin = s.getHours() * 60 + s.getMinutes();
+      const endMin = Math.max(startMin + 15, en.getDate() !== s.getDate() ? 24 * 60 : en.getHours() * 60 + en.getMinutes());
+      return { e, startMin, endMin };
+    })
+    .sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
+
+  const out: Placed[] = [];
+  let cluster: typeof items = [];
+  let clusterEnd = -1;
+  const flush = () => {
+    const colEnds: number[] = [];
+    const cols = cluster.map(it => {
+      let c = colEnds.findIndex(end => end <= it.startMin);
+      if (c === -1) { c = colEnds.length; colEnds.push(it.endMin); } else colEnds[c] = it.endMin;
+      return c;
+    });
+    cluster.forEach((it, i) => out.push({
+      ...it.e,
+      top: (it.startMin / 60) * HOUR_PX,
+      height: Math.max(((it.endMin - it.startMin) / 60) * HOUR_PX - 2, 18),
+      col: cols[i],
+      cols: colEnds.length,
+    }));
+    cluster = []; clusterEnd = -1;
+  };
+  for (const it of items) {
+    if (cluster.length && it.startMin >= clusterEnd) flush();
+    cluster.push(it);
+    clusterEnd = Math.max(clusterEnd, it.endMin);
+  }
+  if (cluster.length) flush();
+  return out;
+}
+
+/** "Derick Garner | Custom Area Breakdown Tomsi Media" → "Derick Garner". */
+const shortTitle = (t: string) => t.split(/\s*\|\s*/)[0] || t;
+
+function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClose: () => void }) {
+  const [week, setWeek] = useState(() => iso(weekStart(parseISO(startDate))));
+  const [events, setEvents] = useState<CalEvent[]>([]);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [picked, setPicked] = useState<CalEvent | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const t = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { if (picked) setPicked(null); else onClose(); } };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, picked]);
 
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const params = new URLSearchParams({ ctz: tz, mode, showPrint: "0", showTitle: "0", showTz: "0", wkst: "2" });
-  calendarIds.forEach(id => params.append("src", id));
-  const src = `https://calendar.google.com/calendar/embed?${params.toString()}`;
+  useEffect(() => {
+    const end = iso(addDays(parseISO(week), 6));
+    let live = true;
+    fetch(`/api/calendar?start=${week}&end=${end}`)
+      .then(r => r.json())
+      .then(d => { if (live) { setEvents(d.events ?? []); setLoadedFor(week); } })
+      .catch(() => { if (live) { setEvents([]); setLoadedFor(week); } });
+    return () => { live = false; };
+  }, [week]);
+
+  // Open on the working day rather than at midnight.
+  useEffect(() => {
+    if (loadedFor === week && scroller.current) scroller.current.scrollTop = 7 * HOUR_PX;
+  }, [loadedFor, week]);
+
+  const days = Array.from({ length: 7 }, (_, i) => iso(addDays(parseISO(week), i)));
+  const today = iso(new Date());
+  const loading = loadedFor !== week;
+
+  const allDayOn = (d: string) => events.filter(e => e.allDay
+    && e.start.slice(0, 10) <= d && new Date(new Date(e.end).getTime() - 1).toISOString().slice(0, 10) >= d);
+  const timedOn = (d: string) => placeDay(events.filter(e => !e.allDay && iso(new Date(e.start)) === d));
+  const hasAllDay = days.some(d => allDayOn(d).length > 0);
+
+  const first = parseISO(week), last = addDays(first, 6);
+  const range = first.getMonth() === last.getMonth()
+    ? `${first.toLocaleDateString("en-US", { month: "long" })} ${first.getDate()} – ${last.getDate()}, ${last.getFullYear()}`
+    : `${first.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${last.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${last.getFullYear()}`;
 
   const openFull = () => window.open(
-    "https://calendar.google.com/calendar/r/week",
-    "google-calendar",
-    "width=1280,height=860,noopener",
+    `https://calendar.google.com/calendar/r/week/${week.replace(/-/g, "/")}`,
+    "google-calendar", "width=1280,height=860",
   );
 
-  return (
+  const nowDate = new Date(now);
+  const nowTop = ((nowDate.getHours() * 60 + nowDate.getMinutes()) / 60) * HOUR_PX;
+
+  const navBtn: React.CSSProperties = {
+    width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+    color: "#4a4a4a", cursor: "pointer", background: "rgba(0,0,0,0.045)",
+  };
+
+  return createPortal(
     <div
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, zIndex: 80, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background: "#ffffff", borderRadius: 14, width: "100%", maxWidth: 1200, height: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.28)" }}
+        style={{ background: "#ffffff", borderRadius: 16, width: "100%", maxWidth: 1240, height: "100%", maxHeight: 880, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.28)" }}
       >
-        <div style={{ padding: "12px 16px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <p style={{ fontSize: 15, fontWeight: 800, color: "#111111", marginRight: "auto" }}>Google Calendar</p>
-          <div style={{ display: "flex", background: "rgba(0,0,0,0.054)", borderRadius: 8, padding: 2 }}>
-            {(["WEEK", "MONTH", "AGENDA"] as const).map(m => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                style={{
-                  padding: "5px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
-                  background: mode === m ? "#000000" : "transparent", color: mode === m ? "#fff" : "#767676",
-                }}
-              >
-                {m === "WEEK" ? "Week" : m === "MONTH" ? "Month" : "Agenda"}
-              </button>
-            ))}
-          </div>
-          <button onClick={openFull} style={{ fontSize: 11, fontWeight: 700, color: "#767676", cursor: "pointer" }}>
-            Open full Google Calendar ↗
+        {/* Header */}
+        <div style={{ padding: "14px 18px", borderBottom: BORDER, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <button onClick={() => setWeek(iso(weekStart(new Date())))} style={{ ...navBtn, width: "auto", padding: "0 12px", fontSize: 12, fontWeight: 700 }}>
+            Today
           </button>
-          <button
-            onClick={onClose}
-            style={{ width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "#949494", cursor: "pointer", background: "rgba(0,0,0,0.045)" }}
-          >
+          {(["left", "right"] as const).map(dir => (
+            <button key={dir} onClick={() => setWeek(iso(addDays(parseISO(week), dir === "left" ? -7 : 7)))} style={navBtn}>
+              <svg style={{ width: 13, height: 13 }} fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d={dir === "left" ? "M15 19l-7-7 7-7" : "M9 5l7 7-7 7"} />
+              </svg>
+            </button>
+          ))}
+          <p style={{ fontSize: 16, fontWeight: 800, color: "#111111", marginRight: "auto" }}>{range}</p>
+          {loading && <span style={{ fontSize: 11, color: "#949494" }}>Loading…</span>}
+          <button onClick={openFull} style={{ fontSize: 11.5, fontWeight: 700, color: "#4a4a4a", cursor: "pointer", padding: "6px 10px", borderRadius: 8, background: "rgba(0,0,0,0.045)" }}>
+            Open in Google Calendar ↗
+          </button>
+          <button onClick={onClose} style={{ ...navBtn, color: "#949494" }}>
             <svg style={{ width: 14, height: 14 }} fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        {calendarIds.length === 0 ? (
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 30 }}>
-            <p style={{ fontSize: 12.5, color: "#767676", textAlign: "center", lineHeight: 1.6 }}>
-              Connect your calendar in the Calls panel first, or{" "}
-              <button onClick={openFull} style={{ fontWeight: 700, color: "#111111", cursor: "pointer", textDecoration: "underline" }}>open Google Calendar</button>.
-            </p>
+        {/* Day headings */}
+        <div style={{ display: "grid", gridTemplateColumns: "56px repeat(7, 1fr)", borderBottom: BORDER, paddingRight: 8 }}>
+          <div />
+          {days.map(d => {
+            const dt = parseISO(d);
+            const isToday = d === today;
+            return (
+              <div key={d} style={{ padding: "8px 0 6px", textAlign: "center", borderLeft: BORDER }}>
+                <p style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.1em", color: isToday ? "#111111" : "#949494" }}>
+                  {dt.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}
+                </p>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", marginTop: 3,
+                  width: 30, height: 30, borderRadius: "50%", fontSize: 15, fontWeight: 700,
+                  background: isToday ? "#111111" : "transparent", color: isToday ? "#ffffff" : "#111111",
+                }}>{dt.getDate()}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* All-day row */}
+        {hasAllDay && (
+          <div style={{ display: "grid", gridTemplateColumns: "56px repeat(7, 1fr)", borderBottom: BORDER, paddingRight: 8 }}>
+            <p style={{ fontSize: 9, color: "#949494", textAlign: "right", padding: "6px 6px 0 0" }}>all day</p>
+            {days.map(d => (
+              <div key={d} style={{ borderLeft: BORDER, padding: 3, display: "flex", flexDirection: "column", gap: 2 }}>
+                {allDayOn(d).map(e => (
+                  <button key={e.uid + e.start} onClick={() => setPicked(e)} style={{
+                    textAlign: "left", fontSize: 10.5, fontWeight: 600, padding: "2px 6px", borderRadius: 4, cursor: "pointer",
+                    background: "rgba(0,0,0,0.06)", color: "#4a4a4a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  }}>{e.title}</button>
+                ))}
+              </div>
+            ))}
           </div>
-        ) : (
-          <iframe key={src} src={src} title="Google Calendar" style={{ flex: 1, width: "100%", border: 0 }} />
+        )}
+
+        {/* The grid */}
+        <div ref={scroller} style={{ flex: 1, overflowY: "auto", position: "relative" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "56px repeat(7, 1fr)", position: "relative", height: 24 * HOUR_PX }}>
+            <div style={{ position: "relative" }}>
+              {Array.from({ length: 24 }, (_, h) => (
+                <span key={h} style={{ position: "absolute", top: h * HOUR_PX - 6, right: 8, fontSize: 9.5, color: "#a8a8a8" }}>
+                  {h === 0 ? "" : new Date(2000, 0, 1, h).toLocaleTimeString("en-US", { hour: "numeric" })}
+                </span>
+              ))}
+            </div>
+
+            {days.map(d => (
+              <div key={d} style={{
+                position: "relative", borderLeft: BORDER,
+                backgroundImage: `repeating-linear-gradient(to bottom, rgba(0,0,0,0.06) 0, rgba(0,0,0,0.06) 1px, transparent 1px, transparent ${HOUR_PX}px)`,
+              }}>
+                {d === today && (
+                  <div style={{ position: "absolute", left: 0, right: 0, top: nowTop, height: 2, background: "#d92d20", zIndex: 3 }}>
+                    <span style={{ position: "absolute", left: -4, top: -4, width: 10, height: 10, borderRadius: "50%", background: "#d92d20" }} />
+                  </div>
+                )}
+                {timedOn(d).map(e => {
+                  const call = e.attendees.length > 0 || !!e.meetUrl || /\|\s*follow-up call\s*$/i.test(e.title);
+                  const past = new Date(e.end).getTime() < now;
+                  return (
+                    <button
+                      key={e.uid + e.start}
+                      onClick={() => setPicked(e)}
+                      title={e.title}
+                      style={{
+                        position: "absolute", top: e.top, height: e.height,
+                        left: `calc(${(e.col / e.cols) * 100}% + 2px)`, width: `calc(${100 / e.cols}% - 4px)`,
+                        textAlign: "left", padding: "3px 6px", borderRadius: 6, overflow: "hidden", cursor: "pointer", zIndex: 2,
+                        background: call ? "#111111" : "#eef0f2",
+                        color: call ? "#ffffff" : "#333333",
+                        borderLeft: `3px solid ${call ? "#111111" : "#b8bec6"}`,
+                        opacity: past ? 0.55 : 1,
+                      }}
+                    >
+                      <p style={{ fontSize: 10.5, fontWeight: 700, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {call ? shortTitle(e.title) : e.title}
+                        {e.height <= 34 && <span style={{ fontWeight: 500, opacity: 0.75 }}> · {time(e.start)}</span>}
+                      </p>
+                      {e.height > 34 && (
+                        <p style={{ fontSize: 9.5, opacity: 0.75, whiteSpace: "nowrap" }}>
+                          {time(e.start)} – {time(e.end)}
+                        </p>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* One event, opened */}
+        {picked && (
+          <div style={{ borderTop: BORDER, padding: "12px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: "#fafafa" }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <p style={{ fontSize: 13.5, fontWeight: 800, color: "#111111" }}>{picked.title}</p>
+              <p style={{ fontSize: 11.5, color: "#767676", marginTop: 2 }}>
+                {new Date(picked.start).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                {!picked.allDay && ` · ${time(picked.start)} – ${time(picked.end)}`}
+                {picked.attendees.length > 0 && ` · ${picked.attendees.length} ${picked.attendees.length === 1 ? "guest" : "guests"}`}
+              </p>
+            </div>
+            {picked.meetUrl && (
+              <a href={picked.meetUrl} target="_blank" rel="noopener noreferrer"
+                style={{ background: "#111111", color: "#ffffff", fontSize: 12, fontWeight: 700, padding: "7px 14px", borderRadius: 8, textDecoration: "none" }}>
+                Join
+              </a>
+            )}
+            <button onClick={() => setPicked(null)} style={{ fontSize: 11.5, fontWeight: 700, color: "#767676", cursor: "pointer" }}>Close</button>
+          </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
