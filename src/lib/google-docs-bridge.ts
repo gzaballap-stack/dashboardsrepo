@@ -33,6 +33,19 @@ export const createCalendarEvent = (e: {
   title: string; start: string; end: string; description?: string; location?: string; guests?: string;
 }) => call({ action: 'create_event', ...e });
 
+/** Each event's colour in Google Calendar over a range, plus the calendar's own colour. */
+export async function listEventColors(start: string, end: string): Promise<
+  { ok: true; calendar_color: string | null; events: { id: string; start: string; color: string }[] } | { ok: false; error: string }
+> {
+  const r = await call({ action: 'list_event_colors', start, end }) as unknown as Record<string, unknown>;
+  if (!r.ok) return { ok: false, error: String(r.error ?? 'failed') };
+  return {
+    ok: true,
+    calendar_color: typeof r.calendar_color === 'string' ? r.calendar_color : null,
+    events: Array.isArray(r.events) ? r.events as { id: string; start: string; color: string }[] : [],
+  };
+}
+
 /** Replace literal text in an existing doc. */
 export const replaceText = (docId: string, replacements: { find: string; replace: string }[]) =>
   call({ action: 'replace_text', docId, replacements });

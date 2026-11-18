@@ -37,6 +37,19 @@ function doPost(e) {
         .createEvent(req.title || 'Follow-up call', new Date(req.start), new Date(req.end), opts);
       return out({ ok: true, id: ev.getId() });
     }
+    if (req.action === 'list_event_colors') {
+      // The colour each event has in Google Calendar — the private feed the
+      // dashboard reads leaves colours out. Read-only.
+      const cal = CalendarApp.getDefaultCalendar();
+      const evs = cal.getEvents(new Date(req.start), new Date(req.end));
+      return out({
+        ok: true,
+        calendar_color: cal.getColor(),
+        events: evs.map(function (ev) {
+          return { id: ev.getId(), start: ev.getStartTime().toISOString(), color: ev.getColor() };
+        }),
+      });
+    }
     return out({ ok: false, error: 'unknown action' });
   } catch (err) {
     return out({ ok: false, error: String(err) });

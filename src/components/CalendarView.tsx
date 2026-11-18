@@ -664,6 +664,7 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [picked, setPicked] = useState<CalEvent | null>(null);
+  const [colors, setColors] = useState<{ byEvent: Record<string, string>; calendar: string | null }>({ byEvent: {}, calendar: null });
   const [now, setNow] = useState(() => Date.now());
   const scroller = useRef<HTMLDivElement>(null);
 
@@ -685,8 +686,18 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
       .then(r => r.json())
       .then(d => { if (live) { setEvents(d.events ?? []); setLoadedFor(week); } })
       .catch(() => { if (live) { setEvents([]); setLoadedFor(week); } });
+    // Google's own colours, when the script can supply them.
+    const from = parseISO(week).toISOString();
+    const to = addDays(parseISO(week), 7).toISOString();
+    fetch(`/api/calendar/colors?start=${encodeURIComponent(from)}&end=${encodeURIComponent(to)}`)
+      .then(r => r.json())
+      .then(d => { if (live) setColors({ byEvent: d.colors ?? {}, calendar: d.calendar_color ?? null }); })
+      .catch(() => {});
     return () => { live = false; };
   }, [week]);
+
+  // An event's colour as Google shows it: its own, else the calendar's, else Google's blue.
+  const colorOf = (e: CalEvent) => colors.byEvent[`${e.uid}|${e.start}`] ?? colors.calendar ?? "#039BE5";
 
   // Open on the working day rather than at midnight.
   useEffect(() => {
@@ -783,7 +794,7 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
                 {allDayOn(d).map(e => (
                   <button key={e.uid + e.start} onClick={() => setPicked(e)} style={{
                     textAlign: "left", fontSize: 10.5, fontWeight: 600, padding: "2px 6px", borderRadius: 4, cursor: "pointer",
-                    background: "rgba(0,0,0,0.06)", color: "#4a4a4a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    background: colorOf(e), color: "#ffffff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                   }}>{e.title}</button>
                 ))}
               </div>
@@ -815,6 +826,7 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
                 {timedOn(d).map(e => {
                   const call = e.attendees.length > 0 || !!e.meetUrl || /\|\s*follow-up call\s*$/i.test(e.title);
                   const past = new Date(e.end).getTime() < now;
+                  const c = colorOf(e);
                   return (
                     <button
                       key={e.uid + e.start}
@@ -824,10 +836,10 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
                         position: "absolute", top: e.top, height: e.height,
                         left: `calc(${(e.col / e.cols) * 100}% + 2px)`, width: `calc(${100 / e.cols}% - 4px)`,
                         textAlign: "left", padding: "3px 6px", borderRadius: 6, overflow: "hidden", cursor: "pointer", zIndex: 2,
-                        background: call ? "#111111" : "#eef0f2",
-                        color: call ? "#ffffff" : "#333333",
-                        borderLeft: `3px solid ${call ? "#111111" : "#b8bec6"}`,
-                        opacity: past ? 0.55 : 1,
+                        background: c,
+                        color: "#ffffff",
+                        border: "1px solid #ffffff",
+                        opacity: past ? 0.6 : 1,
                       }}
                     >
                       <p style={{ fontSize: 10.5, fontWeight: 700, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
