@@ -313,8 +313,8 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
               + Follow-up call
             </button>
             <button
-              onClick={() => setShowGcal(true)}
-              title="See your Google Calendar"
+              onClick={() => openGoogleCalendar(date)}
+              title="Open your Google Calendar in its own window — fully editable"
               style={{
                 display: "flex", alignItems: "center", gap: 5,
                 fontSize: 11, fontWeight: 700, padding: "6px 11px", borderRadius: 7, cursor: "pointer",
@@ -325,6 +325,16 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               Google Calendar
+            </button>
+            <button
+              onClick={() => setShowGcal(true)}
+              title="A quick look at the week, inside the dashboard"
+              style={{
+                fontSize: 11, fontWeight: 700, padding: "6px 11px", borderRadius: 7, cursor: "pointer",
+                background: "transparent", border: "1px solid rgba(0,0,0,0.09)", color: "#767676",
+              }}
+            >
+              Week view
             </button>
           </div>
         )
@@ -608,6 +618,24 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
 }
 
 
+/**
+ * Google won't let its full calendar be shown inside another site, so the real,
+ * editable thing opens as its own pop-up window, centred over the dashboard.
+ * Reusing the window name brings an already-open one back to the front.
+ */
+function openGoogleCalendar(day: string) {
+  const w = Math.min(1320, window.screen.availWidth - 80);
+  const h = Math.min(900, window.screen.availHeight - 80);
+  const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
+  const top = Math.round(window.screenY + (window.outerHeight - h) / 2);
+  const win = window.open(
+    `https://calendar.google.com/calendar/r/week/${day.replace(/-/g, "/")}`,
+    "google-calendar",
+    `popup,width=${w},height=${h},left=${left},top=${top}`,
+  );
+  win?.focus();
+}
+
 /* ── Your calendar, a week at a time, in a pop-up ──
    Built from the same private feed as the Calls panel. Google's own embed can't
    be used here: inside another site Google shows a private calendar as empty.
@@ -718,10 +746,7 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
     ? `${first.toLocaleDateString("en-US", { month: "long" })} ${first.getDate()} – ${last.getDate()}, ${last.getFullYear()}`
     : `${first.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${last.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${last.getFullYear()}`;
 
-  const openFull = () => window.open(
-    `https://calendar.google.com/calendar/r/week/${week.replace(/-/g, "/")}`,
-    "google-calendar", "width=1280,height=860",
-  );
+  const openFull = () => openGoogleCalendar(week);
 
   const nowDate = new Date(now);
   const nowTop = ((nowDate.getHours() * 60 + nowDate.getMinutes()) / 60) * HOUR_PX;
