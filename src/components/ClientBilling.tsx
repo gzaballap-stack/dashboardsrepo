@@ -367,27 +367,21 @@ function ReturnCard({ source, r, smsSent }: { source: "ads" | "sms"; r: SourceRe
           <p style={{ fontSize: 12, fontWeight: 700, color: SOURCE_COLOR[source], letterSpacing: "0.08em" }}>{SOURCE_LABEL[source].toUpperCase()}</p>
           <p style={{ fontSize: 11.5, color: FAINT, marginTop: 3 }}>{counts}</p>
         </div>
+        {/* The big number is the same thing on both cards: revenue, which is what was billed. */}
         <div style={{ textAlign: "right" }}>
-          {sms ? (<>
-            <p style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", color: r.multiple === null ? FAINT : r.profit >= 0 ? GOOD : BAD }}>
-              {r.multiple === null ? "—" : `${r.multiple.toFixed(r.multiple >= 10 ? 0 : 1)}x`}
-            </p>
-            <p style={{ fontSize: 11, color: FAINT }}>return on SMS cost</p>
-          </>) : (<>
-            <p style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", color: r.revenue > 0 ? GOOD : FAINT }}>{money(r.revenue)}</p>
-            <p style={{ fontSize: 11, color: FAINT }}>revenue</p>
-          </>)}
+          <p style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", color: r.revenue > 0 ? GOOD : FAINT }}>{money(r.revenue)}</p>
+          <p style={{ fontSize: 11, color: FAINT }}>revenue</p>
         </div>
       </div>
       {sms && line(`SMS cost${smsSent ? ` · ${smsSent.toLocaleString("en-US")} sent` : ""}`, money(r.cost))}
       {sms && line("Cost per appointment", r.cost_per_appointment === null ? "—" : money(r.cost_per_appointment))}
-      {line("Billed", money(r.billed))}
-      {line(`Not tracked yet${r.untracked ? ` · ${r.untracked}` : ""}`, money(r.to_bill))}
-      {line("Revenue", money(r.revenue), true)}
+      {line(`Not tracked yet${r.untracked ? ` · ${r.untracked}` : ""} · not in revenue`, money(r.to_bill), false, MUTED)}
+      {line("Revenue · billed", money(r.revenue), true)}
       {sms
         ? (<>
           {line("Profit", money(r.profit), true, r.profit >= 0 ? GOOD : BAD)}
           {line("Margin · profit ÷ revenue", r.revenue > 0 ? `${Math.round((r.profit / r.revenue) * 100)}%` : "—", true, r.revenue > 0 ? (r.profit >= 0 ? GOOD : BAD) : FAINT)}
+          {line("Return · revenue ÷ SMS cost", r.multiple === null ? "—" : `${r.multiple.toFixed(r.multiple >= 10 ? 0 : 1)}x`, true, r.multiple === null ? FAINT : r.profit >= 0 ? GOOD : BAD)}
         </>)
         : <p style={{ fontSize: 11.5, color: FAINT, paddingTop: 7, borderTop: "1px solid rgba(0,0,0,0.05)" }}>No cost to you — the client pays the ad spend.</p>}
     </div>
@@ -403,7 +397,7 @@ function ReturnPanel({ returns, scope }: { returns: Returns; scope: string }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <h4 style={{ fontSize: 12, fontWeight: 700, color: INK, letterSpacing: "0.08em" }}>RETURN BY SOURCE</h4>
-        <span style={{ fontSize: 12, color: MUTED }}>{`${scope} · revenue is appointments billed, plus those not tracked yet at the client’s price`}</span>
+        <span style={{ fontSize: 12, color: MUTED }}>{`${scope} · revenue is appointments billed — ones not tracked yet are not counted`}</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
         {shown.map(k => <ReturnCard key={k} source={k} r={returns[k]} smsSent={returns.sms_sent} />)}

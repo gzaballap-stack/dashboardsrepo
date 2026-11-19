@@ -1,3 +1,23 @@
+## 2026-11-19 — Return by source: revenue is what was billed
+
+Owner: the revenue figure was counting appointments not tracked yet. He wants
+revenue to be the billed money only, and the same big green number on both
+cards.
+
+- `returnsBySource` (`lib/billing.ts`): **revenue = billed**. Not-tracked
+  appointments are still shown on their own line ("not in revenue") but are in
+  neither revenue, profit, margin nor the return. So on SMS the profit and the
+  return (revenue ÷ SMS cost) drop wherever appointments are still untracked —
+  the return read 13x partly on money not billed yet.
+- Cards: the big green number is **revenue** on both Facebook Ads and SMS. On
+  SMS the return moved to a green line under Profit and Margin. The separate
+  "Billed" line is gone (it is the revenue line now).
+- **Appointment times (2026-11-14)**: that work went out in `589f4f6` (another
+  session's commit swept it in). Whether real bookings now arrive with a time
+  was **not checked** — reading V1 from the session was refused on 2026-11-19.
+  Tell: a new booking's card in Billing reads "For <date>, <time>" when the
+  time arrived, "Booked <date>" when it did not.
+
 ## 2026-11-18 — New client survey: appointment capacity
 
 - New question in the survey's **Appointments** section: "How many appointments

@@ -179,18 +179,19 @@ export type SourceReturn = {
   cancelled: number;          // of those, cancelled — earn nothing
   untracked: number;          // of those, not decided yet
   billed: number;             // $ already charged, or paid for by credit
-  to_bill: number;            // $ the untracked ones are worth, at the client's price
-  revenue: number;            // billed + to_bill
+  to_bill: number;            // $ the untracked ones would be worth, at the client's price — NOT revenue
+  revenue: number;            // = billed. Money not billed yet is not revenue (owner, 2026-11-19)
   cost: number;               // SMS cost. Ads cost us nothing: the client pays the ad spend
   profit: number;             // revenue − cost
   multiple: number | null;    // revenue ÷ cost; null when nothing was spent
   cost_per_appointment: number | null;
 };
 
-/** What each source cost and what its appointments bring in. A billed or
- *  credit-covered appointment counts at the price it was charged; one not
- *  tracked yet counts at the client's current price; a credited or cancelled
- *  one counts for nothing. */
+/** What each source cost and what its appointments brought in. Revenue is what
+ *  was billed: a billed or credit-covered appointment at the price it was
+ *  charged. One not tracked yet is shown apart (`to_bill`) and is in neither
+ *  revenue, profit nor the return; a credited or cancelled one counts for
+ *  nothing. */
 export function returnsBySource(
   appointments: { source: Source; state: BillingState; price: number; clientPrice: number }[],
   costs: { ads: number; sms: number },
@@ -205,9 +206,9 @@ export function returnsBySource(
       credited: mine.filter(a => a.state === 'credited').length,
       cancelled: mine.filter(a => a.state === 'cancelled').length,
       untracked: mine.filter(a => a.state === 'to_bill').length,
-      billed: fromCents(billed), to_bill: fromCents(toBill), revenue: fromCents(billed + toBill),
-      cost: fromCents(cost), profit: fromCents(billed + toBill - cost),
-      multiple: cost > 0 ? Math.round(((billed + toBill) / cost) * 100) / 100 : null,
+      billed: fromCents(billed), to_bill: fromCents(toBill), revenue: fromCents(billed),
+      cost: fromCents(cost), profit: fromCents(billed - cost),
+      multiple: cost > 0 ? Math.round((billed / cost) * 100) / 100 : null,
       cost_per_appointment: cost > 0 && mine.length > 0 ? fromCents(cost / mine.length) : null,
     };
   };
