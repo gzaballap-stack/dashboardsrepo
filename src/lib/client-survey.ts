@@ -75,6 +75,7 @@ export const SURVEY_SECTIONS: { title: string; note?: string; fields: SurveyFiel
     fields: [
       { key: 'appointment_phones', label: 'Phone number or numbers to send appointments to', type: 'text', wide: true },
       { key: 'weekly_availability', label: 'Weekly availability', type: 'textarea', wide: true, placeholder: 'Mon–Fri 9–5, Sat mornings…' },
+      { key: 'appointment_capacity', label: 'How many appointments can they take per week?', type: 'text', placeholder: '10', hint: 'Their capacity — how many we are able to send them.' },
     ],
   },
   {

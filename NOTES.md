@@ -1,3 +1,9 @@
+## 2026-11-18 — New client survey: appointment capacity
+
+- New question in the survey's **Appointments** section: "How many appointments
+  can they take per week?" (`appointment_capacity`, free text). Stored with the
+  other answers and shown on the onboarding card; nothing else reads it yet.
+
 ## 2026-11-18 — Card vault: fingerprint unlock for Show Card (Touch ID / Face ID)
 
 Owner asked for Touch ID / Face ID instead of typing the vault password each
