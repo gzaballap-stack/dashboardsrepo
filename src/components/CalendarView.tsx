@@ -313,8 +313,8 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
               + Follow-up call
             </button>
             <button
-              onClick={() => openGoogleCalendar(date)}
-              title="Open your Google Calendar in its own window — fully editable"
+              onClick={() => setShowGcal(true)}
+              title="See your week, with a link to open Google Calendar itself"
               style={{
                 display: "flex", alignItems: "center", gap: 5,
                 fontSize: 11, fontWeight: 700, padding: "6px 11px", borderRadius: 7, cursor: "pointer",
@@ -325,16 +325,6 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               Google Calendar
-            </button>
-            <button
-              onClick={() => setShowGcal(true)}
-              title="A quick look at the week, inside the dashboard"
-              style={{
-                fontSize: 11, fontWeight: 700, padding: "6px 11px", borderRadius: 7, cursor: "pointer",
-                background: "transparent", border: "1px solid rgba(0,0,0,0.09)", color: "#767676",
-              }}
-            >
-              Week view
             </button>
           </div>
         )
@@ -725,7 +715,10 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
   }, [week]);
 
   // An event's colour as Google shows it: its own, else the calendar's, else Google's blue.
-  const colorOf = (e: CalEvent) => colors.byEvent[`${e.uid}|${e.start}`] ?? colors.calendar ?? "#039BE5";
+  const colorOf = (e: CalEvent) =>
+    /\|\s*follow-up call\s*$/i.test(e.title)
+      ? "#D50000"                                   // follow-ups: Google's Tomato
+      : colors.byEvent[`${e.uid}|${e.start}`] ?? colors.calendar ?? "#039BE5";
 
   // Open on the working day rather than at midnight.
   useEffect(() => {
@@ -797,13 +790,13 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
             const isToday = d === today;
             return (
               <div key={d} style={{ padding: "8px 0 6px", textAlign: "center", borderLeft: BORDER }}>
-                <p style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.1em", color: isToday ? "#111111" : "#949494" }}>
+                <p style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: isToday ? "#1a73e8" : "#70757a" }}>
                   {dt.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}
                 </p>
                 <span style={{
                   display: "inline-flex", alignItems: "center", justifyContent: "center", marginTop: 3,
-                  width: 30, height: 30, borderRadius: "50%", fontSize: 15, fontWeight: 700,
-                  background: isToday ? "#111111" : "transparent", color: isToday ? "#ffffff" : "#111111",
+                  width: 40, height: 40, borderRadius: "50%", fontSize: 22, fontWeight: 400,
+                  background: isToday ? "#1a73e8" : "transparent", color: isToday ? "#ffffff" : "#3c4043",
                 }}>{dt.getDate()}</span>
               </div>
             );
@@ -832,7 +825,7 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
           <div style={{ display: "grid", gridTemplateColumns: "56px repeat(7, 1fr)", position: "relative", height: 24 * HOUR_PX }}>
             <div style={{ position: "relative" }}>
               {Array.from({ length: 24 }, (_, h) => (
-                <span key={h} style={{ position: "absolute", top: h * HOUR_PX - 6, right: 8, fontSize: 9.5, color: "#a8a8a8" }}>
+                <span key={h} style={{ position: "absolute", top: h * HOUR_PX - 6, right: 8, fontSize: 10, color: "#70757a" }}>
                   {h === 0 ? "" : new Date(2000, 0, 1, h).toLocaleTimeString("en-US", { hour: "numeric" })}
                 </span>
               ))}
@@ -860,7 +853,7 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
                       style={{
                         position: "absolute", top: e.top, height: e.height,
                         left: `calc(${(e.col / e.cols) * 100}% + 2px)`, width: `calc(${100 / e.cols}% - 4px)`,
-                        textAlign: "left", padding: "3px 6px", borderRadius: 6, overflow: "hidden", cursor: "pointer", zIndex: 2,
+                        textAlign: "left", padding: "2px 6px", borderRadius: 4, overflow: "hidden", cursor: "pointer", zIndex: 2,
                         background: c,
                         color: "#ffffff",
                         border: "1px solid #ffffff",
