@@ -48,7 +48,7 @@ type Source = "ads" | "sms" | "unknown";
 // appointments bring in.
 type SourceReturn = {
   appointments: number; credited: number; cancelled: number; untracked: number;
-  billed: number; to_bill: number; revenue: number;
+  billed: number; to_bill: number; revenue: number; billed_appointments?: number;
   cost: number; profit: number; multiple: number | null; cost_per_appointment: number | null;
 };
 type Returns = { ads: SourceReturn; sms: SourceReturn; unknown: number; sms_sent: number };
@@ -374,7 +374,7 @@ function ReturnCard({ source, r, smsSent }: { source: "ads" | "sms"; r: SourceRe
         </div>
       </div>
       {sms && line(`SMS cost${smsSent ? ` · ${smsSent.toLocaleString("en-US")} sent` : ""}`, money(r.cost))}
-      {sms && line("Cost per appointment", r.cost_per_appointment === null ? "—" : money(r.cost_per_appointment))}
+      {sms && line(`Cost per billed appointment${r.billed_appointments ? ` · ${r.billed_appointments} billed` : ""}`, r.cost_per_appointment === null ? "—" : money(r.cost_per_appointment))}
       {line(`Not tracked yet${r.untracked ? ` · ${r.untracked}` : ""} · not in revenue`, money(r.to_bill), false, MUTED)}
       {line("Revenue · billed", money(r.revenue), true)}
       {sms

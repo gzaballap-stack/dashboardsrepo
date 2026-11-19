@@ -12,6 +12,10 @@ cards.
 - Cards: the big green number is **revenue** on both Facebook Ads and SMS. On
   SMS the return moved to a green line under Profit and Margin. The separate
   "Billed" line is gone (it is the revenue line now).
+- **Cost per appointment** on the SMS card is SMS cost ÷ **billed**
+  appointments (billed or paid with a credit), no longer ÷ every appointment
+  in the period — "that's the only revenue we know we have for sure". It
+  rises wherever appointments are untracked, and reads "—" when none is billed.
 - **Appointment times (2026-11-14)**: that work went out in `589f4f6` (another
   session's commit swept it in). Whether real bookings now arrive with a time
   was **not checked** — reading V1 from the session was refused on 2026-11-19.

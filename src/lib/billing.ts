@@ -184,7 +184,8 @@ export type SourceReturn = {
   cost: number;               // SMS cost. Ads cost us nothing: the client pays the ad spend
   profit: number;             // revenue − cost
   multiple: number | null;    // revenue ÷ cost; null when nothing was spent
-  cost_per_appointment: number | null;
+  billed_appointments: number; // of those, billed or paid with a credit — the ones revenue comes from
+  cost_per_appointment: number | null;   // cost ÷ billed appointments; null when none is billed or nothing was spent
 };
 
 /** What each source cost and what its appointments brought in. Revenue is what
@@ -201,6 +202,7 @@ export function returnsBySource(
     const billed = mine.filter(a => a.state === 'charged' || a.state === 'covered').reduce((s, a) => s + toCents(a.price), 0);
     const toBill = mine.filter(a => a.state === 'to_bill').reduce((s, a) => s + toCents(a.clientPrice), 0);
     const cost = toCents(costs[source]);
+    const billedCount = mine.filter(a => a.state === 'charged' || a.state === 'covered').length;
     return {
       appointments: mine.length,
       credited: mine.filter(a => a.state === 'credited').length,
@@ -209,7 +211,9 @@ export function returnsBySource(
       billed: fromCents(billed), to_bill: fromCents(toBill), revenue: fromCents(billed),
       cost: fromCents(cost), profit: fromCents(billed - cost),
       multiple: cost > 0 ? Math.round((billed / cost) * 100) / 100 : null,
-      cost_per_appointment: cost > 0 && mine.length > 0 ? fromCents(cost / mine.length) : null,
+      billed_appointments: billedCount,
+      // By billed appointments only: the only revenue known for sure (owner, 2026-11-19).
+      cost_per_appointment: cost > 0 && billedCount > 0 ? fromCents(cost / billedCount) : null,
     };
   };
   return { ads: make('ads'), sms: make('sms'), unknown: appointments.filter(a => a.source === 'unknown').length };
