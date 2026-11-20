@@ -234,11 +234,48 @@ Tell the owner: what was created (names), the phone numbers bought and what
 they cost, what is still unpublished, and anything skipped or uncertain. Tick
 the matching steps on the client's card on the Onboarding board if there is one.
 
+## Confirmed on screen (first real run, USA Windows And Doors, 2026-11-20)
+
+- **Client's GHL user:** Ultimate → Settings → Users (two pages). Check it is
+  there **before anything else** — the calendar (A3) and Fill In Data (A4) both
+  need it. Not there → say so straight away.
+- **Ready (A1):** left menu → Ready → **More → Numbers → Buy number**. Set
+  **Sub-account = Gonzalo Zaballa** (it opens on "gzaballap (Agency)"), type
+  **SMS**, search the area code. $2 a month there. You pick an area code, not a
+  number — the number is only known after buying. Area codes can be **Sold
+  out** (954, 754, 561, 305, 786 all were): ask the owner which nearby code to
+  use, never choose for him. Existing numbers are labelled with the client name.
+- **GHL number (A5):** Ultimate → Settings → Phone System → Add Number → Add
+  Phone Number → Filter → type the area code, Match To **First part of number**
+  → Apply. $1.15 a month. Friendly names are `1. <Company>` (`2. <Company>` for
+  a second).
+- **Duplicating a workflow:** scroll the list right → row ⋮ → Duplicate
+  workflow → it asks for the name there (type the final name; no "Copy" to
+  clean up). The copy lands in the same folder as a Draft.
+- **The workflow editor sits in a frame** the page tools cannot read: work from
+  screenshots. Click a value, Cmd+A, type — one field at a time works.
+- **Fill In Data (A4), what is really in it:** trigger *Contact Tag* (template
+  tag `kinetic scaling llc` → remove, type the company name, **Add New tag**) →
+  *Fill In Contractor's Notes* (Phone Number To Send Appointments Too · State ·
+  Company Notes: owner full name, owner phone, city, state, years in business,
+  service area, website, financing, minimum credit · Starting Prices: full
+  kitchen, full bathroom, partial kitchen, partial bathroom · Services Offered:
+  yes/no per service · Contractor GHL User ID · Business Name = exact company
+  name · Appointment Booking Restrictions (other clients left the placeholder)
+  · Owner First Name) → *Update Tracking Client Field* (Client Name = the
+  contact's company name, nothing to change) → *Update Contact Timezone*
+  (template is Chicago — set the client's) → *Remove Assigned User* →
+  *Assign To Contractor* (the client's user). Blank answers: clear the
+  placeholder rather than leave it.
+- Existing clients' copies are named `<Client> Fill In Data`.
+
 ## Not confirmed yet (written from dictation — check on screen, then fix this file)
-- Ready: how a number is bought there (not opened yet).
-- Nothing inside a workflow, calendar or funnel has been opened yet — only the
-  lists were checked.
+- Only Fill In Data has been opened. The blast workflow (A2), calendar (A3),
+  phone number settings (A5), the SMS Stuff pair (A6) and everything in Part B
+  are still as dictated.
+- The form can list two notification numbers and an email; Fill In Data has one
+  phone box. Where the second number / email go for an SMS client is not known.
 - A2 step 3 — which step holds the Client Name field (dictation was unclear).
 - Whether a both-services client needs anything different in A4 vs B4.
-- Whether the Fill In Data and New Lead duplicates need a name pattern.
+- Whether the New Lead duplicate needs a name pattern (Fill In Data: confirmed).
 - For B5, what else changes in the Qualified Lead copy (tag? first number?).
