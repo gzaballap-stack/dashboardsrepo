@@ -154,3 +154,20 @@ create table if not exists past_client_surveys (
 create unique index if not exists past_client_surveys_name_idx on past_client_surveys (lower(name));
 alter table past_client_surveys enable row level security;
 revoke all on past_client_surveys from anon, authenticated;
+
+-- More than one card per client (NOTES.md 2026-11-20): each card sits in a
+-- numbered slot. The card a client already had is slot 1 and is not touched.
+alter table card_vault add column if not exists slot smallint not null default 1;
+do $$
+declare pk text;
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'card_vault'::regclass and conname = 'card_vault_slot_check') then
+    alter table card_vault add constraint card_vault_slot_check check (slot between 1 and 5);
+  end if;
+  -- the key was the client alone; it becomes client + slot
+  select conname into pk from pg_constraint where conrelid = 'card_vault'::regclass and contype = 'p' and array_length(conkey, 1) = 1;
+  if pk is not null then
+    execute format('alter table card_vault drop constraint %I', pk);
+    alter table card_vault add primary key (client_id, slot);
+  end if;
+end $$;

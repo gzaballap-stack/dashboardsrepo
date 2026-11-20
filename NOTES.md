@@ -1,3 +1,21 @@
+## 2026-11-20 — Card vault: several cards per client; billing zip no longer asked
+
+- **A client can have up to 5 cards** (owner: "add a second credit card for a
+  specific client"). Each sits in a numbered slot (`card_vault.slot`, key is now
+  `client_id + slot`). The Card on File box lists every card with its own Show
+  Card / Replace / Delete, and **Add Another Card** under them.
+- **The locks did not change.** Same browser lock, same server lock. Slot 1 is
+  tied to the client id exactly as before (cards saved before this day open
+  unchanged); slots 2+ are tied to `clientId:slot`, so a stored card cannot be
+  moved onto another client or slot. `save` takes `slot` (a number = replace,
+  `'new'` = one more, left out = the first card); `open` / `delete` take `slot`
+  (left out = 1). Fingerprint, vault password, recovery code, the 20-an-hour
+  limit and the log are as they were (the log is per client, not per card).
+- **Billing zip code removed from the card form** the same day (owner did not
+  want it asked). A card saved earlier with a zip still shows it when opened.
+- Migration in `migrations/add_onboarding.sql`, run on V1 2026-11-20 in two
+  steps (column first, code deployed, then the key change) so saving never broke.
+
 ## 2026-11-20 — GHL onboarding-form submissions brought into the dashboard; Submitted Surveys list
 
 - **Where they are in GHL:** Tomsi Media sub-account → Sites → Forms →

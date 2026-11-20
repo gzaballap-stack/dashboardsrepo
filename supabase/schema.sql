@@ -754,7 +754,8 @@ notify pgrst, 'reload schema';
 -- database — these rows are unreadable on their own. Only brand + last four
 -- are kept readable. Read lib/card-vault.ts before touching this.
 create table if not exists card_vault (
-  client_id     uuid primary key references clients(id) on delete cascade,
+  client_id     uuid not null references clients(id) on delete cascade,
+  slot          smallint not null default 1 check (slot between 1 and 5),   -- a client can have several cards (2026-11-20)
   ciphertext    text not null,
   iv            text not null,
   tag           text not null,
@@ -764,7 +765,8 @@ create table if not exists card_vault (
   saved_by      uuid,
   saved_by_name text,
   created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  updated_at    timestamptz not null default now(),
+  primary key (client_id, slot)
 );
 
 -- Every save, view, refused attempt and removal. Outlives the card and the client.

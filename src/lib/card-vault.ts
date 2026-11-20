@@ -40,6 +40,10 @@
 // server can open that copy no more than it can open the password one. Changing
 // the vault password turns fingerprint unlock off for everyone.
 //
+// MORE THAN ONE CARD (2026-11-20): a client can have up to MAX_CARDS, each in
+// its own numbered slot (card_vault.slot). Every card is locked exactly the
+// same way; nothing about the locks changed.
+//
 // Tables card_vault, card_vault_keys, card_vault_passkeys, card_vault_log
 // (migrations/add_onboarding.sql).
 
@@ -57,6 +61,7 @@ type KeyCopy = PasskeyWrap;
 const FORMAT = 2;                 // 1 was server-key only (never held a card)
 const OPENS_PER_HOUR = 20;
 const PASSKEYS_PER_USER = 10;
+const MAX_CARDS = 5;              // per client (card_vault.slot is checked 1–5 in the database too)
 const BRANDS = ['Visa', 'Mastercard', 'Amex', 'Discover', 'Card'];
 
 const json = (body: Row, status = 200) =>
@@ -100,6 +105,10 @@ function unseal<T>(row: Sealed, bind: string): T | null {
     return null;   // wrong server key, or the row was altered / moved
   }
 }
+
+/** What a stored card is tied to. Slot 1 keeps the tie it had before clients could have several. */
+const cardBind = (clientId: string, slot: number) => (slot === 1 ? clientId : `${clientId}:${slot}`);
+const readSlot = (v: unknown): number | null => (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_CARDS ? v : null);
 
 const isB64 = (v: unknown, max: number): v is string => typeof v === 'string' && v.length > 0 && v.length <= max && /^[A-Za-z0-9+/=]+$/.test(v);
 
@@ -163,8 +172,17 @@ async function myPasskeys(ctx: AuthContext): Promise<{ ready: boolean; credentia
 }
 
 const summary = (row: Row | null) => row ? {
-  brand: row.brand ?? 'Card', last4: row.last4 ?? '', saved_by: row.saved_by_name ?? null, saved_at: row.updated_at ?? row.created_at ?? null,
+  slot: Number(row.slot ?? 1), brand: row.brand ?? 'Card', last4: row.last4 ?? '', saved_by: row.saved_by_name ?? null, saved_at: row.updated_at ?? row.created_at ?? null,
 } : null;
+
+/** A client's cards, in slot order — what is readable of them. On a database without slots yet, the one card. */
+async function readCards(ctx: AuthContext, clientId: string): Promise<Row[]> {
+  const cols = 'brand, last4, saved_by_name, created_at, updated_at';
+  const { data, error } = await ctx.service.from('card_vault').select(`slot, ${cols}`).eq('client_id', clientId).order('slot');
+  if (!error) return (data ?? []) as Row[];
+  const { data: old } = await ctx.service.from('card_vault').select(cols).eq('client_id', clientId);
+  return (old ?? []) as Row[];
+}
 
 /** GET — is storage on, is the vault password set, and (for a client) is there a card. Never a card. */
 export async function cardVaultGet(ctx: AuthContext, clientId: string | null) {
@@ -181,15 +199,14 @@ export async function cardVaultGet(ctx: AuthContext, clientId: string | null) {
   const base = { enabled, ready: true, setup: !!vault.row, public_key: vault.row?.public_key ?? null, can_reveal: me.admin, ...mine };
   if (!clientId) return json(base);
 
-  const { data } = await ctx.service.from('card_vault')
-    .select('brand, last4, saved_by_name, created_at, updated_at').eq('client_id', clientId).maybeSingle();
+  const cards = (await readCards(ctx, clientId)).map(summary);
   let history: Row[] = [];
   if (me.admin) {
     const { data: rows } = await ctx.service.from('card_vault_log')
-      .select('user_name, action, at').eq('client_id', clientId).order('at', { ascending: false }).limit(8);
+      .select('user_name, action, at').eq('client_id', clientId).order('at', { ascending: false }).limit(12);
     history = (rows ?? []) as Row[];
   }
-  return json({ ...base, card: summary(data as Row | null), history });
+  return json({ ...base, cards, max_cards: MAX_CARDS, card: cards[0] ?? null, history });
 }
 
 /**
@@ -198,12 +215,14 @@ export async function cardVaultGet(ctx: AuthContext, clientId: string | null) {
  *      { action: 'rewrap', wrapped_private, salt, iv, iterations, via? }         admins — vault password changed (via: 'recovery' = reset with the recovery code)
  *      { action: 'recovery_set', recovery: { wrapped_private, iv } }             admins — a new recovery code (the old one stops working)
  *      { action: 'recovery_key' }                                                admins — the recovery copy of the key, still locked
- *      { action: 'save',   client_id, envelope: { wk, iv, ct }, brand, last4 }   a card locked in the browser
- *      { action: 'open',   client_id }                                           admins — the locked card + locked key
- *      { action: 'open',   client_id, credential_id }                            admins — the locked card + their fingerprint copy of the key
+ *      { action: 'save',   client_id, envelope: { wk, iv, ct }, brand, last4, slot? }   a card locked in the browser
+ *                          slot: a number = replace that card · 'new' = one more card · left out = the first card
+ *      { action: 'open',   client_id, slot? }                                    admins — the locked card + locked key
+ *      { action: 'open',   client_id, slot?, credential_id }                     admins — the locked card + their fingerprint copy of the key
  *      { action: 'passkey_add', credential_id, rp_id, wrapped_private, iv }      admins — fingerprint unlock on for this device
  *      { action: 'passkey_remove' }                                              admins — fingerprint unlock off (their own devices)
- *      { action: 'delete', client_id }                                           admins
+ *      { action: 'delete', client_id, slot? }                                    admins
+ * A slot left out is the first card (1).
  * Nothing here can open a card: that takes the vault password, in the browser.
  */
 export async function cardVaultPost(ctx: AuthContext, body: Row) {
@@ -307,19 +326,36 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
     const last4 = typeof body.last4 === 'string' && /^\d{4}$/.test(body.last4) ? body.last4 : '';
     if (!envelope || !last4) return bad('That did not look like a locked card');
 
-    const { data: before } = await service.from('card_vault').select('client_id').eq('client_id', clientId).maybeSingle();
+    const { data: held, error: readErr } = await service.from('card_vault').select('slot').eq('client_id', clientId);
+    if (readErr) return bad(missing(readErr) || /column/i.test(readErr.message ?? '') ? NEEDS_SETUP : (readErr.message ?? 'Could not save the card'), 503);
+    const used = ((held ?? []) as Row[]).map(r => Number(r.slot));
+    let slot: number | null;
+    if (body.slot === 'new') {
+      slot = Array.from({ length: MAX_CARDS }, (_, i) => i + 1).find(n => !used.includes(n)) ?? null;
+      if (!slot) return bad(`A client can have up to ${MAX_CARDS} cards. Delete one first.`, 409);
+    } else if (body.slot === undefined) slot = 1;
+    else {
+      slot = readSlot(body.slot);
+      if (!slot || !used.includes(slot)) return bad('That card is no longer there', 404);
+    }
+    const replacing = used.includes(slot);
     const row = {
-      client_id: clientId, ...seal(envelope, clientId), key_version: FORMAT, brand, last4,
+      client_id: clientId, slot, ...seal(envelope, cardBind(clientId, slot)), key_version: FORMAT, brand, last4,
       saved_by: ctx.userId, saved_by_name: me.name, updated_at: new Date().toISOString(),
     };
-    const { error } = await service.from('card_vault').upsert(row, { onConflict: 'client_id' });
+    const { error } = replacing
+      ? await service.from('card_vault').update(row).eq('client_id', clientId).eq('slot', slot)
+      : await service.from('card_vault').insert(row);
     if (error) return bad(error.message ?? 'Could not save the card', 500);
-    await log(ctx, me, clientId, clientName, before ? 'replaced' : 'saved');
+    await log(ctx, me, clientId, clientName, replacing ? 'replaced' : 'saved');
     return json({ card: summary(row) });
   }
 
+  const slot = body.slot === undefined ? 1 : readSlot(body.slot);
+  if (!slot) return bad('That card is no longer there', 404);
+
   if (action === 'delete') {
-    const { error } = await service.from('card_vault').delete().eq('client_id', clientId);
+    const { error } = await service.from('card_vault').delete().eq('client_id', clientId).eq('slot', slot);
     if (error) return bad(error.message ?? 'Could not delete the card', 500);
     await log(ctx, me, clientId, clientName, 'deleted');
     return json({ ok: true });
@@ -331,9 +367,9 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
       .eq('user_id', ctx.userId).eq('action', 'revealed').gte('at', since);
     if ((recent ?? []).length >= OPENS_PER_HOUR) return bad('Too many cards opened in the last hour. Try again later.', 429);
 
-    const { data: row } = await service.from('card_vault').select('ciphertext, iv, tag, key_version').eq('client_id', clientId).maybeSingle();
+    const { data: row } = await service.from('card_vault').select('ciphertext, iv, tag, key_version').eq('client_id', clientId).eq('slot', slot).maybeSingle();
     if (!row) return bad('No card saved for this client', 404);
-    const envelope = unseal<Envelope>(row as Sealed, clientId);
+    const envelope = unseal<Envelope>(row as Sealed, cardBind(clientId, slot));
     if (!envelope || !envelope.wk) return bad('This card could not be read — the server key has changed since it was saved, or the record was altered', 500);
 
     // By fingerprint: hand back this admin's own copy of the key for the device

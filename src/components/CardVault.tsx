@@ -17,10 +17,10 @@ const BORDER = "1px solid rgba(0,0,0,0.08)";
 const INPUT = { background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" } as const;
 const SHOW_SECONDS = 60;
 
-type Summary = { brand: string; last4: string; saved_by: string | null; saved_at: string | null };
+type Summary = { slot?: number; brand: string; last4: string; saved_by: string | null; saved_at: string | null };
 type Status = {
   enabled: boolean; ready: boolean; setup?: boolean; public_key?: string | null; can_reveal?: boolean;
-  card?: Summary | null; history?: { user_name: string; action: string; at: string }[]; error?: string;
+  card?: Summary | null; cards?: Summary[]; max_cards?: number; history?: { user_name: string; action: string; at: string }[]; error?: string;
   // Admins only: who they are, and which of their devices open the vault by fingerprint.
   me?: { id: string; name: string }; fingerprint?: { ready: boolean; credentials: { credential_id: string; rp_id: string }[] };
   // Admins only: has a recovery code been made (null = that part is not set up yet).
@@ -58,14 +58,14 @@ export function useCardVault(): { on: boolean; waiting: boolean; admin: boolean;
   return { ...state, refresh: () => setTick(n => n + 1) };
 }
 
-/** Lock a card in this browser and save it for a client. */
-export async function saveCard(clientId: string, card: CardInput, publicKey?: string | null): Promise<{ card?: Summary; error?: string }> {
+/** Lock a card in this browser and save it for a client. `slot`: a number replaces that card, "new" adds one more, left out is the first card. */
+export async function saveCard(clientId: string, card: CardInput, publicKey?: string | null, slot?: number | "new"): Promise<{ card?: Summary; error?: string }> {
   try {
     const key = publicKey ?? (await readStatus()).public_key;
     if (!key) return { error: "The vault password has not been set yet" };
     const clean = tidyCard(card);
     const envelope = await lockCard(key, clean, clientId);
-    return await call({ action: "save", client_id: clientId, envelope, brand: brandOf(clean.number), last4: clean.number.slice(-4) });
+    return await call({ action: "save", client_id: clientId, envelope, brand: brandOf(clean.number), last4: clean.number.slice(-4), ...(slot === undefined ? {} : { slot }) });
   } catch {
     return { error: "This browser could not lock the card" };
   }
@@ -219,6 +219,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
   const [draft, setDraft] = useState<CardInput>(EMPTY_CARD);
   const [pw, setPw] = useState({ current: "", next: "", again: "" });
   const [shown, setShown] = useState<CardInput | null>(null);
+  const [slot, setSlot] = useState<number | "new">(1);   // which of the client's cards is being worked on
   const [left, setLeft] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -249,6 +250,8 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
   const reset = () => { setMode("idle"); setDraft(EMPTY_CARD); setPw({ current: "", next: "", again: "" }); setError(null); setTouching(false); setTypedCode(""); enrolling.current = null; };
   const go = (m: Mode) => { setError(null); setNotice(null); setMode(m); };
+  const pick = (s: number | "new", m: Mode) => { setSlot(s); go(m); };
+  const at = typeof slot === "number" ? slot : 1;
   const fail = (e: unknown, fallback: string) => setError(e instanceof Error ? e.message : fallback);
 
   async function change() {
@@ -301,7 +304,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
     const problem = cardProblem(draft);
     if (problem) { setError(problem); return; }
     setBusy(true); setError(null);
-    const r = await saveCard(clientId, draft, status?.public_key);
+    const r = await saveCard(clientId, draft, status?.public_key, slot);
     setBusy(false);
     if (r.error) { setError(r.error); return; }
     reset(); setShown(null); setReloads(n => n + 1);
@@ -311,7 +314,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
     if (!pw.current) return;
     setBusy(true); setError(null);
     try {
-      const r = await call({ action: "open", client_id: clientId });
+      const r = await call({ action: "open", client_id: clientId, slot: at });
       if (r.error || !r.envelope || !r.key) setError(r.error ?? "Could not fetch the card");
       else {
         const card = await openCard(r.key as KeyMaterial, pw.current, r.envelope as Envelope, clientId);
@@ -327,11 +330,11 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
   const mine = credentials.filter(c => c.rp_id === here).map(c => c.credential_id);
 
   /** Show Card by fingerprint. The sensor comes first: nothing is fetched, or logged, until it has been touched. */
-  async function touchReveal() {
-    setBusy(true); setError(null); setNotice(null);
+  async function touchReveal(s: number = at) {
+    setSlot(s); setBusy(true); setError(null); setNotice(null);
     try {
       const touch = await touchPasskey(mine);
-      const r = await call({ action: "open", client_id: clientId, credential_id: touch.credential_id });
+      const r = await call({ action: "open", client_id: clientId, slot: s, credential_id: touch.credential_id });
       if (r.error || !r.envelope || !r.passkey) throw new Error(r.error ?? "Could not fetch the card");
       const card = await openCardWithPasskey(r.passkey as PasskeyWrap, touch.output, r.envelope as Envelope, clientId);
       reset(); setShown(card); setLeft(SHOW_SECONDS); setReloads(n => n + 1);
@@ -377,7 +380,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
   async function remove() {
     setBusy(true); setError(null);
-    const r = await call({ action: "delete", client_id: clientId });
+    const r = await call({ action: "delete", client_id: clientId, slot: at });
     setBusy(false);
     if (r.error) { setError(r.error); return; }
     reset(); setShown(null); setReloads(n => n + 1);
@@ -415,35 +418,54 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
     );
   }
 
-  const card = status.card ?? null;
+  const cards: Summary[] = status.cards ?? (status.card ? [status.card] : []);
+  const name = (c: { brand: string; last4: string }) => `${c.brand} •••• ${c.last4}`;
+  const active = typeof slot === "number" ? cards.find(c => (c.slot ?? 1) === slot) : undefined;
+  const several = cards.length > 1;
+  const room = cards.length < (status.max_cards ?? 1);
   const fingerReady = !!status.fingerprint?.ready && canFinger;   // can be turned on here
   const byTouch = fingerReady && mine.length > 0;                  // is on, on this device
   return (
     <div>
       {head}
       <div className="rounded-xl mt-1.5 px-3 py-2.5" style={{ background: "#fafafa", border: BORDER }}>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          {card ? (
-            <span className="text-sm" style={{ color: "#111111" }}>
-              <span className="font-semibold">{card.brand} •••• {card.last4}</span>
-              <span className="text-xs" style={{ color: "#949494" }}>{card.saved_by ? ` · saved by ${card.saved_by}` : ""}{card.saved_at ? `, ${when(card.saved_at)}` : ""}</span>
-            </span>
-          ) : <span className="text-xs" style={{ color: "#4a4a4a" }}>No card saved for this client.</span>}
-          {mode === "idle" && !shown && (
-            <span className="flex items-center gap-1.5">
-              {card && status.can_reveal && (
-                <button type="button" disabled={busy} className={btn} style={{ ...black, opacity: busy ? 0.4 : 1 }} onClick={() => (byTouch ? touchReveal() : go("ask"))}>
-                  {busy && byTouch ? "Waiting for Fingerprint…" : "Show Card"}
-                </button>
+        {!cards.length && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs" style={{ color: "#4a4a4a" }}>No card saved for this client.</span>
+            {mode === "idle" && !shown && <button type="button" className={btn} style={grey} onClick={() => pick("new", "add")}>Add Card</button>}
+          </div>
+        )}
+        {cards.map((c, i) => {
+          const n = c.slot ?? 1;
+          return (
+            <div key={n} className="flex flex-wrap items-center justify-between gap-2" style={i ? { borderTop: BORDER, marginTop: 8, paddingTop: 8 } : undefined}>
+              <span className="text-sm" style={{ color: "#111111" }}>
+                <span className="font-semibold">{name(c)}</span>
+                <span className="text-xs" style={{ color: "#949494" }}>{c.saved_by ? ` · saved by ${c.saved_by}` : ""}{c.saved_at ? `, ${when(c.saved_at)}` : ""}</span>
+              </span>
+              {mode === "idle" && !shown && (
+                <span className="flex items-center gap-1.5">
+                  {status.can_reveal && (
+                    <button type="button" disabled={busy} className={btn} style={{ ...black, opacity: busy ? 0.4 : 1 }} onClick={() => (byTouch ? touchReveal(n) : pick(n, "ask"))}>
+                      {busy && byTouch && slot === n ? "Waiting for Fingerprint…" : "Show Card"}
+                    </button>
+                  )}
+                  <button type="button" disabled={busy} className={btn} style={grey} onClick={() => pick(n, "add")}>Replace</button>
+                  {status.can_reveal && <button type="button" disabled={busy} className="text-xs px-1" style={{ color: "#949494" }} onClick={() => pick(n, "confirm-delete")}>Delete</button>}
+                </span>
               )}
-              <button type="button" className={btn} style={grey} onClick={() => go("add")}>{card ? "Replace" : "Add Card"}</button>
-              {card && status.can_reveal && <button type="button" className="text-xs px-1" style={{ color: "#949494" }} onClick={() => go("confirm-delete")}>Delete</button>}
-            </span>
-          )}
-        </div>
+            </div>
+          );
+        })}
+        {cards.length > 0 && room && mode === "idle" && !shown && (
+          <div className="mt-2.5">
+            <button type="button" disabled={busy} className={btn} style={grey} onClick={() => pick("new", "add")}>Add Another Card</button>
+          </div>
+        )}
 
         {mode === "add" && (
           <div className="mt-3">
+            {cards.length > 0 && <p className="text-xs font-semibold mb-2" style={{ color: "#4a4a4a" }}>{active ? `Replacing ${name(active)}` : "Another card for this client"}</p>}
             <CardFields value={draft} onChange={c => { setError(null); setDraft(c); }} idPrefix={`vault-${uid}`} />
             <div className="flex items-center justify-end gap-2 mt-3">
               <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
@@ -456,6 +478,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
         {mode === "ask" && (
           <form className="mt-3" onSubmit={e => { e.preventDefault(); reveal(); }}>
+            {several && active && <p className="text-xs font-semibold mb-2" style={{ color: "#4a4a4a" }}>Opening {name(active)}</p>}
             <div className="flex items-end gap-2">
               <div className="flex-1" style={{ minWidth: 0 }}>
                 <Secret id={`vault-pw-${uid}`} label="Vault Password" value={pw.current} onChange={v => { setError(null); setPw(p => ({ ...p, current: v })); }} autoFocus />
@@ -465,7 +488,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
             </div>
             <p className="text-xs mt-1.5" style={{ color: "#949494" }}>
               Each opening is logged with your name and the time.
-              {byTouch && <> <button type="button" disabled={busy} className="underline" onClick={touchReveal}>Use Fingerprint Instead</button></>}
+              {byTouch && <> <button type="button" disabled={busy} className="underline" onClick={() => touchReveal()}>Use Fingerprint Instead</button></>}
               {" "}<button type="button" className="underline" onClick={() => go("forgot")}>Forgot the Password?</button>
             </p>
           </form>
@@ -554,7 +577,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
         {mode === "confirm-delete" && (
           <div className="flex items-center justify-end gap-2 mt-3">
-            <span className="text-xs" style={{ color: "#4a4a4a" }}>Delete this card for good?</span>
+            <span className="text-xs" style={{ color: "#4a4a4a" }}>Delete {active ? name(active) : "this card"} for good?</span>
             <button type="button" disabled={busy} className={btn} style={{ color: "#b91c1c", background: "rgba(185,28,28,0.12)" }} onClick={remove}>{busy ? "Deleting…" : "Delete Card"}</button>
             <button type="button" className="text-xs px-1" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
           </div>
@@ -562,6 +585,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
         {shown && (
           <div className="mt-3">
+            {several && <p className="text-xs font-semibold mb-1" style={{ color: "#4a4a4a" }}>{name({ brand: brandOf(shown.number), last4: shown.number.slice(-4) })}</p>}
             <CopyRow label="Name on Card" value={shown.name} />
             <CopyRow label="Card Number" value={formatNumber(shown.number)} />
             <CopyRow label="Expiry" value={shown.exp} />
@@ -583,7 +607,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
         {!!status.history?.length && (
           <details className="mt-2">
-            <summary className="text-xs cursor-pointer" style={{ color: "#949494" }}>Who Has Touched This Card</summary>
+            <summary className="text-xs cursor-pointer" style={{ color: "#949494" }}>{several ? "Who Has Touched These Cards" : "Who Has Touched This Card"}</summary>
             <ul className="mt-1 space-y-0.5">
               {status.history.map((h, i) => (
                 <li key={i} className="text-xs" style={{ color: h.action === "denied" ? "#b91c1c" : "#4a4a4a" }}>{ACTION[h.action] ?? h.action} by {h.user_name} · {when(h.at)}</li>
