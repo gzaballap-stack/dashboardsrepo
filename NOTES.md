@@ -7,8 +7,7 @@
   card only gets into the dashboard by the owner typing it into Card on File.
 - **Imported (V1, 2026-11-20):** the 14 submissions that match a roster client
   (every roster client had one) were saved as that client's survey
-  (`client_surveys`, `submitted_by_name = "GHL form (imported)"`, dated as
-  submitted), and blank contact details on the client profile were filled
+  (`client_surveys`, dated as submitted), and blank contact details on the client profile were filled
   (`pnl_clients`, blanks only). Service came from the roster — the GHL form
   never asked. Nothing else was touched: no onboarding cards, no Stripe, no
   billing, no GHL changes. One-off script, not kept in the repo.
@@ -21,8 +20,15 @@
   Construction And Renovation, one man and a mower llc = **Facebook Ads**
   (names exactly as on the form). No onboarding cards, Stripe customers or GHL
   changes were made for them.
-- **The 13 past clients were left out on purpose** (owner: no clients for
-  them). Their answers stay in the GHL form only.
+- **The 13 past clients: answers saved, no roster client** (owner, same day:
+  "add all the 13 past clients' information, but don't add them to the
+  roster"). They live in their own table, `past_client_surveys` (name +
+  answers, nothing else — no client, billing, profile or card), and show in
+  Submitted Surveys tagged **Past client**, read-only (`survey_get` with
+  `past_id`). To make one a client, fill in a new survey for them.
+- **"GHL form (imported)" label removed** (owner did not want it): those
+  surveys now have no `submitted_by_name`. The list shows
+  **Company — Contact name** (first + last name read out of the answers).
 - **Cards were not brought over, and will not be by Claude.** The owner asked
   for the cards to be added too; typing or moving card numbers is something
   Claude does not do, whoever asks. He adds each one himself: Submitted Surveys

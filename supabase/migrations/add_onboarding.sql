@@ -140,3 +140,17 @@ alter table card_vault_keys add column if not exists recovery_at         timesta
 alter table card_vault_log drop constraint if exists card_vault_log_action_check;
 alter table card_vault_log add constraint card_vault_log_action_check
   check (action in ('saved', 'replaced', 'revealed', 'denied', 'deleted', 'vault_set', 'password_changed', 'fingerprint_added', 'fingerprint_removed', 'recovery_set', 'password_reset'));
+
+-- Past clients' surveys (NOTES.md 2026-11-20): answers kept for the record for
+-- someone who is NOT on the Client Roster — no client, no billing, no card.
+create table if not exists past_client_surveys (
+  id                uuid primary key default gen_random_uuid(),
+  name              text not null,
+  answers           jsonb not null default '{}'::jsonb,
+  submitted_by_name text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+create unique index if not exists past_client_surveys_name_idx on past_client_surveys (lower(name));
+alter table past_client_surveys enable row level security;
+revoke all on past_client_surveys from anon, authenticated;

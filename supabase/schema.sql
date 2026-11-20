@@ -707,6 +707,20 @@ create table if not exists client_surveys (
 );
 alter table client_surveys enable row level security;
 
+-- Past clients' surveys (NOTES.md 2026-11-20): answers kept for the record for
+-- someone who is NOT on the Client Roster — no client, no billing, no card.
+create table if not exists past_client_surveys (
+  id                uuid primary key default gen_random_uuid(),
+  name              text not null,
+  answers           jsonb not null default '{}'::jsonb,
+  submitted_by_name text,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+create unique index if not exists past_client_surveys_name_idx on past_client_surveys (lower(name));
+alter table past_client_surveys enable row level security;
+revoke all on past_client_surveys from anon, authenticated;
+
 -- ── SMS totals ──────────────────────────────────────────────────────────────
 -- See migrations/add_sms_totals.sql.
 --   select * from sms_totals('2026-11-01', '2026-11-30', '<id>');  -- one client

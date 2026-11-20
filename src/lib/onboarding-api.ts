@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { AuthContext } from '@/lib/api-auth';
 import { cleanTemplate, isStage, isTrack, parseAdAccount, snapshot, steps, type Card, type CardItem } from './onboarding';
 import { coveredSteps, createCard, ensureRoster, fillFromRoster, lookupAdAccount, readTemplates, tablesMissing } from './onboarding-server';
-import { cardLink, ensureStripeCustomer, listSurveys, readSurvey, submitSurvey, whoIs, type Outcome } from './client-survey-server';
+import { cardLink, ensureStripeCustomer, listSurveys, readPastSurvey, readSurvey, submitSurvey, whoIs, type Outcome } from './client-survey-server';
 import { getCustomer, stripeStatus } from './stripe';
 import { linkAdAccounts } from './ad-account-link';
 
@@ -18,7 +18,7 @@ import { linkAdAccounts } from './ad-account-link';
 //        { action: 'delete', id }
 //        { action: 'template', track, items | null }               admins; null = back to the built-in list
 //        { action: 'survey_submit', answers, card_id? | client_id? }  the new client survey (client-survey-server.ts)
-//        { action: 'survey_get', client_id }                        a client's answers
+//        { action: 'survey_get', client_id | past_id }              a client's answers (past_id: a past client, not on the roster)
 //        { action: 'survey_list' }                                  who has a saved survey (no answers)
 //        { action: 'card_link', id }                                Stripe's page for putting the card on file
 //
@@ -65,6 +65,7 @@ export async function onboardingPost(ctx: AuthContext, body: Record<string, unkn
   if (action === 'survey_submit') return send(await submitSurvey(ctx, body));
   if (action === 'survey_list') return send(await listSurveys(service));
   if (action === 'survey_get') {
+    if (typeof body.past_id === 'string' && body.past_id) return send(await readPastSurvey(service, body.past_id));
     if (typeof body.client_id !== 'string' || !body.client_id) return bad('client_id is required');
     return send(await readSurvey(service, body.client_id));
   }

@@ -161,7 +161,7 @@ function Field({ f, a, set }: { f: SurveyField; a: Answers; set: (key: string, v
   );
 }
 
-type SavedSurvey = { client_id: string; name: string; service: string | null; submitted_by_name: string | null; created_at: string };
+type SavedSurvey = { client_id: string | null; past_id?: string; name: string; contact?: string | null; service: string | null; submitted_by_name: string | null; created_at: string };
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 
 /**
@@ -171,7 +171,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 
  */
 export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => void }) {
   const [list, setList] = useState<SavedSurvey[]>([]);
-  const [open, setOpen] = useState<{ clientId: string; name: string; answers: Answers } | null>(null);
+  const [open, setOpen] = useState<{ clientId: string | null; key: string; name: string; answers: Answers } | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
@@ -179,11 +179,12 @@ export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => voi
   useEffect(() => { post({ action: "survey_list" }).then(r => setList(Array.isArray(r.surveys) ? r.surveys : [])); }, [reloads]);
 
   async function view(row: SavedSurvey) {
-    setLoading(row.client_id); setError(null);
-    const r = await post({ action: "survey_get", client_id: row.client_id });
+    const key = row.client_id ?? row.past_id ?? "";
+    setLoading(key); setError(null);
+    const r = await post({ action: "survey_get", ...(row.client_id ? { client_id: row.client_id } : { past_id: row.past_id }) });
     setLoading(null);
     if (r.error || !r.survey) { setError(r.error ?? "Could not open that survey"); return; }
-    setOpen({ clientId: row.client_id, name: row.name, answers: r.survey.answers as Answers });
+    setOpen({ clientId: row.client_id, key, name: row.contact ? `${row.name} — ${row.contact}` : row.name, answers: r.survey.answers as Answers });
   }
 
   if (open) {
@@ -196,10 +197,17 @@ export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => voi
           <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>{open.name}</h2>
           <button type="button" onClick={close} className="text-sm underline" style={{ color: "#767676" }}>Back to Surveys</button>
         </div>
-        <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
-          <CardVaultPanel key={open.clientId} clientId={open.clientId} />
-        </div>
-        <ClientSurvey key={open.clientId} initial={open.answers} clientId={open.clientId} onCancel={close} onDone={close} />
+        {open.clientId ? (
+          <>
+            <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
+              <CardVaultPanel key={open.clientId} clientId={open.clientId} />
+            </div>
+            <ClientSurvey key={open.key} initial={open.answers} clientId={open.clientId} onCancel={close} onDone={close} />
+          </>
+        ) : (
+          // A past client: answers kept for the record. Not on the roster, so nothing to save, bill or keep a card for.
+          <ClientSurvey key={open.key} initial={open.answers} readOnly onCancel={close} />
+        )}
       </div>
     );
   }
@@ -210,11 +218,13 @@ export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => voi
           <summary className="text-sm font-semibold cursor-pointer" style={{ color: "#111111" }}>Submitted Surveys ({list.length})</summary>
           <ul className="mt-3">
             {list.map(row => (
-              <li key={row.client_id} style={{ borderTop: BORDER }}>
+              <li key={row.client_id ?? row.past_id} style={{ borderTop: BORDER }}>
                 <button type="button" onClick={() => view(row)} disabled={loading !== null} className="w-full flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-2.5 text-left">
-                  <span className="text-sm font-medium" style={{ color: "#111111" }}>{row.name}</span>
+                  <span className="text-sm font-medium" style={{ color: "#111111" }}>
+                    {row.name}{row.contact && <span className="font-normal" style={{ color: "#767676" }}> — {row.contact}</span>}
+                  </span>
                   <span className="text-xs" style={{ color: "#949494" }}>
-                    {loading === row.client_id ? "Opening…" : [row.service ? SERVICE_LABEL[row.service] : null, day(row.created_at), row.submitted_by_name].filter(Boolean).join(" · ")}
+                    {loading === (row.client_id ?? row.past_id) ? "Opening…" : [row.past_id ? "Past client" : row.service ? SERVICE_LABEL[row.service] : null, day(row.created_at), row.submitted_by_name].filter(Boolean).join(" · ")}
                   </span>
                 </button>
               </li>
@@ -228,13 +238,15 @@ export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => voi
   );
 }
 
-export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDone, onCancel }: {
+export default function ClientSurvey({ initial, cardId, clientId, readOnly, onSaved, onDone, onCancel }: {
   /** Answers to start from (a card's name, or a survey being corrected). */
   initial?: Answers;
   /** The card the survey is being filled in from — that card is used, not a new one. */
   cardId?: string;
   /** Correcting this client's answers: nothing new is created. */
   clientId?: string;
+  /** A past client's answers, kept for the record: shown, never saved. */
+  readOnly?: boolean;
   /** Called the moment the survey is saved. */
   onSaved?: (r: SurveyResult) => void;
   /** Called with the result when the person moves on from the confirmation. */
@@ -256,6 +268,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (readOnly) return;
     const clean = cleanAnswers(a);
     const problem = surveyProblem(clean);
     if (problem) { setError(problem); return; }
@@ -342,9 +355,9 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
     <form onSubmit={submit} className="w-full max-w-2xl mx-auto space-y-4" noValidate>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>{clientId ? "Client Survey" : "New Client Survey"}</h2>
+          <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>{readOnly ? "Past Client Survey" : clientId ? "Client Survey" : "New Client Survey"}</h2>
           <p className="text-sm mt-0.5" style={{ color: "#767676" }}>
-            {clientId ? "Correct the answers and save." : "Fill it in on the onboarding call. Submitting sets the client up across the dashboard."}
+            {readOnly ? "Kept for the record. Not on the Client Roster, so there is nothing to bill and no card." : clientId ? "Correct the answers and save." : "Fill it in on the onboarding call. Submitting sets the client up across the dashboard."}
           </p>
         </div>
         {onCancel && <button type="button" onClick={onCancel} aria-label="Close" className="text-2xl leading-none px-1" style={{ color: "#767676" }}>×</button>}
@@ -353,7 +366,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
       {SURVEY_SECTIONS.map(section => {
         const fields = section.fields.filter(f => !f.when || f.when(a));
         return (
-          <fieldset key={section.title} className="rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
+          <fieldset key={section.title} disabled={readOnly} className="rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
             <legend className="sr-only">{section.title}</legend>
             <p className="text-sm font-semibold mb-3" style={{ color: "#111111" }} aria-hidden>{section.title}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3.5">
@@ -363,7 +376,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
         );
       })}
 
-      {!clientId && vault.on && (
+      {!clientId && !readOnly && vault.on && (
         <fieldset className="rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
           <legend className="sr-only">Card on File</legend>
           <p className="text-sm font-semibold" style={{ color: "#111111" }} aria-hidden>Card on File</p>
@@ -371,7 +384,7 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
           <CardFields value={card} onChange={c => { setError(null); setCard(c); }} idPrefix="survey-card" />
         </fieldset>
       )}
-      {!clientId && vault.checked && !vault.on && (
+      {!clientId && !readOnly && vault.checked && !vault.on && (
         <div className="rounded-2xl p-5" style={{ background: "#fafafa", border: BORDER }}>
           <p className="text-sm font-semibold" style={{ color: "#111111" }}>Card on File</p>
           {vault.waiting && vault.admin ? (
@@ -389,10 +402,10 @@ export default function ClientSurvey({ initial, cardId, clientId, onSaved, onDon
 
       <div className="flex items-center justify-end gap-3 pb-2">
         {error && <span className="text-sm" style={{ color: "#b91c1c" }}>{error}</span>}
-        {onCancel && <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm" style={{ color: "#767676" }}>Cancel</button>}
-        <button type="submit" disabled={saving} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: saving ? 0.5 : 1 }}>
+        {onCancel && <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm" style={{ color: "#767676" }}>{readOnly ? "Back to Surveys" : "Cancel"}</button>}
+        {!readOnly && <button type="submit" disabled={saving} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: saving ? 0.5 : 1 }}>
           {saving ? "Saving…" : clientId ? "Save Answers" : "Submit Survey"}
-        </button>
+        </button>}
       </div>
     </form>
   );
