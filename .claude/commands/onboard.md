@@ -290,6 +290,20 @@ the matching steps on the client's card on the Onboarding board if there is one.
   steps** — it is the workflow's **Settings tab → Sender details → From
   number** (pick the A5 number; saves by itself). Nothing else in them is
   client-specific.
+- **Calendar (A3), confirmed on Renown Baths / American Home Improvement:**
+  Settings → Calendars → template row ⋮ → Duplicate → Duplicate. Basic details:
+  name. Staff & location: the template's staff is **Stirling Shupe** (not
+  Gonzalo) — add the client's user first, then remove Stirling; meeting
+  location Custom → type `{{contact.full_address}}`. **Save changes** (top
+  right) before Availability. Availability → the person → Edit → **Customize
+  schedule for this calendar only** → set the client's timezone (template is
+  New York) → times can be typed (click, Cmd+A or End+Backspace, type
+  `10:30 AM`, OK). Set one day, then its copy icon → tick the other days →
+  Apply; adjust the odd days. Save. Booking rules already 30-minute slots.
+- **One notification number:** duplicate `… (1 Number)` too (owner: yes for
+  SMS clients). Its only client-specific setting found so far is the trigger's
+  **In calendar** (empty in the template) → the client's calendar.
+- **Fill In Data timezone:** set it to the client's (Pacific for California).
 - **Two notification numbers (SMS clients too, owner 2026-11-20):** duplicate
   `1. Template Send Message To Contractor (Facebook Form) (2 Numbers)` in
   Qualified Lead Stuff. It has **12** end-of-branch steps called *2nd Number*
@@ -300,7 +314,9 @@ the matching steps on the client's card on the Onboarding board if there is one.
   (A3) comes first.
 
 ## Not confirmed yet (written from dictation — check on screen, then fix this file)
-- The calendar (A3) and everything in Part B are still as dictated (not opened).
+- Everything in Part B is still as dictated (not opened).
+- USA Windows And Doors' calendar and Fill In Data user are waiting on his GHL
+  user (as of 2026-11-20).
 - Where a notification **email** from the form goes (the first number is in
   Fill In Data, the second in the 2 Numbers workflow).
 - What else changes in the Send Message To Contractor copy besides the trigger
