@@ -1,3 +1,29 @@
+## 2026-11-20 — GHL onboarding-form submissions brought into the dashboard; Submitted Surveys list
+
+- **Where they are in GHL:** Tomsi Media sub-account → Sites → Forms →
+  Submissions → form **Remodeling Onboarding Form**. 32 submissions, all 2026
+  (none in 2025). The form has four card fields (name on card, number, CVC,
+  expiry): they were **left out when reading** and never copied anywhere — a
+  card only gets into the dashboard by the owner typing it into Card on File.
+- **Imported (V1, 2026-11-20):** the 14 submissions that match a roster client
+  (every roster client had one) were saved as that client's survey
+  (`client_surveys`, `submitted_by_name = "GHL form (imported)"`, dated as
+  submitted), and blank contact details on the client profile were filled
+  (`pnl_clients`, blanks only). Service came from the roster — the GHL form
+  never asked. Nothing else was touched: no onboarding cards, no Stripe, no
+  billing, no GHL changes. One-off script, not kept in the repo.
+- **GHL's "Amount Collected" column is current monthly revenue** (the form's
+  question; it reuses that contact field). It was saved as *Current monthly
+  revenue* — never as Cash collected, which would have created billing payments.
+- **Not imported yet — 18 submissions with no roster client:** 5 new signings
+  (Renown Baths, American Home Improvement, USA Windows And Doors, Star
+  Construction And Renovation, one man and a mower llc — 14–19 Nov) and 13 past
+  clients. A survey needs a roster client, and the form does not say Facebook /
+  SMS, so these wait for the owner's word.
+- **New: Submitted Surveys** on Clients > New Client Survey — a list of every
+  saved survey above the blank one; click to read or correct (`survey_list`).
+  Until now a saved survey could only be opened from an onboarding card.
+
 ## 2026-11-20 — Card vault: recovery code (a forgotten vault password is no longer the end)
 
 Owner found "forget the password and the cards are gone" too much and asked for

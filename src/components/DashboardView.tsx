@@ -17,7 +17,7 @@ import NotificationBell from "./NotificationBell";
 import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
 import OnboardingBoard from "./OnboardingBoard";
-import ClientSurvey from "./ClientSurvey";
+import { ClientSurveyPage } from "./ClientSurvey";
 import UserManager from "./UserManager";
 import ZipTool from "./ZipTool";
 import BrandBackground from "./BrandBackground";
@@ -1432,7 +1432,7 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
           {/* ── Tomsi Media Dashboard ── */}
 
           {topSection === "clients" && clientsView === "onboarding" && <OnboardingBoard />}
-          {topSection === "clients" && clientsView === "client_survey" && <ClientSurvey onDone={() => setClientsView("onboarding")} />}
+          {topSection === "clients" && clientsView === "client_survey" && <ClientSurveyPage onDone={() => setClientsView("onboarding")} />}
           {topSection === "clients" && clientsView === "client_roster" && <ClientRoster />}
           {topSection === "clients" && clientsView === "csm_dashboard" && <CSMDashboard />}
           {topSection === "clients" && clientsView === "share_reports" && <ShareReports clients={clients} />}

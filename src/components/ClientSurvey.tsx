@@ -5,7 +5,7 @@
 // sets them up in Client Billing. Questions in lib/client-survey.ts, what a
 // submission does in lib/client-survey-server.ts. See NOTES.md 2026-11-12.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   SURVEY_SECTIONS, cleanAnswers, surveyProblem, type Answers, type SurveyField,
 } from "@/lib/client-survey";
@@ -157,6 +157,60 @@ function Field({ f, a, set }: { f: SurveyField; a: Answers; set: (key: string, v
           className="w-full py-2 rounded-lg text-sm outline-none" style={{ ...INPUT, paddingLeft: f.type === "money" ? 24 : 12, paddingRight: 12 }} />
       </div>
       {hint}
+    </div>
+  );
+}
+
+type SavedSurvey = { client_id: string; name: string; service: string | null; submitted_by_name: string | null; created_at: string };
+const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
+/**
+ * The survey page (Clients > New Client Survey): the blank survey, and above it
+ * every survey already on file — click one to read or correct it. Card details
+ * are never part of a saved survey; those live in the card vault.
+ */
+export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => void }) {
+  const [list, setList] = useState<SavedSurvey[]>([]);
+  const [open, setOpen] = useState<{ clientId: string; answers: Answers } | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reloads, setReloads] = useState(0);
+
+  useEffect(() => { post({ action: "survey_list" }).then(r => setList(Array.isArray(r.surveys) ? r.surveys : [])); }, [reloads]);
+
+  async function view(row: SavedSurvey) {
+    setLoading(row.client_id); setError(null);
+    const r = await post({ action: "survey_get", client_id: row.client_id });
+    setLoading(null);
+    if (r.error || !r.survey) { setError(r.error ?? "Could not open that survey"); return; }
+    setOpen({ clientId: row.client_id, answers: r.survey.answers as Answers });
+  }
+
+  if (open) {
+    const close = () => { setOpen(null); setReloads(n => n + 1); };
+    return <ClientSurvey key={open.clientId} initial={open.answers} clientId={open.clientId} onCancel={close} onDone={close} />;
+  }
+  return (
+    <div className="space-y-4">
+      {list.length > 0 && (
+        <details className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
+          <summary className="text-sm font-semibold cursor-pointer" style={{ color: "#111111" }}>Submitted Surveys ({list.length})</summary>
+          <ul className="mt-3">
+            {list.map(row => (
+              <li key={row.client_id} style={{ borderTop: BORDER }}>
+                <button type="button" onClick={() => view(row)} disabled={loading !== null} className="w-full flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-2.5 text-left">
+                  <span className="text-sm font-medium" style={{ color: "#111111" }}>{row.name}</span>
+                  <span className="text-xs" style={{ color: "#949494" }}>
+                    {loading === row.client_id ? "Opening…" : [row.service ? SERVICE_LABEL[row.service] : null, day(row.created_at), row.submitted_by_name].filter(Boolean).join(" · ")}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {error && <p className="text-xs mt-2" style={{ color: "#b91c1c" }}>{error}</p>}
+        </details>
+      )}
+      <ClientSurvey onDone={onDone} />
     </div>
   );
 }

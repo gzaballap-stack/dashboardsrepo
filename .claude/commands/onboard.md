@@ -64,7 +64,14 @@ Templates marked `NOT ACTIVE - …` are not used. A duplicate comes out with
 
 The client's **onboarding form submission**. The owner says which entry to use:
 for now a GHL form submission he links to; later the client's New Client Survey
-in the dashboard. Use only the entry he points at. You need: company name (exact), full address and
+in the dashboard. Use only the entry he points at.
+
+GHL submissions: Tomsi Media sub-account (`jdBERcRjjBJ8dkPT9AOu`) → Sites → Forms →
+Submissions → form **Remodeling Onboarding Form**. The form has card fields
+(name, number, CVC, expiry) — **do not read or copy them**; read the table with
+the card columns left out. Its "Amount Collected" column is the client's
+current monthly revenue, not money paid. Clients whose answers are already in
+the dashboard: Clients > New Client Survey > Submitted Surveys. You need: company name (exact), full address and
 zip, city + state, main company number, the phone number(s) appointments /
 notifications go to (one or two), weekly availability, services, starting
 prices, how far they travel, the client's name as a GHL staff user.

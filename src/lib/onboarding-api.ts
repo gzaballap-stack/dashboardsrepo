@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { AuthContext } from '@/lib/api-auth';
 import { cleanTemplate, isStage, isTrack, parseAdAccount, snapshot, steps, type Card, type CardItem } from './onboarding';
 import { coveredSteps, createCard, ensureRoster, fillFromRoster, lookupAdAccount, readTemplates, tablesMissing } from './onboarding-server';
-import { cardLink, ensureStripeCustomer, readSurvey, submitSurvey, whoIs, type Outcome } from './client-survey-server';
+import { cardLink, ensureStripeCustomer, listSurveys, readSurvey, submitSurvey, whoIs, type Outcome } from './client-survey-server';
 import { getCustomer, stripeStatus } from './stripe';
 import { linkAdAccounts } from './ad-account-link';
 
@@ -19,6 +19,7 @@ import { linkAdAccounts } from './ad-account-link';
 //        { action: 'template', track, items | null }               admins; null = back to the built-in list
 //        { action: 'survey_submit', answers, card_id? | client_id? }  the new client survey (client-survey-server.ts)
 //        { action: 'survey_get', client_id }                        a client's answers
+//        { action: 'survey_list' }                                  who has a saved survey (no answers)
 //        { action: 'card_link', id }                                Stripe's page for putting the card on file
 //
 // Tables onboarding_cards + onboarding_templates (migrations/add_onboarding.sql).
@@ -62,6 +63,7 @@ export async function onboardingPost(ctx: AuthContext, body: Record<string, unkn
   const action = body.action;
 
   if (action === 'survey_submit') return send(await submitSurvey(ctx, body));
+  if (action === 'survey_list') return send(await listSurveys(service));
   if (action === 'survey_get') {
     if (typeof body.client_id !== 'string' || !body.client_id) return bad('client_id is required');
     return send(await readSurvey(service, body.client_id));

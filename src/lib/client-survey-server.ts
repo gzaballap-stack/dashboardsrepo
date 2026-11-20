@@ -36,6 +36,19 @@ export async function readSurvey(service: Service, clientId: string): Promise<Ou
   return { status: 200, json: { ready: true, survey: data ?? null } };
 }
 
+/** Every client with a saved survey, newest first — the list on the survey page. Answers are fetched one at a time. */
+export async function listSurveys(service: Service): Promise<Outcome> {
+  const { data, error } = await service.from('client_surveys').select('client_id, submitted_by_name, created_at, updated_at').order('created_at', { ascending: false });
+  if (error) return tablesMissing(error) ? { status: 200, json: { ready: false, surveys: [] } } : fail(error.message ?? 'Could not read the surveys', 500);
+  const rows = (data ?? []) as Row[];
+  const { data: clients } = rows.length ? await service.from('clients').select('id, name, service, status').in('id', rows.map(r => String(r.client_id))) : { data: [] };
+  const byId = new Map(((clients ?? []) as Row[]).map(c => [String(c.id), c]));
+  return {
+    status: 200,
+    json: { ready: true, surveys: rows.map(r => ({ ...r, name: byId.get(String(r.client_id))?.name ?? 'Unknown client', service: byId.get(String(r.client_id))?.service ?? null })) },
+  };
+}
+
 /**
  * The client's customer record in Stripe: the one already linked in Client
  * Billing, else the one Stripe already has under that exact email (so a client
