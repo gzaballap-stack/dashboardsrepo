@@ -19,8 +19,13 @@ Report back in plain words, as few as possible (see CLAUDE.md).
   the owner the number and the price; buy only on his yes. Never type card
   details or passwords — if a sign-in or 2FA screen appears, stop and ask him.
 - **DNS: add only.** Never edit or delete an existing record.
-- **New Lead workflows stay unpublished** until the Facebook page is connected
-  — published early, they fire on every submission.
+- **Leave everything you create unpublished (draft)** — the owner's rule for
+  the first few clients (2026-11-20); he checks and publishes, and will say
+  when to start publishing. New Lead in particular must never be published
+  before the Facebook page is connected: it fires on every submission.
+- **The client's GHL staff user is created by the owner's side**, not by you.
+  If the user is not in the staff list when the calendar needs it, stop and say
+  so.
 - If anything on screen does not match this file (a template missing, a name
   that differs, two possible matches), stop and ask. Do not guess.
 - Facebook **campaigns** are not part of this — he builds those by hand for now.
@@ -57,8 +62,9 @@ Templates marked `NOT ACTIVE - …` are not used. A duplicate comes out with
 
 ## What to read first
 
-The client's **onboarding form submission** (still a GHL form for now; later the
-dashboard's New Client Survey). You need: company name (exact), full address and
+The client's **onboarding form submission**. The owner says which entry to use:
+for now a GHL form submission he links to; later the client's New Client Survey
+in the dashboard. Use only the entry he points at. You need: company name (exact), full address and
 zip, city + state, main company number, the phone number(s) appointments /
 notifications go to (one or two), weekly availability, services, starting
 prices, how far they travel, the client's name as a GHL staff user.
@@ -222,9 +228,6 @@ they cost, what is still unpublished, and anything skipped or uncertain. Tick
 the matching steps on the client's card on the Onboarding board if there is one.
 
 ## Not confirmed yet (written from dictation — check on screen, then fix this file)
-- Where the onboarding form submissions are read from in GHL.
-- Who creates the client's **staff user** in the Ultimate sub-account (the
-  calendar needs it) — not in the dictation.
 - Ready: how a number is bought there (not opened yet).
 - Nothing inside a workflow, calendar or funnel has been opened yet — only the
   lists were checked.
@@ -232,4 +235,3 @@ the matching steps on the client's card on the Onboarding board if there is one.
 - Whether a both-services client needs anything different in A4 vs B4.
 - Whether the Fill In Data and New Lead duplicates need a name pattern.
 - For B5, what else changes in the Qualified Lead copy (tag? first number?).
-- Which workflows get **published** at the end, and when New Lead is published.
