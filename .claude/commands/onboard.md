@@ -268,13 +268,43 @@ the matching steps on the client's card on the Onboarding board if there is one.
   *Assign To Contractor* (the client's user). Blank answers: clear the
   placeholder rather than leave it.
 - Existing clients' copies are named `<Client> Fill In Data`.
+- **Ready, after buying:** the list needs a reload to show the new number
+  (never press Buy twice — reload and search first). Then row ⋮ → **Rename** →
+  label = the company name (saves as you type). It was $1.50 a month.
+- **GHL number settings (A5):** the pencil next to the number right after
+  buying. Friendly Name `1. <Company>`; Call Recording on (this ticks "Call
+  recording message" by itself — **untick it**); Advanced Settings → tick
+  Whisper Message → the picker inserts `undefined {{contact.client_name}}`:
+  replace the whole box with `{{contact.client_name}}`. Save.
+- **Blast workflow (A2), what is really in it:** no trigger → *Add Tag*
+  (template tag `d and b construction` → the client's, Add New tag — tags are
+  per sub-account) → *Update contact field* (Client Name = exact company name)
+  → *Remove Tag* (`homeowner`, leave) → *Add Tag* (`sms_blasted`, leave) →
+  *SMS* → *Webhook* (posts `sms_sent` + the Client Name field to the
+  dashboard, leave) → *Wait* → *Add Tag* (`no_answer_to_pitch`, leave). The
+  From number is **inside the message text**: `#from:+1XXXXXXXXXX#Hey …` —
+  double-click the digits and type the Ready number's digits.
+- **SMS Stuff pair (A6):** in each copy open *Condition* and swap the tag
+  `tomsi media` for the client's (on the **SMS** branch in Appointment
+  Confirmed, on **Branch** in No Response). The **From number is not in the SMS
+  steps** — it is the workflow's **Settings tab → Sender details → From
+  number** (pick the A5 number; saves by itself). Nothing else in them is
+  client-specific.
+- **Two notification numbers (SMS clients too, owner 2026-11-20):** duplicate
+  `1. Template Send Message To Contractor (Facebook Form) (2 Numbers)` in
+  Qualified Lead Stuff. It has **12** end-of-branch steps called *2nd Number*
+  (internal notification → SMS → To Custom Number): set every one to the
+  client's second number. Zoom the canvas out (fit-to-screen, about 20%) and
+  work across; pan to reach the two outermost. Its trigger also has an **"In
+  calendar"** box that must be set to the client's calendar — so the calendar
+  (A3) comes first.
 
 ## Not confirmed yet (written from dictation — check on screen, then fix this file)
-- Only Fill In Data has been opened. The blast workflow (A2), calendar (A3),
-  phone number settings (A5), the SMS Stuff pair (A6) and everything in Part B
-  are still as dictated.
-- The form can list two notification numbers and an email; Fill In Data has one
-  phone box. Where the second number / email go for an SMS client is not known.
+- The calendar (A3) and everything in Part B are still as dictated (not opened).
+- Where a notification **email** from the form goes (the first number is in
+  Fill In Data, the second in the 2 Numbers workflow).
+- What else changes in the Send Message To Contractor copy besides the trigger
+  calendar and the 2nd Number boxes.
 - A2 step 3 — which step holds the Client Name field (dictation was unclear).
 - Whether a both-services client needs anything different in A4 vs B4.
 - Whether the New Lead duplicate needs a name pattern (Fill In Data: confirmed).
