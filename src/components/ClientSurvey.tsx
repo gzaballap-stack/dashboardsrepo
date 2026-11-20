@@ -11,7 +11,7 @@ import {
 } from "@/lib/client-survey";
 import type { Card } from "@/lib/onboarding";
 import { EMPTY_CARD, cardProblem, cardStarted, type CardInput } from "@/lib/card-format";
-import { CardFields, VaultSetup, saveCard, useCardVault } from "./CardVault";
+import CardVaultPanel, { CardFields, VaultSetup, saveCard, useCardVault } from "./CardVault";
 
 const BORDER = "1px solid rgba(0,0,0,0.08)";
 const SHADOW = "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)";
@@ -171,7 +171,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 
  */
 export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => void }) {
   const [list, setList] = useState<SavedSurvey[]>([]);
-  const [open, setOpen] = useState<{ clientId: string; answers: Answers } | null>(null);
+  const [open, setOpen] = useState<{ clientId: string; name: string; answers: Answers } | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
@@ -183,12 +183,25 @@ export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => voi
     const r = await post({ action: "survey_get", client_id: row.client_id });
     setLoading(null);
     if (r.error || !r.survey) { setError(r.error ?? "Could not open that survey"); return; }
-    setOpen({ clientId: row.client_id, answers: r.survey.answers as Answers });
+    setOpen({ clientId: row.client_id, name: row.name, answers: r.survey.answers as Answers });
   }
 
   if (open) {
     const close = () => { setOpen(null); setReloads(n => n + 1); };
-    return <ClientSurvey key={open.clientId} initial={open.answers} clientId={open.clientId} onCancel={close} onDone={close} />;
+    // The client's card sits above their answers, in its own box: it is saved to
+    // the card vault, never with the survey (and its forms cannot sit inside the survey's).
+    return (
+      <div className="space-y-4">
+        <div className="w-full max-w-2xl mx-auto flex items-center justify-between gap-3">
+          <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>{open.name}</h2>
+          <button type="button" onClick={close} className="text-sm underline" style={{ color: "#767676" }}>Back to Surveys</button>
+        </div>
+        <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
+          <CardVaultPanel key={open.clientId} clientId={open.clientId} />
+        </div>
+        <ClientSurvey key={open.clientId} initial={open.answers} clientId={open.clientId} onCancel={close} onDone={close} />
+      </div>
+    );
   }
   return (
     <div className="space-y-4">

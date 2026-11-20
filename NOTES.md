@@ -15,11 +15,19 @@
 - **GHL's "Amount Collected" column is current monthly revenue** (the form's
   question; it reuses that contact field). It was saved as *Current monthly
   revenue* — never as Cash collected, which would have created billing payments.
-- **Not imported yet — 18 submissions with no roster client:** 5 new signings
-  (Renown Baths, American Home Improvement, USA Windows And Doors, Star
-  Construction And Renovation, one man and a mower llc — 14–19 Nov) and 13 past
-  clients. A survey needs a roster client, and the form does not say Facebook /
-  SMS, so these wait for the owner's word.
+- **The 5 new signings (14–19 Nov) were added the same day** on the owner's
+  word, as roster clients in `setup` (not live) with their answers: Renown
+  Baths, American Home Improvement, USA Windows And Doors = **SMS**; Star
+  Construction And Renovation, one man and a mower llc = **Facebook Ads**
+  (names exactly as on the form). No onboarding cards, Stripe customers or GHL
+  changes were made for them.
+- **The 13 past clients were left out on purpose** (owner: no clients for
+  them). Their answers stay in the GHL form only.
+- **Cards were not brought over, and will not be by Claude.** The owner asked
+  for the cards to be added too; typing or moving card numbers is something
+  Claude does not do, whoever asks. He adds each one himself: Submitted Surveys
+  → the client → Card on File → Add Card (the box is there for every saved
+  survey since this day; saving needs no vault password).
 - **New: Submitted Surveys** on Clients > New Client Survey — a list of every
   saved survey above the blank one; click to read or correct (`survey_list`).
   Until now a saved survey could only be opened from an onboarding card.
