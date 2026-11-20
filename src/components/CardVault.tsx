@@ -71,7 +71,7 @@ export async function saveCard(clientId: string, card: CardInput, publicKey?: st
   }
 }
 
-/** The five boxes. Nothing typed here is kept by the browser's own card autofill. */
+/** The four boxes (no billing zip since 2026-11-20 — the owner did not want it asked). Nothing typed here is kept by the browser's own card autofill. */
 export function CardFields({ value, onChange, idPrefix = "vault" }: { value: CardInput; onChange: (c: CardInput) => void; idPrefix?: string }) {
   const set = (k: keyof CardInput, v: string) => onChange({ ...value, [k]: v });
   const box = (k: keyof CardInput, label: string, props: React.InputHTMLAttributes<HTMLInputElement>, wide = false) => (
@@ -87,7 +87,6 @@ export function CardFields({ value, onChange, idPrefix = "vault" }: { value: Car
       {box("number", "Card number", { inputMode: "numeric", placeholder: "0000 0000 0000 0000", onChange: e => set("number", formatNumber(e.target.value)) }, true)}
       {box("exp", "Expiry", { inputMode: "numeric", placeholder: "MM/YY", onChange: e => set("exp", formatExp(e.target.value)) })}
       {box("cvc", "Security code", { inputMode: "numeric", placeholder: "CVC", onChange: e => set("cvc", e.target.value.replace(/\D/g, "").slice(0, 4)) })}
-      {box("zip", "Billing zip code", { onChange: e => set("zip", e.target.value) })}
     </div>
   );
 }
@@ -567,7 +566,8 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
             <CopyRow label="Card Number" value={formatNumber(shown.number)} />
             <CopyRow label="Expiry" value={shown.exp} />
             <CopyRow label="Security Code" value={shown.cvc} />
-            <CopyRow label="Billing Zip Code" value={shown.zip} />
+            {/* only a card saved before the zip box was removed can still have one */}
+            {shown.zip && <CopyRow label="Billing Zip Code" value={shown.zip} />}
             <div className="flex items-center justify-between pt-2" style={{ borderTop: BORDER }}>
               <span className="text-xs" style={{ color: "#949494" }}>Hides itself in {left}s</span>
               <button type="button" className={btn} style={grey} onClick={() => setShown(null)}>Hide Now</button>
