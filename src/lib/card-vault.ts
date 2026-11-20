@@ -18,7 +18,15 @@
 //   Database leak            → doubly-locked text. Nothing.
 //   Railway leak (+database) → the inner locked cards and the locked private
 //                              key. Still needs the vault password.
-//   Vault password forgotten → nobody can open the cards again. By design.
+//   Vault password forgotten → the RECOVERY CODE (2026-11-20): a long random
+//                              code made in the browser when the password is
+//                              set and shown once. A second copy of the private
+//                              key, locked with it, is kept here under the
+//                              server key. It sets a new password; it is never
+//                              sent to this server. Both lost → nobody can open
+//                              the cards again. By design: there is no email
+//                              reset, because a server that could reset the
+//                              password could open the cards.
 //
 // Around that: anyone with Onboarding access can save a card; only an admin can
 // fetch one to open, at most 20 an hour; every save, opening, refusal and
@@ -44,6 +52,7 @@ type Sealed = { ciphertext: string; iv: string; tag: string };
 type KeyMaterial = { wrapped_private: string; salt: string; iv: string; iterations: number };
 type Envelope = { wk: string; iv: string; ct: string };
 type PasskeyWrap = { wrapped_private: string; iv: string };
+type KeyCopy = PasskeyWrap;
 
 const FORMAT = 2;                 // 1 was server-key only (never held a card)
 const OPENS_PER_HOUR = 20;
@@ -101,6 +110,25 @@ function readMaterial(body: Row): KeyMaterial | null {
   return { wrapped_private: body.wrapped_private, salt: body.salt, iv: body.iv, iterations };
 }
 
+function readCopy(v: unknown): KeyCopy | null {
+  const c = (v ?? {}) as Row;
+  return isB64(c.wrapped_private, 8000) && isB64(c.iv, 40) ? { wrapped_private: c.wrapped_private, iv: c.iv } : null;
+}
+const RECOVERY_BIND = 'vault-recovery';
+const recoveryColumns = (copy: KeyCopy) => {
+  const sealed = seal(copy, RECOVERY_BIND);
+  return { recovery_ciphertext: sealed.ciphertext, recovery_iv: sealed.iv, recovery_tag: sealed.tag, recovery_at: new Date().toISOString() };
+};
+
+/** The recovery copy of the key. `ready: false` = the columns are not there yet. */
+async function readRecovery(ctx: AuthContext): Promise<{ ready: boolean; copy: KeyCopy | null }> {
+  const { data, error } = await ctx.service.from('card_vault_keys').select('recovery_ciphertext, recovery_iv, recovery_tag').eq('id', 1).maybeSingle();
+  if (error) return { ready: false, copy: null };
+  const row = data as Row | null;
+  if (!row?.recovery_ciphertext) return { ready: true, copy: null };
+  return { ready: true, copy: unseal<KeyCopy>({ ciphertext: String(row.recovery_ciphertext), iv: String(row.recovery_iv), tag: String(row.recovery_tag) }, RECOVERY_BIND) };
+}
+
 function readEnvelope(v: unknown): Envelope | null {
   const e = (v ?? {}) as Row;
   return isB64(e.wk, 1200) && isB64(e.iv, 40) && isB64(e.ct, 4000) ? { wk: e.wk, iv: e.iv, ct: e.ct } : null;
@@ -146,7 +174,10 @@ export async function cardVaultGet(ctx: AuthContext, clientId: string | null) {
   const me = await who(ctx);
   // Only an admin has any use for these: who they are (to name the passkey) and
   // which of their devices can open the vault by fingerprint.
-  const mine = me.admin && enabled && vault.row ? { me: { id: ctx.userId, name: me.name }, fingerprint: await myPasskeys(ctx) } : {};
+  // …and whether a recovery code exists (null = that part of the database is not there yet).
+  const recovery = me.admin && enabled && vault.row ? await readRecovery(ctx) : null;
+  const mine = me.admin && enabled && vault.row
+    ? { me: { id: ctx.userId, name: me.name }, fingerprint: await myPasskeys(ctx), recovery: recovery?.ready ? !!recovery.copy : null } : {};
   const base = { enabled, ready: true, setup: !!vault.row, public_key: vault.row?.public_key ?? null, can_reveal: me.admin, ...mine };
   if (!clientId) return json(base);
 
@@ -164,7 +195,9 @@ export async function cardVaultGet(ctx: AuthContext, clientId: string | null) {
 /**
  * POST { action: 'setup',  public_key, wrapped_private, salt, iv, iterations }   admins, once
  *      { action: 'key' }                                                         admins — the locked private key
- *      { action: 'rewrap', wrapped_private, salt, iv, iterations }               admins — vault password changed
+ *      { action: 'rewrap', wrapped_private, salt, iv, iterations, via? }         admins — vault password changed (via: 'recovery' = reset with the recovery code)
+ *      { action: 'recovery_set', recovery: { wrapped_private, iv } }             admins — a new recovery code (the old one stops working)
+ *      { action: 'recovery_key' }                                                admins — the recovery copy of the key, still locked
  *      { action: 'save',   client_id, envelope: { wk, iv, ct }, brand, last4 }   a card locked in the browser
  *      { action: 'open',   client_id }                                           admins — the locked card + locked key
  *      { action: 'open',   client_id, credential_id }                            admins — the locked card + their fingerprint copy of the key
@@ -193,9 +226,11 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
   if (action === 'setup') {
     if (vault.row) return bad('The vault password is already set. Use "Change vault password".', 409);
     const material = readMaterial(body);
-    if (!material || !isB64(body.public_key, 3000)) return bad('That did not look like a vault setup');
+    const recovery = body.recovery === undefined ? null : readCopy(body.recovery);
+    if (!material || !isB64(body.public_key, 3000) || (body.recovery !== undefined && !recovery)) return bad('That did not look like a vault setup');
     const { error } = await service.from('card_vault_keys').insert({
       id: 1, public_key: body.public_key, ...seal(material, 'vault-key'), created_by: ctx.userId, created_by_name: me.name,
+      ...(recovery ? recoveryColumns(recovery) : {}),
     });
     if (error) return bad(error.message ?? 'Could not set the vault password', 500);
     await log(ctx, me, null, 'Vault', 'vault_set');
@@ -219,8 +254,23 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
     // A new password should shut out whoever only had the old way in: every
     // fingerprint copy goes, and is made again with the new password.
     await service.from('card_vault_passkeys').delete().not('id', 'is', null);
-    await log(ctx, me, null, 'Vault', 'password_changed');
+    await log(ctx, me, null, 'Vault', body.via === 'recovery' ? 'password_reset' : 'password_changed');
     return json({ ok: true });
+  }
+
+  if (action === 'recovery_set') {
+    const copy = readCopy(body.recovery);
+    if (!copy) return bad('That did not look like a recovery code setup');
+    const { error } = await service.from('card_vault_keys').update(recoveryColumns(copy)).eq('id', 1);
+    if (error) return bad(missing(error) || /column/i.test(error.message ?? '') ? NEEDS_SETUP : (error.message ?? 'Could not save the recovery code'), 500);
+    await log(ctx, me, null, 'Vault', 'recovery_set');
+    return json({ ok: true });
+  }
+
+  if (action === 'recovery_key') {
+    const recovery = await readRecovery(ctx);
+    if (!recovery.copy) return bad('No recovery code has been made for this vault', 404);
+    return json({ recovery: recovery.copy });
   }
 
   if (action === 'passkey_add') {

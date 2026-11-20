@@ -816,3 +816,15 @@ revoke all on card_vault_passkeys from anon, authenticated;
 alter table card_vault_log drop constraint if exists card_vault_log_action_check;
 alter table card_vault_log add constraint card_vault_log_action_check
   check (action in ('saved', 'replaced', 'revealed', 'denied', 'deleted', 'vault_set', 'password_changed', 'fingerprint_added', 'fingerprint_removed'));
+
+-- Recovery code (NOTES.md 2026-11-20): a second copy of the vault's private key,
+-- locked in the browser with a long random code the owner keeps, and locked
+-- again with the server key. The way back in if the vault password is forgotten.
+alter table card_vault_keys add column if not exists recovery_ciphertext text;
+alter table card_vault_keys add column if not exists recovery_iv         text;
+alter table card_vault_keys add column if not exists recovery_tag        text;
+alter table card_vault_keys add column if not exists recovery_at         timestamptz;
+
+alter table card_vault_log drop constraint if exists card_vault_log_action_check;
+alter table card_vault_log add constraint card_vault_log_action_check
+  check (action in ('saved', 'replaced', 'revealed', 'denied', 'deleted', 'vault_set', 'password_changed', 'fingerprint_added', 'fingerprint_removed', 'recovery_set', 'password_reset'));

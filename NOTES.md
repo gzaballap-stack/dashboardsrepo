@@ -1,3 +1,33 @@
+## 2026-11-20 — Card vault: recovery code (a forgotten vault password is no longer the end)
+
+Owner found "forget the password and the cards are gone" too much and asked for
+a safety net "like email".
+
+- **Not email, and why.** For the dashboard to reset the vault password by
+  email, the server would need a way to open the vault's key — and then a
+  Railway + Supabase leak opens every card, which is exactly what the vault
+  password exists to prevent. Do not build an email / server-side reset.
+- **What was built instead: a recovery code.** 160 random bits, written as 32
+  letters and digits in groups of four, made **in the browser** when the vault
+  password is set and shown **once**. A second copy of the vault's private key
+  is locked with it and stored under the server key
+  (`card_vault_keys.recovery_*`). The code itself is never sent or stored.
+  "Forgot the Password?" (in the Show Card box and in Change Vault Password)
+  takes the code and a new password. Setting the password now ends on the code
+  screen, in the survey and on the onboarding card alike.
+- **Rules.** Admins only. The code is as good as the password — paper or a
+  password manager, never an email or a chat; **never ask for it, never print
+  or log it**. It keeps working after it has been used. "New Recovery Code"
+  (needs the vault password) replaces it; the old one stops working. A reset
+  turns fingerprint unlock off for everyone, like any password change. Lose the
+  password **and** the code and the cards are still gone for good.
+- A vault with no code shows an amber line to admins and a "Make a Recovery
+  Code" link. Log actions `recovery_set`, `password_reset`.
+- Checked locally end to end (code never leaves the browser, wrong / old codes
+  refused, non-admin refused). Columns + log actions in
+  `migrations/add_onboarding.sql`, run on V1 2026-11-20. On that day the vault
+  password had still not been set on V1 (no cards saved).
+
 ## 2026-11-19 — Return by source: revenue is what was billed
 
 Owner: the revenue figure was counting appointments not tracked yet. He wants

@@ -9,8 +9,8 @@
 import { useEffect, useRef, useState } from "react";
 import { EMPTY_CARD, brandOf, cardProblem, cardStarted, formatExp, formatNumber, tidyCard, type CardInput } from "@/lib/card-format";
 import {
-  FINGERPRINT_FAILED, changePassword, createPasskey, createVault, fingerprintAvailable, lockCard, openCard, openCardWithPasskey,
-  passwordProblem, touchPasskey, unlockVaultKey, wrapForPasskey, type Envelope, type KeyMaterial, type PasskeyWrap,
+  FINGERPRINT_FAILED, changePassword, createPasskey, createVault, fingerprintAvailable, lockCard, makeRecoveryCode, openCard, openCardWithPasskey,
+  passwordProblem, resetWithRecoveryCode, touchPasskey, unlockVaultKey, wrapForPasskey, type Envelope, type KeyCopy, type KeyMaterial, type PasskeyWrap,
 } from "@/lib/vault-crypto";
 
 const BORDER = "1px solid rgba(0,0,0,0.08)";
@@ -23,6 +23,8 @@ type Status = {
   card?: Summary | null; history?: { user_name: string; action: string; at: string }[]; error?: string;
   // Admins only: who they are, and which of their devices open the vault by fingerprint.
   me?: { id: string; name: string }; fingerprint?: { ready: boolean; credentials: { credential_id: string; rp_id: string }[] };
+  // Admins only: has a recovery code been made (null = that part is not set up yet).
+  recovery?: boolean | null;
 };
 /** Turning fingerprint unlock on, part-way: the opened key, then the passkey this device made. */
 type Enrolling = { key: CryptoKey; made?: { credential_id: string; output: BufferSource | null } };
@@ -118,6 +120,38 @@ function Secret({ id, label, value, onChange, autoFocus = false }: { id: string;
 }
 
 /**
+ * A recovery code, on screen once — right after it is made. It was made in this
+ * browser and is not sent or saved anywhere; closing this is the last anyone
+ * sees of it.
+ */
+function CodeShown({ code, onDone }: { code: string; onDone: () => void }) {
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="space-y-3">
+      <p className="text-xs" style={{ color: "#4a4a4a" }}>
+        <span className="font-semibold" style={{ color: "#111111" }}>Recovery Code.</span> If the vault password is ever forgotten, this code sets a new one.
+        <span className="font-semibold" style={{ color: "#b91c1c" }}> It is shown once, now, and is not saved anywhere.</span> Print it or keep it in a password manager — not in an email or a chat.
+      </p>
+      <div className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5" style={{ background: "#ffffff", border: BORDER }}>
+        <span className="text-sm font-semibold" style={{ color: "#111111", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", letterSpacing: "0.04em", userSelect: "all", wordBreak: "break-word" }}>{code}</span>
+        <button type="button" className="text-xs px-2 py-1 rounded-md font-medium shrink-0" style={{ background: "rgba(0,0,0,0.06)", color: "#111111" }}
+          onClick={async () => { try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1200); } catch { /* select and copy by hand */ } }}>
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <label className="flex items-start gap-2 text-xs" style={{ color: "#4a4a4a" }}>
+        <input type="checkbox" checked={saved} onChange={e => setSaved(e.target.checked)} className="mt-0.5" />
+        I have saved the recovery code somewhere safe.
+      </label>
+      <div className="flex justify-end">
+        <button type="button" disabled={!saved} onClick={onDone} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: saved ? 1 : 0.4 }}>Done</button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Choosing the vault password, once. Shown to admins wherever a card would be
  * saved — the survey and the onboarding card — until it has been set. Not a
  * <form> on purpose: it sits inside the survey's own form.
@@ -129,6 +163,7 @@ export function VaultSetup({ onDone, idPrefix = "vault-setup" }: { onDone: () =>
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);   // the recovery code, shown before this closes
   const ready = !busy && agreed && !!next;
 
   async function submit() {
@@ -137,14 +172,16 @@ export function VaultSetup({ onDone, idPrefix = "vault-setup" }: { onDone: () =>
     if (problem) { setError(problem); return; }
     setBusy(true); setError(null);
     try {
-      const r = await call({ action: "setup", ...(await createVault(next)) });
+      const made = await createVault(next);
+      const r = await call({ action: "setup", ...made.vault });   // the code itself stays here
       if (r.error) setError(r.error);
-      else { setNext(""); setAgain(""); onDone(); }
+      else { setNext(""); setAgain(""); setCode(made.code); }
     } catch (e) { setError(e instanceof Error ? e.message : "This browser could not set up the vault"); }
     setBusy(false);
   }
   const onEnter = (e: React.KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); submit(); } };
 
+  if (code) return <CodeShown code={code} onDone={() => { setCode(null); onDone(); }} />;
   if (!open) {
     return (
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -157,13 +194,14 @@ export function VaultSetup({ onDone, idPrefix = "vault-setup" }: { onDone: () =>
     <div className="space-y-3" onKeyDown={onEnter}>
       <p className="text-xs" style={{ color: "#4a4a4a" }}>
         This password opens every stored card. It is not saved anywhere — not in the dashboard, not by anyone who works on it.
-        <span className="font-semibold" style={{ color: "#b91c1c" }}> If it is forgotten, the stored cards are gone for good.</span> Write it down somewhere safe.
+        Write it down somewhere safe. You get a recovery code next, in case it is forgotten.
+        <span className="font-semibold" style={{ color: "#b91c1c" }}> Lose both and the stored cards are gone for good.</span>
       </p>
       <Secret id={`${idPrefix}-new`} label="Vault Password (12 characters or more)" value={next} onChange={v => { setError(null); setNext(v); }} autoFocus />
       <Secret id={`${idPrefix}-again`} label="Type It Again" value={again} onChange={v => { setError(null); setAgain(v); }} />
       <label className="flex items-start gap-2 text-xs" style={{ color: "#4a4a4a" }}>
         <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} className="mt-0.5" />
-        I have written it down, and I understand it cannot be recovered.
+        I have written the password down.
       </label>
       <div className="flex items-center justify-end gap-2">
         <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={() => { setOpen(false); setNext(""); setAgain(""); setAgreed(false); setError(null); }}>Cancel</button>
@@ -174,7 +212,7 @@ export function VaultSetup({ onDone, idPrefix = "vault-setup" }: { onDone: () =>
   );
 }
 
-type Mode = "idle" | "add" | "ask" | "confirm-delete" | "change" | "finger";
+type Mode = "idle" | "add" | "ask" | "confirm-delete" | "change" | "finger" | "recovery" | "forgot";
 
 export default function CardVaultPanel({ clientId }: { clientId: string }) {
   const [status, setStatus] = useState<Status | null>(null);
@@ -189,6 +227,8 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
   const [reloads, setReloads] = useState(0);
   const [canFinger, setCanFinger] = useState(false);   // this device has a sensor the browser can use
   const [touching, setTouching] = useState(false);     // vault password accepted; waiting on the sensor
+  const [code, setCode] = useState<string | null>(null); // a recovery code just made, on screen once
+  const [typedCode, setTypedCode] = useState("");
   const enrolling = useRef<Enrolling | null>(null);
   const uid = clientId.slice(0, 6);
 
@@ -208,7 +248,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
     return () => clearInterval(t);
   }, [shown]);
 
-  const reset = () => { setMode("idle"); setDraft(EMPTY_CARD); setPw({ current: "", next: "", again: "" }); setError(null); setTouching(false); enrolling.current = null; };
+  const reset = () => { setMode("idle"); setDraft(EMPTY_CARD); setPw({ current: "", next: "", again: "" }); setError(null); setTouching(false); setTypedCode(""); enrolling.current = null; };
   const go = (m: Mode) => { setError(null); setNotice(null); setMode(m); };
   const fail = (e: unknown, fallback: string) => setError(e instanceof Error ? e.message : fallback);
 
@@ -225,6 +265,36 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
         else { reset(); setNotice("Vault password changed. Fingerprint unlock is now off for everyone — turn it on again with the new password."); setReloads(n => n + 1); }
       }
     } catch (e) { fail(e, "Could not change the vault password"); }
+    setBusy(false);
+  }
+
+  /** A (new) recovery code for a vault that already has its password. */
+  async function makeCode() {
+    if (!pw.current) return;
+    setBusy(true); setError(null);
+    try {
+      const got = await call({ action: "key" });
+      if (got.error || !got.key) throw new Error(got.error ?? "Could not reach the vault");
+      const made = await makeRecoveryCode(got.key as KeyMaterial, pw.current);
+      const r = await call({ action: "recovery_set", recovery: made.recovery });   // the code itself stays here
+      if (r.error) throw new Error(r.error);
+      reset(); setCode(made.code);
+    } catch (e) { fail(e, "Could not make a recovery code"); setPw(p => ({ ...p, current: "" })); }
+    setBusy(false);
+  }
+
+  /** Forgot the vault password: the recovery code sets a new one. */
+  async function forgotReset() {
+    const problem = passwordProblem(pw.next, pw.again);
+    if (problem) { setError(problem); return; }
+    setBusy(true); setError(null);
+    try {
+      const got = await call({ action: "recovery_key" });
+      if (got.error || !got.recovery) throw new Error(got.error ?? "Could not reach the vault");
+      const r = await call({ action: "rewrap", via: "recovery", ...(await resetWithRecoveryCode(got.recovery as KeyCopy, typedCode, pw.next)) });
+      if (r.error) throw new Error(r.error);
+      reset(); setNotice("New vault password set. The recovery code still works. Fingerprint unlock is now off for everyone — turn it on again with the new password."); setReloads(n => n + 1);
+    } catch (e) { fail(e, "Could not set a new vault password"); }
     setBusy(false);
   }
 
@@ -397,9 +467,53 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
             <p className="text-xs mt-1.5" style={{ color: "#949494" }}>
               Each opening is logged with your name and the time.
               {byTouch && <> <button type="button" disabled={busy} className="underline" onClick={touchReveal}>Use Fingerprint Instead</button></>}
+              {" "}<button type="button" className="underline" onClick={() => go("forgot")}>Forgot the Password?</button>
             </p>
           </form>
         )}
+
+        {mode === "recovery" && (
+          <form className="mt-3" onSubmit={e => { e.preventDefault(); makeCode(); }}>
+            <p className="text-xs mb-2" style={{ color: "#4a4a4a" }}>
+              {status.recovery
+                ? "Type the vault password to make a new recovery code. The old code stops working."
+                : "Type the vault password to make a recovery code — the way back in if the password is ever forgotten."}
+            </p>
+            <div className="flex items-end gap-2">
+              <div className="flex-1" style={{ minWidth: 0 }}>
+                <Secret id={`vault-rec-${uid}`} label="Vault Password" value={pw.current} onChange={v => { setError(null); setPw(p => ({ ...p, current: v })); }} autoFocus />
+              </div>
+              <button type="submit" disabled={busy || !pw.current} className={btn} style={{ ...black, opacity: busy || !pw.current ? 0.4 : 1 }}>{busy ? "Making…" : "Make Code"}</button>
+              <button type="button" className="text-xs px-1 pb-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
+            </div>
+          </form>
+        )}
+
+        {mode === "forgot" && !status.recovery && (
+          <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+            <span className="text-xs" style={{ color: "#4a4a4a" }}>No recovery code was made for this vault, so the password cannot be reset.</span>
+            <button type="button" className="text-xs px-1" style={{ color: "#767676" }} onClick={reset}>Close</button>
+          </div>
+        )}
+
+        {mode === "forgot" && !!status.recovery && (
+          <form className="mt-3 space-y-3" onSubmit={e => { e.preventDefault(); forgotReset(); }}>
+            <div>
+              <label htmlFor={`vault-code-${uid}`} className="block text-xs font-semibold mb-1.5" style={{ color: "#4a4a4a" }}>Recovery Code</label>
+              <input id={`vault-code-${uid}`} type="text" autoFocus autoComplete="off" data-lpignore="true" data-1p-ignore spellCheck={false} value={typedCode}
+                onChange={e => { setError(null); setTypedCode(e.target.value); }} placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+                className="w-full px-3 py-1.5 rounded-lg text-sm outline-none" style={{ ...INPUT, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }} />
+            </div>
+            <Secret id={`vault-fnew-${uid}`} label="New Vault Password (12 characters or more)" value={pw.next} onChange={v => { setError(null); setPw(p => ({ ...p, next: v })); }} />
+            <Secret id={`vault-fagain-${uid}`} label="Type the New One Again" value={pw.again} onChange={v => { setError(null); setPw(p => ({ ...p, again: v })); }} />
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
+              <button type="submit" disabled={busy || !typedCode || !pw.next} className={btn} style={{ ...black, opacity: busy || !typedCode || !pw.next ? 0.4 : 1 }}>{busy ? "Setting…" : "Set New Vault Password"}</button>
+            </div>
+          </form>
+        )}
+
+        {code && <div className="mt-3"><CodeShown code={code} onDone={() => { setCode(null); setNotice("Recovery code saved."); setReloads(n => n + 1); }} /></div>}
 
         {mode === "finger" && !touching && (
           <form className="mt-3" onSubmit={e => { e.preventDefault(); fingerStart(); }}>
@@ -432,6 +546,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
             <Secret id={`vault-new-${uid}`} label="New Vault Password (12 characters or more)" value={pw.next} onChange={v => { setError(null); setPw(p => ({ ...p, next: v })); }} />
             <Secret id={`vault-again-${uid}`} label="Type the New One Again" value={pw.again} onChange={v => { setError(null); setPw(p => ({ ...p, again: v })); }} />
             <div className="flex items-center justify-end gap-2">
+              <button type="button" className="text-xs underline mr-auto" style={{ color: "#767676" }} onClick={() => go("forgot")}>Forgot the Current One?</button>
               <button type="button" className="text-xs px-2" style={{ color: "#767676" }} onClick={reset}>Cancel</button>
               <button type="submit" disabled={busy || !pw.current || !pw.next} className={btn} style={{ ...black, opacity: busy || !pw.current || !pw.next ? 0.4 : 1 }}>{busy ? "Changing…" : "Change Vault Password"}</button>
             </div>
@@ -462,6 +577,9 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
         {error && <p className="text-xs mt-2" style={{ color: "#b91c1c" }}>{error}</p>}
         {notice && <p className="text-xs mt-2" style={{ color: "#15803d" }}>{notice}</p>}
+        {status.can_reveal && status.recovery === false && mode === "idle" && !code && (
+          <p className="text-xs mt-2" style={{ color: "#b45309" }}>No recovery code yet. Without one, a forgotten vault password means the cards are gone for good.</p>
+        )}
 
         {!!status.history?.length && (
           <details className="mt-2">
@@ -477,6 +595,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
       <p className="text-xs mt-1.5" style={{ color: "#949494" }}>
         Locked with the vault password. Only an admin who knows it can open a card.
         {status.can_reveal && mode === "idle" && <> <button type="button" className="underline" onClick={() => go("change")}>Change Vault Password</button></>}
+        {status.can_reveal && mode === "idle" && !code && typeof status.recovery === "boolean" && <> · <button type="button" className="underline" onClick={() => go("recovery")}>{status.recovery ? "New Recovery Code" : "Make a Recovery Code"}</button></>}
         {status.can_reveal && mode === "idle" && fingerReady && !mine.length && <> · <button type="button" className="underline" onClick={() => go("finger")}>Turn On Fingerprint Unlock</button></>}
         {status.can_reveal && mode === "idle" && !!credentials.length && <> · <button type="button" disabled={busy} className="underline" onClick={fingerOff}>Turn Off Fingerprint Unlock</button></>}
       </p>

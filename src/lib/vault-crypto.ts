@@ -12,7 +12,11 @@
 //                          vault password typed here opens the key, which opens
 //                          the card. A wrong password simply fails to open it.
 //
-// Forget the vault password and nothing can open the key again — by design.
+// Forget the vault password and the RECOVERY CODE is the way back in (below):
+// a long random code made here when the password is set, shown once, which
+// locks a second copy of the key. Lose both and nothing can open the key again
+// — by design. There is no email reset: for the server to be able to reset the
+// password it would have to be able to open the cards.
 // Browser-only (WebCrypto); never import this from server code.
 
 import type { CardInput } from './card-format';
@@ -66,11 +70,88 @@ async function unwrapPrivate(m: KeyMaterial, password: string, extractable: bool
   }
 }
 
-/** First-time setup: a new lock-and-key pair, the key locked with the vault password. */
-export async function createVault(password: string): Promise<VaultSetup> {
+/**
+ * First-time setup: a new lock-and-key pair, the key locked with the vault
+ * password, and a second copy locked with a recovery code made here. `code` is
+ * for the owner's eyes only — it is never sent anywhere.
+ */
+export async function createVault(password: string): Promise<{ vault: VaultSetup & { recovery: KeyCopy }; code: string }> {
   const pair = await crypto.subtle.generateKey({ ...RSA, modulusLength: 3072, publicExponent: new Uint8Array([1, 0, 1]) }, true, ['encrypt', 'decrypt']);
   const publicKey = await crypto.subtle.exportKey('spki', pair.publicKey);
-  return { public_key: b64(publicKey), ...(await wrapPrivate(pair.privateKey, password)) };
+  const code = newRecoveryCode();
+  return { vault: { public_key: b64(publicKey), ...(await wrapPrivate(pair.privateKey, password)), recovery: await wrapCopy(pair.privateKey, await recoveryKey(code, ['wrapKey'])) }, code };
+}
+
+/* ── A second copy of the private key, locked with something other than the
+ *    vault password: the recovery code, or a device's fingerprint secret. ── */
+
+export type KeyCopy = { wrapped_private: string; iv: string };
+
+async function wrapCopy(privateKey: CryptoKey, key: CryptoKey): Promise<KeyCopy> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  return { wrapped_private: b64(await crypto.subtle.wrapKey('pkcs8', privateKey, key, { name: 'AES-GCM', iv })), iv: b64(iv) };
+}
+const unwrapCopy = (copy: KeyCopy, key: CryptoKey, extractable: boolean) =>
+  crypto.subtle.unwrapKey('pkcs8', bytes(copy.wrapped_private) as BufferSource, key, { name: 'AES-GCM', iv: bytes(copy.iv) as BufferSource }, RSA, extractable, ['decrypt']);
+
+/* ── Recovery code ─────────────────────────────────────────────────────────
+ * 160 random bits, written as 32 letters and digits in groups of four. Far too
+ * long to guess, so a leak of the server and database is still not enough.
+ * Whoever holds it can set a new vault password — it is as good as the
+ * password, and belongs on paper or in a password manager, not in the
+ * dashboard, a chat or an email.
+ */
+
+export const WRONG_CODE = 'That recovery code is not right';
+const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';   // no I, L, O, U — hard to misread
+const CODE_BYTES = 20;
+const RECOVERY_LABEL = 'tomsi-card-vault/recovery/v1';
+
+function newRecoveryCode(): string {
+  const raw = crypto.getRandomValues(new Uint8Array(CODE_BYTES));
+  let bits = 0, acc = 0, out = '';
+  for (const b of raw) {
+    acc = ((acc << 8) | b) & 0xfff; bits += 8;
+    while (bits >= 5) { out += ALPHABET[(acc >> (bits - 5)) & 31]; bits -= 5; }
+  }
+  return out.match(/.{4}/g)!.join('-');
+}
+
+/** The code as typed (any case, with or without dashes, O for 0, I or L for 1) back to its bytes. Null = not a code. */
+function codeBytes(code: string): Uint8Array | null {
+  const clean = code.toUpperCase().replace(/O/g, '0').replace(/[IL]/g, '1').replace(/[^0-9A-Z]/g, '');
+  if (clean.length !== (CODE_BYTES * 8) / 5) return null;
+  const out = new Uint8Array(CODE_BYTES);
+  let bits = 0, acc = 0, n = 0;
+  for (const ch of clean) {
+    const v = ALPHABET.indexOf(ch);
+    if (v < 0) return null;
+    acc = ((acc << 5) | v) & 0xfff; bits += 5;
+    if (bits >= 8) { out[n++] = (acc >> (bits - 8)) & 255; bits -= 8; }
+  }
+  return out;
+}
+
+async function recoveryKey(code: string, usage: KeyUsage[]): Promise<CryptoKey> {
+  const raw = codeBytes(code);
+  if (!raw) throw new Error(WRONG_CODE);
+  const base = await crypto.subtle.importKey('raw', raw as BufferSource, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: utf8(RECOVERY_LABEL) }, base, { name: 'AES-GCM', length: 256 }, false, usage);
+}
+
+/** A new recovery code for a vault that already exists. Takes the vault password; the old code stops working once this is saved. */
+export async function makeRecoveryCode(material: KeyMaterial, password: string): Promise<{ recovery: KeyCopy; code: string }> {
+  const privateKey = await unwrapPrivate(material, password, true);
+  const code = newRecoveryCode();
+  return { recovery: await wrapCopy(privateKey, await recoveryKey(code, ['wrapKey'])), code };
+}
+
+/** Forgot the vault password: the recovery code opens the key, which is locked again with a new password. */
+export async function resetWithRecoveryCode(recovery: KeyCopy, code: string, newPassword: string): Promise<KeyMaterial> {
+  let privateKey: CryptoKey;
+  try { privateKey = await unwrapCopy(recovery, await recoveryKey(code, ['unwrapKey']), true); }
+  catch { throw new Error(WRONG_CODE); }
+  return wrapPrivate(privateKey, newPassword);
 }
 
 /** Lock a card for a client. Needs only the public key. */
@@ -125,7 +206,7 @@ export async function changePassword(material: KeyMaterial, oldPassword: string,
  * the server, because nothing the server could be tricked into matters.
  */
 
-export type PasskeyWrap = { wrapped_private: string; iv: string };
+export type PasskeyWrap = KeyCopy;
 export type Touch = { credential_id: string; output: BufferSource };
 export const FINGERPRINT_FAILED = 'Fingerprint unlock did not go through';
 export const NO_FINGERPRINT = 'This browser or device cannot do fingerprint unlock for the vault — the vault password still works';
@@ -199,16 +280,14 @@ export async function touchPasskey(ids: string[]): Promise<Touch> {
 
 /** Step 3: a copy of the private key, locked with the passkey's secret. */
 export async function wrapForPasskey(privateKey: CryptoKey, output: BufferSource): Promise<PasskeyWrap> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const wrapped = await crypto.subtle.wrapKey('pkcs8', privateKey, await touchKey(output, ['wrapKey']), { name: 'AES-GCM', iv });
-  return { wrapped_private: b64(wrapped), iv: b64(iv) };
+  return wrapCopy(privateKey, await touchKey(output, ['wrapKey']));
 }
 
 /** Open a card with the secret from a touch, instead of the vault password. */
 export async function openCardWithPasskey(wrap: PasskeyWrap, output: BufferSource, envelope: Envelope, clientId: string): Promise<CardInput> {
   let privateKey: CryptoKey;
   try {
-    privateKey = await crypto.subtle.unwrapKey('pkcs8', bytes(wrap.wrapped_private) as BufferSource, await touchKey(output, ['unwrapKey']), { name: 'AES-GCM', iv: bytes(wrap.iv) as BufferSource }, RSA, false, ['decrypt']);
+    privateKey = await unwrapCopy(wrap, await touchKey(output, ['unwrapKey']), false);
   } catch {
     throw new Error('Fingerprint unlock is out of date on this device — use the vault password, then turn it on again');
   }
