@@ -10,7 +10,8 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
-  return cardVaultGet(ctx, new URL(req.url).searchParams.get('client_id'));
+  const params = new URL(req.url).searchParams;
+  return cardVaultGet(ctx, params.get('client_id'), params.get('past_id'));
 }
 
 export async function POST(req: Request) {

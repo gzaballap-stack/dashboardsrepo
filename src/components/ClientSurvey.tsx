@@ -171,7 +171,7 @@ const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 
  */
 export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => void }) {
   const [list, setList] = useState<SavedSurvey[]>([]);
-  const [open, setOpen] = useState<{ clientId: string | null; key: string; name: string; answers: Answers } | null>(null);
+  const [open, setOpen] = useState<{ clientId: string | null; pastId?: string; key: string; name: string; answers: Answers } | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
@@ -184,7 +184,7 @@ export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => voi
     const r = await post({ action: "survey_get", ...(row.client_id ? { client_id: row.client_id } : { past_id: row.past_id }) });
     setLoading(null);
     if (r.error || !r.survey) { setError(r.error ?? "Could not open that survey"); return; }
-    setOpen({ clientId: row.client_id, key, name: row.contact ? `${row.name} — ${row.contact}` : row.name, answers: r.survey.answers as Answers });
+    setOpen({ clientId: row.client_id, pastId: row.past_id, key, name: row.contact ? `${row.name} — ${row.contact}` : row.name, answers: r.survey.answers as Answers });
   }
 
   if (open) {
@@ -205,8 +205,16 @@ export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => voi
             <ClientSurvey key={open.key} initial={open.answers} clientId={open.clientId} onCancel={close} onDone={close} />
           </>
         ) : (
-          // A past client: answers kept for the record. Not on the roster, so nothing to save, bill or keep a card for.
-          <ClientSurvey key={open.key} initial={open.answers} readOnly onCancel={close} />
+          // A past client: answers kept for the record. Not on the roster, so nothing to save or bill —
+          // but their card can still be kept (the owner's choice, 2026-11-20), filed under the survey.
+          <>
+            {open.pastId && (
+              <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
+                <CardVaultPanel key={open.pastId} pastId={open.pastId} />
+              </div>
+            )}
+            <ClientSurvey key={open.key} initial={open.answers} readOnly onCancel={close} />
+          </>
         )}
       </div>
     );
@@ -357,7 +365,7 @@ export default function ClientSurvey({ initial, cardId, clientId, readOnly, onSa
         <div>
           <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>{readOnly ? "Past Client Survey" : clientId ? "Client Survey" : "New Client Survey"}</h2>
           <p className="text-sm mt-0.5" style={{ color: "#767676" }}>
-            {readOnly ? "Kept for the record. Not on the Client Roster, so there is nothing to bill and no card." : clientId ? "Correct the answers and save." : "Fill it in on the onboarding call. Submitting sets the client up across the dashboard."}
+            {readOnly ? "Kept for the record. Not on the Client Roster, so there is nothing to bill. Their card can be kept in the box above." : clientId ? "Correct the answers and save." : "Fill it in on the onboarding call. Submitting sets the client up across the dashboard."}
           </p>
         </div>
         {onCancel && <button type="button" onClick={onCancel} aria-label="Close" className="text-2xl leading-none px-1" style={{ color: "#767676" }}>×</button>}

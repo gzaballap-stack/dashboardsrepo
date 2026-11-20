@@ -1,3 +1,29 @@
+## 2026-11-20 — Card vault: past clients can have cards too
+
+Owner (asking why Alexi Moncada / Redwood Renovation had no Card on File box):
+"I don't want to add them to the roster, but I still want to be able to have
+their card information stored." Past clients' surveys were read-only with no
+card, because cards were stored per roster client.
+
+- **`card_vault_past`** — a past client's cards, keyed by the id of their saved
+  survey (`past_client_surveys.id`) + slot, up to 5. A separate table on
+  purpose: the roster clients' `card_vault` (and its key) was not altered.
+  Server-only like the rest (row security on, no policy, browser roles revoked).
+  `card_vault_log` gained `past_id` so a past client has their own history.
+  Run on V1 2026-11-20 (the new block of `migrations/add_onboarding.sql` only).
+- **Nothing about the locks changed.** Same browser lock, same vault password,
+  same server key, same admin-only opening, same 20-an-hour limit, same log. A
+  past client's card is locked to `past:<survey id>` (browser and server both),
+  a roster client's to the client id as before — so neither can be read back
+  under the other's name.
+- `/api/card-vault` takes `past_id` in place of `client_id`; `CardVaultPanel`
+  takes `pastId`. The box shows above a past client's survey in Submitted
+  Surveys. Their survey stays read-only and they stay off the roster.
+- **If a past client is ever moved onto the roster**, their cards do not follow
+  by themselves (the lock names the survey, and the server cannot re-lock a
+  card): an admin opens each and saves it again on the client. Deleting a past
+  client's survey deletes their cards with it.
+
 ## 2026-11-20 — Card vault: several cards per client; billing zip no longer asked
 
 - **A client can have up to 5 cards** (owner: "add a second credit card for a

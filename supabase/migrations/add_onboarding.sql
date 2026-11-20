@@ -171,3 +171,27 @@ begin
     alter table card_vault add primary key (client_id, slot);
   end if;
 end $$;
+
+-- Past clients' cards (NOTES.md 2026-11-20): someone kept off the Client Roster
+-- (only their survey is on file) can have cards too. Their own table, keyed by
+-- the survey, so the roster clients' card_vault is not touched. Locked exactly
+-- like card_vault rows; read lib/card-vault.ts before touching this.
+create table if not exists card_vault_past (
+  past_id       uuid not null references past_client_surveys(id) on delete cascade,
+  slot          smallint not null default 1 check (slot between 1 and 5),
+  ciphertext    text not null,
+  iv            text not null,
+  tag           text not null,
+  key_version   integer not null default 2,
+  brand         text,
+  last4         text,
+  saved_by      uuid,
+  saved_by_name text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  primary key (past_id, slot)
+);
+alter table card_vault_past enable row level security;
+revoke all on card_vault_past from anon, authenticated;
+alter table card_vault_log add column if not exists past_id uuid;
+create index if not exists card_vault_log_past_idx on card_vault_log (past_id, at desc);

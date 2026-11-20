@@ -44,8 +44,14 @@
 // its own numbered slot (card_vault.slot). Every card is locked exactly the
 // same way; nothing about the locks changed.
 //
-// Tables card_vault, card_vault_keys, card_vault_passkeys, card_vault_log
-// (migrations/add_onboarding.sql).
+// PAST CLIENTS (2026-11-20): someone who is not on the Client Roster — only
+// their survey is kept (past_client_surveys) — can have cards too, by the
+// owner's choice. Their cards sit in card_vault_past, keyed by the survey's id
+// instead of a client's. Same two locks, same rules, same log; the roster
+// clients' table is not touched.
+//
+// Tables card_vault, card_vault_past, card_vault_keys, card_vault_passkeys,
+// card_vault_log (migrations/add_onboarding.sql).
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
@@ -106,8 +112,17 @@ function unseal<T>(row: Sealed, bind: string): T | null {
   }
 }
 
+/**
+ * Whose card it is: a roster client, or a past client (their saved survey).
+ * `key` is what the card is locked to — the browser ties its lock to the same
+ * text, so a card can never be read back under anyone else's name.
+ */
+type Owner = { kind: 'client' | 'past'; id: string; name: string; table: 'card_vault' | 'card_vault_past'; col: 'client_id' | 'past_id'; key: string };
+const clientOwner = (id: string, name = ''): Owner => ({ kind: 'client', id, name, table: 'card_vault', col: 'client_id', key: id });
+const pastOwner = (id: string, name = ''): Owner => ({ kind: 'past', id, name, table: 'card_vault_past', col: 'past_id', key: `past:${id}` });
+
 /** What a stored card is tied to. Slot 1 keeps the tie it had before clients could have several. */
-const cardBind = (clientId: string, slot: number) => (slot === 1 ? clientId : `${clientId}:${slot}`);
+const cardBind = (owner: Owner, slot: number) => (slot === 1 ? owner.key : `${owner.key}:${slot}`);
 const readSlot = (v: unknown): number | null => (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_CARDS ? v : null);
 
 const isB64 = (v: unknown, max: number): v is string => typeof v === 'string' && v.length > 0 && v.length <= max && /^[A-Za-z0-9+/=]+$/.test(v);
@@ -156,6 +171,13 @@ async function log(ctx: AuthContext, me: { name: string }, clientId: string | nu
     client_id: clientId, client_name: clientName, user_id: ctx.userId, user_name: me.name, action,
   });
 }
+/** The same log, for a card that belongs to a roster client or a past client. */
+async function logFor(ctx: AuthContext, me: { name: string }, owner: Owner, action: string) {
+  if (owner.kind === 'client') return log(ctx, me, owner.id, owner.name, action);
+  await ctx.service.from('card_vault_log').insert({
+    past_id: owner.id, client_name: owner.name, user_id: ctx.userId, user_name: me.name, action,
+  });
+}
 
 async function readVault(ctx: AuthContext): Promise<{ row: (Row & Sealed) | null; error?: { message?: string } | null }> {
   const { data, error } = await ctx.service.from('card_vault_keys').select('public_key, ciphertext, iv, tag').eq('id', 1).maybeSingle();
@@ -176,16 +198,17 @@ const summary = (row: Row | null) => row ? {
 } : null;
 
 /** A client's cards, in slot order — what is readable of them. On a database without slots yet, the one card. */
-async function readCards(ctx: AuthContext, clientId: string): Promise<Row[]> {
+async function readCards(ctx: AuthContext, owner: Owner): Promise<Row[]> {
   const cols = 'brand, last4, saved_by_name, created_at, updated_at';
-  const { data, error } = await ctx.service.from('card_vault').select(`slot, ${cols}`).eq('client_id', clientId).order('slot');
+  const { data, error } = await ctx.service.from(owner.table).select(`slot, ${cols}`).eq(owner.col, owner.id).order('slot');
   if (!error) return (data ?? []) as Row[];
-  const { data: old } = await ctx.service.from('card_vault').select(cols).eq('client_id', clientId);
+  if (owner.kind === 'past') return [];   // a database without the past clients' table yet
+  const { data: old } = await ctx.service.from('card_vault').select(cols).eq('client_id', owner.id);
   return (old ?? []) as Row[];
 }
 
 /** GET — is storage on, is the vault password set, and (for a client) is there a card. Never a card. */
-export async function cardVaultGet(ctx: AuthContext, clientId: string | null) {
+export async function cardVaultGet(ctx: AuthContext, clientId: string | null, pastId: string | null = null) {
   const enabled = vaultEnabled();
   const vault = await readVault(ctx);
   if (vault.error) return missing(vault.error) ? json({ enabled, ready: false, error: NEEDS_SETUP }) : bad(vault.error.message ?? 'Could not reach the database', 500);
@@ -197,13 +220,14 @@ export async function cardVaultGet(ctx: AuthContext, clientId: string | null) {
   const mine = me.admin && enabled && vault.row
     ? { me: { id: ctx.userId, name: me.name }, fingerprint: await myPasskeys(ctx), recovery: recovery?.ready ? !!recovery.copy : null } : {};
   const base = { enabled, ready: true, setup: !!vault.row, public_key: vault.row?.public_key ?? null, can_reveal: me.admin, ...mine };
-  if (!clientId) return json(base);
+  if (!clientId && !pastId) return json(base);
 
-  const cards = (await readCards(ctx, clientId)).map(summary);
+  const owner = pastId ? pastOwner(pastId) : clientOwner(clientId as string);
+  const cards = (await readCards(ctx, owner)).map(summary);
   let history: Row[] = [];
   if (me.admin) {
     const { data: rows } = await ctx.service.from('card_vault_log')
-      .select('user_name, action, at').eq('client_id', clientId).order('at', { ascending: false }).limit(12);
+      .select('user_name, action, at').eq(owner.col, owner.id).order('at', { ascending: false }).limit(12);
     history = (rows ?? []) as Row[];
   }
   return json({ ...base, cards, max_cards: MAX_CARDS, card: cards[0] ?? null, history });
@@ -223,6 +247,8 @@ export async function cardVaultGet(ctx: AuthContext, clientId: string | null) {
  *      { action: 'passkey_remove' }                                              admins — fingerprint unlock off (their own devices)
  *      { action: 'delete', client_id, slot? }                                    admins
  * A slot left out is the first card (1).
+ * Every card action takes `past_id` in place of `client_id` for a past client
+ * (the id of their saved survey) — same rules.
  * Nothing here can open a card: that takes the vault password, in the browser.
  */
 export async function cardVaultPost(ctx: AuthContext, body: Row) {
@@ -235,9 +261,11 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
   const me = await who(ctx);
   const adminOnly = action !== 'save';
   const clientId = typeof body.client_id === 'string' ? body.client_id : '';
+  const pastId = typeof body.past_id === 'string' ? body.past_id : '';
 
   if (adminOnly && !me.admin) {
-    await log(ctx, me, clientId || null, '', 'denied');
+    if (pastId && !clientId) await logFor(ctx, me, pastOwner(pastId), 'denied');
+    else await log(ctx, me, clientId || null, '', 'denied');
     return bad('Only an admin can do that', 403);
   }
 
@@ -314,11 +342,20 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
     return json({ ok: true });
   }
 
-  /* ── one client's card ── */
-  if (!clientId) return bad('client_id is required');
-  const { data: client } = await service.from('clients').select('id, name').eq('id', clientId).maybeSingle();
-  if (!client) return bad('Client not found', 404);
-  const clientName = String(client.name ?? '');
+  /* ── one client's card (a roster client, or a past client) ── */
+  if (!clientId && !pastId) return bad('client_id is required');
+  if (clientId && pastId) return bad('A card belongs to one client');
+  let owner: Owner;
+  if (pastId) {
+    const { data: past } = await service.from('past_client_surveys').select('id, name').eq('id', pastId).maybeSingle();
+    // The id has to be exactly the one on file: it is part of what the card is locked to.
+    if (!past || String(past.id) !== pastId) return bad('Past client not found', 404);
+    owner = pastOwner(pastId, String(past.name ?? ''));
+  } else {
+    const { data: client } = await service.from('clients').select('id, name').eq('id', clientId).maybeSingle();
+    if (!client) return bad('Client not found', 404);
+    owner = clientOwner(clientId, String(client.name ?? ''));
+  }
 
   if (action === 'save') {
     const envelope = readEnvelope(body.envelope);
@@ -326,7 +363,7 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
     const last4 = typeof body.last4 === 'string' && /^\d{4}$/.test(body.last4) ? body.last4 : '';
     if (!envelope || !last4) return bad('That did not look like a locked card');
 
-    const { data: held, error: readErr } = await service.from('card_vault').select('slot').eq('client_id', clientId);
+    const { data: held, error: readErr } = await service.from(owner.table).select('slot').eq(owner.col, owner.id);
     if (readErr) return bad(missing(readErr) || /column/i.test(readErr.message ?? '') ? NEEDS_SETUP : (readErr.message ?? 'Could not save the card'), 503);
     const used = ((held ?? []) as Row[]).map(r => Number(r.slot));
     let slot: number | null;
@@ -340,14 +377,14 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
     }
     const replacing = used.includes(slot);
     const row = {
-      client_id: clientId, slot, ...seal(envelope, cardBind(clientId, slot)), key_version: FORMAT, brand, last4,
+      [owner.col]: owner.id, slot, ...seal(envelope, cardBind(owner, slot)), key_version: FORMAT, brand, last4,
       saved_by: ctx.userId, saved_by_name: me.name, updated_at: new Date().toISOString(),
     };
     const { error } = replacing
-      ? await service.from('card_vault').update(row).eq('client_id', clientId).eq('slot', slot)
-      : await service.from('card_vault').insert(row);
+      ? await service.from(owner.table).update(row).eq(owner.col, owner.id).eq('slot', slot)
+      : await service.from(owner.table).insert(row);
     if (error) return bad(error.message ?? 'Could not save the card', 500);
-    await log(ctx, me, clientId, clientName, replacing ? 'replaced' : 'saved');
+    await logFor(ctx, me, owner, replacing ? 'replaced' : 'saved');
     return json({ card: summary(row) });
   }
 
@@ -355,9 +392,9 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
   if (!slot) return bad('That card is no longer there', 404);
 
   if (action === 'delete') {
-    const { error } = await service.from('card_vault').delete().eq('client_id', clientId).eq('slot', slot);
+    const { error } = await service.from(owner.table).delete().eq(owner.col, owner.id).eq('slot', slot);
     if (error) return bad(error.message ?? 'Could not delete the card', 500);
-    await log(ctx, me, clientId, clientName, 'deleted');
+    await logFor(ctx, me, owner, 'deleted');
     return json({ ok: true });
   }
 
@@ -367,9 +404,9 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
       .eq('user_id', ctx.userId).eq('action', 'revealed').gte('at', since);
     if ((recent ?? []).length >= OPENS_PER_HOUR) return bad('Too many cards opened in the last hour. Try again later.', 429);
 
-    const { data: row } = await service.from('card_vault').select('ciphertext, iv, tag, key_version').eq('client_id', clientId).eq('slot', slot).maybeSingle();
+    const { data: row } = await service.from(owner.table).select('ciphertext, iv, tag, key_version').eq(owner.col, owner.id).eq('slot', slot).maybeSingle();
     if (!row) return bad('No card saved for this client', 404);
-    const envelope = unseal<Envelope>(row as Sealed, cardBind(clientId, slot));
+    const envelope = unseal<Envelope>(row as Sealed, cardBind(owner, slot));
     if (!envelope || !envelope.wk) return bad('This card could not be read — the server key has changed since it was saved, or the record was altered', 500);
 
     // By fingerprint: hand back this admin's own copy of the key for the device
@@ -381,11 +418,11 @@ export async function cardVaultPost(ctx: AuthContext, body: Row) {
       const passkey = mine ? unseal<PasskeyWrap>(mine as Sealed, passkeyBind(ctx.userId, credentialId)) : null;
       if (!passkey) return bad('Fingerprint unlock is not set up for this device — use the vault password', 404);
       await service.from('card_vault_passkeys').update({ last_used_at: new Date().toISOString() }).eq('user_id', ctx.userId).eq('credential_id', credentialId);
-      await log(ctx, me, clientId, clientName, 'revealed');
+      await logFor(ctx, me, owner, 'revealed');
       return json({ envelope, passkey });
     }
 
-    await log(ctx, me, clientId, clientName, 'revealed');
+    await logFor(ctx, me, owner, 'revealed');
     return json({ envelope, key: material });
   }
 

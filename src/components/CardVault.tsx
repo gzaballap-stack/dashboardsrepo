@@ -41,8 +41,19 @@ async function call(body: Record<string, unknown>) {
     return { error: "Could not reach the server" };
   }
 }
-const readStatus = (clientId?: string): Promise<Status> =>
-  fetch(`/api/card-vault${clientId ? `?client_id=${encodeURIComponent(clientId)}` : ""}`, { cache: "no-store" }).then(r => r.json());
+/**
+ * Whose card it is: a roster client, or a past client — someone kept off the
+ * roster whose survey is on file (the id is that survey's).
+ */
+export type CardOwner = { clientId: string } | { pastId: string };
+const ownerOf = (clientId?: string, pastId?: string): CardOwner => (pastId ? { pastId } : { clientId: clientId ?? "" });
+/** What the card is locked to. The server ties its own lock to the same text. */
+const lockedTo = (o: CardOwner) => ("pastId" in o ? `past:${o.pastId}` : o.clientId);
+const ownerParam = (o: CardOwner) => ("pastId" in o ? { past_id: o.pastId } : { client_id: o.clientId });
+const readStatus = (owner?: CardOwner): Promise<Status> => {
+  const q = !owner ? "" : "pastId" in owner ? `?past_id=${encodeURIComponent(owner.pastId)}` : `?client_id=${encodeURIComponent(owner.clientId)}`;
+  return fetch(`/api/card-vault${q}`, { cache: "no-store" }).then(r => r.json());
+};
 
 /**
  * Whether a card can be saved here: storage on, and the vault password set.
@@ -59,13 +70,14 @@ export function useCardVault(): { on: boolean; waiting: boolean; admin: boolean;
 }
 
 /** Lock a card in this browser and save it for a client. `slot`: a number replaces that card, "new" adds one more, left out is the first card. */
-export async function saveCard(clientId: string, card: CardInput, publicKey?: string | null, slot?: number | "new"): Promise<{ card?: Summary; error?: string }> {
+export async function saveCard(who: string | CardOwner, card: CardInput, publicKey?: string | null, slot?: number | "new"): Promise<{ card?: Summary; error?: string }> {
+  const owner: CardOwner = typeof who === "string" ? { clientId: who } : who;
   try {
     const key = publicKey ?? (await readStatus()).public_key;
     if (!key) return { error: "The vault password has not been set yet" };
     const clean = tidyCard(card);
-    const envelope = await lockCard(key, clean, clientId);
-    return await call({ action: "save", client_id: clientId, envelope, brand: brandOf(clean.number), last4: clean.number.slice(-4), ...(slot === undefined ? {} : { slot }) });
+    const envelope = await lockCard(key, clean, lockedTo(owner));
+    return await call({ action: "save", ...ownerParam(owner), envelope, brand: brandOf(clean.number), last4: clean.number.slice(-4), ...(slot === undefined ? {} : { slot }) });
   } catch {
     return { error: "This browser could not lock the card" };
   }
@@ -213,7 +225,12 @@ export function VaultSetup({ onDone, idPrefix = "vault-setup" }: { onDone: () =>
 
 type Mode = "idle" | "add" | "ask" | "confirm-delete" | "change" | "finger" | "recovery" | "forgot";
 
-export default function CardVaultPanel({ clientId }: { clientId: string }) {
+export default function CardVaultPanel({ clientId, pastId }: {
+  clientId?: string;
+  /** A past client (not on the roster): the id of their saved survey. */
+  pastId?: string;
+}) {
+  const owner = ownerOf(clientId, pastId);
   const [status, setStatus] = useState<Status | null>(null);
   const [mode, setMode] = useState<Mode>("idle");
   const [draft, setDraft] = useState<CardInput>(EMPTY_CARD);
@@ -230,13 +247,13 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
   const [code, setCode] = useState<string | null>(null); // a recovery code just made, on screen once
   const [typedCode, setTypedCode] = useState("");
   const enrolling = useRef<Enrolling | null>(null);
-  const uid = clientId.slice(0, 6);
+  const uid = (pastId ?? clientId ?? "").slice(0, 6);
 
   useEffect(() => { fingerprintAvailable().then(setCanFinger); }, []);
 
   useEffect(() => {
-    readStatus(clientId).then(d => setStatus(d)).catch(() => setStatus({ enabled: false, ready: false, error: "Could not load the card" }));
-  }, [clientId, reloads]);
+    readStatus(ownerOf(clientId, pastId)).then(d => setStatus(d)).catch(() => setStatus({ enabled: false, ready: false, error: "Could not load the card" }));
+  }, [clientId, pastId, reloads]);
 
   // A card on screen hides itself.
   useEffect(() => {
@@ -304,7 +321,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
     const problem = cardProblem(draft);
     if (problem) { setError(problem); return; }
     setBusy(true); setError(null);
-    const r = await saveCard(clientId, draft, status?.public_key, slot);
+    const r = await saveCard(owner, draft, status?.public_key, slot);
     setBusy(false);
     if (r.error) { setError(r.error); return; }
     reset(); setShown(null); setReloads(n => n + 1);
@@ -314,10 +331,10 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
     if (!pw.current) return;
     setBusy(true); setError(null);
     try {
-      const r = await call({ action: "open", client_id: clientId, slot: at });
+      const r = await call({ action: "open", ...ownerParam(owner), slot: at });
       if (r.error || !r.envelope || !r.key) setError(r.error ?? "Could not fetch the card");
       else {
-        const card = await openCard(r.key as KeyMaterial, pw.current, r.envelope as Envelope, clientId);
+        const card = await openCard(r.key as KeyMaterial, pw.current, r.envelope as Envelope, lockedTo(owner));
         reset(); setShown(card); setLeft(SHOW_SECONDS); setReloads(n => n + 1);
       }
     } catch (e) { fail(e, "Could not open the card"); setPw(p => ({ ...p, current: "" })); }
@@ -334,9 +351,9 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
     setSlot(s); setBusy(true); setError(null); setNotice(null);
     try {
       const touch = await touchPasskey(mine);
-      const r = await call({ action: "open", client_id: clientId, slot: s, credential_id: touch.credential_id });
+      const r = await call({ action: "open", ...ownerParam(owner), slot: s, credential_id: touch.credential_id });
       if (r.error || !r.envelope || !r.passkey) throw new Error(r.error ?? "Could not fetch the card");
-      const card = await openCardWithPasskey(r.passkey as PasskeyWrap, touch.output, r.envelope as Envelope, clientId);
+      const card = await openCardWithPasskey(r.passkey as PasskeyWrap, touch.output, r.envelope as Envelope, lockedTo(owner));
       reset(); setShown(card); setLeft(SHOW_SECONDS); setReloads(n => n + 1);
     } catch (e) { setMode("ask"); fail(e, FINGERPRINT_FAILED); }
     setBusy(false);
@@ -380,7 +397,7 @@ export default function CardVaultPanel({ clientId }: { clientId: string }) {
 
   async function remove() {
     setBusy(true); setError(null);
-    const r = await call({ action: "delete", client_id: clientId, slot: at });
+    const r = await call({ action: "delete", ...ownerParam(owner), slot: at });
     setBusy(false);
     if (r.error) { setError(r.error); return; }
     reset(); setShown(null); setReloads(n => n + 1);
