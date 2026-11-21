@@ -13,7 +13,7 @@ import {
 //                              a client, and the roster to tie them to.
 //   POST { action: 'link',  close_event_id, client_id }   an SMS close became this client
 //        { action: 'add',   client_id }                   a client signed without a close row
-//        { action: 'update', id, pct?, started_on?, notes? }   started_on null = back to the first blast
+//        { action: 'update', id, pct?, started_on?, notes? }   started_on null = back to automatic (first blast / first ad spend)
 //        { action: 'remove', id }
 //        { action: 'default_pct', pct }                    the % new rows start from
 //
@@ -89,14 +89,17 @@ export async function GET(req: Request) {
     const inPeriod = rows.filter(r => (!start || String(r.signed_on) >= start) && (!end || String(r.signed_on) <= end));
     const ids = inPeriod.map(r => String(r.client_id));
 
-    // First blast per client, and the client's paid charges (any period — the
-    // window is the client's own 30 days, not the page's range).
+    // First blast and first day of ad spend per client (the earlier starts the
+    // clock), and the client's paid charges (any period — the window is the
+    // client's own 30 days, not the page's range).
     const firstBlast = new Map<string, string>();
-    await Promise.all(ids.map(async id => {
-      const { data } = await service.from('sms_sends').select('sent_date').eq('client_id', id).order('sent_date', { ascending: true }).limit(1);
-      const d = (data as Row[] | null)?.[0]?.sent_date;
-      if (d) firstBlast.set(id, String(d));
-    }));
+    const firstAds = new Map<string, string>();
+    await Promise.all(ids.flatMap(id => [
+      service.from('sms_sends').select('sent_date').eq('client_id', id).order('sent_date', { ascending: true }).limit(1)
+        .then(({ data }) => { const d = (data as Row[] | null)?.[0]?.sent_date; if (d) firstBlast.set(id, String(d)); }),
+      service.from('ad_spend').select('spend_date').eq('client_id', id).gt('amount', 0).order('spend_date', { ascending: true }).limit(1)
+        .then(({ data }) => { const d = (data as Row[] | null)?.[0]?.spend_date; if (d) firstAds.set(id, String(d)); }),
+    ]));
     let charges: Charge[] = [];
     if (ids.length) {
       const { data, error: cErr } = await service.from('billing_charges').select('client_id, total, status, paid_at, created_at').in('client_id', ids).eq('status', 'paid').limit(5000);
@@ -114,7 +117,7 @@ export async function GET(req: Request) {
         signed_on: String(r.signed_on), started_on: r.started_on ? String(r.started_on) : null,
         pct: clampPct(r.pct, default_pct), notes: r.notes ? String(r.notes) : null,
         cash_at_close: Number(close?.revenue) || 0,
-      }, firstBlast.get(cid) ?? null, charges, today);
+      }, firstBlast.get(cid) ?? null, charges, today, firstAds.get(cid) ?? null);
     });
 
     const unlinked = closes.filter(c => !linkedCloses.has(String(c.id))).map(c => ({

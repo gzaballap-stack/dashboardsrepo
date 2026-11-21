@@ -1,3 +1,12 @@
+## 2026-11-21 — Johnny's payout: clock starts at first blast OR first ad spend
+
+Owner: SAS Home Solutions started on ads before their first text. The 30-day
+window now starts on the earlier of the client's first SMS blast (`sms_sends`)
+and first day of ad spend (`ad_spend`, amount > 0), shown as "First Blast" /
+"First Ad Spend"; a start set by hand still wins, and "Use First Blast / Ads"
+puts it back to automatic. SAS's hand-set start (10-27) was cleared on V1 so it
+follows ads (10-28). `computeRow(..., firstAds)` in `src/lib/sms-payout.ts`.
+
 ## 2026-11-20 — Onboarding board removed; New Client Survey is a client link, page by page
 
 Owner: no VAs any more (AI does the setup), so the Notion-style checklist board

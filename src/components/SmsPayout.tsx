@@ -42,7 +42,7 @@ const date = (d: string | null | undefined) => {
 };
 
 const STATUS: Record<PayoutRow["status"], { label: (r: PayoutRow) => string; color: string; bg: string }> = {
-  not_started: { label: () => "No blast yet", color: MUTED, bg: "rgba(0,0,0,0.06)" },
+  not_started: { label: () => "Not started yet", color: MUTED, bg: "rgba(0,0,0,0.06)" },
   tracking:    { label: r => `Tracking · ${r.days_left} day${r.days_left === 1 ? "" : "s"} left`, color: WARN, bg: "rgba(160,130,40,0.13)" },
   final:       { label: () => "Final", color: GOOD, bg: "rgba(26,127,75,0.10)" },
 };
@@ -88,7 +88,7 @@ export default function SmsPayout({ startDate, endDate }: { startDate: string; e
       <div>
         <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Johnny&rsquo;s Payout</h2>
         <p className="text-xs mt-1" style={{ color: MUTED }}>
-          Share of each signed client&rsquo;s first 30 days of revenue, counted from their first text blast. Revenue is what Client Billing has collected.
+          Share of each signed client&rsquo;s first 30 days of revenue, counted from their first text blast or first day of ads, whichever came first. Revenue is what Client Billing has collected.
         </p>
       </div>
       {data?.ready && (
@@ -158,12 +158,12 @@ export default function SmsPayout({ startDate, endDate }: { startDate: string; e
                   <td className="px-3 py-2" style={{ color: "#4a4a4a" }}>{date(r.signed_on)}</td>
                   <td className="px-3 py-2" style={{ color: "#4a4a4a" }}>
                     <input type="date" style={{ ...inputStyle, width: 140 }} value={r.started_on ?? ""}
-                      title={r.start_source === "blast" ? "First text blast — change it to set the start by hand" : r.start_source === "manual" ? "Set by hand" : "No blast sent yet — set a start by hand if needed"}
+                      title={r.start_source === "blast" ? "First text blast — change it to set the start by hand" : r.start_source === "ads" ? "First day of ad spend — change it to set the start by hand" : r.start_source === "manual" ? "Set by hand" : "No blast or ad spend yet — set a start by hand if needed"}
                       onChange={e => act(r.id, { action: "update", id: r.id, started_on: e.target.value || null })} />
                     <div className="text-[11px]" style={{ color: FAINT }}>
-                      {r.start_source === "blast" ? "First Blast" : r.start_source === "manual" ? (
-                        <>Set by hand · <button className="underline" onClick={() => act(r.id, { action: "update", id: r.id, started_on: null })}>Use First Blast</button></>
-                      ) : "Waiting for the first blast"}
+                      {r.start_source === "blast" ? "First Blast" : r.start_source === "ads" ? "First Ad Spend" : r.start_source === "manual" ? (
+                        <>Set by hand · <button className="underline" onClick={() => act(r.id, { action: "update", id: r.id, started_on: null })}>Use First Blast / Ads</button></>
+                      ) : "Waiting for the first blast or ad spend"}
                     </div>
                   </td>
                   <td className="px-3 py-2" style={{ color: "#4a4a4a" }}>{date(r.ends_on)}</td>

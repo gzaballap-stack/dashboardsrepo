@@ -2,7 +2,8 @@
 //
 // Johnny gets a share (30% unless changed) of the revenue a client he signed
 // through the B2B SMS system generates in their first month. The month is 30
-// days from the client's first SMS blast; what is collected inside it, per
+// days from the day the client started — their first SMS blast or their first
+// day of ad spend, whichever came first; what is collected inside it, per
 // Client Billing, is the base; once the 30 days are over the figure is final.
 
 export const DEFAULT_PCT = 30;
@@ -16,8 +17,8 @@ export type PayoutRow = {
   client_name: string;
   close_event_id: string | null;
   signed_on: string;                 // YYYY-MM-DD
-  started_on: string | null;         // effective start: by hand, else first blast
-  start_source: 'manual' | 'blast' | null;
+  started_on: string | null;         // effective start: by hand, else first blast / first ad spend, whichever came first
+  start_source: 'manual' | 'blast' | 'ads' | null;
   ends_on: string | null;            // first day after the window
   revenue: number;                   // paid charges inside the window
   charges: number;                   // how many
@@ -59,16 +60,23 @@ export type Charge = { client_id: string; total: number | string | null; status:
 
 /**
  * One client's figures. `firstBlast` is the day of the client's first SMS
- * blast (null = none yet); `charges` the client's billing charges, any period.
+ * blast and `firstAds` their first day of ad spend (null = none yet); the
+ * earlier starts the clock. `charges` are the client's billing charges, any period.
  */
 export function computeRow(
   base: { id: string; client_id: string; client_name: string; close_event_id: string | null; signed_on: string; started_on: string | null; pct: number; notes: string | null; cash_at_close?: number },
   firstBlast: string | null,
   charges: Charge[],
   today: string,
+  firstAds: string | null = null,
 ): PayoutRow {
-  const started_on = base.started_on ?? firstBlast ?? null;
-  const start_source: PayoutRow['start_source'] = base.started_on ? 'manual' : firstBlast ? 'blast' : null;
+  const auto: { day: string; source: 'blast' | 'ads' } | null =
+    firstBlast && firstAds ? (firstAds < firstBlast ? { day: firstAds, source: 'ads' } : { day: firstBlast, source: 'blast' })
+    : firstBlast ? { day: firstBlast, source: 'blast' }
+    : firstAds ? { day: firstAds, source: 'ads' }
+    : null;
+  const started_on = base.started_on ?? auto?.day ?? null;
+  const start_source: PayoutRow['start_source'] = base.started_on ? 'manual' : auto?.source ?? null;
   const ends_on = started_on ? addDays(started_on, WINDOW_DAYS) : null;
 
   let revenue = 0, count = 0;
