@@ -14,6 +14,7 @@ import {
   SETUP_FIELDS, SURVEY_SECTIONS, cleanAnswers, prepaidOf, priceOf, setupAnswers, setupProblem, surveyProblem, type Answers, type SurveyField,
 } from "@/lib/client-survey";
 import CardVaultPanel from "./CardVault";
+import DateRangePicker, { fmtRange } from "./DateRangePicker";
 
 const BORDER = "1px solid rgba(0,0,0,0.08)";
 const SHADOW = "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)";
@@ -238,6 +239,62 @@ export function NewClientSurveyPage({ onSeeSubmitted }: { onSeeSubmitted?: () =>
   );
 }
 
+// The time frame on Submitted Surveys — the same choices as the rest of the dashboard. All Time unless picked.
+type Frame = "all_time" | "this_month" | "last_month" | "last_30" | "last_7" | "custom";
+const FRAME_LABELS: Record<Frame, string> = {
+  all_time: "All Time", this_month: "This Month", last_month: "Last Month", last_30: "Last 30 Days", last_7: "Last 7 Days", custom: "Custom Range",
+};
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const localDay = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+/** First and last day (inclusive) of a time frame; null = everything. */
+function frameDays(f: Frame, start: string, end: string): [string, string] | null {
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const back = (n: number) => { const d = new Date(t); d.setDate(d.getDate() - n); return localDay(d); };
+  if (f === "this_month") return [localDay(new Date(t.getFullYear(), t.getMonth(), 1)), localDay(t)];
+  if (f === "last_month") return [localDay(new Date(t.getFullYear(), t.getMonth() - 1, 1)), localDay(new Date(t.getFullYear(), t.getMonth(), 0))];
+  if (f === "last_30") return [back(29), localDay(t)];
+  if (f === "last_7") return [back(6), localDay(t)];
+  if (f === "custom" && start && end) return [start, end];
+  return null;
+}
+const inFrame = (iso: string, days: [string, string] | null) => { if (!days) return true; const d = localDay(new Date(iso)); return d >= days[0] && d <= days[1]; };
+
+function FramePicker({ frame, start, end, onFrame, onRange }: {
+  frame: Frame; start: string; end: string; onFrame: (f: Frame) => void; onRange: (s: string, e: string) => void;
+}) {
+  const [menu, setMenu] = useState(false);
+  const [picking, setPicking] = useState(false);
+  return (
+    <div className="flex items-center gap-2">
+      {frame === "custom" && (
+        <div className="relative">
+          <button type="button" onClick={() => setPicking(true)} className="px-3 py-2 rounded-lg text-sm" style={INPUT}>
+            {fmtRange(start, end)}<span className="ml-2 text-xs" style={{ color: "#949494" }}>Change</span>
+          </button>
+          {picking && <DateRangePicker start={start} end={end} onChange={onRange} onClose={() => setPicking(false)} />}
+        </div>
+      )}
+      <div className="relative">
+        <button type="button" onClick={() => setMenu(v => !v)} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium min-w-[9rem]" style={{ background: "#000000", color: "#ffffff" }}>
+          <span className="flex-1 text-left">{FRAME_LABELS[frame]}</span>
+          <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+        </button>
+        {menu && (
+          <div className="absolute top-full right-0 mt-1.5 rounded-2xl overflow-hidden z-20 w-48" style={{ background: "#ffffff", border: BORDER, boxShadow: "0 12px 32px -8px rgba(0,0,0,0.18)" }}>
+            {(Object.keys(FRAME_LABELS) as Frame[]).map(f => (
+              <button key={f} type="button" onClick={() => { onFrame(f); setMenu(false); if (f === "custom") setPicking(true); }}
+                className="block w-full text-left px-4 py-2.5 text-sm"
+                style={frame === f ? { background: "rgba(0,0,0,0.09)", color: "#000000", fontWeight: 600 } : { color: "#4a4a4a" }}>
+                {FRAME_LABELS[f]}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 type SavedSurvey = { client_id: string | null; past_id?: string; name: string; contact?: string | null; service: string | null; submitted_by_name: string | null; created_at: string };
 type WaitingLink = { id: string; token: string; setup: Answers; created_by_name: string | null; created_at: string };
 type Notes = { done: string[]; warnings: string[] } | null;
@@ -254,6 +311,8 @@ export function SubmittedSurveysPage() {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
+  const [frame, setFrame] = useState<Frame>("all_time");
+  const [range, setRange] = useState({ start: "", end: "" });
 
   useEffect(() => {
     Promise.all([post({ action: "survey_list" }), post({ action: "link_list" })]).then(([s, l]) => {
@@ -294,6 +353,7 @@ export function SubmittedSurveysPage() {
         )}
         {open.clientId ? (
           <>
+            <ClientSurvey key={open.key} initial={open.answers} clientId={open.clientId} onCancel={close} />
             <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={BOX}>
               <CardVaultPanel key={open.clientId} clientId={open.clientId} />
               <div className="mt-4 pt-4" style={{ borderTop: BORDER }}>
@@ -301,34 +361,40 @@ export function SubmittedSurveysPage() {
                 <ClientCardLink clientId={open.clientId} />
               </div>
             </div>
-            <ClientSurvey key={open.key} initial={open.answers} clientId={open.clientId} onCancel={close} />
           </>
         ) : (
           // A past client: answers kept for the record. Not on the roster, so nothing to save or bill —
           // but their card can still be kept (the owner's choice, 2026-11-20), filed under the survey.
           <>
+            <ClientSurvey key={open.key} initial={open.answers} readOnly onCancel={close} />
             {open.pastId && (
               <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={BOX}>
                 <CardVaultPanel key={open.pastId} pastId={open.pastId} />
               </div>
             )}
-            <ClientSurvey key={open.key} initial={open.answers} readOnly onCancel={close} />
           </>
         )}
       </div>
     );
   }
 
+  const days = frameDays(frame, range.start, range.end);
+  const shownLinks = links.filter(l => inFrame(l.created_at, days));
+  const shownList = list.filter(r => inFrame(r.created_at, days));
+
   return (
     <div className="w-full max-w-2xl mx-auto space-y-4">
-      <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Submitted Surveys</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Submitted Surveys</h2>
+        <FramePicker frame={frame} start={range.start} end={range.end} onFrame={setFrame} onRange={(start, end) => setRange({ start, end })} />
+      </div>
       {error && <p className="text-sm" style={{ color: "#b91c1c" }}>{error}</p>}
 
-      {links.length > 0 && (
+      {shownLinks.length > 0 && (
         <div className="rounded-2xl p-5" style={BOX}>
-          <p className="text-sm font-semibold" style={{ color: "#111111" }}>Waiting for the Client ({links.length})</p>
+          <p className="text-sm font-semibold" style={{ color: "#111111" }}>Waiting for the Client ({shownLinks.length})</p>
           <ul className="mt-3">
-            {links.map(l => (
+            {shownLinks.map(l => (
               <li key={l.id} className="py-3 space-y-2" style={{ borderTop: BORDER }}>
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
                   <span className="text-sm font-medium" style={{ color: "#111111" }}>
@@ -347,10 +413,10 @@ export function SubmittedSurveysPage() {
       )}
 
       <div className="rounded-2xl p-5" style={BOX}>
-        <p className="text-sm font-semibold" style={{ color: "#111111" }}>Surveys ({list.length})</p>
-        {loaded && !list.length && <p className="text-sm mt-2" style={{ color: "#767676" }}>None yet.</p>}
+        <p className="text-sm font-semibold" style={{ color: "#111111" }}>Surveys ({shownList.length})</p>
+        {loaded && !shownList.length && <p className="text-sm mt-2" style={{ color: "#767676" }}>{list.length ? "None in this time frame." : "None yet."}</p>}
         <ul className="mt-3">
-          {list.map(row => (
+          {shownList.map(row => (
             <li key={row.client_id ?? row.past_id} style={{ borderTop: BORDER }}>
               <button type="button" onClick={() => view(row)} disabled={loading !== null} className="w-full flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-2.5 text-left">
                 <span className="text-sm font-medium" style={{ color: "#111111" }}>
