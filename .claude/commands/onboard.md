@@ -231,8 +231,7 @@ once and shared.
 
 ## When finished
 Tell the owner: what was created (names), the phone numbers bought and what
-they cost, what is still unpublished, and anything skipped or uncertain. Tick
-the matching steps on the client's card on the Onboarding board if there is one.
+they cost, what is still unpublished, and anything skipped or uncertain.
 
 ## Confirmed on screen (first real run, USA Windows And Doors, 2026-11-20)
 

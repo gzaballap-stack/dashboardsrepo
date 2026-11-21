@@ -40,6 +40,9 @@ const BYPASS_ROUTES = [
   '/login',
   '/auth',
   '/report',
+  // The client's survey link: the token in it is the credential (lib/survey-links.ts).
+  '/survey/',
+  '/api/survey',
   // The home-screen app manifest: public metadata only, and the browser fetches
   // it before sign-in, so it must not redirect to /login.
   '/manifest.webmanifest',

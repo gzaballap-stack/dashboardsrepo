@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import type { AuthContext } from '@/lib/api-auth';
 import { cleanTemplate, isStage, isTrack, parseAdAccount, snapshot, steps, type Card, type CardItem } from './onboarding';
 import { coveredSteps, createCard, ensureRoster, fillFromRoster, lookupAdAccount, readTemplates, tablesMissing } from './onboarding-server';
-import { cardLink, ensureStripeCustomer, listSurveys, readPastSurvey, readSurvey, submitSurvey, whoIs, type Outcome } from './client-survey-server';
+import { cardLink, clientCardLink, ensureStripeCustomer, listSurveys, readPastSurvey, readSurvey, submitSurvey, whoIs, type Outcome } from './client-survey-server';
 import { getCustomer, stripeStatus } from './stripe';
 import { linkAdAccounts } from './ad-account-link';
+import { createLink, deleteLink, linkNotes, waitingLinks } from './survey-links';
 
 // Onboarding board (Clients > Onboarding) — what /api/onboarding does, once the
 // caller is known. Rules in onboarding.ts, database helpers in onboarding-server.ts.
@@ -21,6 +22,10 @@ import { linkAdAccounts } from './ad-account-link';
 //        { action: 'survey_get', client_id | past_id }              a client's answers (past_id: a past client, not on the roster)
 //        { action: 'survey_list' }                                  who has a saved survey (no answers)
 //        { action: 'card_link', id }                                Stripe's page for putting the card on file
+//        { action: 'card_link_client', client_id }                  the same, for a roster client (Submitted Surveys)
+//        { action: 'link_create', answers }                         page one of the survey → the client's link (survey-links.ts)
+//        { action: 'link_list' }                                    links the client has not filled in yet
+//        { action: 'link_delete', id }
 //
 // Tables onboarding_cards + onboarding_templates (migrations/add_onboarding.sql).
 // Without them the GET answers { ready: false } and the page says what to run.
@@ -67,7 +72,16 @@ export async function onboardingPost(ctx: AuthContext, body: Record<string, unkn
   if (action === 'survey_get') {
     if (typeof body.past_id === 'string' && body.past_id) return send(await readPastSurvey(service, body.past_id));
     if (typeof body.client_id !== 'string' || !body.client_id) return bad('client_id is required');
-    return send(await readSurvey(service, body.client_id));
+    const out = await readSurvey(service, body.client_id);
+    if (out.status === 200) out.json.notes = await linkNotes(service, body.client_id).catch(() => null);
+    return send(out);
+  }
+  if (action === 'link_create') return send(await createLink(ctx, body));
+  if (action === 'link_list') return send(await waitingLinks(service));
+  if (action === 'link_delete') return send(await deleteLink(service, body.id));
+  if (action === 'card_link_client') {
+    if (typeof body.client_id !== 'string' || !body.client_id) return bad('client_id is required');
+    return send(await clientCardLink(service, body.client_id, origin));
   }
 
   if (action === 'create') {

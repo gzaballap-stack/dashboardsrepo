@@ -1,18 +1,18 @@
 // New client survey — what submitting it does. One submission sets the client
 // up everywhere: Client Roster, the shared client profile (Profit and Loss and
-// Client Billing read it), Client Billing (price, Stripe customer) and the
-// Onboarding board (one card per service). See NOTES.md 2026-11-12.
+// Client Billing read it), Client Billing (price, Stripe customer) and GHL.
+// See NOTES.md 2026-11-12 and 2026-11-20 (the client's link).
 
 import type { AuthContext } from './api-auth';
 import { canBill, round2, toCents } from './billing';
 import {
-  billingEmail, cashOf, cleanAnswers, contactName, mainPhone, prepaidOf, priceOf, serviceOf, str, surveyProblem, tracksOf,
+  billingEmail, cashOf, cleanAnswers, contactName, mainPhone, prepaidOf, priceOf, serviceOf, str, surveyProblem,
   type Answers,
 } from './client-survey';
 import { linkAdAccounts } from './ad-account-link';
 import { markClosedInGhl } from './ghl-close';
-import { snapshot, type Card } from './onboarding';
-import { coveredSteps, createCard, ensureRoster, ensureRosterFor, readTemplates, tablesMissing } from './onboarding-server';
+import type { Card } from './onboarding';
+import { ensureRoster, ensureRosterFor, tablesMissing } from './onboarding-server';
 import { StripeError, createCardSetupLink, createCustomer, findCustomers, stripeStatus } from './stripe';
 
 type Service = AuthContext['service'];
@@ -117,6 +117,22 @@ export async function cardLink(service: Service, card: Card, origin: string): Pr
   }
 }
 
+/** Stripe's page for putting a roster client's card on file (Submitted Surveys). */
+export async function clientCardLink(service: Service, clientId: string, origin: string): Promise<Outcome> {
+  if (!stripeStatus().configured) return fail('Stripe is not connected here, so there is no card link to give out', 503);
+  const { data: client } = await service.from('clients').select('id, name').eq('id', clientId).maybeSingle();
+  if (!client) return fail('Client not found', 404);
+  const { data: survey } = await service.from('client_surveys').select('answers').eq('client_id', clientId).maybeSingle();
+  const a = ((survey as { answers?: Answers } | null)?.answers ?? {}) as Answers;
+  const customer = await ensureStripeCustomer(service, clientId, String(client.name ?? ''), billingEmail(a) || null, mainPhone(a) || null);
+  if (customer.error || !customer.id) return fail(customer.error ?? 'Could not set the client up in Stripe', 502);
+  try {
+    return { status: 200, json: { url: await createCardSetupLink(customer.id, `${origin}/report/card-saved`) } };
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Couldn't reach Stripe", 502);
+  }
+}
+
 /**
  * Contact details go on the shared client profile. Profiles are per user, so
  * the person submitting and every admin get it — otherwise a survey a VA fills
@@ -216,9 +232,10 @@ async function applyPrepaid(
 
 /**
  * Submit the survey.
- *   { answers }                 a new client: roster, profile, billing, card(s)
- *   { answers, card_id }        filled in from a card added by name — that card is used
- *   { answers, client_id }      correcting a client's answers — no new cards
+ *   { answers }                 a new client: roster, profile, billing, Stripe, GHL
+ *   { answers, client_id }      correcting a client's answers
+ * Since 2026-11-20 no onboarding card is opened: the board is gone. A new
+ * client's survey normally arrives through their link (lib/survey-links.ts).
  */
 export async function submitSurvey(ctx: AuthContext, body: Record<string, unknown>): Promise<Outcome> {
   const { service } = ctx;
@@ -231,16 +248,10 @@ export async function submitSurvey(ctx: AuthContext, body: Record<string, unknow
   const probe = await service.from('client_surveys').select('client_id').limit(1);
   if (probe.error) return tablesMissing(probe.error) ? fail(NEEDS_SETUP, 503) : fail(probe.error.message ?? 'Could not reach the database', 500);
 
-  let fromCard: Card | null = null;
-  if (typeof body.card_id === 'string' && body.card_id) {
-    const { data } = await service.from('onboarding_cards').select('*').eq('id', body.card_id).maybeSingle();
-    fromCard = (data as Card | null) ?? null;
-    if (!fromCard) return fail('Card not found', 404);
-  }
   const editing = typeof body.client_id === 'string' && body.client_id ? body.client_id : null;
 
   // 1. Client Roster
-  const roster = await ensureRosterFor(service, { name, clientId: editing ?? fromCard?.client_id, wanted });
+  const roster = await ensureRosterFor(service, { name, clientId: editing, wanted });
   if (roster.error || !roster.client_id) return fail(roster.error ?? 'Could not add the client to the roster', 500);
   const clientId = roster.client_id;
   const { data: rosterRow } = await service.from('clients').select('id, name, status, service').eq('id', clientId).maybeSingle();
@@ -286,36 +297,6 @@ export async function submitSurvey(ctx: AuthContext, body: Record<string, unknow
     else stripe.made = customer.made;
   }
 
-  // 5. The Onboarding board: one card per service. A checklist that already
-  //    has a card under way keeps that card; correcting a survey opens none.
-  const cards: Card[] = [];
-  const contact = { contact_name: contactName(a) || null, contact_email: billingEmail(a) || null, contact_phone: mainPhone(a) || null };
-  if (!editing) {
-    const tracks = tracksOf(a);
-    const templates = await readTemplates(service);
-    for (const track of tracks) {
-      // A card added by name takes the first checklist it does not clash with.
-      if (fromCard && (!fromCard.track || fromCard.track === track)) {
-        const items = await coveredSteps(service, snapshot(templates[track], fromCard.items), 'survey', clientId, by);
-        const { data, error } = await service.from('onboarding_cards').update({
-          client_id: clientId, track, items, ...contact, updated_at: now(),
-          ...(fromCard.stage === 'not_started' ? { stage: 'in_progress' } : {}),
-        }).eq('id', fromCard.id).select('*').single();
-        if (error) warnings.push('The card could not be updated');
-        else cards.push(data as Card);
-        fromCard = null;
-        continue;
-      }
-      const made = await createCard(service, { client_name: name, track, client_id: clientId, source: 'survey', created_by: ctx.userId, by, ...contact });
-      if (made.error || !made.card) { warnings.push(`The ${track === 'sms' ? 'SMS' : 'Facebook Ads'} card could not be opened`); continue; }
-      // The survey is the first tick, so the card is under way.
-      if (!made.existing && made.card.stage === 'not_started') {
-        const { data } = await service.from('onboarding_cards').update({ stage: 'in_progress', updated_at: now() }).eq('id', made.card.id).select('*').single();
-        cards.push((data as Card | null) ?? made.card);
-      } else cards.push(made.card);
-    }
-  }
-
   // 6. GoHighLevel: a client who filled in the survey has signed, so their
   //    contact in the Tomsi Media account is marked closed. Not on a correction.
   let ghl: Row = { marked: false, why: 'editing' };
@@ -338,7 +319,7 @@ export async function submitSurvey(ctx: AuthContext, body: Record<string, unknow
     status: 200,
     json: {
       client: { id: clientId, name: rosterRow?.name ?? name, status: rosterRow?.status ?? null, service: rosterRow?.service ?? wanted, created: !!roster.created },
-      cards, stripe, warnings, updated: !!before, done, ghl,
+      cards: [], stripe, warnings, updated: !!before, done, ghl,
     },
   };
 }

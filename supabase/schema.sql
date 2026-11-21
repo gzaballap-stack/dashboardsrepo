@@ -719,6 +719,27 @@ create table if not exists past_client_surveys (
 );
 create unique index if not exists past_client_surveys_name_idx on past_client_surveys (lower(name));
 alter table past_client_surveys enable row level security;
+
+-- Client survey links (NOTES.md 2026-11-20): page one of the New Client
+-- Survey (service, price, prepaid, cash) is filled in by us and saved here;
+-- the client gets a link with this row's token and fills in the rest without
+-- signing in. A link is used once. Only the server reads this table.
+create table if not exists survey_links (
+  id              uuid primary key default gen_random_uuid(),
+  token           text not null unique,
+  setup           jsonb not null default '{}'::jsonb,
+  created_by      uuid not null,
+  created_by_name text,
+  client_id       uuid references clients(id) on delete set null,
+  result          jsonb,
+  submitted_at    timestamptz,
+  card_saved_at   timestamptz,
+  expires_at      timestamptz not null default now() + interval '30 days',
+  created_at      timestamptz not null default now()
+);
+create index if not exists survey_links_client_idx on survey_links (client_id);
+alter table survey_links enable row level security;
+revoke all on survey_links from anon, authenticated;
 revoke all on past_client_surveys from anon, authenticated;
 
 -- ── SMS totals ──────────────────────────────────────────────────────────────

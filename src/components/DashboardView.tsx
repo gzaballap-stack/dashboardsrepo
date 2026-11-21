@@ -16,8 +16,7 @@ import AlertBanner, { type Alert } from "./AlertBanner";
 import NotificationBell from "./NotificationBell";
 import SetterSchedule from "./SetterSchedule";
 import ClientRoster from "./ClientRoster";
-import OnboardingBoard from "./OnboardingBoard";
-import { ClientSurveyPage } from "./ClientSurvey";
+import { NewClientSurveyPage, SubmittedSurveysPage } from "./ClientSurvey";
 import UserManager from "./UserManager";
 import ZipTool from "./ZipTool";
 import BrandBackground from "./BrandBackground";
@@ -389,17 +388,17 @@ const PAYMENTS_NAV: { id: PaymentsView; label: string; icon: string }[] = [
 ];
 
 const CLIENTS_NAV: { id: ClientsView; label: string; icon: string }[] = [
-  { id: "onboarding",    label: "Onboarding",    icon: "M4 5h4v14H4zM10 5h4v8h-4zM16 5h4v11h-4z" },
   { id: "client_survey", label: "New Client Survey", icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2M9 12h6M9 16h4" },
+  { id: "submitted_surveys", label: "Submitted Surveys", icon: "M9 12l2 2 4-4M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" },
   { id: "client_roster", label: "Client Roster", icon: NAV_ICONS.admin_clients },
   { id: "csm_dashboard", label: "CSM Dashboard", icon: "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" },
   { id: "share_reports", label: "Share Reports", icon: NAV_ICONS.admin_share },
 ];
 
 type TopSection = "clients_dashboard" | "tomsi_media" | "creative_hub" | "clients" | "tools" | "payments" | "settings";
-type ClientsView = "onboarding" | "client_survey" | "client_roster" | "csm_dashboard" | "share_reports";
-// The survey is part of Onboarding: whoever can open one can open the other.
-const clientsFeature = (id: ClientsView): string => (id === "client_survey" ? "onboarding" : id);
+type ClientsView = "client_survey" | "submitted_surveys" | "client_roster" | "csm_dashboard" | "share_reports";
+// Both survey pages sit behind the old Onboarding permission (its id is in every account's allowed_views).
+const clientsFeature = (id: ClientsView): string => (id === "client_survey" || id === "submitted_surveys" ? "onboarding" : id);
 
 const TOP_SECTIONS: { id: TopSection; label: string; icon: string; badge?: string }[] = [
   {
@@ -579,7 +578,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
         setView(saved.view as View);
       if (saved.tomsiView) setTomsiView(saved.tomsiView as TomsiView);
       if (savedTop === "tomsi_media" && saved.tomsiView && !["b2b_tracking","campaign_overview"].includes(saved.tomsiView)) setView(saved.tomsiView === "sms_dashboard" ? "dashboard" : saved.tomsiView as View);
-      if (saved.clientsView) setClientsView(saved.clientsView as ClientsView);
+      // The Onboarding board was removed (2026-11-20); a saved position on it lands on the survey.
+      if (saved.clientsView) setClientsView(saved.clientsView === "onboarding" ? "client_survey" : saved.clientsView as ClientsView);
       if (PAYMENTS_NAV.some(p => p.id === saved.paymentsView)) setPaymentsView(saved.paymentsView as PaymentsView);
     } catch {}
   }, [initialRoute]);
@@ -1431,8 +1431,8 @@ export default function DashboardView({ initialRoute }: { initialRoute?: DashRou
 
           {/* ── Tomsi Media Dashboard ── */}
 
-          {topSection === "clients" && clientsView === "onboarding" && <OnboardingBoard />}
-          {topSection === "clients" && clientsView === "client_survey" && <ClientSurveyPage onDone={() => setClientsView("onboarding")} />}
+          {topSection === "clients" && clientsView === "client_survey" && <NewClientSurveyPage onSeeSubmitted={() => setClientsView("submitted_surveys")} />}
+          {topSection === "clients" && clientsView === "submitted_surveys" && <SubmittedSurveysPage />}
           {topSection === "clients" && clientsView === "client_roster" && <ClientRoster />}
           {topSection === "clients" && clientsView === "csm_dashboard" && <CSMDashboard />}
           {topSection === "clients" && clientsView === "share_reports" && <ShareReports clients={clients} />}

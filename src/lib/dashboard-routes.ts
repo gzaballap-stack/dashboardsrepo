@@ -70,8 +70,8 @@ export const VIEW_ROUTES: Record<string, { slug: string; label: string; section:
 };
 
 export const CLIENTS_VIEW_ROUTES: Record<string, { slug: string; label: string }> = {
-  onboarding:    { slug: "onboarding",    label: "Onboarding" },
   client_survey: { slug: "new-client-survey", label: "New Client Survey" },
+  submitted_surveys: { slug: "submitted-surveys", label: "Submitted Surveys" },
   client_roster: { slug: "client-roster", label: "Client Roster" },
   csm_dashboard: { slug: "csm-dashboard", label: "CSM Dashboard" },
   share_reports: { slug: "share-reports", label: "Share Reports" },
@@ -125,7 +125,8 @@ export function routeForSlug(slug: string[] | undefined): DashRoute | null {
   if (!section) return null;
 
   if (section === "clients") {
-    const cv = Object.keys(CLIENTS_VIEW_ROUTES).find(k => CLIENTS_VIEW_ROUTES[k].slug === viewSlug);
+    // The old Onboarding board's address (removed 2026-11-20) opens the survey.
+    const cv = viewSlug === "onboarding" ? "client_survey" : Object.keys(CLIENTS_VIEW_ROUTES).find(k => CLIENTS_VIEW_ROUTES[k].slug === viewSlug);
     return { section, clientsView: cv ?? "client_roster" };
   }
   if (section === "creative_hub") {

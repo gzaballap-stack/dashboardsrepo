@@ -50,7 +50,7 @@ export const FEATURES: { id: FeatureId; label: string; group: FeatureGroup }[] =
   { id: "creative_hub_b2b",     label: "B2B Library & Timeline", group: "Creative & Copy Hub" },
   { id: "creative_hub_b2c",     label: "B2C Library & Timeline", group: "Creative & Copy Hub" },
   { id: "creative_leaderboard", label: "Creative Leaderboard",  group: "Creative & Copy Hub" },
-  { id: "onboarding",           label: "Onboarding",            group: "Clients"           },
+  { id: "onboarding",           label: "Client Surveys",        group: "Clients"           },
   { id: "client_roster",        label: "Client Roster",         group: "Clients"           },
   { id: "csm_dashboard",        label: "CSM Dashboard",         group: "Clients"           },
   { id: "share_reports",        label: "Share Reports",         group: "Clients"           },

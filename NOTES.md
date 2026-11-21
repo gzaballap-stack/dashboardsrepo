@@ -1,3 +1,33 @@
+## 2026-11-20 — Onboarding board removed; New Client Survey is a client link, page by page
+
+Owner: no VAs any more (AI does the setup), so the Notion-style checklist board
+is gone from the menu. Clients now has **New Client Survey** and **Submitted Surveys**.
+
+- **New Client Survey** = page one only, filled in by us: service, price per
+  appointment, prepaid appointments, cash collected → **Create Client Link**.
+  Saved in `survey_links` (token, `setup`, `created_by`), 30-day expiry, used once.
+- The client opens `/survey/<token>` **without signing in** (public, bypassed in
+  middleware with `/api/survey`) and fills in the rest one page at a time:
+  Contact, Business, Address, Appointments, Services They Want Sent (+ Card on
+  File underneath), Financing, The Business in Numbers. Page one is taken from
+  the link on submit, never from the browser — a client cannot change their price.
+- Submit runs the same `submitSurvey` as before, **as the person who made the
+  link** (their billing access decides the prepaid credits). It no longer opens
+  onboarding cards. Result (done / warnings) kept on the link and shown on the
+  survey in Submitted Surveys as "Needs a Look".
+- Card from the link: locked in the client's browser with the vault public key,
+  tied to the new client id, sent within 2 hours of submitting, **once**, always a
+  new slot (never replaces or reads). Same two locks as every other card.
+- **Submitted Surveys**: links waiting for the client (copy / delete), every survey
+  (open → card vault, Stripe card link by client, correct the answers).
+- Questions: "how many appointments per week" dropped; explanations dropped;
+  Ad spend only asked for Facebook Ads / Both; section titles in Title Case.
+- Permission: still the `onboarding` feature id, now labelled "Client Surveys".
+- The board's tables, the GHL onboarding webhook and the card API are left in
+  place (unused by the menu). V2 does not have `survey_links` (token can't reach V2).
+- Not tested end to end: the final Submit on a real link (it creates a real
+  client on V1; blocked in the session). Everything up to Submit was checked.
+
 ## 2026-11-20 — Card vault: past clients can have cards too
 
 Owner (asking why Alexi Moncada / Redwood Renovation had no Card on File box):

@@ -77,7 +77,7 @@ const missing = (e: { message?: string } | null | undefined) =>
   !!e && /does not exist|schema cache|Could not find the table/i.test(e.message ?? '');
 const NEEDS_SETUP = 'Card storage needs a one-off database update first';
 const NOT_ON = 'Card storage is not switched on (it needs its server key)';
-const NO_PASSWORD = 'The vault password has not been set yet — an admin sets it from any onboarding card';
+const NO_PASSWORD = 'The vault password has not been set yet — an admin sets it from any client in Submitted Surveys';
 
 /** The 32-byte server key, or null when unset or malformed (the feature is then off). */
 function serverKey(): Buffer | null {

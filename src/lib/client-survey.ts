@@ -1,4 +1,4 @@
-// New client survey (Clients > Onboarding) — the questions, and what counts as
+// New client survey (Clients > New Client Survey) — the questions, and what counts as
 // a usable answer. Pure: the form (browser) and the API both read this file.
 //
 // The questions mirror the GHL onboarding form the owner used before, plus the
@@ -22,24 +22,25 @@ export type SurveyField = {
 };
 
 const opts = (...labels: string[]) => labels.map(l => ({ value: l, label: l }));
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const has = (a: Answers, key: string, value: string) => Array.isArray(a[key]) ? (a[key] as string[]).includes(value) : a[key] === value;
 
-export const SURVEY_SECTIONS: { title: string; note?: string; fields: SurveyField[] }[] = [
+export type SurveySection = { title: string; fields: SurveyField[]; /** Filled in by us before the client sees the survey. */ setup?: boolean };
+
+const runsAds = (a: Answers) => has(a, 'service', 'facebook_ads') || has(a, 'service', 'both');
+
+export const SURVEY_SECTIONS: SurveySection[] = [
   {
-    title: 'What we are setting up',
+    // Page one, filled in by us. The client's link carries these; the client never sees or changes them.
+    title: 'What We Are Setting Up', setup: true,
     fields: [
       { key: 'service', label: 'Service', type: 'choice', required: true, wide: true,
         options: [{ value: 'facebook_ads', label: 'Facebook Ads' }, { value: 'sms', label: 'SMS' }, { value: 'both', label: 'Both' }] },
-      { key: 'price_per_appointment', label: 'Price per appointment', type: 'money', placeholder: '0', hint: 'Goes to Client Billing. Leave empty to set it later.' },
-    ],
-  },
-  {
-    // What they paid on signing. Submitting turns these into Client Billing
-    // records (credits, and a payment) — once: see applyPrepaid on the server.
-    title: 'Paid up front',
-    fields: [
-      { key: 'prepaid_appointments', label: 'Prepaid appointments', type: 'text', placeholder: '0', hint: 'How many they paid for up front. Issued as credits in Client Billing — their next bookings are not billed.' },
-      { key: 'cash_collected', label: 'Cash collected', type: 'money', placeholder: '0', hint: 'What they paid on signing. Recorded as a payment in Client Billing.' },
+      { key: 'price_per_appointment', label: 'Price per appointment', type: 'money', placeholder: '0' },
+      // What they paid on signing. Submitting turns these into Client Billing
+      // records (credits, and a payment) — once: see applyPrepaid on the server.
+      { key: 'prepaid_appointments', label: 'Prepaid appointments', type: 'text', placeholder: '0' },
+      { key: 'cash_collected', label: 'Cash collected', type: 'money', placeholder: '0' },
     ],
   },
   {
@@ -54,7 +55,7 @@ export const SURVEY_SECTIONS: { title: string; note?: string; fields: SurveyFiel
   {
     title: 'Business',
     fields: [
-      { key: 'business_name', label: 'Business name', type: 'text', required: true, wide: true, hint: 'This becomes the client name everywhere — keep it exactly as GHL sends it.' },
+      { key: 'business_name', label: 'Business name', type: 'text', required: true, wide: true },
       { key: 'business_email', label: 'Business email', type: 'email' },
       { key: 'business_phone', label: 'Business main number', type: 'tel' },
       { key: 'website', label: 'Website link', type: 'text', wide: true, placeholder: 'https://' },
@@ -75,11 +76,11 @@ export const SURVEY_SECTIONS: { title: string; note?: string; fields: SurveyFiel
     fields: [
       { key: 'appointment_phones', label: 'Phone number or numbers to send appointments to', type: 'text', wide: true },
       { key: 'weekly_availability', label: 'Weekly availability', type: 'textarea', wide: true, placeholder: 'Mon–Fri 9–5, Sat mornings…' },
-      { key: 'appointment_capacity', label: 'How many appointments can they take per week?', type: 'text', placeholder: '10', hint: 'Their capacity — how many we are able to send them.' },
     ],
   },
   {
-    title: 'Services they want sent',
+    // The card on file is asked right under this page's questions (the survey screen adds it).
+    title: 'Services They Want Sent',
     fields: [
       { key: 'services', label: 'Services they offer', type: 'multi', wide: true,
         options: opts('Full Kitchens', 'Full Bathrooms', 'Partial Kitchens', 'Partial Bathrooms', 'Others') },
@@ -96,15 +97,50 @@ export const SURVEY_SECTIONS: { title: string; note?: string; fields: SurveyFiel
     ],
   },
   {
-    title: 'The business in numbers',
+    title: 'The Business in Numbers',
     fields: [
       { key: 'years_in_business', label: 'Years in business', type: 'text' },
-      { key: 'ad_spend', label: 'Ad spend', type: 'text' },
+      { key: 'ad_spend', label: 'Ad spend', type: 'text', when: runsAds },
       { key: 'current_monthly_revenue', label: 'Current monthly revenue', type: 'text' },
       { key: 'goal_monthly_revenue', label: 'Goal monthly revenue', type: 'text' },
     ],
   },
 ];
+
+/** Page one's questions — ours, carried by the client's link. */
+export const SETUP_FIELDS: SurveyField[] = SURVEY_SECTIONS.filter(s => s.setup).flatMap(s => s.fields);
+/** The pages the client fills in. */
+export const CLIENT_SECTIONS: SurveySection[] = SURVEY_SECTIONS.filter(s => !s.setup);
+/** The section the card on file sits under. */
+export const CARD_AFTER = 'Services They Want Sent';
+
+/** Just page one's answers. */
+export function setupAnswers(a: Answers): Answers {
+  const out: Answers = {};
+  for (const f of SETUP_FIELDS) if (a[f.key] !== undefined) out[f.key] = a[f.key];
+  return out;
+}
+
+/** What stops page one going out as a link. Null = fine. */
+export function setupProblem(a: Answers): string | null {
+  if (!serviceOf(a)) return 'Pick the service';
+  if (a.price_per_appointment && priceOf(a) === null) return 'Price per appointment should be a number';
+  if (a.prepaid_appointments && prepaidOf(a) === null) return 'Prepaid appointments should be a whole number';
+  if (a.cash_collected && cashOf(a) === null) return 'Cash collected should be a number';
+  return null;
+}
+
+/** What stops one page of the survey moving on. Null = fine. */
+export function pageProblem(section: SurveySection, a: Answers): string | null {
+  for (const f of section.fields) {
+    if (f.when && !f.when(a)) continue;
+    const v = a[f.key];
+    const filled = Array.isArray(v) ? v.length > 0 : typeof v === 'string' && v.trim() !== '';
+    if (f.required && !filled) return `${f.label} is needed`;
+    if (f.type === 'email' && filled && !EMAIL.test(String(v).trim())) return `${f.label} doesn't look right`;
+  }
+  return null;
+}
 
 export const SURVEY_FIELDS: SurveyField[] = SURVEY_SECTIONS.flatMap(s => s.fields);
 const BY_KEY = new Map(SURVEY_FIELDS.map(f => [f.key, f]));
@@ -131,8 +167,6 @@ export function cleanAnswers(input: unknown): Answers {
   for (const f of SURVEY_FIELDS) if (f.when && !f.when(out)) delete out[f.key];
   return out;
 }
-
-const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /** What stops the survey being saved, in words. Null = fine. */
 export function surveyProblem(a: Answers): string | null {

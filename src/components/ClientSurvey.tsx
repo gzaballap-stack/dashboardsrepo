@@ -1,31 +1,24 @@
 "use client";
 
-// New client survey. Filled in on the onboarding call; one submission puts the
-// client on the roster, opens their onboarding card(s), fills their profile and
-// sets them up in Client Billing. Questions in lib/client-survey.ts, what a
-// submission does in lib/client-survey-server.ts. See NOTES.md 2026-11-12.
+// New client survey (Clients > New Client Survey, Clients > Submitted Surveys).
+// Page one — service, price, prepaid, cash — is filled in here by us and turns
+// into a link; the client opens it without signing in and fills in the rest,
+// page by page (PublicSurvey.tsx, lib/survey-links.ts). Their submission puts
+// them on the roster, fills their profile, sets them up in Client Billing and
+// marks them closed in GHL. Questions in lib/client-survey.ts, what a
+// submission does in lib/client-survey-server.ts. See NOTES.md 2026-11-12 and
+// 2026-11-20.
 
 import { useEffect, useState } from "react";
 import {
-  SURVEY_SECTIONS, cleanAnswers, surveyProblem, type Answers, type SurveyField,
+  SETUP_FIELDS, SURVEY_SECTIONS, cleanAnswers, setupAnswers, setupProblem, surveyProblem, type Answers, type SurveyField,
 } from "@/lib/client-survey";
-import type { Card } from "@/lib/onboarding";
-import { EMPTY_CARD, cardProblem, cardStarted, type CardInput } from "@/lib/card-format";
-import CardVaultPanel, { CardFields, VaultSetup, saveCard, useCardVault } from "./CardVault";
+import CardVaultPanel from "./CardVault";
 
 const BORDER = "1px solid rgba(0,0,0,0.08)";
 const SHADOW = "0 1px 2px rgba(0,0,0,0.03), 0 10px 28px -12px rgba(0,0,0,0.10)";
 const INPUT = { background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" } as const;
-
-export type SurveyResult = {
-  client: { id: string; name: string; status: string | null; service: string | null; created: boolean };
-  cards: Card[];
-  stripe: { configured: boolean; made?: "existing" | "linked" | "created"; error?: string };
-  warnings: string[];
-  updated: boolean;
-  /** Anything else the survey did, in words: credits issued, cash recorded, marked closed in GHL. */
-  done?: string[];
-};
+const BOX = { background: "#ffffff", border: BORDER, boxShadow: SHADOW } as const;
 
 const SERVICE_LABEL: Record<string, string> = { facebook_ads: "Facebook Ads", sms: "SMS", both: "Facebook Ads and SMS" };
 
@@ -39,52 +32,53 @@ async function post(body: Record<string, unknown>) {
   }
 }
 
-/** Stripe's own page for typing the card in. The link is made on request. */
-export function CardLink({ cardId, compact = false }: { cardId: string; compact?: boolean }) {
+const linkUrl = (token: string) => `${window.location.origin}/survey/${token}`;
+const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const money = (v: unknown) => (typeof v === "string" && v ? `$${v}` : null);
+
+function CopyLink({ url, compact = false }: { url: string; compact?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* select and copy by hand */ }
+  }
+  const btn = compact ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm";
+  return (
+    <div className="flex gap-2">
+      <input readOnly value={url} aria-label="Survey link" onFocus={e => e.currentTarget.select()}
+        className={`flex-1 px-3 ${compact ? "py-1.5 text-xs" : "py-2 text-sm"} rounded-lg outline-none`} style={{ ...INPUT, minWidth: 0 }} />
+      <button type="button" onClick={copy} className={`${btn} rounded-lg font-semibold flex-shrink-0`} style={{ background: "#000000", color: "#ffffff" }}>
+        {copied ? "Copied" : "Copy"}
+      </button>
+      <a href={url} target="_blank" rel="noreferrer" className={`${btn} rounded-lg font-semibold flex-shrink-0`} style={{ background: "rgba(0,0,0,0.06)", color: "#111111" }}>Open</a>
+    </div>
+  );
+}
+
+/** Stripe's own page for putting a roster client's card on file. The link is made on request. */
+export function ClientCardLink({ clientId }: { clientId: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
   async function make() {
     setBusy(true); setError(null);
-    const r = await post({ action: "card_link", id: cardId });
+    const r = await post({ action: "card_link_client", client_id: clientId });
     setBusy(false);
     if (r.error || !r.url) { setError(r.error ?? "Could not make the link"); return; }
     setUrl(r.url);
   }
-  async function copy() {
-    if (!url) return;
-    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* shown below to copy by hand */ }
-  }
-
   return (
     <div>
-      {!url ? (
-        <button type="button" onClick={make} disabled={busy}
-          className={`${compact ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"} rounded-lg font-semibold`}
-          style={{ background: "#000000", color: "#ffffff", opacity: busy ? 0.5 : 1 }}>
+      {url ? <CopyLink url={url} compact /> : (
+        <button type="button" onClick={make} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy ? 0.5 : 1 }}>
           {busy ? "Making the Link…" : "Get Secure Card Link"}
         </button>
-      ) : (
-        <div className="space-y-1.5">
-          <div className="flex gap-2">
-            <input readOnly value={url} aria-label="Secure card link" onFocus={e => e.currentTarget.select()}
-              className="flex-1 px-3 py-1.5 rounded-lg text-xs outline-none" style={{ ...INPUT, minWidth: 0 }} />
-            <button type="button" onClick={copy} className="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0" style={{ background: "#000000", color: "#ffffff" }}>
-              {copied ? "Copied" : "Copy"}
-            </button>
-            <a href={url} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0" style={{ background: "rgba(0,0,0,0.06)", color: "#111111" }}>Open</a>
-          </div>
-          <p className="text-xs" style={{ color: "#949494" }}>Stripe&rsquo;s own page. Open it to type the card in on the call, or send it to the client. Works for 24 hours.</p>
-        </div>
       )}
       {error && <p className="text-xs mt-1.5" style={{ color: "#b91c1c" }}>{error}</p>}
     </div>
   );
 }
 
-function Field({ f, a, set }: { f: SurveyField; a: Answers; set: (key: string, v: string | string[]) => void }) {
+export function Field({ f, a, set }: { f: SurveyField; a: Answers; set: (key: string, v: string | string[]) => void }) {
   const id = `survey-${f.key}`;
   const v = a[f.key];
   const label = (
@@ -161,22 +155,101 @@ function Field({ f, a, set }: { f: SurveyField; a: Answers; set: (key: string, v
   );
 }
 
+/**
+ * Clients > New Client Survey: page one, filled in by us. "Create Client Link"
+ * saves it and gives the link the client opens to fill in the rest.
+ */
+export function NewClientSurveyPage({ onSeeSubmitted }: { onSeeSubmitted?: () => void }) {
+  const [a, setA] = useState<Answers>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [made, setMade] = useState<{ token: string; setup: Answers } | null>(null);
+  const set = (key: string, v: string | string[]) => { setError(null); setA(prev => ({ ...prev, [key]: v })); };
+
+  async function create(e: React.FormEvent) {
+    e.preventDefault();
+    const setup = setupAnswers(cleanAnswers(a));
+    const problem = setupProblem(setup);
+    if (problem) { setError(problem); return; }
+    setBusy(true); setError(null);
+    const r = await post({ action: "link_create", answers: setup });
+    setBusy(false);
+    if (r.error || !r.link) { setError(r.error ?? "Could not make the link"); return; }
+    setMade({ token: r.link.token, setup: r.link.setup ?? setup });
+  }
+
+  if (made) {
+    const s = made.setup;
+    const facts = [SERVICE_LABEL[String(s.service)] ?? null, money(s.price_per_appointment) && `${money(s.price_per_appointment)} per appointment`,
+      s.prepaid_appointments && `${s.prepaid_appointments} prepaid`, money(s.cash_collected) && `${money(s.cash_collected)} collected`].filter(Boolean).join(" · ");
+    return (
+      <div className="w-full max-w-2xl mx-auto space-y-4">
+        <div className="rounded-2xl p-6" style={BOX}>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center justify-center rounded-full flex-shrink-0" style={{ width: 32, height: 32, background: "#15803d" }}>
+              <svg width="16" height="16" viewBox="0 0 12 12" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" /></svg>
+            </span>
+            <div>
+              <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Client Link Ready</h2>
+              <p className="text-sm" style={{ color: "#767676" }}>{facts}</p>
+            </div>
+          </div>
+          <div className="mt-5"><CopyLink url={linkUrl(made.token)} /></div>
+        </div>
+        <div className="flex items-center justify-end gap-2">
+          {onSeeSubmitted && (
+            <button type="button" onClick={onSeeSubmitted} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ color: "#767676" }}>Submitted Surveys</button>
+          )}
+          <button type="button" onClick={() => { setMade(null); setA({}); }} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: "#000000", color: "#ffffff" }}>
+            New Survey
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={create} className="w-full max-w-2xl mx-auto space-y-4" noValidate>
+      <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>New Client Survey</h2>
+      <div className="rounded-2xl p-6" style={BOX}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
+          {SETUP_FIELDS.map(f => <Field key={f.key} f={f} a={a} set={set} />)}
+        </div>
+      </div>
+      <div className="flex items-center justify-end gap-3 pb-2">
+        {error && <span className="text-sm" style={{ color: "#b91c1c" }}>{error}</span>}
+        <button type="submit" disabled={busy} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: busy ? 0.5 : 1 }}>
+          {busy ? "Making the Link…" : "Create Client Link"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 type SavedSurvey = { client_id: string | null; past_id?: string; name: string; contact?: string | null; service: string | null; submitted_by_name: string | null; created_at: string };
-const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+type WaitingLink = { id: string; token: string; setup: Answers; created_by_name: string | null; created_at: string };
+type Notes = { done: string[]; warnings: string[] } | null;
 
 /**
- * The survey page (Clients > New Client Survey): the blank survey, and above it
- * every survey already on file — click one to read or correct it. Card details
- * are never part of a saved survey; those live in the card vault.
+ * Clients > Submitted Surveys: links still waiting for the client, and every
+ * survey on file — click one to read or correct it.
  */
-export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => void }) {
+export function SubmittedSurveysPage() {
   const [list, setList] = useState<SavedSurvey[]>([]);
-  const [open, setOpen] = useState<{ clientId: string | null; pastId?: string; key: string; name: string; answers: Answers } | null>(null);
+  const [links, setLinks] = useState<WaitingLink[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [open, setOpen] = useState<{ clientId: string | null; pastId?: string; key: string; name: string; answers: Answers; notes: Notes } | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
 
-  useEffect(() => { post({ action: "survey_list" }).then(r => setList(Array.isArray(r.surveys) ? r.surveys : [])); }, [reloads]);
+  useEffect(() => {
+    Promise.all([post({ action: "survey_list" }), post({ action: "link_list" })]).then(([s, l]) => {
+      setList(Array.isArray(s.surveys) ? s.surveys : []);
+      setLinks(Array.isArray(l.links) ? l.links : []);
+      setLoaded(true);
+    });
+  }, [reloads]);
 
   async function view(row: SavedSurvey) {
     const key = row.client_id ?? row.past_id ?? "";
@@ -184,32 +257,46 @@ export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => voi
     const r = await post({ action: "survey_get", ...(row.client_id ? { client_id: row.client_id } : { past_id: row.past_id }) });
     setLoading(null);
     if (r.error || !r.survey) { setError(r.error ?? "Could not open that survey"); return; }
-    setOpen({ clientId: row.client_id, pastId: row.past_id, key, name: row.contact ? `${row.name} — ${row.contact}` : row.name, answers: r.survey.answers as Answers });
+    setOpen({ clientId: row.client_id, pastId: row.past_id, key, name: row.contact ? `${row.name} — ${row.contact}` : row.name, answers: r.survey.answers as Answers, notes: r.notes ?? null });
+  }
+  async function removeLink(id: string) {
+    const r = await post({ action: "link_delete", id });
+    if (r.error) { setError(r.error); return; }
+    setLinks(prev => prev.filter(l => l.id !== id));
   }
 
   if (open) {
     const close = () => { setOpen(null); setReloads(n => n + 1); };
-    // The client's card sits above their answers, in its own box: it is saved to
-    // the card vault, never with the survey (and its forms cannot sit inside the survey's).
+    const warnings = open.notes?.warnings ?? [];
     return (
       <div className="space-y-4">
         <div className="w-full max-w-2xl mx-auto flex items-center justify-between gap-3">
           <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>{open.name}</h2>
           <button type="button" onClick={close} className="text-sm underline" style={{ color: "#767676" }}>Back to Surveys</button>
         </div>
+        {warnings.length > 0 && (
+          <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={{ background: "#fffbeb", border: "1px solid rgba(146,64,14,0.2)" }}>
+            <p className="text-sm font-semibold mb-1.5" style={{ color: "#92400e" }}>Needs a Look</p>
+            <ul className="space-y-1">{warnings.map(w => <li key={w} className="text-sm" style={{ color: "#92400e" }}>{w}</li>)}</ul>
+          </div>
+        )}
         {open.clientId ? (
           <>
-            <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
+            <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={BOX}>
               <CardVaultPanel key={open.clientId} clientId={open.clientId} />
+              <div className="mt-4 pt-4" style={{ borderTop: BORDER }}>
+                <p className="text-sm font-semibold mb-2" style={{ color: "#111111" }}>Card for Billing (Stripe)</p>
+                <ClientCardLink clientId={open.clientId} />
+              </div>
             </div>
-            <ClientSurvey key={open.key} initial={open.answers} clientId={open.clientId} onCancel={close} onDone={close} />
+            <ClientSurvey key={open.key} initial={open.answers} clientId={open.clientId} onCancel={close} />
           </>
         ) : (
           // A past client: answers kept for the record. Not on the roster, so nothing to save or bill —
           // but their card can still be kept (the owner's choice, 2026-11-20), filed under the survey.
           <>
             {open.pastId && (
-              <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
+              <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={BOX}>
                 <CardVaultPanel key={open.pastId} pastId={open.pastId} />
               </div>
             )}
@@ -219,162 +306,98 @@ export function ClientSurveyPage({ onDone }: { onDone?: (r: SurveyResult) => voi
       </div>
     );
   }
+
   return (
-    <div className="space-y-4">
-      {list.length > 0 && (
-        <details className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
-          <summary className="text-sm font-semibold cursor-pointer" style={{ color: "#111111" }}>Submitted Surveys ({list.length})</summary>
+    <div className="w-full max-w-2xl mx-auto space-y-4">
+      <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>Submitted Surveys</h2>
+      {error && <p className="text-sm" style={{ color: "#b91c1c" }}>{error}</p>}
+
+      {links.length > 0 && (
+        <div className="rounded-2xl p-5" style={BOX}>
+          <p className="text-sm font-semibold" style={{ color: "#111111" }}>Waiting for the Client ({links.length})</p>
           <ul className="mt-3">
-            {list.map(row => (
-              <li key={row.client_id ?? row.past_id} style={{ borderTop: BORDER }}>
-                <button type="button" onClick={() => view(row)} disabled={loading !== null} className="w-full flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-2.5 text-left">
+            {links.map(l => (
+              <li key={l.id} className="py-3 space-y-2" style={{ borderTop: BORDER }}>
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
                   <span className="text-sm font-medium" style={{ color: "#111111" }}>
-                    {row.name}{row.contact && <span className="font-normal" style={{ color: "#767676" }}> — {row.contact}</span>}
+                    {[SERVICE_LABEL[String(l.setup?.service)] ?? "Survey", money(l.setup?.price_per_appointment) && `${money(l.setup?.price_per_appointment)} per appointment`].filter(Boolean).join(" · ")}
                   </span>
-                  <span className="text-xs" style={{ color: "#949494" }}>
-                    {loading === (row.client_id ?? row.past_id) ? "Opening…" : [row.past_id ? "Past client" : row.service ? SERVICE_LABEL[row.service] : null, day(row.created_at), row.submitted_by_name].filter(Boolean).join(" · ")}
+                  <span className="flex items-center gap-3 text-xs" style={{ color: "#949494" }}>
+                    {[day(l.created_at), l.created_by_name].filter(Boolean).join(" · ")}
+                    <button type="button" onClick={() => removeLink(l.id)} className="underline" style={{ color: "#767676" }}>Delete</button>
                   </span>
-                </button>
+                </div>
+                <CopyLink url={linkUrl(l.token)} compact />
               </li>
             ))}
           </ul>
-          {error && <p className="text-xs mt-2" style={{ color: "#b91c1c" }}>{error}</p>}
-        </details>
+        </div>
       )}
-      <ClientSurvey onDone={onDone} />
+
+      <div className="rounded-2xl p-5" style={BOX}>
+        <p className="text-sm font-semibold" style={{ color: "#111111" }}>Surveys ({list.length})</p>
+        {loaded && !list.length && <p className="text-sm mt-2" style={{ color: "#767676" }}>None yet.</p>}
+        <ul className="mt-3">
+          {list.map(row => (
+            <li key={row.client_id ?? row.past_id} style={{ borderTop: BORDER }}>
+              <button type="button" onClick={() => view(row)} disabled={loading !== null} className="w-full flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-2.5 text-left">
+                <span className="text-sm font-medium" style={{ color: "#111111" }}>
+                  {row.name}{row.contact && <span className="font-normal" style={{ color: "#767676" }}> — {row.contact}</span>}
+                </span>
+                <span className="text-xs" style={{ color: "#949494" }}>
+                  {loading === (row.client_id ?? row.past_id) ? "Opening…" : [row.past_id ? "Past client" : row.service ? SERVICE_LABEL[row.service] : null, day(row.created_at), row.submitted_by_name].filter(Boolean).join(" · ")}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
 
-export default function ClientSurvey({ initial, cardId, clientId, readOnly, onSaved, onDone, onCancel }: {
-  /** Answers to start from (a card's name, or a survey being corrected). */
+/** One client's answers, all on one page: corrected and saved, or (a past client) only read. */
+export default function ClientSurvey({ initial, clientId, readOnly, onCancel }: {
   initial?: Answers;
-  /** The card the survey is being filled in from — that card is used, not a new one. */
-  cardId?: string;
-  /** Correcting this client's answers: nothing new is created. */
+  /** The roster client whose answers these are. */
   clientId?: string;
   /** A past client's answers, kept for the record: shown, never saved. */
   readOnly?: boolean;
-  /** Called the moment the survey is saved. */
-  onSaved?: (r: SurveyResult) => void;
-  /** Called with the result when the person moves on from the confirmation. */
-  onDone?: (r: SurveyResult) => void;
   onCancel?: () => void;
 }) {
   const [a, setA] = useState<Answers>(initial ?? {});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<SurveyResult | null>(null);
-  // The card never travels with the answers: it goes to the card vault on its
-  // own, once the client exists, and is dropped from memory straight after.
-  const vault = useCardVault();
-  const [card, setCard] = useState<CardInput>(EMPTY_CARD);
-  const [cardNote, setCardNote] = useState<{ ok?: string; error?: string } | null>(null);
-  const withCard = vault.on && !clientId && cardStarted(card);
-
-  const set = (key: string, v: string | string[]) => { setError(null); setA(prev => ({ ...prev, [key]: v })); };
+  const [saved, setSaved] = useState(false);
+  const set = (key: string, v: string | string[]) => { setError(null); setSaved(false); setA(prev => ({ ...prev, [key]: v })); };
+  // A past client's record shows everything it holds, even a question asked only of some clients.
+  const shown = (f: SurveyField) => !f.when || f.when(a) || (!!readOnly && !!a[f.key]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (readOnly) return;
+    if (readOnly || !clientId) return;
     const clean = cleanAnswers(a);
     const problem = surveyProblem(clean);
     if (problem) { setError(problem); return; }
-    const cardWrong = withCard ? cardProblem(card) : null;
-    if (cardWrong) { setError(cardWrong); return; }
     setSaving(true); setError(null);
-    const r = await post({ action: "survey_submit", answers: clean, ...(clientId ? { client_id: clientId } : cardId ? { card_id: cardId } : {}) });
-    if (r.error || !r.client) { setSaving(false); setError(r.error ?? "Could not save the survey"); return; }
-    if (withCard) {
-      const saved = await saveCard(r.client.id, card);
-      setCardNote(saved.card ? { ok: `Card saved, locked (${saved.card.brand} •••• ${saved.card.last4})` } : { error: `The card was not saved (${saved.error ?? "unknown reason"}) — add it from the client's onboarding card` });
-      setCard(EMPTY_CARD);
-    }
+    const r = await post({ action: "survey_submit", answers: clean, client_id: clientId });
     setSaving(false);
-    setResult(r as SurveyResult);
-    onSaved?.(r as SurveyResult);
-  }
-
-  if (result) {
-    const { client, cards, stripe, warnings } = result;
-    const lines: string[] = [
-      client.created ? "Added to the Client Roster, in Setup" : "Already on the Client Roster — linked to it",
-      `Service set to ${SERVICE_LABEL[client.service ?? ""] ?? "not set"}`,
-      cards.length ? `${cards.length === 1 ? "Onboarding card" : `${cards.length} onboarding cards`} opened, survey step ticked` : "Answers saved",
-      "Contact details saved to the client profile (Profit and Loss and Client Billing)",
-      ...(stripe.configured && !stripe.error ? [stripe.made === "created" ? "Customer created in Stripe" : stripe.made === "linked" ? "Linked to their existing Stripe customer" : "Already linked to Stripe"] : []),
-      ...(result.done ?? []),
-      ...(cardNote?.ok ? [cardNote.ok] : []),
-    ];
-    const problems = [...warnings, ...(cardNote?.error ? [cardNote.error] : [])];
-    return (
-      <div className="w-full max-w-2xl mx-auto space-y-4">
-        <div className="rounded-2xl p-6" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
-          <div className="flex items-center gap-3">
-            <span className="flex items-center justify-center rounded-full flex-shrink-0" style={{ width: 32, height: 32, background: "#15803d" }}>
-              <svg width="16" height="16" viewBox="0 0 12 12" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" /></svg>
-            </span>
-            <div>
-              <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>{client.name} {result.updated && !cards.length ? "updated" : "is set up"}</h2>
-              <p className="text-sm" style={{ color: "#767676" }}>Here is what the survey just did.</p>
-            </div>
-          </div>
-          <ul className="mt-4 space-y-1.5">
-            {lines.map(l => (
-              <li key={l} className="flex items-start gap-2 text-sm" style={{ color: "#111111" }}>
-                <span style={{ color: "#15803d" }}>✓</span>{l}
-              </li>
-            ))}
-            {problems.map(w => (
-              <li key={w} className="flex items-start gap-2 text-sm" style={{ color: "#92400e" }}><span>!</span>{w}</li>
-            ))}
-          </ul>
-        </div>
-
-        {cards.length > 0 && (
-          <div className="rounded-2xl p-6" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
-            <h3 className="text-sm font-semibold" style={{ color: "#111111" }}>Card for Billing (Stripe)</h3>
-            {stripe.configured ? (
-              <>
-                <p className="text-sm mt-1 mb-3" style={{ color: "#767676" }}>To charge the client from Client Billing, the card also has to be in Stripe. This link is Stripe&rsquo;s own page for typing it in.</p>
-                <CardLink cardId={cards[0].id} />
-              </>
-            ) : (
-              <p className="text-sm mt-1" style={{ color: "#767676" }}>Stripe is not connected on this site, so there is no card link here.</p>
-            )}
-          </div>
-        )}
-
-        <div className="flex items-center justify-end gap-2">
-          <button type="button" onClick={() => { setResult(null); setA({}); setCardNote(null); }} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ background: "#ffffff", border: "1px solid rgba(0,0,0,0.162)", color: "#111111" }}>
-            New Survey
-          </button>
-          {onDone && (
-            <button type="button" onClick={() => onDone(result)} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: "#000000", color: "#ffffff" }}>
-              {cards.length ? "Open the Card" : "Done"}
-            </button>
-          )}
-        </div>
-      </div>
-    );
+    if (r.error || !r.client) { setError(r.error ?? "Could not save the survey"); return; }
+    setSaved(true);
   }
 
   return (
     <form onSubmit={submit} className="w-full max-w-2xl mx-auto space-y-4" noValidate>
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold" style={{ color: "#111111" }}>{readOnly ? "Past Client Survey" : clientId ? "Client Survey" : "New Client Survey"}</h2>
-          <p className="text-sm mt-0.5" style={{ color: "#767676" }}>
-            {readOnly ? "Kept for the record. Not on the Client Roster, so there is nothing to bill. Their card can be kept in the box above." : clientId ? "Correct the answers and save." : "Fill it in on the onboarding call. Submitting sets the client up across the dashboard."}
-          </p>
-        </div>
+        <h2 className="text-lg font-semibold" style={{ color: "#111111" }}>{readOnly ? "Past Client Survey" : "Client Survey"}</h2>
         {onCancel && <button type="button" onClick={onCancel} aria-label="Close" className="text-2xl leading-none px-1" style={{ color: "#767676" }}>×</button>}
       </div>
 
       {SURVEY_SECTIONS.map(section => {
-        const fields = section.fields.filter(f => !f.when || f.when(a));
+        const fields = section.fields.filter(shown);
+        if (!fields.length) return null;
         return (
-          <fieldset key={section.title} disabled={readOnly} className="rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
+          <fieldset key={section.title} disabled={readOnly} className="rounded-2xl p-5" style={BOX}>
             <legend className="sr-only">{section.title}</legend>
             <p className="text-sm font-semibold mb-3" style={{ color: "#111111" }} aria-hidden>{section.title}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3.5">
@@ -384,35 +407,12 @@ export default function ClientSurvey({ initial, cardId, clientId, readOnly, onSa
         );
       })}
 
-      {!clientId && !readOnly && vault.on && (
-        <fieldset className="rounded-2xl p-5" style={{ background: "#ffffff", border: BORDER, boxShadow: SHADOW }}>
-          <legend className="sr-only">Card on File</legend>
-          <p className="text-sm font-semibold" style={{ color: "#111111" }} aria-hidden>Card on File</p>
-          <p className="text-xs mt-0.5 mb-3" style={{ color: "#949494" }}>Optional. Locked with the vault password — only an admin who knows it can open it afterwards, and every opening is logged.</p>
-          <CardFields value={card} onChange={c => { setError(null); setCard(c); }} idPrefix="survey-card" />
-        </fieldset>
-      )}
-      {!clientId && !readOnly && vault.checked && !vault.on && (
-        <div className="rounded-2xl p-5" style={{ background: "#fafafa", border: BORDER }}>
-          <p className="text-sm font-semibold" style={{ color: "#111111" }}>Card on File</p>
-          {vault.waiting && vault.admin ? (
-            // One-off: the admin picks the vault password right here, then the card boxes appear.
-            <div className="mt-2"><VaultSetup idPrefix="survey-vault" onDone={vault.refresh} /></div>
-          ) : (
-            <p className="text-sm mt-1" style={{ color: "#767676" }}>
-              {vault.waiting
-                ? "Card storage is waiting for an admin to set the vault password. Until then, submit without a card and add it from the client's onboarding card later."
-                : "Card storage is not switched on here, so there is no card number to fill in. After you submit you get a secure Stripe link for the card instead."}
-            </p>
-          )}
-        </div>
-      )}
-
       <div className="flex items-center justify-end gap-3 pb-2">
         {error && <span className="text-sm" style={{ color: "#b91c1c" }}>{error}</span>}
-        {onCancel && <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm" style={{ color: "#767676" }}>{readOnly ? "Back to Surveys" : "Cancel"}</button>}
+        {saved && !error && <span className="text-sm" style={{ color: "#15803d" }}>Saved</span>}
+        {onCancel && <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm" style={{ color: "#767676" }}>{readOnly ? "Back to Surveys" : "Close"}</button>}
         {!readOnly && <button type="submit" disabled={saving} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ background: "#000000", color: "#ffffff", opacity: saving ? 0.5 : 1 }}>
-          {saving ? "Saving…" : clientId ? "Save Answers" : "Submit Survey"}
+          {saving ? "Saving…" : "Save Answers"}
         </button>}
       </div>
     </form>
