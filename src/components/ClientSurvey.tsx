@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  SETUP_FIELDS, SURVEY_SECTIONS, cleanAnswers, setupAnswers, setupProblem, surveyProblem, type Answers, type SurveyField,
+  SETUP_FIELDS, SURVEY_SECTIONS, cleanAnswers, prepaidOf, priceOf, setupAnswers, setupProblem, surveyProblem, type Answers, type SurveyField,
 } from "@/lib/client-survey";
 import CardVaultPanel from "./CardVault";
 
@@ -164,7 +164,19 @@ export function NewClientSurveyPage({ onSeeSubmitted }: { onSeeSubmitted?: () =>
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<{ token: string; setup: Answers } | null>(null);
-  const set = (key: string, v: string | string[]) => { setError(null); setA(prev => ({ ...prev, [key]: v })); };
+  // Cash collected = price × prepaid, worked out as either is typed. Still editable;
+  // changing the price or the count works it out again.
+  const set = (key: string, v: string | string[]) => {
+    setError(null);
+    setA(prev => {
+      const next = { ...prev, [key]: v };
+      if (key === "price_per_appointment" || key === "prepaid_appointments") {
+        const price = priceOf(next), count = prepaidOf(next);
+        next.cash_collected = price !== null && count ? String(Math.round(price * count * 100) / 100) : "";
+      }
+      return next;
+    });
+  };
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
