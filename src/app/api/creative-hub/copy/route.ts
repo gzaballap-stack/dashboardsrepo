@@ -16,7 +16,10 @@ import { ensureActiveTemplate } from '@/lib/client-setup';
  * POST   { id?, scope, name, …, active? } → create or update. `active: true` makes the set the
  *                                        scope's one active template (client packs are copied from
  *                                        it, lib/client-setup.ts); every other template is switched off
- * Sets may be a template (`is_template`) or a client's own pack (`client_id`, `client_name`).
+ * Sets may be a template (`is_template`) or a client's own pack (`client_id`, `client_name`;
+ * `active` on a client pack = the client's current pack). POST { id, current: true } makes a
+ * pack the client's current one; POST without id but with client_id makes a new pack for them.
+ * GET also returns `clients` (every client, for the Copy page's client switcher).
  * DELETE ?id=
  */
 
@@ -132,6 +135,7 @@ export async function GET(req: Request) {
   const clientIds = [...new Set((data ?? []).map(s => s.client_id as string | null).filter((x): x is string => !!x))];
   const { data: clientRows } = clientIds.length ? await service.from('clients').select('id, name').in('id', clientIds) : { data: [] as { id: string; name: string }[] };
   const clientName = new Map((clientRows ?? []).map(c => [c.id as string, c.name as string]));
+  const { data: everyClient } = await service.from('clients').select('id, name, is_internal').order('name');
   return NextResponse.json({
     sets: (data ?? []).map(s => ({
       ...s,
@@ -143,6 +147,7 @@ export async function GET(req: Request) {
         s.client_id ? results.textRows.filter(t => results.adClient.get(t.ad_id) === s.client_id) : results.textRows),
     })),
     limit: LIMIT,
+    clients: (everyClient ?? []).filter(c => (scope === 'b2b' ? c.is_internal : !c.is_internal)).map(c => ({ id: c.id, name: c.name })),
   });
 }
 
@@ -159,6 +164,16 @@ export async function POST(req: Request) {
   for (const f of LIST_FIELDS) if (f in body) row[f] = cleanList(body[f]);
 
   const id = typeof body.id === 'string' && body.id ? body.id : null;
+  // A new set made from a client's view on the Copy page belongs to that client.
+  if (!id && typeof body.client_id === 'string' && body.client_id) row.client_id = body.client_id;
+  // `current`: this pack becomes the client's current one (shown on their survey); their others stop being current.
+  if (body.current === true && id) {
+    const { data: me } = await service.from('creative_hub_copy_sets').select('client_id').eq('id', id).maybeSingle();
+    if (!me?.client_id) return NextResponse.json({ error: 'Only a client pack can be made current' }, { status: 400 });
+    const { error: offErr } = await service.from('creative_hub_copy_sets').update({ active: false }).eq('client_id', me.client_id).neq('id', id);
+    if (offErr) return NextResponse.json({ error: offErr.message }, { status: 500 });
+    row.active = true;
+  }
   // Only sent when it changes, so a database without the column (V2) is untouched otherwise.
   if (typeof body.active === 'boolean') {
     row.active = body.active;

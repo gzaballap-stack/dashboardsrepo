@@ -32,6 +32,16 @@ clients) their copy should already exist, ready to copy and paste.
   **applied to V1 only** (the token cannot reach V2). On V2 the box shows "Not
   made yet" and Make Again returns the database-update warning; nothing else changes.
 - Made for Star Construction And Renovation on 2026-11-23 (125 zips, 25 mi of 98034).
+- **Copy page, B2C: Templates | Clients** switch (Templates by default: sets
+  with no client). Clients: pick a client, see their packs (current first);
+  **Make Current** picks the pack their survey shows (`active` on a client pack
+  = current); **+ New Copy Set** there makes a pack for that client; **Pull
+  Packs From Their Ads** (`/api/creative-hub/copy/from-ads`) reads every ad the
+  client ran in Meta in full (`src/lib/ad-texts.ts` — the hub cache keeps one
+  headline per ad, which is why the template first had 2 headlines, not 3) and
+  makes one pack per combination of texts, skipping ones already there. A
+  client pack's results count only that client's ads. Make Again refills only
+  the template-made pack (label "Client Pack").
 
 ## 2026-11-23 — Clients dashboard SMS view showed zeros: the SMS total timed out
 

@@ -30,6 +30,8 @@ export type ClientPack = {
 type Template = ClientPack & { campaign_label: string | null };
 
 const MAX_RADIUS = 200;
+/** The label on a pack made from the template — Make Again refills only that one. */
+const TEMPLATE_PACK = 'Client Pack';
 const NEEDS_UPDATE = 'The setup pack needs a one-off database update first (node scripts/migrate-client-setup-pack.mjs v1)';
 
 /** The company zip and the radius from the survey's answers. */
@@ -73,10 +75,11 @@ async function activeTemplate(service: Service): Promise<{ template: Template | 
 }
 export { activeTemplate as ensureActiveTemplate };
 
+/** The client's current pack (the one marked current on the Copy page), else their first. */
 async function packOf(service: Service, clientId: string): Promise<ClientPack | null> {
   const { data } = await service.from('creative_hub_copy_sets')
     .select('id, name, bodies, headlines, descriptions, cta, link, notes, updated_at')
-    .eq('client_id', clientId).eq('scope', 'b2c').order('created_at').limit(1);
+    .eq('client_id', clientId).eq('scope', 'b2c').order('active', { ascending: false }).order('created_at').limit(1);
   return ((data ?? [])[0] as unknown as ClientPack | undefined) ?? null;
 }
 
@@ -112,7 +115,10 @@ export async function makeSetup(service: Service, clientId: string, opts: { agai
 
   // 2. Copy pack — Facebook clients only
   if (runsAds(a, (client?.service as string | null) ?? null)) {
-    const existing = await packOf(service, clientId);
+    // The pack made from the template (not one pulled from their past ads).
+    const { data: made } = await service.from('creative_hub_copy_sets').select('id, link')
+      .eq('client_id', clientId).eq('scope', 'b2c').eq('campaign_label', TEMPLATE_PACK).order('created_at').limit(1);
+    const existing = ((made ?? [])[0] as { id: string; link: string | null } | undefined) ?? null;
     if (!existing || opts.again) {
       const { template, error: te } = await activeTemplate(service);
       if (!template) warnings.push(`Copy pack: ${te ?? 'no active template'}`);
@@ -120,13 +126,14 @@ export async function makeSetup(service: Service, clientId: string, opts: { agai
         const { values, missing } = blanksFor(a);
         const fill = (list: string[]) => (list ?? []).map(t => fillBlanks(t, values));
         const row: Row = {
-          scope: 'b2c', client_id: clientId, is_template: false, active: false,
-          name: String(client?.name ?? values.company ?? 'Client'), campaign_label: 'Client Pack',
+          scope: 'b2c', client_id: clientId, is_template: false, active: true,   // active = the client's current pack
+          name: String(client?.name ?? values.company ?? 'Client'), campaign_label: TEMPLATE_PACK,
           bodies: fill(template.bodies), headlines: fill(template.headlines), descriptions: fill(template.descriptions),
           cta: template.cta, link: existing?.link ?? null,
           notes: `Made from the template "${template.name}" on ${new Date().toISOString().slice(0, 10)}.${missing.length ? ` Not in the survey, left as blanks: ${missing.join(', ')}.` : ''}`,
           updated_at: new Date().toISOString(),
         };
+        if (!existing) await service.from('creative_hub_copy_sets').update({ active: false }).eq('client_id', clientId);
         const q = existing
           ? service.from('creative_hub_copy_sets').update(row).eq('id', existing.id)
           : service.from('creative_hub_copy_sets').insert(row);

@@ -86,8 +86,8 @@ async function postJson(url: string, body: unknown, method = "POST") {
   return json;
 }
 
-function ActiveChip() {
-  return <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: "rgba(21,128,61,0.12)", color: "#15803d" }}>Active Template</span>;
+function ActiveChip({ label = "Active Template" }: { label?: string }) {
+  return <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: "rgba(21,128,61,0.12)", color: "#15803d" }}>{label}</span>;
 }
 
 function Chip({ children, color = "#4a4a4a", bg = "rgba(0,0,0,0.06)" }: { children: React.ReactNode; color?: string; bg?: string }) {
@@ -109,26 +109,71 @@ export default function CopyHub({ scope }: { scope: Scope }) {
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // B2C: templates by default; Clients shows one client's packs at a time.
+  const [view, setView] = useState<"templates" | "clients">("templates");
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
+  const [clientId, setClientId] = useState<string>("");
+  const [pulling, setPulling] = useState(false);
+  const [pullMsg, setPullMsg] = useState("");
 
   const load = useCallback(() =>
     fetch(`/api/creative-hub/copy?scope=${scope}`)
       .then(async res => {
         const json = await res.json();
         if (!res.ok || json.error) setError(json.error ?? "Could not load copy sets.");
-        else { setSets(json.sets); setLimit(json.limit ?? 5); setError(""); }
+        else { setSets(json.sets); setLimit(json.limit ?? 5); setClients(json.clients ?? []); setError(""); }
       })
       .catch(e => setError((e as Error).message)),
   [scope]);
   useEffect(() => { load(); }, [load]);
 
   const q = search.trim().toLowerCase();
+  const byClient = scope === "b2c" && view === "clients";
+  // The client switcher: clients with packs first, then everyone else.
+  const packCount = new Map<string, number>();
+  for (const x of sets ?? []) if (x.client_id) packCount.set(x.client_id, (packCount.get(x.client_id) ?? 0) + 1);
+  const clientOptions = [...clients].sort((a, b) => Number(!!packCount.get(b.id)) - Number(!!packCount.get(a.id)) || a.name.localeCompare(b.name));
+  const chosen = clientId || clientOptions[0]?.id || "";
   const shown = (sets ?? [])
+    .filter(s => (scope !== "b2c" ? true : byClient ? s.client_id === chosen : !s.client_id))
     .filter(s => !q || [s.name, s.campaign_label, s.notes, s.client_name, ...s.bodies, ...s.headlines, ...s.descriptions].some(t => t?.toLowerCase().includes(q)))
-    .sort((a, b) => Number(!!b.active) - Number(!!a.active));   // the active template first
+    .sort((a, b) => Number(!!b.active) - Number(!!a.active));   // the active template / current pack first
+
+  async function pullFromAds() {
+    if (!chosen) return;
+    setPulling(true); setPullMsg("");
+    try {
+      const json = await postJson("/api/creative-hub/copy/from-ads", { client_id: chosen });
+      setPullMsg(json.made ? `${json.made} pack${json.made === 1 ? "" : "s"} added from their ads.` : json.ads ? "Nothing new: every combination from their ads is already here." : "No ads found for this client.");
+      await load();
+    } catch (e) { setPullMsg((e as Error).message); } finally { setPulling(false); }
+  }
   const open = openId ? sets?.find(s => s.id === openId) ?? null : null;
 
   return (
     <div className="space-y-4">
+      {scope === "b2c" && (
+        <div className="rounded-2xl p-4 flex items-center gap-3 flex-wrap" style={CARD}>
+          <div className="inline-flex rounded-lg p-0.5" style={{ background: "rgba(0,0,0,0.06)" }}>
+            {(["templates", "clients"] as const).map(v => (
+              <button key={v} onClick={() => { setView(v); setPullMsg(""); }} className="px-3 py-1.5 rounded-md text-xs font-semibold"
+                style={view === v ? { background: "#ffffff", color: "#111111", boxShadow: "0 1px 2px rgba(0,0,0,0.08)" } : { color: "#6b6b6b" }}>
+                {v === "templates" ? "Templates" : "Clients"}
+              </button>
+            ))}
+          </div>
+          {byClient && (<>
+            <select value={chosen} onChange={e => { setClientId(e.target.value); setPullMsg(""); }} className="px-3 py-1.5 rounded-lg text-xs font-medium outline-none" style={INPUT} aria-label="Client">
+              {clientOptions.map(c => <option key={c.id} value={c.id}>{c.name}{packCount.get(c.id) ? ` (${packCount.get(c.id)})` : ""}</option>)}
+            </select>
+            <button onClick={pullFromAds} disabled={pulling || !chosen} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "rgba(0,0,0,0.06)", color: "#111111", opacity: pulling ? 0.5 : 1 }}>
+              {pulling ? "Reading Their Ads…" : "Pull Packs From Their Ads"}
+            </button>
+            {pullMsg && <span className="text-xs" style={{ color: "#4a4a4a" }}>{pullMsg}</span>}
+          </>)}
+        </div>
+      )}
+
       <div className="rounded-2xl p-4 flex items-center gap-3 flex-wrap" style={CARD}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search sets, texts, campaigns…" className="px-3 py-1.5 rounded-lg text-xs outline-none w-64" style={INPUT} />
         <span className="text-xs" style={{ color: "#6b6b6b" }}>Each set is one combination: up to {limit} primary texts, {limit} headlines and {limit} descriptions.</span>
@@ -140,7 +185,7 @@ export default function CopyHub({ scope }: { scope: Scope }) {
 
       {sets && (shown.length === 0 ? (
         <div className="rounded-2xl p-8 text-center text-sm" style={{ ...CARD, color: "#6b6b6b" }}>
-          {sets.length === 0 ? "No copy sets yet. Start one from scratch, or pull the texts off an ad that's already running." : "Nothing matches."}
+          {byClient && !q ? "No packs for this client yet. Pull them from their ads, or start one." : sets.length === 0 ? "No copy sets yet. Start one from scratch, or pull the texts off an ad that's already running." : "Nothing matches."}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -148,7 +193,7 @@ export default function CopyHub({ scope }: { scope: Scope }) {
             <button key={s.id} onClick={() => setOpenId(s.id)} className="text-left rounded-2xl p-4 flex flex-col gap-2 transition-transform duration-150 hover:-translate-y-0.5" style={{ ...CARD, minHeight: 180 }}>
               <div className="flex items-start gap-2">
                 <div className="text-sm font-semibold flex-1 min-w-0" style={{ color: "#111111" }}>{s.name}</div>
-                {s.is_template && s.active ? <ActiveChip /> : s.is_template ? <Chip>Template</Chip> : s.campaign_label && <Chip>{s.campaign_label}</Chip>}
+                {s.is_template && s.active ? <ActiveChip /> : s.is_template ? <Chip>Template</Chip> : s.client_id && s.active ? <ActiveChip label="Current" /> : s.campaign_label && <Chip>{s.campaign_label}</Chip>}
               </div>
               <div className="text-[11px]" style={{ color: "#767676" }}>
                 {s.bodies.length} primary · {s.headlines.length} headline{s.headlines.length === 1 ? "" : "s"} · {s.descriptions.length} description{s.descriptions.length === 1 ? "" : "s"}
@@ -165,7 +210,7 @@ export default function CopyHub({ scope }: { scope: Scope }) {
       ))}
 
       {(open || creating) && (
-        <SetDrawer key={open?.id ?? "new"} set={open} scope={scope} limit={limit}
+        <SetDrawer key={open?.id ?? "new"} set={open} scope={scope} limit={limit} newForClient={byClient ? chosen : null}
           onClose={() => { setOpenId(null); setCreating(false); }}
           onSaved={async id => { setCreating(false); await load(); setOpenId(id); }} />
       )}
@@ -173,8 +218,10 @@ export default function CopyHub({ scope }: { scope: Scope }) {
   );
 }
 
-function SetDrawer({ set, scope, limit, onClose, onSaved }: {
+function SetDrawer({ set, scope, limit, newForClient, onClose, onSaved }: {
   set: CopySet | null; scope: Scope; limit: number; onClose: () => void; onSaved: (id: string) => Promise<void>;
+  /** Made from the Clients view: the new set is that client's pack. */
+  newForClient?: string | null;
 }) {
   const [editing, setEditing] = useState(!set);
   const [saving, setSaving] = useState(false);
@@ -203,9 +250,18 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
       const { active, ...texts } = form;
       const wasActive = !!(set?.is_template && set?.active);
       // Sent only when it changes (the column may not exist on every database).
-      const json = await postJson("/api/creative-hub/copy", { id: set?.id, scope, ...texts, ...(active !== wasActive ? { active } : {}) });
+      const json = await postJson("/api/creative-hub/copy", { id: set?.id, scope, ...texts, ...(active !== wasActive ? { active } : {}), ...(!set && newForClient ? { client_id: newForClient } : {}) });
       setEditing(false);
       await onSaved(json.set.id);
+    } catch (e) { setErr((e as Error).message); } finally { setSaving(false); }
+  }
+
+  async function makeCurrent() {
+    if (!set) return;
+    setSaving(true); setErr("");
+    try {
+      await postJson("/api/creative-hub/copy", { id: set.id, scope, name: set.name, current: true });
+      await onSaved(set.id);
     } catch (e) { setErr((e as Error).message); } finally { setSaving(false); }
   }
 
@@ -256,8 +312,11 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
         <div className="sticky top-0 z-10 flex items-center gap-3 px-5 py-3 flex-wrap" style={{ background: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
           <div className="min-w-0 mr-auto">
             <div className="text-base font-semibold truncate" style={{ color: "#111111" }}>{set?.name ?? "New Copy Set"}</div>
-            {set && <div className="flex items-center gap-1.5 mt-1 flex-wrap">{set.is_template && set.active && <ActiveChip />}{set.campaign_label && <Chip>{set.campaign_label}</Chip>}{set.cta && <Chip>{set.cta.replace(/_/g, " ").toLowerCase()}</Chip>}</div>}
+            {set && <div className="flex items-center gap-1.5 mt-1 flex-wrap">{set.is_template && set.active && <ActiveChip />}{set.client_id && set.active && <ActiveChip label="Current" />}{set.client_name && <Chip>{set.client_name}</Chip>}{set.campaign_label && <Chip>{set.campaign_label}</Chip>}{set.cta && <Chip>{set.cta.replace(/_/g, " ").toLowerCase()}</Chip>}</div>}
           </div>
+          {!editing && set?.client_id && !set.active && (
+            <button onClick={makeCurrent} disabled={saving} title="Shown on the client's survey as their copy pack" className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: "#111111", border: "1px solid rgba(0,0,0,0.162)", opacity: saving ? 0.5 : 1 }}>Make Current</button>
+          )}
           {!editing && set && <CopyButton text={all(set)} label="Copy Everything" />}
           {editing ? (<>
             {set && <button onClick={() => { setForm(blank()); setEditing(false); setErr(""); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ color: "#4a4a4a", border: "1px solid rgba(0,0,0,0.162)" }}>Cancel</button>}
@@ -324,7 +383,7 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
                 <input value={form.link} onChange={e => setForm(f => ({ ...f, link: e.target.value }))} placeholder="https://…" className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
               </label>
             </div>
-            {scope === "b2c" && !set?.client_id && (
+            {scope === "b2c" && !set?.client_id && !newForClient && (
               <label className="flex items-start gap-2.5 rounded-xl p-3 cursor-pointer" style={{ background: form.active ? "rgba(21,128,61,0.08)" : "#f7f7f7" }}>
                 <input type="checkbox" checked={form.active} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} className="mt-0.5" />
                 <span className="text-xs" style={{ color: "#111111", lineHeight: 1.6 }}>
