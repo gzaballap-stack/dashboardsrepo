@@ -185,7 +185,9 @@ fbq('track', 'Lead');
 </script>
 ```
 
-5. Pages → the **booking page clone** → tracking code — paste exactly:
+5. The **Thank You page** → tracking code — paste exactly (owner 2026-11-23:
+   the `Lead` code goes on the Booking page, the `Schedule` code on the Thank
+   You page):
 
 ```html
 <script>
@@ -315,8 +317,8 @@ they cost, what is still unpublished, and anything skipped or uncertain.
 ## Confirmed on screen (Star Construction And Renovation, both services, 2026-11-22)
 
 - **New Lead Stuff has two New Lead templates:** `1. Template New Lead` and
-  `1. Template - CAPI New Lead`; most Facebook clients have both copies
-  (`<Client> New Lead` and `<Client> - CAPI New Lead`). Ask which to make.
+  `1. Template - CAPI New Lead`. Copy only `1. Template New Lead` — the CAPI
+  one is no longer used (owner 2026-11-23).
 - **New Lead copy:** Tag As Contractor Company Name (template tag `tomsi
   media` → the client's); From number is the **Settings tab → From number**.
   The sticky note's "Workflow Contact branch" and "Googlesheet action" are not
@@ -325,19 +327,29 @@ they cost, what is still unpublished, and anything skipped or uncertain.
 - **Assign To Contractor** uses the contact's Contractor GHL User ID field —
   nothing to change.
 - **Funnel:** Sites → Funnels → 1. Landing Pages → row ⋮ → **Clone** (asks the
-  name). Cloned pages are named `Home Page Clone`, `Booking Page Clone`,
-  `Thank You Page Clone` — so "the booking page clone" in Part B is ambiguous;
-  ask. Head tracking code: funnel Settings tab, then the Save button at the
+  name). The cloned pages come out named `Home Page Clone`, `Booking Page
+  Clone`, `Thank You Page Clone (Clone)`: in the editor's page menu (top
+  centre) → each page's ⋯ → Edit → rename to `Home Page`, `Booking Page`,
+  `Thank You Page` (leave the URL slug). Head tracking code: funnel Settings tab, then the Save button at the
   bottom. Page tracking code: in the editor, the `</>` toolbar icon (Header /
   Footer tracking). Booking page has two calendar elements (Change → booking
   type Calendar → pick the calendar → Add to page); the template's is Israel
   Flores'. The heading "Company Name" is a blue span: double-click it, Shift+End,
   type. The footer is a **global section**: saving it asks to sync "across
-  other instances" — stop and ask the owner before confirming. Footer hours
-  (Mon–Fri 7–5) are the template's, not the client's.
+  other instances" — that means this funnel's own pages only; confirm Save
+  (owner 2026-11-23). Footer hours (Mon–Fri 7–5) are the template's.
+- **Domain (B2 steps 6–7):** Settings → Domains & URL Redirects →
+  remodelwithexperts.com → Manage → DNS records → search the name first →
+  Add Record (CNAME, name e.g. `starconstructionandrenovation`, target
+  `sites.ludicrous.cloud`). Then Connected Products → **+ Connect** →
+  Funnel/Website → Connect → type the full sub-domain → Continue → Continue →
+  "already Authorized" → Add records (it reuses the CNAME, no duplicate) →
+  Funnel → pick `<Client> Landing Page`, default page Home Page → Proceed to
+  finish.
+- **Facebook (B6) and the New Lead trigger's page** are done by the owner's
+  side (2026-11-23) — finish only the GHL parts.
 
 ## Not confirmed yet (written from dictation — check on screen, then fix this file)
-- Everything in Part B is still as dictated (not opened).
 - USA Windows And Doors' calendar and Fill In Data user are waiting on his GHL
   user (as of 2026-11-20).
 - Where a notification **email** from the form goes (the first number is in
