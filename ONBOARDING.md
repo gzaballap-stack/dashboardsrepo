@@ -274,10 +274,13 @@ In the copy:
      <p><strong>APPT BOOKED FROM TOMSI MEDIA</strong></p><p>Appointment: {{appointment.start_time}}</p><p>Name: {{contact.name}}</p><p>Phone: {{contact.phone}}</p><p>Email: {{contact.email}}</p><p>Address: {{contact.full_address}}</p><p>Project: {{contact.lead_form_services_question}} - {{contact.lead_form_description_of_project}}</p><p>Timeline: {{contact.lead_form_timeline_question}}</p><p>Budget: {{contact.lead_form_full_project_budget_question}} {{contact.lead_form_partial_project_budget_question}}</p><p>Quick Summary: {{contact.transcript_summary}}</p>
      ```
      → Save action.
+     **SMS-only clients:** leave out the `Timeline` and `Budget` paragraphs —
+     there is no lead form, so they'd be blank (owner, 2026-11-23).
    - Then Email Notification ⋯ → **Copy action**; on each other branch's last
      step ⋯ → **Paste below**. Check all 12 bottom rows show *Email
      Notification*. Click **Save** (top right).
-   - Done for USA Windows And Doors 2026-11-23 (leads@usawindowsanddoors.com).
+   - Done for USA Windows And Doors 2026-11-23 (leads@usawindowsanddoors.com,
+     SMS client: no Timeline / Budget lines).
 5. Save. Draft until go-live.
 
 ---
