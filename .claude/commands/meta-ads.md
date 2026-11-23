@@ -61,6 +61,24 @@ rather than rewriting them.
 - A whole first campaign: the **Build Campaign** button on the client's
   Submitted Survey does it all (`build()`).
 
+## What the API cannot do (learned on Star Construction, 2026-11-23)
+
+- **Instant form conditional logic and end pages** are not in the API — not
+  readable, not writable. Super Floor Store's standard form has: Q1 travel
+  time Yes → Q2, No → non-lead end; Q2 Kitchen/Bathroom → Q3, Other → Q4
+  (description) → Q3; Q3 ASAP / 1–3 / 3–6 months → E1 "Qualified Leads"
+  (headline "This Is the First Step to Get Your Dream Remodel", button View
+  website → `<funnel>/bookingpage`), Just Researching → E2 "End page for
+  non-leads" (View website → client's own site). Build it in Business Suite →
+  Lead ads forms → Create form → Duplicate (the API-made questions) → turn on
+  Conditional logic; "Close the form" makes the non-lead end page. Turn **off**
+  Flexible form delivery so Meta can't drop the qualifying questions.
+- **Ads Manager drafts** are invisible to the API. To finish a draft: copy the
+  media into the client's ad account by API (`advideos` file_url /
+  `adimages` bytes), then pick it from the account library in the draft.
+- **Creatives carry prices in the picture/video** ($8,997, $17,997 …): pick
+  the ones matching the client's prices (search ad names across accounts).
+
 ## When finished
 
 Say what changed (client, campaign / ad set / ad, old → new), that new things

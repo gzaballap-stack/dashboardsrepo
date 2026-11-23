@@ -31,6 +31,11 @@ Hub → **Preview** (names + anything missing) → **Build (Paused)**. Admins on
   Information To Contact You", Facebook's privacy page with "Visit <client>'s
   Privacy Policy.", and after submitting → `<funnel>/bookingpage`. Named
   "M / D / YY | Tomsi Media | Full". The builder copies exactly that.
+- **Limit:** Build Campaign's copied form has the questions but **no
+  conditional logic or end pages** — Meta's API can't read or write them. Star's
+  real form (with logic) was built by hand in Business Suite; see
+  `.claude/commands/meta-ads.md`. Until the builder is changed, fix the form by
+  hand after a build, or pick an existing form.
 - **Token in place 2026-11-23:** `META_MANAGEMENT_TOKEN` in `.env.local` and
   V1 Railway (not V2), system user Make Integration, all 13 permissions,
   **expires 2027-01-22** — regenerate before then. Pages must be assigned to
