@@ -91,7 +91,8 @@ function ActiveChip({ label = "Active Template" }: { label?: string }) {
 }
 
 function Chip({ children, color = "#4a4a4a", bg = "rgba(0,0,0,0.06)" }: { children: React.ReactNode; color?: string; bg?: string }) {
-  return <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={{ color, background: bg }}>{children}</span>;
+  // Long labels (campaign names) are cut short so they never squeeze the set's name.
+  return <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap truncate align-middle" style={{ color, background: bg, maxWidth: 160 }} title={typeof children === "string" ? children : undefined}>{children}</span>;
 }
 
 function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
@@ -192,7 +193,8 @@ export default function CopyHub({ scope }: { scope: Scope }) {
           {shown.map(s => (
             <button key={s.id} onClick={() => setOpenId(s.id)} className="text-left rounded-2xl p-4 flex flex-col gap-2 transition-transform duration-150 hover:-translate-y-0.5" style={{ ...CARD, minHeight: 180 }}>
               <div className="flex items-start gap-2">
-                <div className="text-sm font-semibold flex-1 min-w-0" style={{ color: "#111111" }}>{s.name}</div>
+                {/* In a client's view their name is already in the switcher. */}
+                <div className="text-sm font-semibold flex-1 min-w-0" style={{ color: "#111111" }}>{byClient && s.client_name && s.name.startsWith(`${s.client_name} — `) ? s.name.slice(s.client_name.length + 3) : s.name}</div>
                 {s.is_template && s.active ? <ActiveChip /> : s.is_template ? <Chip>Template</Chip> : s.client_id && s.active ? <ActiveChip label="Current" /> : s.campaign_label && <Chip>{s.campaign_label}</Chip>}
               </div>
               <div className="text-[11px]" style={{ color: "#767676" }}>
