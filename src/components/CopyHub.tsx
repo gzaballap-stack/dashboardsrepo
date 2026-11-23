@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { BLANKS } from "@/lib/client-copy";
 
 // Creative & Copy Hub — Copy. A copy set is one combination of texts an ad
 // rotates through (Advantage+ creative: up to five primary texts, headlines
@@ -11,6 +12,8 @@ type CopySet = {
   id: string; name: string; campaign_label: string | null; notes: string | null;
   bodies: string[]; headlines: string[]; descriptions: string[]; cta: string | null; link: string | null; updated_at: string;
   used_by: string[];
+  // The active template new clients' packs are copied from, or a client's own pack (lib/client-setup.ts).
+  is_template?: boolean; active?: boolean; client_id?: string | null; client_name?: string | null;
   // Lifetime results of every ad carrying one of this set's primary texts.
   performance?: { ads: number; spend: number; ctr: number; cpc: number; meta_leads: number; leads: number; appts: number; shows: number; closes: number; cost_per_lead: number; cost_per_appt: number; first: string | null; last: string | null };
   // Meta's per-text split, aligned by index with bodies / headlines / descriptions.
@@ -83,6 +86,10 @@ async function postJson(url: string, body: unknown, method = "POST") {
   return json;
 }
 
+function ActiveChip() {
+  return <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: "rgba(21,128,61,0.12)", color: "#15803d" }}>Active Template</span>;
+}
+
 function Chip({ children, color = "#4a4a4a", bg = "rgba(0,0,0,0.06)" }: { children: React.ReactNode; color?: string; bg?: string }) {
   return <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={{ color, background: bg }}>{children}</span>;
 }
@@ -115,7 +122,9 @@ export default function CopyHub({ scope }: { scope: Scope }) {
   useEffect(() => { load(); }, [load]);
 
   const q = search.trim().toLowerCase();
-  const shown = (sets ?? []).filter(s => !q || [s.name, s.campaign_label, s.notes, ...s.bodies, ...s.headlines, ...s.descriptions].some(t => t?.toLowerCase().includes(q)));
+  const shown = (sets ?? [])
+    .filter(s => !q || [s.name, s.campaign_label, s.notes, s.client_name, ...s.bodies, ...s.headlines, ...s.descriptions].some(t => t?.toLowerCase().includes(q)))
+    .sort((a, b) => Number(!!b.active) - Number(!!a.active));   // the active template first
   const open = openId ? sets?.find(s => s.id === openId) ?? null : null;
 
   return (
@@ -139,7 +148,7 @@ export default function CopyHub({ scope }: { scope: Scope }) {
             <button key={s.id} onClick={() => setOpenId(s.id)} className="text-left rounded-2xl p-4 flex flex-col gap-2 transition-transform duration-150 hover:-translate-y-0.5" style={{ ...CARD, minHeight: 180 }}>
               <div className="flex items-start gap-2">
                 <div className="text-sm font-semibold flex-1 min-w-0" style={{ color: "#111111" }}>{s.name}</div>
-                {s.campaign_label && <Chip>{s.campaign_label}</Chip>}
+                {s.is_template && s.active ? <ActiveChip /> : s.is_template ? <Chip>Template</Chip> : s.campaign_label && <Chip>{s.campaign_label}</Chip>}
               </div>
               <div className="text-[11px]" style={{ color: "#767676" }}>
                 {s.bodies.length} primary · {s.headlines.length} headline{s.headlines.length === 1 ? "" : "s"} · {s.descriptions.length} description{s.descriptions.length === 1 ? "" : "s"}
@@ -173,6 +182,7 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
   const blank = () => ({
     name: set?.name ?? "", campaign_label: set?.campaign_label ?? "", notes: set?.notes ?? "", cta: set?.cta ?? "", link: set?.link ?? "",
     bodies: set?.bodies.length ? [...set.bodies] : [""], headlines: set?.headlines.length ? [...set.headlines] : [""], descriptions: set?.descriptions.length ? [...set.descriptions] : [""],
+    active: !!(set?.is_template && set?.active),
   });
   const [form, setForm] = useState(blank);
   const [ads, setAds] = useState<AdOption[] | null>(null);
@@ -190,7 +200,10 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
   async function save() {
     setSaving(true); setErr("");
     try {
-      const json = await postJson("/api/creative-hub/copy", { id: set?.id, scope, ...form });
+      const { active, ...texts } = form;
+      const wasActive = !!(set?.is_template && set?.active);
+      // Sent only when it changes (the column may not exist on every database).
+      const json = await postJson("/api/creative-hub/copy", { id: set?.id, scope, ...texts, ...(active !== wasActive ? { active } : {}) });
       setEditing(false);
       await onSaved(json.set.id);
     } catch (e) { setErr((e as Error).message); } finally { setSaving(false); }
@@ -243,7 +256,7 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
         <div className="sticky top-0 z-10 flex items-center gap-3 px-5 py-3 flex-wrap" style={{ background: "#ffffff", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
           <div className="min-w-0 mr-auto">
             <div className="text-base font-semibold truncate" style={{ color: "#111111" }}>{set?.name ?? "New Copy Set"}</div>
-            {set && <div className="flex items-center gap-1.5 mt-1 flex-wrap">{set.campaign_label && <Chip>{set.campaign_label}</Chip>}{set.cta && <Chip>{set.cta.replace(/_/g, " ").toLowerCase()}</Chip>}</div>}
+            {set && <div className="flex items-center gap-1.5 mt-1 flex-wrap">{set.is_template && set.active && <ActiveChip />}{set.campaign_label && <Chip>{set.campaign_label}</Chip>}{set.cta && <Chip>{set.cta.replace(/_/g, " ").toLowerCase()}</Chip>}</div>}
           </div>
           {!editing && set && <CopyButton text={all(set)} label="Copy Everything" />}
           {editing ? (<>
@@ -311,6 +324,15 @@ function SetDrawer({ set, scope, limit, onClose, onSaved }: {
                 <input value={form.link} onChange={e => setForm(f => ({ ...f, link: e.target.value }))} placeholder="https://…" className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={INPUT} />
               </label>
             </div>
+            {scope === "b2c" && !set?.client_id && (
+              <label className="flex items-start gap-2.5 rounded-xl p-3 cursor-pointer" style={{ background: form.active ? "rgba(21,128,61,0.08)" : "#f7f7f7" }}>
+                <input type="checkbox" checked={form.active} onChange={e => setForm(f => ({ ...f, active: e.target.checked }))} className="mt-0.5" />
+                <span className="text-xs" style={{ color: "#111111", lineHeight: 1.6 }}>
+                  <b>Active template.</b> Every new Facebook client gets a copy of this set with the blanks filled in from their survey. Only one set is active.
+                  <span className="block mt-1" style={{ color: "#4a4a4a" }}>Blanks: {BLANKS.map(b => `{${b.key}}`).join(" ")}</span>
+                </span>
+              </label>
+            )}
             <label className="block">
               <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#949494" }}>Notes</span>
               <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3} className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...INPUT, lineHeight: 1.5 }} />

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { hubAuth, isScope, type Service } from '@/lib/creative-hub-entries';
 import { rollupFunnelByAd, type AdFunnel } from '@/lib/ad-funnel';
 import { fetchTextRows, perfForText, addSingleTextAds, type TextRow, type TextPerf } from '@/lib/copy-performance';
+import { ensureActiveTemplate } from '@/lib/client-setup';
 
 /**
  * Copy sets — the texts an ad rotates through (Advantage+ creative takes up to
@@ -12,7 +13,10 @@ import { fetchTextRows, perfForText, addSingleTextAds, type TextRow, type TextPe
  *                                        that, headline) is one of the set's texts — and `texts`:
  *                                        Meta's own per-text split (bodies / headlines /
  *                                        descriptions, aligned by index with the set's lists)
- * POST   { id?, scope, name, … }       → create or update
+ * POST   { id?, scope, name, …, active? } → create or update. `active: true` makes the set the
+ *                                        scope's one active template (client packs are copied from
+ *                                        it, lib/client-setup.ts); every other template is switched off
+ * Sets may be a template (`is_template`) or a client's own pack (`client_id`, `client_name`).
  * DELETE ?id=
  */
 
@@ -107,6 +111,8 @@ export async function GET(req: Request) {
   if (service instanceof NextResponse) return service;
   const scope = new URL(req.url).searchParams.get('scope');
   if (!isScope(scope)) return NextResponse.json({ error: "scope must be 'b2b' or 'b2c'" }, { status: 400 });
+  // Client packs are copied from the active template, so B2C always has one to show.
+  if (scope === 'b2c') await ensureActiveTemplate(service).catch(() => null);
   const [{ data, error }, { data: users }, results] = await Promise.all([
     service.from('creative_hub_copy_sets').select('*').eq('scope', scope).order('updated_at', { ascending: false }),
     service.from('creative_hub_entries').select('copy_set_id, code, name').eq('scope', scope).not('copy_set_id', 'is', null),
@@ -119,9 +125,14 @@ export async function GET(req: Request) {
     const label = u.code ? `${u.code} ${u.name}` : (u.name as string);
     usedBy.set(u.copy_set_id as string, [...(usedBy.get(u.copy_set_id as string) ?? []), label]);
   }
+  // Whose pack it is.
+  const clientIds = [...new Set((data ?? []).map(s => s.client_id as string | null).filter((x): x is string => !!x))];
+  const { data: clientRows } = clientIds.length ? await service.from('clients').select('id, name').in('id', clientIds) : { data: [] as { id: string; name: string }[] };
+  const clientName = new Map((clientRows ?? []).map(c => [c.id as string, c.name as string]));
   return NextResponse.json({
     sets: (data ?? []).map(s => ({
       ...s,
+      client_name: s.client_id ? clientName.get(s.client_id as string) ?? null : null,
       used_by: usedBy.get(s.id as string) ?? [],
       performance: performanceFor({ bodies: (s.bodies as string[]) ?? [], headlines: (s.headlines as string[]) ?? [] }, results),
       texts: textsFor({ bodies: (s.bodies as string[]) ?? [], headlines: (s.headlines as string[]) ?? [], descriptions: (s.descriptions as string[]) ?? [] }, results.textRows),
@@ -143,6 +154,17 @@ export async function POST(req: Request) {
   for (const f of LIST_FIELDS) if (f in body) row[f] = cleanList(body[f]);
 
   const id = typeof body.id === 'string' && body.id ? body.id : null;
+  // Only sent when it changes, so a database without the column (V2) is untouched otherwise.
+  if (typeof body.active === 'boolean') {
+    row.active = body.active;
+    if (body.active) {
+      row.is_template = true;
+      let off = service.from('creative_hub_copy_sets').update({ active: false }).eq('scope', body.scope).eq('is_template', true).eq('active', true);
+      if (id) off = off.neq('id', id);
+      const { error: offErr } = await off;
+      if (offErr) return NextResponse.json({ error: offErr.message }, { status: 500 });
+    }
+  }
   const q = id ? service.from('creative_hub_copy_sets').update(row).eq('id', id) : service.from('creative_hub_copy_sets').insert(row);
   const { data, error } = await q.select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

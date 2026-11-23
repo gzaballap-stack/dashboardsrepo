@@ -10,6 +10,7 @@ import {
   type Answers,
 } from './client-survey';
 import { linkAdAccounts } from './ad-account-link';
+import { makeSetup } from './client-setup';
 import { markClosedInGhl } from './ghl-close';
 import type { Card } from './onboarding';
 import { ensureRoster, ensureRosterFor, tablesMissing } from './onboarding-server';
@@ -313,6 +314,20 @@ export async function submitSurvey(ctx: AuthContext, body: Record<string, unknow
     else if (result.why === 'not_found') warnings.push("GoHighLevel: no contact with that email or phone, so they were not marked as closed — set Post-Call Status to Close by hand");
     else if (result.why === 'no_contact_details') warnings.push('GoHighLevel: the survey has no email or phone, so they were not marked as closed');
     else if (result.why === 'failed') warnings.push('GoHighLevel would not take the update — set Post-Call Status to Close by hand');
+  }
+
+  // 7. The setup pack: the client's zip codes, and their copy pack if they run
+  //    Facebook ads (client-setup.ts). Only what is missing or changed; never
+  //    holds the submission up for long, never fails it.
+  try {
+    const setup = await Promise.race([
+      makeSetup(service, clientId),
+      new Promise<null>(r => setTimeout(() => r(null), 25000)),
+    ]);
+    if (setup) { done.push(...setup.done); warnings.push(...setup.warnings); }
+    else warnings.push('The zip codes / copy pack took too long — use Make Again on the survey');
+  } catch {
+    warnings.push('The zip codes / copy pack could not be made — use Make Again on the survey');
   }
 
   return {

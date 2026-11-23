@@ -1,3 +1,38 @@
+## 2026-11-23 — Survey makes the client's Facebook setup: zip codes + copy pack
+
+Owner: after the survey is submitted, the client's zip codes and (Facebook
+clients) their copy should already exist, ready to copy and paste.
+
+- **Where:** Clients > Submitted Surveys > the client — a **Facebook Setup** box
+  above the answers: the zip codes (Copy All) and the copy pack (a Copy button
+  per text). **Make Again** redoes both from the latest answers (asks first if a
+  pack exists: it refills the pack from the template, losing edits).
+- **When:** on every survey submit (`client-survey-server.ts` step 7 →
+  `src/lib/client-setup.ts` `makeSetup`), only what is missing or changed;
+  25 s cap, never fails the submission (warnings instead).
+- **Zip codes** (`client_surveys.audience`): every zip touching the circle of
+  `miles_out` miles (first number in the answer, capped at 200) around the
+  company `postal_code`, from Census TIGERweb (`census.ts`, `strict` so a failed
+  page never saves a half list). "Specific zip codes" or no number → empty list
+  with a note to add them by hand (owner's choice). All clients, any service.
+- **Copy pack:** Facebook clients only (survey service or roster service is
+  Facebook Ads / both). A copy of the **active template** — a B2C copy set with
+  `is_template` + `active` — saved as the client's own set
+  (`creative_hub_copy_sets.client_id`, label "Client Pack"), blanks filled in
+  (`src/lib/client-copy.ts`): `{company} {first_name} {city} {state}
+  {bath_price} {kitchen_price}`. Prices are read from the survey's free-text
+  starting prices (partial jobs skipped) and written the way the ads do: just
+  under the next thousand (15k → $14997, 8.5k → $8997); one missing falls back
+  to the other; a blank with no answer stays visible and is listed as a warning.
+- **Template:** made automatically the first time ("New Client Pack") from the
+  client ads running in Nov 2026 — price shock, branded bathroom / kitchen,
+  "{city} Homeowners…", us vs them. Edited on Creative Hub > B2C > Copy; the
+  editor's **Active template** tick moves the one active template.
+- Tables: migration `add_client_setup_pack.sql` (`node scripts/migrate-client-setup-pack.mjs`),
+  **applied to V1 only** (the token cannot reach V2). On V2 the box shows "Not
+  made yet" and Make Again returns the database-update warning; nothing else changes.
+- Made for Star Construction And Renovation on 2026-11-23 (125 zips, 25 mi of 98034).
+
 ## 2026-11-23 — Clients dashboard SMS view showed zeros: the SMS total timed out
 
 Owner: "Everything appears as zero" on the B2C dashboard's SMS side. The data

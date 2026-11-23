@@ -29,7 +29,9 @@ export async function geocodeZip(zip: string): Promise<{ lat: number; lng: numbe
 
 // TIGER caps each request at 500 features; a metro-sized circle holds more.
 // Page until the service runs dry so nothing past the cap goes missing.
-export async function getZctasNearPoint(lat: number, lng: number, radiusMiles: number): Promise<string[]> {
+// `strict` (the client setup pack) throws when a page fails instead of keeping
+// what came back, so a list that is missing zips is never saved as whole.
+export async function getZctasNearPoint(lat: number, lng: number, radiusMiles: number, strict = false): Promise<string[]> {
   const PAGE = 500, MAX = 2500;
   const out: string[] = [];
   for (let offset = 0; offset < MAX; offset += PAGE) {
@@ -47,8 +49,9 @@ export async function getZctasNearPoint(lat: number, lng: number, radiusMiles: n
       f: 'json',
     });
     const r = await fetch(`${TIGER_BASE}/query?${params}`);
-    if (!r.ok) break;
+    if (!r.ok) { if (strict) throw new Error(`The Census zip service answered ${r.status}`); break; }
     const data = await r.json();
+    if (strict && data.error) throw new Error('The Census zip service had an error');
     const page = (data.features ?? []).map((f: { attributes: { ZCTA5: string } }) => f.attributes.ZCTA5);
     out.push(...page);
     if (page.length < PAGE) break;

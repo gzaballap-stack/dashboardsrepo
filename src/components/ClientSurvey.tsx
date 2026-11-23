@@ -298,6 +298,110 @@ function FramePicker({ frame, start, end, onFrame, onRange }: {
 type SavedSurvey = { client_id: string | null; past_id?: string; name: string; contact?: string | null; service: string | null; submitted_by_name: string | null; created_at: string };
 type WaitingLink = { id: string; token: string; setup: Answers; created_by_name: string | null; created_at: string };
 type Notes = { done: string[]; warnings: string[] } | null;
+type Audience = { zip: string | null; radius: number | null; zips: string[]; note: string | null; made_at: string };
+type Pack = { id: string; name: string; bodies: string[]; headlines: string[]; descriptions: string[]; cta: string | null; notes: string | null };
+type Setup = { audience: Audience | null; pack: Pack | null; runs_ads: boolean } | null;
+
+function CopyText({ text, label = "Copy" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* copy by hand */ }
+  }
+  return (
+    <button type="button" onClick={copy} className="px-2.5 py-1 rounded-lg text-xs font-semibold flex-shrink-0" style={{ background: copied ? "#15803d" : "#000000", color: "#ffffff" }}>
+      {copied ? "Copied" : label}
+    </button>
+  );
+}
+
+/**
+ * What the survey set up for the client's Facebook: their zip codes and (Facebook
+ * clients) their copy pack, ready to copy and paste. Made on submit
+ * (lib/client-setup.ts); Make Again redoes both from the latest answers.
+ */
+function SetupPack({ clientId, initial }: { clientId: string; initial: Setup }) {
+  const [setup, setSetup] = useState<Setup>(initial);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ done: string[]; warnings: string[] } | null>(null);
+  const audience = setup?.audience ?? null;
+  const pack = setup?.pack ?? null;
+
+  async function make() {
+    if (pack && !window.confirm("This refills the copy pack from the template. Changes made to the pack will be lost.")) return;
+    setBusy(true); setMsg(null);
+    const r = await post({ action: "setup_make", client_id: clientId });
+    setBusy(false);
+    if (r.error) { setMsg({ done: [], warnings: [r.error] }); return; }
+    setSetup(r.setup ?? null);
+    setMsg({ done: r.done ?? [], warnings: r.warnings ?? [] });
+  }
+
+  const groups: [string, string[]][] = pack ? [["Primary Texts", pack.bodies], ["Headlines", pack.headlines], ["Descriptions", pack.descriptions]] : [];
+  return (
+    <div className="w-full max-w-2xl mx-auto rounded-2xl p-5 space-y-5" style={BOX}>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-base font-semibold" style={{ color: "#111111" }}>Facebook Setup</p>
+        <button type="button" onClick={make} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "rgba(0,0,0,0.06)", color: "#111111", opacity: busy ? 0.5 : 1 }}>
+          {busy ? "Making…" : audience || pack ? "Make Again" : "Make Now"}
+        </button>
+      </div>
+      {msg && (msg.done.length > 0 || msg.warnings.length > 0) && (
+        <ul className="space-y-1">
+          {msg.done.map(d => <li key={d} className="text-sm" style={{ color: "#15803d" }}>{d}</li>)}
+          {msg.warnings.map(w => <li key={w} className="text-sm" style={{ color: "#92400e" }}>{w}</li>)}
+        </ul>
+      )}
+
+      <section>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <p className="text-sm font-semibold" style={{ color: "#111111" }}>Zip Codes</p>
+          {audience && audience.zips.length > 0 && <CopyText text={audience.zips.join(", ")} label="Copy All" />}
+        </div>
+        {!audience ? (
+          <p className="text-sm" style={{ color: "#767676" }}>Not made yet.</p>
+        ) : (
+          <>
+            {audience.zips.length > 0 && (
+              <p className="text-sm mb-2" style={{ color: "#4a4a4a" }}>{audience.zips.length} zip codes within {audience.radius} miles of {audience.zip}</p>
+            )}
+            {audience.note && <p className="text-sm mb-2" style={{ color: "#92400e" }}>{audience.note}</p>}
+            {audience.zips.length > 0 && (
+              <textarea readOnly value={audience.zips.join(", ")} rows={4} onFocus={e => e.currentTarget.select()} aria-label="Zip codes"
+                className="w-full px-3 py-2 rounded-lg text-xs outline-none" style={{ ...INPUT, lineHeight: 1.6 }} />
+            )}
+          </>
+        )}
+      </section>
+
+      {setup?.runs_ads && (
+        <section style={{ borderTop: BORDER }} className="pt-4">
+          <p className="text-sm font-semibold mb-2" style={{ color: "#111111" }}>Copy Pack</p>
+          {!pack ? (
+            <p className="text-sm" style={{ color: "#767676" }}>Not made yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {pack.notes && /left as blanks/.test(pack.notes) && <p className="text-sm" style={{ color: "#92400e" }}>{pack.notes.slice(pack.notes.indexOf("Not in the survey"))}</p>}
+              {groups.filter(([, list]) => list.length > 0).map(([label, list]) => (
+                <div key={label}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: "#949494" }}>{label}</p>
+                  <div className="space-y-2">
+                    {list.map((t, i) => (
+                      <div key={i} className="rounded-xl p-3 flex gap-3 items-start" style={{ background: "#f7f7f7" }}>
+                        <div className="text-sm whitespace-pre-wrap flex-1 min-w-0" style={{ color: "#111111", lineHeight: 1.55 }}>{t}</div>
+                        <CopyText text={t} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <p className="text-xs" style={{ color: "#949494" }}>Also on the Copy page of the Creative &amp; Copy Hub, where it can be edited.</p>
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
 
 /**
  * Clients > Submitted Surveys: links still waiting for the client, and every
@@ -307,7 +411,7 @@ export function SubmittedSurveysPage() {
   const [list, setList] = useState<SavedSurvey[]>([]);
   const [links, setLinks] = useState<WaitingLink[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [open, setOpen] = useState<{ clientId: string | null; pastId?: string; key: string; name: string; answers: Answers; notes: Notes } | null>(null);
+  const [open, setOpen] = useState<{ clientId: string | null; pastId?: string; key: string; name: string; answers: Answers; notes: Notes; setup: Setup } | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
@@ -328,7 +432,7 @@ export function SubmittedSurveysPage() {
     const r = await post({ action: "survey_get", ...(row.client_id ? { client_id: row.client_id } : { past_id: row.past_id }) });
     setLoading(null);
     if (r.error || !r.survey) { setError(r.error ?? "Could not open that survey"); return; }
-    setOpen({ clientId: row.client_id, pastId: row.past_id, key, name: row.contact ? `${row.name} — ${row.contact}` : row.name, answers: r.survey.answers as Answers, notes: r.notes ?? null });
+    setOpen({ clientId: row.client_id, pastId: row.past_id, key, name: row.contact ? `${row.name} — ${row.contact}` : row.name, answers: r.survey.answers as Answers, notes: r.notes ?? null, setup: r.setup ?? null });
   }
   async function removeLink(id: string) {
     const r = await post({ action: "link_delete", id });
@@ -353,6 +457,7 @@ export function SubmittedSurveysPage() {
         )}
         {open.clientId ? (
           <>
+            <SetupPack key={`setup-${open.clientId}`} clientId={open.clientId} initial={open.setup} />
             <ClientSurvey key={open.key} initial={open.answers} clientId={open.clientId} onCancel={close} />
             <div className="w-full max-w-2xl mx-auto rounded-2xl p-5" style={BOX}>
               <CardVaultPanel key={open.clientId} clientId={open.clientId} />

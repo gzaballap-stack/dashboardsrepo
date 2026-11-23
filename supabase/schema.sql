@@ -702,6 +702,7 @@ create table if not exists client_surveys (
   answers           jsonb not null default '{}'::jsonb,
   submitted_by      uuid,
   submitted_by_name text,
+  audience          jsonb,   -- the client's zip codes (migrations/add_client_setup_pack.sql)
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );

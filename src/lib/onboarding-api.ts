@@ -6,6 +6,7 @@ import { cardLink, clientCardLink, ensureStripeCustomer, listSurveys, readPastSu
 import { getCustomer, stripeStatus } from './stripe';
 import { linkAdAccounts } from './ad-account-link';
 import { createLink, deleteLink, linkNotes, waitingLinks } from './survey-links';
+import { makeSetup, readSetup } from './client-setup';
 
 // Onboarding board (Clients > Onboarding) — what /api/onboarding does, once the
 // caller is known. Rules in onboarding.ts, database helpers in onboarding-server.ts.
@@ -26,6 +27,7 @@ import { createLink, deleteLink, linkNotes, waitingLinks } from './survey-links'
 //        { action: 'link_create', answers }                         page one of the survey → the client's link (survey-links.ts)
 //        { action: 'link_list' }                                    links the client has not filled in yet
 //        { action: 'link_delete', id }
+//        { action: 'setup_make', client_id }                        remake the client's zip codes + copy pack (client-setup.ts)
 //
 // Tables onboarding_cards + onboarding_templates (migrations/add_onboarding.sql).
 // Without them the GET answers { ready: false } and the page says what to run.
@@ -73,8 +75,20 @@ export async function onboardingPost(ctx: AuthContext, body: Record<string, unkn
     if (typeof body.past_id === 'string' && body.past_id) return send(await readPastSurvey(service, body.past_id));
     if (typeof body.client_id !== 'string' || !body.client_id) return bad('client_id is required');
     const out = await readSurvey(service, body.client_id);
-    if (out.status === 200) out.json.notes = await linkNotes(service, body.client_id).catch(() => null);
+    if (out.status === 200) {
+      const [notes, setup] = await Promise.all([
+        linkNotes(service, body.client_id).catch(() => null),
+        readSetup(service, body.client_id).catch(() => null),
+      ]);
+      out.json.notes = notes;
+      out.json.setup = setup;
+    }
     return send(out);
+  }
+  if (action === 'setup_make') {
+    if (typeof body.client_id !== 'string' || !body.client_id) return bad('client_id is required');
+    const made = await makeSetup(service, body.client_id, { again: true });
+    return NextResponse.json({ ...made, setup: await readSetup(service, body.client_id).catch(() => null) });
   }
   if (action === 'link_create') return send(await createLink(ctx, body));
   if (action === 'link_list') return send(await waitingLinks(service));
