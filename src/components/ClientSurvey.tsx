@@ -14,6 +14,7 @@ import {
   SETUP_FIELDS, SURVEY_SECTIONS, cleanAnswers, prepaidOf, priceOf, setupAnswers, setupProblem, surveyProblem, type Answers, type SurveyField,
 } from "@/lib/client-survey";
 import CardVaultPanel from "./CardVault";
+import CampaignBuilder from "./CampaignBuilder";
 import DateRangePicker, { fmtRange } from "./DateRangePicker";
 
 const BORDER = "1px solid rgba(0,0,0,0.08)";
@@ -399,6 +400,7 @@ function SetupPack({ clientId, initial }: { clientId: string; initial: Setup }) 
           )}
         </section>
       )}
+      {setup?.runs_ads && <CampaignBuilder clientId={clientId} />}
     </div>
   );
 }

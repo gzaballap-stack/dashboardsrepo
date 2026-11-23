@@ -175,6 +175,7 @@ No preview environments. Check Railway dashboard for build logs.
 | `admin/*` | One-off ops: seeds, backfills, schema/migration runners (bypass auth via secret) |
 | `cron/seed-daily` | V2 demo-data daily seed (driven by the V2 data session) |
 | `b2b-stat-source` | Records behind the TM Dashboard tiles — clicking any tile opens `StatSourceModal` (what it measures, the sum, the source system, the rows counted). Catalog in `src/lib/b2b-stat-sources.ts`, keyed by tile label. See `NOTES.md` 2026-10-03. |
+| `campaign-builder` | **Build Campaign** (Submitted Survey > Facebook Setup, admins) — a Facebook client's first campaign built paused in their ad account: campaign, radius ad set, a copy of the standard instant form, one ad per Creative Hub creative picked with the client's current copy pack. Needs `META_MANAGEMENT_TOKEN` with ads_management etc. See `NOTES.md` 2026-11-23 |
 | `meta-b2b-report` | Meta B2B prospecting report (L30/L7/L3 funnel summary, ad set + L7 ad tables with kill flags, creative map) built on demand — the **Meta report** button on the TM Dashboard. Needs `META_ACCESS_TOKEN`. See `NOTES.md` 2026-09-25. |
 
 ---
@@ -322,7 +323,7 @@ Census fetching in `src/lib/census.ts` (needs `CENSUS_API_KEY`).
 | `SMS_COST_PER_MESSAGE` | Per-message rate the SMS channel multiplies by messages sent (default `0.01`). See `NOTES.md` 2026-10-19 |
 | `CARD_VAULT_KEY` | Card vault **server** key — the second lock (32 random bytes, base64); the first is the owner's vault password, which is not stored anywhere. **V1 Railway only — never V2, never in the repo or chat.** Unset = card storage is off. Losing or changing it makes every saved card unreadable |
 | `STRIPE_SECRET_KEY` | Client Billing — charge a client's saved card or email an invoice. **V1 only; never set it on V2** (demo clients, real cards). `sk_test_…` = test mode. Unset = charges can only be recorded by hand |
-| `META_MANAGEMENT_TOKEN` | Optional. A Meta system-user token with `ads_management` — lets the Creative Hub rename ads in Meta to `<code> <title>`. Unset = buttons explain how to do it by hand |
+| `META_MANAGEMENT_TOKEN` | Optional. A Meta system-user token with `ads_management` (+ business_management, pages_show_list, pages_read_engagement, pages_manage_ads, leads_retrieval for Build Campaign) — lets the Creative Hub rename ads in Meta and the survey build campaigns. Unset = those buttons explain what is missing |
 | `META_ACCESS_TOKEN` | Creative & Copy Hub previews (all client accounts) and the Meta B2B report (`meta-b2b-report`) — the long-lived token the Make spend scenarios use. Optional `META_REPORT_CAMPAIGNS`, `META_KEPT_DEMO_EVENT` (legacy `META_KEPT_INTRO_EVENT` still works) |
 
 Never commit `.env*` — they're gitignored. Production values live in Railway.

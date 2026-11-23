@@ -1,3 +1,36 @@
+## 2026-11-23 — Build Campaign (Facebook) from the Submitted Survey
+
+Owner asked for a one-click first campaign. In the **Facebook Setup** box on a
+Facebook client's Submitted Survey: **Build Campaign** → page, daily budget
+(survey ad spend), form thank-you link, creatives ticked from the B2C Creative
+Hub → **Preview** (names + anything missing) → **Build (Paused)**. Admins only.
+`src/lib/campaign-builder.ts`, `/api/campaign-builder`, `CampaignBuilder.tsx`.
+
+- Copies how the owner's campaigns are built (read off Super Floor Store's and
+  Luxury Renovations' live ones): campaign "Tomsi Media | Qualified Estimates |
+  MM/DD/YY", OUTCOME_LEADS, campaign daily budget, lowest cost; ad set "<City>
+  <N> Miles (Radius) | Feeds, Stories, Reels", LEAD_GENERATION / ON_AD, page as
+  promoted object, ages 25–65 with Advantage+ audience, FB + IG feed / story /
+  reels / profile feed, 1-day click. **Radius** around the survey's zip centre
+  (owner's choice), the survey's zip list when over 50 miles or "specific zip
+  codes". Ads: each picked creative's image / video copied into the client's ad
+  account, the client's **current copy pack** as flexible texts, Learn More →
+  the form; named like the source ad so the hub pools them.
+- **Form:** a copy of a standard instant form (default Super Floor Store's form
+  1754800585608166 on page 1386164391238217; override in `app_settings`
+  key `campaign_builder` {form_id, page_id, client_name}) with that client's
+  name swapped for the new one and the thank-you link set to
+  `https://<companyname>.remodelwithexperts.com` (editable).
+- Everything **PAUSED**. Stops at the first failing step and says what was made;
+  one bad creative does not stop the other ads. Last build kept in
+  `app_settings` `campaign_build:<client_id>` and shown in the box.
+- **Needs `META_MANAGEMENT_TOKEN`** (V1 Railway): a system-user token with
+  ads_management, business_management, pages_show_list, pages_read_engagement,
+  pages_manage_ads, leads_retrieval, and the system user assigned to the
+  client's page + ad account. `META_ACCESS_TOKEN` is read-only (ads_read,
+  read_insights — checked 2026-11-23) and cannot. Untested against Meta until
+  that token exists: first real build should be watched.
+
 ## 2026-11-23 — Survey makes the client's Facebook setup: zip codes + copy pack
 
 Owner: after the survey is submitted, the client's zip codes and (Facebook
