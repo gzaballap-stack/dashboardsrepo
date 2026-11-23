@@ -11,9 +11,9 @@
 //             codes", it targets the survey's zip list instead. Ages 25–65,
 //             Advantage+ audience, Facebook + Instagram feeds / stories / reels,
 //             1-day click attribution.
-//   Form      a copy of the standard instant form (a past client's), put on
-//             the client's page, with that client's name swapped for this one
-//             and the thank-you link pointed at this client's funnel.
+//   Form      "M / D / YY | Tomsi Media | Full": a copy of the standard instant
+//             form (Super Floor Store's) on the client's page — their city in
+//             the travel-time question, then on to their funnel's /bookingpage.
 //   Ads       one per creative picked from the Creative & Copy Hub: its image or
 //             video copied into this ad account, the client's current copy pack
 //             as the texts (flexible: every primary text, headline, description),
@@ -39,7 +39,7 @@ const MAX_RADIUS = 50;          // Meta's limit for a radius around a point
 const MAX_ADS = 8;
 const SETTINGS_KEY = 'campaign_builder';
 // The standard form to copy, until someone sets another (app_settings.campaign_builder).
-const DEFAULT_TEMPLATE = { form_id: '1754800585608166', page_id: '1386164391238217', client_name: 'Super Floor Store And Remodeling' };
+const DEFAULT_TEMPLATE = { form_id: '1754800585608166', page_id: '1386164391238217', client_name: 'Super Floor Store And Remodeling', city: 'Conroe' };
 
 export class MetaError extends Error {}
 const token = () => process.env.META_MANAGEMENT_TOKEN ?? '';
@@ -71,7 +71,7 @@ export async function tokenStatus(): Promise<{ set: boolean; missing: string[] }
 const slug = (name: string) => name.toLowerCase().replace(/\b(llc|inc|co|corp|ltd)\b\.?/g, '').replace(/[^a-z0-9]/g, '');
 const today = () => { const d = new Date(); return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`; };
 
-type Template = { form_id: string; page_id: string; client_name: string };
+type Template = { form_id: string; page_id: string; client_name: string; city: string };
 async function template(service: Service): Promise<Template> {
   const { data } = await service.from('app_settings').select('value').eq('key', SETTINGS_KEY).maybeSingle();
   const v = (data?.value ?? {}) as Partial<Template>;
@@ -117,7 +117,7 @@ export async function builderOptions(service: Service, clientId: string) {
       : { kind: 'radius' as const, radius: area.radius, zip: area.zip, address: [str(a, 'street_address'), str(a, 'city'), str(a, 'state')].filter(Boolean).join(', ') },
     city: str(a, 'city') || 'Area',
     pack: setup.pack ? { id: setup.pack.id, name: setup.pack.name, bodies: setup.pack.bodies.length, headlines: setup.pack.headlines.length, descriptions: setup.pack.descriptions.length } : null,
-    thank_you_url: `https://${slug(name)}.remodelwithexperts.com`,
+    thank_you_url: `https://${slug(name)}.remodelwithexperts.com/bookingpage`,
     template_client: tpl.client_name,
     names: { campaign: `Tomsi Media | Qualified Estimates | ${today()}` },
   };
@@ -144,7 +144,9 @@ export async function planBuild(service: Service, input: BuildInput) {
   const adset = o.targeting.kind === 'radius'
     ? `${o.city} ${o.targeting.radius} Miles (Radius) | Feeds, Stories, Reels`
     : `${o.city} ${o.targeting.zips} Zip Codes | Feeds, Stories, Reels`;
-  return { options: o, problems, names: { campaign: o.names.campaign, adset, form: `${o.client.name} — Free Estimate`, ads: input.ads.map(x => x.name) } };
+  const d = new Date();
+  const form = `${d.getMonth() + 1} / ${d.getDate()} / ${String(d.getFullYear()).slice(2)} | Tomsi Media | Full`;
+  return { options: o, problems, names: { campaign: o.names.campaign, adset, form, ads: input.ads.map(x => x.name) } };
 }
 
 // ── building ──
@@ -155,39 +157,39 @@ async function pageToken(pageId: string): Promise<string> {
   return r.access_token as string;
 }
 
-/** The standard form, copied onto the client's page. */
-async function copyForm(service: Service, pageId: string, clientName: string, thankYouUrl: string | undefined, formName: string): Promise<string> {
+/**
+ * The standard form, copied onto the client's page — the way Star Construction's
+ * was made by hand on 2026-11-23: same questions, the past client's city
+ * swapped for this one (the "within 90 minutes of <city>" question), privacy
+ * link text with this client's name, and after submitting the lead goes to this
+ * client's funnel booking page. Super Floor Store's form has no intro card or
+ * thank-you screen of its own — the booking page is the thank-you.
+ */
+async function copyForm(service: Service, pageId: string, clientName: string, city: string, afterUrl: string, formName: string): Promise<string> {
   const tpl = await template(service);
-  const tplToken = await pageToken(tpl.page_id);
   const f = await graph('GET', tpl.form_id, {
-    fields: 'name,locale,questions,privacy_policy_url,follow_up_action_url,is_optimized_for_quality,block_display_for_non_targeted_viewer,question_page_custom_headline,thank_you_page{title,body,button_type,button_text,website_url,country_code,business_phone_number,enable_messenger},context_card{title,style,content,button_text}',
-  }, tplToken);
-  // The past client's name becomes this client's, anywhere in the form's texts.
-  const swap = (v: unknown): unknown => {
-    if (typeof v === 'string') return tpl.client_name ? v.split(tpl.client_name).join(clientName) : v;
-    if (Array.isArray(v)) return v.map(swap);
-    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v as Row).filter(([k]) => k !== 'id').map(([k, x]) => [k, swap(x)]));
-    return v;
+    fields: 'locale,questions,follow_up_action_url,is_optimized_for_quality,block_display_for_non_targeted_viewer,question_page_custom_headline,legal_content',
+  }, await pageToken(tpl.page_id));
+  const swap = (t: string) => {
+    let out = tpl.client_name ? t.split(tpl.client_name).join(clientName) : t;
+    if (tpl.city && city) out = out.split(tpl.city).join(city).split(tpl.city.toLowerCase()).join(city.toLowerCase().replace(/\s+/g, '_'));
+    return out;
   };
-  const questions = ((f.questions ?? []) as Row[]).map(q => swap({
-    type: q.type, key: q.key, ...(q.type === 'CUSTOM' ? { label: q.label, options: q.options } : {}),
-    ...(q.inline_context ? { inline_context: q.inline_context } : {}),
+  const questions = ((f.questions ?? []) as Row[]).map(q => ({
+    type: q.type, key: swap(String(q.key)),
+    ...(q.type === 'CUSTOM' ? { label: swap(String(q.label)), ...(Array.isArray(q.options) ? { options: (q.options as Row[]).map(o => ({ key: o.key, value: o.value })) } : {}) } : {}),
   }));
-  const thanks = swap(f.thank_you_page ?? {}) as Row;
-  if (thankYouUrl && thanks.website_url) thanks.website_url = thankYouUrl;
-  const ptok = await pageToken(pageId);
+  const privacy = ((f.legal_content as Row | undefined)?.privacy_policy ?? {}) as Row;
   const made = await graph('POST', `${pageId}/leadgen_forms`, {
     name: formName,
     locale: f.locale,
     questions,
-    privacy_policy: { url: f.privacy_policy_url },
-    follow_up_action_url: thankYouUrl || f.follow_up_action_url,
-    thank_you_page: thanks,
-    context_card: f.context_card ? swap(f.context_card) : undefined,
+    privacy_policy: { url: privacy.url ?? 'https://www.facebook.com/privacy/policy/', link_text: `Visit ${clientName}'s Privacy Policy.` },
+    follow_up_action_url: afterUrl,
     is_optimized_for_quality: f.is_optimized_for_quality,
     block_display_for_non_targeted_viewer: f.block_display_for_non_targeted_viewer,
-    question_page_custom_headline: f.question_page_custom_headline ? swap(f.question_page_custom_headline) : undefined,
-  }, ptok);
+    question_page_custom_headline: f.question_page_custom_headline ? swap(String(f.question_page_custom_headline)) : undefined,
+  }, await pageToken(pageId));
   return made.id as string;
 }
 
@@ -251,7 +253,7 @@ export async function build(service: Service, input: BuildInput): Promise<BuildR
   const pack = setup.pack!;
   try {
     // 1. The form
-    out.form_id = await copyForm(service, input.page_id, o.client.name, input.thank_you_url || o.thank_you_url, plan.names.form);
+    out.form_id = await copyForm(service, input.page_id, o.client.name, o.city, input.thank_you_url || o.thank_you_url, plan.names.form);
     out.done.push(`Instant form "${plan.names.form}" on the page`);
 
     // 2. The campaign

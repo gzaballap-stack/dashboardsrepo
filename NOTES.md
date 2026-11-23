@@ -24,6 +24,18 @@ Hub → **Preview** (names + anything missing) → **Build (Paused)**. Admins on
 - Everything **PAUSED**. Stops at the first failing step and says what was made;
   one bad creative does not stop the other ads. Last build kept in
   `app_settings` `campaign_build:<client_id>` and shown in the box.
+- **Form, as actually made for Star Construction (2026-11-23, form 28978983605063955):**
+  Super Floor Store's form has no intro card or thank-you screen — just 10
+  questions (90-minute-travel-time-of-<city>, service, timing, description,
+  email, name, phone, street, city, zip), headline "We Will Use this
+  Information To Contact You", Facebook's privacy page with "Visit <client>'s
+  Privacy Policy.", and after submitting → `<funnel>/bookingpage`. Named
+  "M / D / YY | Tomsi Media | Full". The builder copies exactly that.
+- **Token in place 2026-11-23:** `META_MANAGEMENT_TOKEN` in `.env.local` and
+  V1 Railway (not V2), system user Make Integration, all 13 permissions,
+  **expires 2027-01-22** — regenerate before then. Pages must be assigned to
+  Make Integration in Business Settings (the API call to assign them was
+  blocked here; the owner did it by hand).
 - **Needs `META_MANAGEMENT_TOKEN`** (V1 Railway): a system-user token with
   ads_management, business_management, pages_show_list, pages_read_engagement,
   pages_manage_ads, leads_retrieval, and the system user assigned to the
