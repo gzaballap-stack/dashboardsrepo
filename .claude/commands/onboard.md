@@ -349,6 +349,25 @@ they cost, what is still unpublished, and anything skipped or uncertain.
 - **Facebook (B6) and the New Lead trigger's page** are done by the owner's
   side (2026-11-23) — finish only the GHL parts.
 
+## Going live (Star Construction And Renovation, 2026-11-23)
+
+- **Connect the client's Facebook page to GHL:** Ultimate → Settings →
+  Integrations → Facebook → Manage → tick the page (sync New Leads) → Update
+  and Continue → Configure field mapping.
+- **Field mapping** (same as Super Floor Store): Q1 travel time → *Lead form
+  location question*, Q2 service → *Lead form services question*, Q3 timing →
+  *Lead form timeline question*, Q4 description → *Lead form description of
+  project*; email / full name / phone / street / city / zip map themselves.
+  Confirm, then Save.
+- **New Lead trigger:** Facebook lead form submitted → Page = the client's page,
+  Form = Any (as Super Floor Store's). Save trigger.
+- **Publish:** the Draft/Publish switch top right of each workflow (it says
+  "Workflow is now published and live"). Owner asked for all of them on
+  2026-11-23: Fill In Data, New Lead, Send Message To Contractor, both SMS
+  workflows (Ultimate) and the blast workflow (Gonzalo Zaballa → Clients).
+- The landing-page funnel is separate from the workflows — the form sends
+  leads to `<funnel>/bookingpage`, so it must be published too.
+
 ## Not confirmed yet (written from dictation — check on screen, then fix this file)
 - USA Windows And Doors' calendar and Fill In Data user are waiting on his GHL
   user (as of 2026-11-20).
