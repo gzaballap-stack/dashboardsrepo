@@ -11,7 +11,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  SETUP_FIELDS, SURVEY_SECTIONS, cleanAnswers, prepaidOf, priceOf, setupAnswers, setupProblem, surveyProblem, type Answers, type SurveyField,
+  SETUP_FIELDS, SURVEY_SECTIONS, cleanAnswers, parseZips, prepaidOf, priceOf, setupAnswers, setupProblem, surveyProblem, type Answers, type SurveyField,
 } from "@/lib/client-survey";
 import CardVaultPanel from "./CardVault";
 import CampaignBuilder from "./CampaignBuilder";
@@ -90,6 +90,18 @@ export function Field({ f, a, set }: { f: SurveyField; a: Answers; set: (key: st
   );
   const hint = f.hint && <p className="text-xs mt-1" style={{ color: "#949494" }}>{f.hint}</p>;
 
+  if (f.type === "switch") {
+    // A link that flips the question above it to its other way of answering.
+    const [off, on] = f.options ?? [];
+    const isOn = !!on && v === on.value;
+    return (
+      <div className={f.wide ? "sm:col-span-2 -mt-2" : "-mt-2"}>
+        <button type="button" onClick={() => set(f.key, isOn ? "" : on?.value ?? "")} className="text-xs font-semibold underline" style={{ color: "#4a4a4a" }}>
+          {isOn ? on?.label : off?.label}
+        </button>
+      </div>
+    );
+  }
   if (f.type === "choice") {
     return (
       <div className={f.wide ? "sm:col-span-2" : ""}>
@@ -136,8 +148,11 @@ export function Field({ f, a, set }: { f: SurveyField; a: Answers; set: (key: st
     return (
       <div className={f.wide ? "sm:col-span-2" : ""}>
         {label}
-        <textarea id={id} rows={2} value={typeof v === "string" ? v : ""} placeholder={f.placeholder} onChange={e => set(f.key, e.target.value)}
+        <textarea id={id} rows={f.key === "zip_codes" ? 5 : 2} value={typeof v === "string" ? v : ""} placeholder={f.placeholder} onChange={e => set(f.key, e.target.value)}
           className="w-full px-3 py-2 rounded-lg text-sm outline-none" style={{ ...INPUT, resize: "vertical" }} />
+        {f.key === "zip_codes" && typeof v === "string" && v.trim() && (
+          <p className="text-xs mt-1" style={{ color: "#4a4a4a" }}>{parseZips(v).length} zip codes</p>
+        )}
         {hint}
       </div>
     );
@@ -363,7 +378,7 @@ function SetupPack({ clientId, initial }: { clientId: string; initial: Setup }) 
         ) : (
           <>
             {audience.zips.length > 0 && (
-              <p className="text-sm mb-2" style={{ color: "#4a4a4a" }}>{audience.zips.length} zip codes within {audience.radius} miles of {audience.zip}</p>
+              <p className="text-sm mb-2" style={{ color: "#4a4a4a" }}>{audience.radius ? `${audience.zips.length} zip codes within ${audience.radius} miles of ${audience.zip}` : `${audience.zips.length} zip codes from their list`}</p>
             )}
             {audience.note && <p className="text-sm mb-2" style={{ color: "#92400e" }}>{audience.note}</p>}
             {audience.zips.length > 0 && (

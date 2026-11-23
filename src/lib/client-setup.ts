@@ -16,7 +16,7 @@
 import type { AuthContext } from './api-auth';
 import { getZctasNearPoint, geocodeZip } from './census';
 import { STARTER_TEMPLATE, blanksFor, fillBlanks } from './client-copy';
-import { serviceOf, str, type Answers } from './client-survey';
+import { parseZips, serviceOf, str, zipList, type Answers } from './client-survey';
 import { tablesMissing } from './onboarding-server';
 
 type Service = AuthContext['service'];
@@ -35,8 +35,13 @@ const TEMPLATE_PACK = 'Client Pack';
 const NEEDS_UPDATE = 'The setup pack needs a one-off database update first (node scripts/migrate-client-setup-pack.mjs v1)';
 
 /** The company zip and the radius from the survey's answers. */
-export function areaOf(a: Answers): { zip: string | null; radius: number | null; note: string | null } {
+export function areaOf(a: Answers): { zip: string | null; radius: number | null; note: string | null; list?: string[] } {
   const zip = str(a, 'postal_code').replace(/\D/g, '').slice(0, 5);
+  // The client pasted the exact zip codes they want: those are the area.
+  if (zipList(a)) {
+    const list = parseZips(str(a, 'zip_codes'));
+    return { zip: zip || null, radius: null, list, note: list.length ? null : 'They chose specific zip codes but none were pasted — add them on the survey.' };
+  }
   const miles = str(a, 'miles_out');
   if (/specific/i.test(miles)) return { zip: zip || null, radius: null, note: 'They work in specific zip codes, not a radius — add those by hand.' };
   const n = parseFloat(miles.match(/\d+(?:\.\d+)?/)?.[0] ?? '');
@@ -47,8 +52,9 @@ export function areaOf(a: Answers): { zip: string | null; radius: number | null;
 
 /** Every zip in the radius. Throws if the Census cannot answer, so a half list is never saved. */
 export async function makeAudience(a: Answers): Promise<Audience> {
-  const { zip, radius, note } = areaOf(a);
+  const { zip, radius, note, list } = areaOf(a);
   const made_at = new Date().toISOString();
+  if (list) return { zip, radius: null, zips: list, note, made_at };
   if (!zip || !radius) return { zip, radius, zips: [], note, made_at };
   const center = await geocodeZip(zip);
   if (!center) return { zip, radius, zips: [], note: `The Census has no zip code ${zip} — add the zip codes by hand.`, made_at };
@@ -101,12 +107,13 @@ export async function makeSetup(service: Service, clientId: string, opts: { agai
   // 1. Zip codes
   const had = survey.audience as Audience | null;
   const want = areaOf(a);
-  if (opts.again || !had || had.zip !== want.zip || had.radius !== want.radius) {
+  const listChanged = !!want.list && JSON.stringify(want.list) !== JSON.stringify(had?.zips ?? []);
+  if (opts.again || !had || had.zip !== want.zip || had.radius !== want.radius || listChanged) {
     try {
       const audience = await makeAudience(a);
       const { error: e } = await service.from('client_surveys').update({ audience }).eq('client_id', clientId);
       if (e) warnings.push(`Zip codes could not be saved: ${e.message}`);
-      else if (audience.zips.length) done.push(`${audience.zips.length} zip codes within ${audience.radius} miles of ${audience.zip}`);
+      else if (audience.zips.length) done.push(audience.radius ? `${audience.zips.length} zip codes within ${audience.radius} miles of ${audience.zip}` : `${audience.zips.length} zip codes from their list`);
       else if (audience.note) warnings.push(`Zip codes: ${audience.note}`);
     } catch (e) {
       warnings.push(`Zip codes could not be worked out (${(e as Error).message}) — use Make Again on the survey`);

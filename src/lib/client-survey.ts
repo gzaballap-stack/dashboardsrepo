@@ -10,7 +10,7 @@
 import type { Track } from './onboarding';
 
 export type Answers = Record<string, string | string[]>;
-export type FieldType = 'text' | 'tel' | 'email' | 'textarea' | 'money' | 'choice' | 'multi';
+export type FieldType = 'text' | 'tel' | 'email' | 'textarea' | 'money' | 'choice' | 'multi' | 'switch';
 export type SurveyField = {
   key: string; label: string; type: FieldType;
   options?: { value: string; label: string }[];
@@ -20,12 +20,20 @@ export type SurveyField = {
   /** Only asked when this is true of the answers so far. */
   when?: (a: Answers) => boolean;
 };
+// 'switch': a link under the question before it that flips between two ways of
+// answering it — options[0] is shown while the value is empty, options[1] once it
+// is set to options[1].value (the miles / zip-code list question).
 
 const opts = (...labels: string[]) => labels.map(l => ({ value: l, label: l }));
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const has = (a: Answers, key: string, value: string) => Array.isArray(a[key]) ? (a[key] as string[]).includes(value) : a[key] === value;
 
 export type SurveySection = { title: string; fields: SurveyField[]; /** Filled in by us before the client sees the survey. */ setup?: boolean };
+
+/** The client gave a list of zip codes instead of a radius. */
+export const zipList = (a: Answers) => a.area_mode === 'zips';
+/** The 5-digit zip codes in a pasted list, once each, in order. */
+export const parseZips = (raw: string) => [...new Set((raw.match(/\b\d{5}(?:-\d{4})?\b/g) ?? []).map(z => z.slice(0, 5)))];
 
 const runsAds = (a: Answers) => has(a, 'service', 'facebook_ads') || has(a, 'service', 'both');
 
@@ -86,7 +94,11 @@ export const SURVEY_SECTIONS: SurveySection[] = [
         options: opts('Full Kitchens', 'Full Bathrooms', 'Partial Kitchens', 'Partial Bathrooms', 'Others') },
       { key: 'other_services', label: 'Other services they want', type: 'textarea', wide: true, when: a => has(a, 'services', 'Others') },
       { key: 'starting_prices', label: 'Starting prices', type: 'textarea', wide: true },
-      { key: 'miles_out', label: 'How many miles out can they go for a job?', type: 'text' },
+      // Miles by default; or the exact zip codes they want, pasted as a list (owner, 2026-11-23).
+      { key: 'miles_out', label: 'How many miles out can they go for a job?', type: 'text', placeholder: 'e.g. 25', when: a => !zipList(a) },
+      { key: 'zip_codes', label: 'The zip codes they want to work in', type: 'textarea', wide: true, placeholder: 'Paste the zip codes — one per line, or separated by commas or spaces', when: zipList },
+      { key: 'area_mode', label: '', type: 'switch', wide: true,
+        options: [{ value: '', label: 'Use a list of zip codes instead' }, { value: 'zips', label: 'Use miles instead' }] },
     ],
   },
   {
@@ -159,7 +171,7 @@ export function cleanAnswers(input: unknown): Answers {
     } else {
       const v = typeof raw === 'string' ? raw.trim().slice(0, f.type === 'textarea' ? 4000 : 400) : '';
       if (!v) continue;
-      if (f.type === 'choice' && !(f.options ?? []).some(o => o.value === v)) continue;
+      if ((f.type === 'choice' || f.type === 'switch') && !(f.options ?? []).some(o => o.value === v)) continue;
       out[key] = v;
     }
   }
