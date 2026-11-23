@@ -65,15 +65,31 @@ export async function GET(req: Request) {
   // SMS channel: the "spend" is messages sent × the per-message rate, so every
   // cost KPI (CPL, cost per appointment, CPS…) is the SMS cost, not ad spend.
   if (channel === 'sms') {
-    let smsQ = ctx.service.from('sms_sends').select('client_id, sent_date, messages');
-    if (client_id) smsQ = smsQ.eq('client_id', client_id);
-    else if (liveClientIds) smsQ = smsQ.in('client_id', liveClientFilter(liveClientIds));
-    else if (notInternal) smsQ = smsQ.or(notInternal);
-    if (start_date) smsQ = smsQ.gte('sent_date', start_date);
-    if (end_date)   smsQ = smsQ.lte('sent_date', end_date);
-    const { data: smsRows, error: smsErr } = await smsQ;
-    if (smsErr) return NextResponse.json({ error: smsErr.message }, { status: 500 });
-    const sms_sent = (smsRows ?? []).reduce((n, r) => n + (Number(r.messages) || 0), 0);
+    // `sms_sends` holds a row per text sent — tens of thousands a month. Reading
+    // them all here to add them up ran into the database's 8-second limit and
+    // the whole SMS view came back as zeros (2026-11-23). The database adds
+    // them up instead (`sms_totals`, one row per client); where that function
+    // does not exist yet, the rows are still read.
+    let sms_sent = 0;
+    const totals = await ctx.service.rpc('sms_totals', { p_start: start_date, p_end: end_date, p_client: client_id });
+    if (!totals.error && Array.isArray(totals.data)) {
+      const live = liveClientIds ? new Set(liveClientIds) : null;
+      const internal = new Set(internalIds);
+      for (const r of totals.data as { client_id: string | null; messages: number | string | null }[]) {
+        if (!client_id && (live ? !r.client_id || !live.has(r.client_id) : !!r.client_id && internal.has(r.client_id))) continue;
+        sms_sent += Number(r.messages) || 0;
+      }
+    } else {
+      let smsQ = ctx.service.from('sms_sends').select('client_id, sent_date, messages');
+      if (client_id) smsQ = smsQ.eq('client_id', client_id);
+      else if (liveClientIds) smsQ = smsQ.in('client_id', liveClientFilter(liveClientIds));
+      else if (notInternal) smsQ = smsQ.or(notInternal);
+      if (start_date) smsQ = smsQ.gte('sent_date', start_date);
+      if (end_date)   smsQ = smsQ.lte('sent_date', end_date);
+      const { data: smsRows, error: smsErr } = await smsQ;
+      if (smsErr) return NextResponse.json({ error: smsErr.message }, { status: 500 });
+      sms_sent = (smsRows ?? []).reduce((n, r) => n + (Number(r.messages) || 0), 0);
+    }
     const rate = Number(process.env.SMS_COST_PER_MESSAGE ?? '0.01') || 0;
     const sms_cost = sms_sent * rate;
     return NextResponse.json({

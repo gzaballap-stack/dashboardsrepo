@@ -1,3 +1,29 @@
+## 2026-11-23 — Clients dashboard SMS view showed zeros: the SMS total timed out
+
+Owner: "Everything appears as zero" on the B2C dashboard's SMS side. The data
+was fine (blasts and replies arriving all day). Railway's HTTP log showed
+`/api/metrics` on the SMS channel answering **500 after ~9 s** two times out of
+three — 56 bytes, i.e. "canceling statement due to statement timeout". The page
+shows an error answer as zeros.
+
+- **Cause:** `sms_sends` holds a row per text — 86,000 rows, **139 MB** because
+  each row keeps its raw payload. Adding up a month meant scanning all of it:
+  ~6 s on V1 even fully cached, against the database's 8 s limit. `api/metrics`
+  also downloaded every row (70,000 this month) to add them up itself — the
+  thing the 2026-11-12 note said it "could" stop doing.
+- **Fix 1 (V1 database, 2026-11-23):** index `sms_sends_date_totals_idx`
+  `(sent_date, client_id) include (messages)`, built CONCURRENTLY, then
+  `vacuum (analyze)`. `sms_totals` for the month went **5.9 s → 0.28 s** (index
+  only). Client Billing's SMS cost read is the same function, so it sped up too.
+  In `migrations/add_sms_totals.sql` + `schema.sql`; **not run on V2** (small
+  demo table, no need).
+- **Fix 2:** `api/metrics` (`channel=sms`) asks `sms_totals` for the totals and
+  leaves out internal / non-live clients itself; without the function it still
+  reads the rows as before.
+- Still true: the table grows ~9,000 rows (≈15 MB) a day because of `raw`. If
+  the database ever gets tight on space, dropping `raw` on old rows is the
+  lever — not needed for speed any more.
+
 ## 2026-11-21 — Johnny's payout: clock starts at first blast OR first ad spend
 
 Owner: SAS Home Solutions started on ads before their first text. The 30-day

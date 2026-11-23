@@ -30,3 +30,11 @@ grant execute on function public.sms_totals(date, date, uuid) to service_role;
 
 -- So the API sees the new function straight away.
 notify pgrst, 'reload schema';
+
+-- 2026-11-23: adding up a month of texts scanned the whole table (139 MB — each
+-- row carries its raw payload) and took ~6 s, past the 8 s limit under load, so
+-- the Clients dashboard's SMS view came back as zeros. This index holds just
+-- what the totals need, so they are answered from it alone (~0.3 s).
+-- On a live database build it with CONCURRENTLY (not inside a transaction) so
+-- incoming texts are not blocked; V1 was done that way on 2026-11-23.
+create index if not exists sms_sends_date_totals_idx on public.sms_sends (sent_date, client_id) include (messages);
