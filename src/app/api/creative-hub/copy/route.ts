@@ -39,16 +39,18 @@ async function adResults(service: Service, scope: 'b2b' | 'b2c') {
   const clientIds = (clientRows ?? []).filter(c => (scope === 'b2b' ? c.is_internal : !c.is_internal)).map(c => c.id as string);
   type Acc = { spend: number; impressions: number; link_clicks: number; meta_leads: number; first: string; last: string };
   const ads = new Map<string, Acc>();
+  const adClient = new Map<string, string>();   // whose ad — a client's own pack counts only that client's ads
   const campaignIds = new Set<string>();
   if (clientIds.length) {
     const PAGE = 1000;
     for (let offset = 0; ; offset += PAGE) {
       const { data } = await service.from('ad_campaigns')
-        .select('report_date, ad_id, campaign_id, spend, impressions, link_clicks, leads')
+        .select('report_date, ad_id, campaign_id, client_id, spend, impressions, link_clicks, leads')
         .eq('level', 'ad').in('client_id', clientIds).neq('ad_id', '')
         .order('report_date').order('id').range(offset, offset + PAGE - 1);
       for (const r of data ?? []) {
         if (r.campaign_id) campaignIds.add(r.campaign_id as string);
+        if (r.client_id) adClient.set(r.ad_id as string, r.client_id as string);
         const a = ads.get(r.ad_id as string) ?? { spend: 0, impressions: 0, link_clicks: 0, meta_leads: 0, first: r.report_date as string, last: r.report_date as string };
         a.spend += Number(r.spend) || 0; a.impressions += (r.impressions as number) ?? 0; a.link_clicks += (r.link_clicks as number) ?? 0; a.meta_leads += (r.leads as number) ?? 0;
         if ((r.report_date as string) > a.last) a.last = r.report_date as string;
@@ -68,7 +70,7 @@ async function adResults(service: Service, scope: 'b2b' | 'b2c') {
   // Ads Meta does not split by text (one text each) count whole, under their own texts.
   const rawTexts = new Map((meta ?? []).map(m => [m.ad_id as string, { body: m.primary_text as string | null, title: m.headline as string | null, description: m.description as string | null }]));
   const allRows = addSingleTextAds(textRows, [...ads].map(([id, a]) => [id, { spend: a.spend, impressions: a.impressions, clicks: a.link_clicks, leads: a.meta_leads }]), rawTexts);
-  return { ads, texts, funnel, textRows: allRows };
+  return { ads, adClient, texts, funnel, textRows: allRows };
 }
 
 // Meta's own split: what each individual text did across every ad that rotated it.
@@ -80,11 +82,12 @@ function textsFor(set: { bodies: string[]; headlines: string[]; descriptions: st
   };
 }
 
-function performanceFor(set: { bodies: string[]; headlines: string[] }, r: Awaited<ReturnType<typeof adResults>>): CopyPerformance {
+function performanceFor(set: { bodies: string[]; headlines: string[] }, r: Awaited<ReturnType<typeof adResults>>, onlyClient: string | null = null): CopyPerformance {
   const bodies = new Set(set.bodies.map(norm).filter(Boolean));
   const heads = new Set(set.headlines.map(norm).filter(Boolean));
   const out: CopyPerformance = { ads: 0, spend: 0, impressions: 0, link_clicks: 0, ctr: 0, cpc: 0, meta_leads: 0, leads: 0, appts: 0, shows: 0, closes: 0, cost_per_lead: 0, cost_per_appt: 0, first: null, last: null };
   for (const [id, a] of r.ads) {
+    if (onlyClient && r.adClient.get(id) !== onlyClient) continue;
     const t = r.texts.get(id);
     if (!t) continue;
     // Primary text is the distinctive part; the headline only decides when the set has no primary texts.
@@ -134,8 +137,10 @@ export async function GET(req: Request) {
       ...s,
       client_name: s.client_id ? clientName.get(s.client_id as string) ?? null : null,
       used_by: usedBy.get(s.id as string) ?? [],
-      performance: performanceFor({ bodies: (s.bodies as string[]) ?? [], headlines: (s.headlines as string[]) ?? [] }, results),
-      texts: textsFor({ bodies: (s.bodies as string[]) ?? [], headlines: (s.headlines as string[]) ?? [], descriptions: (s.descriptions as string[]) ?? [] }, results.textRows),
+      // A client's own pack: only that client's ads (the same wording runs for other clients too).
+      performance: performanceFor({ bodies: (s.bodies as string[]) ?? [], headlines: (s.headlines as string[]) ?? [] }, results, (s.client_id as string | null) ?? null),
+      texts: textsFor({ bodies: (s.bodies as string[]) ?? [], headlines: (s.headlines as string[]) ?? [], descriptions: (s.descriptions as string[]) ?? [] },
+        s.client_id ? results.textRows.filter(t => results.adClient.get(t.ad_id) === s.client_id) : results.textRows),
     })),
     limit: LIMIT,
   });
