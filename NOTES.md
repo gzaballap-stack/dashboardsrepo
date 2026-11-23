@@ -1,3 +1,18 @@
+## 2026-11-23 — Survey: miles or a pasted zip list; onboarding playbook; USA Windows email
+
+- **Survey service area:** the miles question stays the default; a "Use a list
+  of zip codes instead" link swaps it for a box to paste zip codes (any
+  separator; `parseZips` in `client-survey.ts`, answer `area_mode = zips`,
+  `zip_codes`). The Facebook Setup zip list and Build Campaign then use that
+  list as-is (no radius). Commit a0f4548.
+- **`ONBOARDING.md`** (repo root): the full onboarding playbook — SMS,
+  Facebook, both — written to be handed to another AI or a new chat with no
+  context. `/onboard` keeps the per-run on-screen details and points to it.
+- **USA Windows And Doors:** an `Email Notification` step (Internal
+  notification → Email to leads@usawindowsanddoors.com, lead details) added
+  after the last step of all 12 branches of their Send Message To Contractor
+  (2 Numbers) workflow, alongside the text alerts. Published workflow, saved.
+
 ## 2026-11-23 — Build Campaign (Facebook) from the Submitted Survey
 
 Owner asked for a one-click first campaign. In the **Facebook Setup** box on a

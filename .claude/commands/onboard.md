@@ -1,5 +1,8 @@
 # /onboard — Onboard a signed client in GHL (and Facebook)
 
+> The full, self-contained playbook (every service, in order) is `ONBOARDING.md`
+> at the repo root. This file keeps the on-screen details learned per run.
+
 The owner says "onboard <client>" and which service (Facebook Ads, SMS, or
 both). You do the setup through **his Chrome** (Claude in Chrome — he is already
 signed in to GHL, Ready and Facebook). This file is the procedure, as he
@@ -368,11 +371,17 @@ they cost, what is still unpublished, and anything skipped or uncertain.
 - The landing-page funnel is separate from the workflows — the form sends
   leads to `<funnel>/bookingpage`, so it must be published too.
 
+## Notification email (USA Windows And Doors, 2026-11-23)
+
+- A client's notification email goes in Send Message To Contractor: an
+  Internal notification → Email step (`Email Notification`, custom email,
+  lead details) after the last step of **each of the 12 branches**. Build one,
+  Copy action, then each branch's last step ⋯ → Paste below; Save. Exact body
+  in `ONBOARDING.md` 7.5.
+
 ## Not confirmed yet (written from dictation — check on screen, then fix this file)
 - USA Windows And Doors' calendar and Fill In Data user are waiting on his GHL
   user (as of 2026-11-20).
-- Where a notification **email** from the form goes (the first number is in
-  Fill In Data, the second in the 2 Numbers workflow).
 - What else changes in the Send Message To Contractor copy besides the trigger
   calendar and the 2nd Number boxes.
 - A2 step 3 — which step holds the Client Name field (dictation was unclear).
