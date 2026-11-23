@@ -8,6 +8,7 @@ import {
   type Booking,
   type BillingState, type Source,
 } from '@/lib/billing';
+import { isNotBilledReason } from '@/lib/billing-outcome';
 import {
   StripeError, stripeStatus, getCustomer, createDraftInvoice, finalizeInvoice,
   payInvoice, sendInvoice, getInvoice, voidInvoice, deleteDraftInvoice, notePayment,
@@ -396,6 +397,8 @@ function billingView(a: Row | undefined, charge: Row | undefined) {
     credited_at: (a.credited_at as string | null) ?? null,
     credit_reason: (a.credit_reason as string | null) ?? null,
     cancelled_at: (a.cancelled_at as string | null) ?? null,
+    // Why it was not billed: cancelled / no_show / card_declined (null on older rows).
+    not_billed_reason: notBilled(a) ? ((a.not_billed_reason as string | null) ?? null) : null,
   };
 }
 
@@ -1215,6 +1218,16 @@ export async function POST(req: Request) {
     const eventIds = strings(body.event_ids);
     if (!clientId || !eventIds.length) return bad('Pick at least one appointment');
     const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 300) : '';
+    // Why: cancelled, no_show or card_declined. It decides whether the
+    // appointment counts as a show on the dashboard (lib/billing-outcome.ts).
+    // Left off on a database without the column yet, where it cannot be kept.
+    const why = isNotBilledReason(body.why) ? body.why : null;
+    let keepWhy = !!why;
+    if (keepWhy) {
+      const probe = await service.from('billing_appointments').select('not_billed_reason').limit(1);
+      if (probe.error) keepWhy = false;
+    }
+    const whyCol = keepWhy ? { not_billed_reason: why } : {};
 
     const loaded = await loadAppointments(service, clientId, eventIds);
     if (loaded.error) return bad(loaded.error, 409);
@@ -1237,7 +1250,7 @@ export async function POST(req: Request) {
         .select('id, status, subtotal, credit_applied, total, appointment_count').eq('id', row.charge_id as string).maybeSingle();
       if (!charge || charge.status !== 'paid' || !paidByCredit(charge)) continue;
       const { data: freed, error } = await service.from('billing_appointments')
-        .update({ charge_id: null, cancelled_at: stamp, credit_amount: 0, credit_reason: reason || null, updated_at: stamp })
+        .update({ charge_id: null, cancelled_at: stamp, credit_amount: 0, credit_reason: reason || null, ...whyCol, updated_at: stamp })
         .eq('id', row.id).eq('charge_id', charge.id).is('credited_at', null).select('id');
       if (error) {
         if (isMissingColumn(error, 'cancelled_at')) return bad('Marking appointments not billed needs a one-off database update first', 503);
@@ -1261,7 +1274,7 @@ export async function POST(req: Request) {
     const fresh = loaded.events.filter(e => !taken.has(e.id as string)).map(e => ({
       client_id: clientId, event_id: e.id, lead_name: e.lead_name,
       appointment_at: e.scheduled_at ?? e.occurred_at, charge_id: null,
-      price: num(s?.price_per_appointment), cancelled_at: stamp, credit_reason: reason || null,
+      price: num(s?.price_per_appointment), cancelled_at: stamp, credit_reason: reason || null, ...whyCol,
     }));
     if (fresh.length) {
       const { error } = await service.from('billing_appointments').insert(fresh);

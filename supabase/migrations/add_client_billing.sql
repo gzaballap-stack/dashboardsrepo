@@ -81,3 +81,15 @@ alter table billing_clients      enable row level security;
 alter table billing_charges      enable row level security;
 alter table billing_appointments enable row level security;
 alter table billing_credits      enable row level security;
+
+-- Why an appointment was not billed (NOTES.md 2026-11-23): cancelled, no_show
+-- or card_declined. The Clients dashboard's SMS view reads its shows and
+-- no-shows from billing: card_declined still counts as a show (the appointment
+-- happened), the other two — and an older row with no reason — as a no-show.
+alter table billing_appointments add column if not exists not_billed_reason text;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conrelid = 'billing_appointments'::regclass and conname = 'billing_appointments_not_billed_reason_check') then
+    alter table billing_appointments add constraint billing_appointments_not_billed_reason_check
+      check (not_billed_reason is null or not_billed_reason in ('cancelled', 'no_show', 'card_declined'));
+  end if;
+end $$;

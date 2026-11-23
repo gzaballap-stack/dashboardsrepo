@@ -3,8 +3,9 @@ import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { calculateMetrics } from '@/lib/metrics';
 import { getLiveClientIds, liveClientFilter, getInternalClientIds } from '@/lib/db-helpers';
 import { getExcludedSpend } from '@/lib/exclusions';
+import { billedOutcome } from '@/lib/billing-outcome';
 
-type EventRow = { event_type: string; is_pickup: boolean | null; is_conversation: boolean | null; speed_to_lead_seconds: number | null; revenue: number | null };
+type EventRow = { id?: string; event_type: string; is_pickup: boolean | null; is_conversation: boolean | null; speed_to_lead_seconds: number | null; revenue: number | null };
 
 export async function GET(req: Request) {
   const ctx = await getAuthContext();
@@ -27,7 +28,7 @@ export async function GET(req: Request) {
   // Build base events query (no execute yet — we'll paginate below)
   let eventsBase = ctx.service
     .from('events')
-    .select('event_type, is_pickup, is_conversation, speed_to_lead_seconds, duration_seconds, revenue');
+    .select('id, event_type, is_pickup, is_conversation, speed_to_lead_seconds, duration_seconds, revenue');
   // "All clients" must never include the internal Tomsi Media row: its B2B
   // funnel is mirrored into these tables so its own dashboard can reuse the
   // client views, but it is not a client. (Live-only already excludes it.)
@@ -92,8 +93,46 @@ export async function GET(req: Request) {
     }
     const rate = Number(process.env.SMS_COST_PER_MESSAGE ?? '0.01') || 0;
     const sms_cost = sms_sent * rate;
+    const base = calculateMetrics(allEvents, [{ amount: sms_cost }], 0);
+
+    // Clients never report whether an appointment showed, so on the SMS view a
+    // client's shows and no-shows come from Client Billing (owner's rule,
+    // 2026-11-23; lib/billing-outcome.ts): billed = show, not billed = no-show,
+    // except a declined card, which is still a show. Tomsi Media's own SMS
+    // dashboard keeps its real shows (it is the internal client).
+    const isInternal = !!client_id && (await getInternalClientIds(ctx.service)).includes(client_id);
+    if (isInternal) return NextResponse.json({ ...base, channel: 'sms', sms_sent, sms_cost, sms_cost_per_message: rate });
+
+    const apptIds = allEvents.filter(e => e.id && ['appointment_booked', 'show', 'no_show'].includes(e.event_type)).map(e => e.id as string);
+    let shows = 0, no_shows = 0, billingRead = true;
+    for (let i = 0; i < apptIds.length && billingRead; i += 150) {
+      const { data, error } = await ctx.service.from('billing_appointments').select('*').in('event_id', apptIds.slice(i, i + 150));
+      if (error) { billingRead = false; break; }   // no billing tables here: keep the numbers as they were
+      for (const row of data ?? []) {
+        const outcome = billedOutcome(row);
+        if (outcome === 'show') shows++;
+        else if (outcome === 'no_show') no_shows++;
+      }
+    }
+    if (!billingRead) return NextResponse.json({ ...base, channel: 'sms', sms_sent, sms_cost, sms_cost_per_message: rate });
+
+    // Same sums calculateMetrics does, with the billing outcomes in place of
+    // show / no-show rows (a client's booking stays `appointment_booked`).
+    const booked = apptIds.length;
+    const show_rate = shows + no_shows > 0 ? shows / (shows + no_shows) : 0;
+    const cp_appt = booked > 0 ? sms_cost / booked : 0;
+    const cps = cp_appt > 0 && show_rate > 0 ? cp_appt / show_rate : 0;
+    const close_ratio = shows > 0 ? base.closes / shows : 0;
     return NextResponse.json({
-      ...calculateMetrics(allEvents, [{ amount: sms_cost }], 0),
+      ...base,
+      booked_appointments: booked,
+      appt_booking_rate: base.new_leads > 0 ? (booked / base.new_leads) * 100 : 0,
+      appts_to_take_place: Math.max(0, booked - shows - no_shows),
+      shows, no_shows, show_pct: show_rate * 100,
+      cp_appt, cps,
+      close_rate: close_ratio * 100,
+      cost_per_close: cps > 0 && close_ratio > 0 ? cps / close_ratio : 0,
+      shows_from: 'billing',
       channel: 'sms', sms_sent, sms_cost, sms_cost_per_message: rate,
     });
   }

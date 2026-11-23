@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { displayName } from "@/lib/display-name";
+import { NOT_BILLED_LABEL, NOT_BILLED_REASONS, isNotBilledReason, type NotBilledReason } from "@/lib/billing-outcome";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Client Billing
@@ -63,6 +64,8 @@ type ApptBilling = {
   state: "charged" | "credited" | "covered" | "cancelled"; price: number; charged: boolean;
   charge_id: string | null; charge_status: string | null;
   credit_amount: number; credited_at: string | null; credit_reason: string | null;
+  /** Why it was not billed — cancelled / no_show / card_declined. Older ones have none. */
+  not_billed_reason?: string | null;
 };
 
 type Appointment = {
@@ -895,26 +898,54 @@ function StripeLinkModal({ detail, onClose, onDone }: {
 
 /* ── one appointment ──────────────────────────────────────────────────────── */
 
+// Why an appointment is not being billed. Cancelled and No-Show count as a
+// no-show on the dashboard; Card Declined still counts as a show.
+function WhyNotBilled({ busy, onPick, onBack }: { busy: boolean; onPick: (why: NotBilledReason) => void; onBack: () => void }) {
+  const btn: React.CSSProperties = { padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flex: 1, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" };
+  return (
+    <div style={{ borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+        <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: MUTED }}>Not billed — why?</span>
+        <button disabled={busy} onClick={onBack} style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>Back</button>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {NOT_BILLED_REASONS.map(r => (
+          <button key={r} disabled={busy} onClick={() => onPick(r)} style={btn}
+            title={r === "card_declined" ? "The appointment happened, the card failed — counts as a show" : "Counts as a no-show"}>
+            {NOT_BILLED_LABEL[r]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // One appointment as a card. Undecided ones carry their three choices; the
 // rest show where they stand, with the one thing that can still be done.
 function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onCancel, onUncancel, onUncredit, onCreditBilled, holdsCredit }: {
   a: Appointment; price: number; busy: boolean;
   ticked?: boolean; onTick?: () => void;
   /** onCancel = not billed. It also serves a booking a credit paid for: that gives the credit back. */
-  onBill: () => void; onCredit: () => void; onCancel: () => void;
+  onBill: () => void; onCredit: () => void; onCancel: (why: NotBilledReason) => void;
   onUncancel: () => void; onUncredit: () => void; onCreditBilled?: () => void;
   /** The client holds a credit: billing this one would use it. */
   holdsCredit?: boolean;
 }) {
   const b = a.billing;
   const on = !!ticked;
+  // "Not Billed" asks why first: the answer decides show or no-show on the dashboard.
+  const [asking, setAsking] = useState(false);
+  const why = b && isNotBilledReason(b.not_billed_reason) ? b.not_billed_reason : null;
   const waiting = b?.charge_status === "pending" || b?.charge_status === "draft";
   // The same lead booking again: it belongs to their appointment, nothing to decide.
   const moved = isReschedule(a);
   const undecided = !b && !moved;
   const status = moved ? { text: "Rescheduled", color: MUTED, hint: `Same lead as the booking of ${day(a.reschedule_of?.booked_at)} — not billed again` }
     : !b ? { text: "Not tracked", color: WARN, hint: "" }
-    : b.state === "cancelled" ? { text: STATE.cancelled.label, color: STATE.cancelled.color, hint: "" }
+    : b.state === "cancelled" ? {
+        text: why ? `${STATE.cancelled.label} · ${NOT_BILLED_LABEL[why]}` : STATE.cancelled.label, color: STATE.cancelled.color,
+        hint: why === "card_declined" ? "Counts as a show — the appointment happened" : "Counts as a no-show",
+      }
     : b.state === "credited" ? { text: `${STATE.credited.label} · ${money(b.credit_amount)}`, color: STATE.credited.color, hint: STATE.credited.hint }
     : b.state === "covered" ? { text: STATE.covered.label, color: STATE.covered.color, hint: STATE.covered.hint }
     : { text: `Billed ${money(b.price)}${waiting ? " · awaiting payment" : ""}`, color: waiting ? WARN : GOOD, hint: "" };
@@ -925,7 +956,7 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
     : b.state === "cancelled" ? <button disabled={busy} onClick={onUncancel} style={quiet}>Undo</button>
     : b.state === "credited" ? <button disabled={busy} onClick={onUncredit} style={quiet}>Undo Credit</button>
     // A credit paid for it: if it turns out bad, the credit goes back to them.
-    : b.state === "covered" ? <button disabled={busy} onClick={onCancel} title="Bad appointment: mark it not billed and give the credit back" style={{ ...small, flex: "none", background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Return the Credit</button>
+    : b.state === "covered" ? <button disabled={busy} onClick={() => setAsking(true)} title="Bad appointment: mark it not billed and give the credit back" style={{ ...small, flex: "none", background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Return the Credit</button>
     : onCreditBilled ? <button disabled={busy} onClick={onCreditBilled} style={quiet}>Credit It</button>
     : null;
   // The two credit states are told apart at a glance: a coloured edge each.
@@ -977,14 +1008,16 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
           : <span style={{ color: status.color, fontWeight: 700 }} title={b?.credit_reason ?? undefined}>{`${b?.state === "charged" && !waiting ? "✓ " : ""}${status.text}`}</span>}
       </div>
       {status.hint && <p style={{ fontSize: 11.5, color: MUTED, marginTop: -4 }}>{status.hint}</p>}
-      {(undecided || last) && (
+      {asking ? (
+        <WhyNotBilled busy={busy} onPick={r => { setAsking(false); onCancel(r); }} onBack={() => setAsking(false)} />
+      ) : (undecided || last) && (
         <div style={{ display: "flex", gap: 6, borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: 10 }}>
           {undecided ? (<>
             <button disabled={busy} onClick={onBill} title={holdsCredit ? "They hold a credit — it pays for this one" : undefined} style={{ ...small, background: "#000000", color: "#ffffff" }}>
               {holdsCredit ? "Use a Credit" : `Bill${price ? ` ${money(price)}` : ""}`}
             </button>
             <button disabled={busy} onClick={onCredit} title="Bad appointment they paid for: the client gets a credit, and their next booking is not billed" style={{ ...small, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Credit</button>
-            <button disabled={busy} onClick={onCancel} title="No charge and no credit" style={{ ...small, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Not Billed</button>
+            <button disabled={busy} onClick={() => setAsking(true)} title="No charge and no credit" style={{ ...small, background: "rgba(0,0,0,0.06)", color: "#4a4a4a" }}>Not Billed</button>
           </>) : last}
         </div>
       )}
@@ -1169,7 +1202,7 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
                 <AppointmentCard key={a.event_id} a={a} price={a.price} busy={busy}
                   onBill={() => bill(a.client_id, [a.event_id])}
                   onCredit={() => act({ action: "credit", client_id: a.client_id, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"}: credit given — the client's next booking won't be billed`)}
-                  onCancel={() => act({ action: "cancel", client_id: a.client_id, event_ids: [a.event_id] }, a.billing?.state === "covered" ? `${a.lead_name ?? "Appointment"} not billed — the credit is back with the client` : `${a.lead_name ?? "Appointment"} marked not billed`)}
+                  onCancel={why => act({ action: "cancel", client_id: a.client_id, event_ids: [a.event_id], why }, a.billing?.state === "covered" ? `${a.lead_name ?? "Appointment"} not billed (${NOT_BILLED_LABEL[why]}) — the credit is back with the client` : `${a.lead_name ?? "Appointment"} marked not billed · ${NOT_BILLED_LABEL[why]}`)}
                   onUncancel={() => act({ action: "uncancel", client_id: a.client_id, event_ids: [a.event_id] }, "Back to not tracked")}
                   onUncredit={() => act({ action: "uncredit", client_id: a.client_id, event_ids: [a.event_id] }, "Credit removed")}
                   holdsCredit={a.credits > 0} />
@@ -1207,6 +1240,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   const [tab, setTab] = useState<DetailTab>("appointments");
   const [filter, setFilter] = useState<ApptFilter>("uncharged");
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkWhy, setBulkWhy] = useState(false);   // "Not Billed N" pressed: asking why
   const [charging, setCharging] = useState<string[] | null>(null);     // event ids; [] = one-off amount
   const [crediting, setCrediting] = useState<Appointment[] | null>(null);
   const [linking, setLinking] = useState(false);
@@ -1314,7 +1348,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
       ticked={picked.has(a.event_id)} onTick={() => toggle(a.event_id)}
       onBill={() => setCharging([a.event_id])}
       onCredit={() => act({ action: "credit", client_id: clientId, event_ids: [a.event_id] }, `${a.lead_name ?? "Appointment"}: credit given — the client's next booking won't be billed`)}
-      onCancel={() => act({ action: "cancel", client_id: clientId, event_ids: [a.event_id] }, a.billing?.state === "covered" ? `${a.lead_name ?? "Appointment"} not billed — the credit is back with the client` : `${a.lead_name ?? "Appointment"} marked not billed`)}
+      onCancel={why => act({ action: "cancel", client_id: clientId, event_ids: [a.event_id], why }, a.billing?.state === "covered" ? `${a.lead_name ?? "Appointment"} not billed (${NOT_BILLED_LABEL[why]}) — the credit is back with the client` : `${a.lead_name ?? "Appointment"} marked not billed · ${NOT_BILLED_LABEL[why]}`)}
       onUncancel={() => act({ action: "uncancel", client_id: clientId, event_ids: [a.event_id] }, "Back to not tracked")}
       onUncredit={() => act({ action: "uncredit", client_id: clientId, event_ids: [a.event_id] }, "Credit removed")}
       onCreditBilled={() => setCrediting([a])} holdsCredit={owed > 0} />
@@ -1439,8 +1473,18 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
               Bill {chosen.length}{price ? ` · ${money(chosen.length * price)}` : ""}
             </button>
             <button disabled={busy} onClick={() => act({ action: "credit", client_id: clientId, event_ids: chosenIds }, `${plural(chosen.length, "credit")} given — their next ${chosen.length === 1 ? "booking" : `${chosen.length} bookings`} won't be billed`)} style={BTN_QUIET}>Credit {chosen.length}</button>
-            <button disabled={busy} onClick={() => act({ action: "cancel", client_id: clientId, event_ids: chosenIds }, `${some(chosen.length)} marked not billed`)} style={BTN_QUIET}>Not Billed {chosen.length}</button>
-            <button onClick={() => setPicked(new Set())} style={{ fontSize: 12.5, fontWeight: 600, color: MUTED, padding: "0 4px" }}>Clear</button>
+            {bulkWhy ? (<>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: MUTED }}>Why?</span>
+              {NOT_BILLED_REASONS.map(r => (
+                <button key={r} disabled={busy} style={BTN_QUIET}
+                  onClick={() => { setBulkWhy(false); act({ action: "cancel", client_id: clientId, event_ids: chosenIds, why: r }, `${some(chosen.length)} marked not billed · ${NOT_BILLED_LABEL[r]}`); }}>
+                  {NOT_BILLED_LABEL[r]}
+                </button>
+              ))}
+            </>) : (
+              <button disabled={busy} onClick={() => setBulkWhy(true)} style={BTN_QUIET}>Not Billed {chosen.length}</button>
+            )}
+            <button onClick={() => { setPicked(new Set()); setBulkWhy(false); }} style={{ fontSize: 12.5, fontWeight: 600, color: MUTED, padding: "0 4px" }}>Clear</button>
           </div>
         )}
 

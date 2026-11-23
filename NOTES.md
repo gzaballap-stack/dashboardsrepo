@@ -1,3 +1,35 @@
+## 2026-11-23 — SMS view: shows and no-shows come from Client Billing; "Not Billed" asks why
+
+Owner: the SMS view has Cost per Show, Show Rate, Shows and No Shows, but
+clients never report an outcome, so all four were empty. His rule: **a show is
+any appointment that is billed, a no-show any that is not** — decided where the
+appointment is already handled, in Client Billing.
+
+- **Not Billed now asks why** (card, the "Return the Credit" button on a
+  paid-with-credit card, and the bulk "Not Billed N" bar): **Cancelled**,
+  **No-Show**, **Card Declined**. Stored in `billing_appointments.not_billed_reason`
+  (new column, check-constrained; V1 2026-11-23, in `add_client_billing.sql` +
+  `schema.sql`; **not on V2** — there the choice is asked but not kept). The
+  card reads "Not Billed · No-Show" and says which way it counts. To change the
+  reason: Undo, then Not Billed again.
+- **The rule** (`src/lib/billing-outcome.ts`, pure, shared by screen and API):
+  billed or paid with credit → show · not billed as cancelled / no-show, or an
+  older row with no reason → no-show · not billed as **card declined → show**
+  (the appointment happened) · **credit given → no-show** (my reading: a bad
+  appointment the client got its price back for; say if it should not count) ·
+  not tracked → neither, it stays in Appts To Take Place.
+- **`api/metrics`, `channel=sms`, real clients only:** shows, no-shows, show
+  rate, CPS and Appts To Take Place are worked out from the billing rows of the
+  SMS bookings in the period (by booking date, like every other tile). Tomsi
+  Media's own SMS Dashboard (internal client) is untouched — it has real shows.
+  Without billing tables the numbers stay as they were. The response carries
+  `shows_from: 'billing'`.
+- **Not changed:** the Facebook Ads side of the Clients dashboard (same empty
+  Shows / No Shows — same rule could apply, owner asked for SMS), Campaign
+  Overview, Goal Tracker, the public report.
+- V1, November so far, SMS: 40 bookings → **30 shows, 5 no-shows** (4 not
+  billed + 1 credit given), 5 not tracked yet → show rate 85.7%.
+
 ## 2026-11-23 — Survey: miles or a pasted zip list; onboarding playbook; USA Windows email
 
 - **Survey service area:** the miles question stays the default; a "Use a list
