@@ -312,6 +312,30 @@ they cost, what is still unpublished, and anything skipped or uncertain.
   calendar"** box that must be set to the client's calendar — so the calendar
   (A3) comes first.
 
+## Confirmed on screen (Star Construction And Renovation, both services, 2026-11-22)
+
+- **New Lead Stuff has two New Lead templates:** `1. Template New Lead` and
+  `1. Template - CAPI New Lead`; most Facebook clients have both copies
+  (`<Client> New Lead` and `<Client> - CAPI New Lead`). Ask which to make.
+- **New Lead copy:** Tag As Contractor Company Name (template tag `tomsi
+  media` → the client's); From number is the **Settings tab → From number**.
+  The sticky note's "Workflow Contact branch" and "Googlesheet action" are not
+  in the template any more. Its trigger is Facebook Lead Form, Page "Any" —
+  must be set to the client's page before publishing.
+- **Assign To Contractor** uses the contact's Contractor GHL User ID field —
+  nothing to change.
+- **Funnel:** Sites → Funnels → 1. Landing Pages → row ⋮ → **Clone** (asks the
+  name). Cloned pages are named `Home Page Clone`, `Booking Page Clone`,
+  `Thank You Page Clone` — so "the booking page clone" in Part B is ambiguous;
+  ask. Head tracking code: funnel Settings tab, then the Save button at the
+  bottom. Page tracking code: in the editor, the `</>` toolbar icon (Header /
+  Footer tracking). Booking page has two calendar elements (Change → booking
+  type Calendar → pick the calendar → Add to page); the template's is Israel
+  Flores'. The heading "Company Name" is a blue span: double-click it, Shift+End,
+  type. The footer is a **global section**: saving it asks to sync "across
+  other instances" — stop and ask the owner before confirming. Footer hours
+  (Mon–Fri 7–5) are the template's, not the client's.
+
 ## Not confirmed yet (written from dictation — check on screen, then fix this file)
 - Everything in Part B is still as dictated (not opened).
 - USA Windows And Doors' calendar and Fill In Data user are waiting on his GHL
