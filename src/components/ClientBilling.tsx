@@ -489,13 +489,20 @@ function ProfileCard({ detail, onSaved, onOpenProfitLoss }: {
 
 /* ── charge ───────────────────────────────────────────────────────────────── */
 
-function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
+function ChargeModal({ detail, stripe, eventIds, prepaid, onClose, onDone }: {
   detail: Detail; stripe: StripeState; eventIds: string[];
+  /** Charge for a number of appointments up front: once paid, they become that many credits. */
+  prepaid?: boolean;
   onClose: () => void; onDone: (message: string, failed?: boolean) => void;
 }) {
   const count = eventIds.length;
   const [price, setPrice] = useState(detail.settings.price ? String(detail.settings.price) : "");
   const [custom, setCustom] = useState("");
+  // Prepaid: how many appointments. A credit pays for a whole appointment, so
+  // it is always charged at their own price once they have one.
+  const [howMany, setHowMany] = useState("");
+  const savedPrice = detail.settings.price > 0 ? detail.settings.price : 0;
+  const prepaidCount = prepaid && /^\d+$/.test(howMany.trim()) ? Number(howMany.trim()) : 0;
   const [note, setNote] = useState("");
   const [creditText, setCreditText] = useState<string | null>(null);   // null = use all there is
   const [busy, setBusy] = useState(false);
@@ -512,16 +519,19 @@ function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
     : !customer.email ? "Their Stripe customer has no email" : null;
   const [method, setMethod] = useState<Method>(cardWhy === null ? "card" : invoiceWhy === null ? "invoice" : "manual");
 
-  const unit = parseAmount(price) ?? 0;
-  const subtotal = count ? (cents(unit) * count) / 100 : (parseAmount(custom) ?? 0);
-  const available = Math.max(0, Math.min(detail.balance, subtotal));
+  const unit = prepaid && savedPrice > 0 ? savedPrice : (parseAmount(price) ?? 0);
+  const subtotal = count ? (cents(unit) * count) / 100 : prepaid ? (cents(unit) * prepaidCount) / 100 : (parseAmount(custom) ?? 0);
+  // Credit is never spent on buying credit.
+  const available = prepaid ? 0 : Math.max(0, Math.min(detail.balance, subtotal));
   const typedCredit = creditText === null ? available : (parseAmount(creditText) ?? 0);
   const credit = Math.max(0, Math.min(typedCredit, available));
   const total = (cents(subtotal) - cents(credit)) / 100;
   const covered = subtotal > 0 && total === 0;
   const effective: Method = covered ? "manual" : method;
 
-  const blocked = subtotal <= 0 ? (count ? "Set a price per appointment" : "Enter an amount")
+  const blocked = prepaid && prepaidCount < 1 ? "Enter how many appointments"
+    : prepaid && prepaidCount > 1000 ? "That is too many at once"
+    : subtotal <= 0 ? (count || prepaid ? "Set a price per appointment" : "Enter an amount")
     : effective === "card" ? cardWhy
     : effective === "invoice" ? invoiceWhy
     : null;
@@ -541,7 +551,8 @@ function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
     try {
       const done = await api("/api/billing", {
         action: "charge", client_id: detail.client.id, event_ids: eventIds,
-        price: count ? unit : undefined, amount: count ? undefined : subtotal,
+        price: count || (prepaid && savedPrice <= 0) ? unit : undefined, amount: count || prepaid ? undefined : subtotal,
+        prepaid_count: prepaid ? prepaidCount : undefined,
         description: note, apply_credit: credit, expected_total: total,
         method: effective, request_id: requestId,
       });
@@ -574,9 +585,23 @@ function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
   );
 
   return (
-    <Modal title={`Charge ${detail.client.name}`} sub={count ? plural(count, "appointment") : "A one-off amount"} onClose={busy ? () => {} : onClose}>
+    <Modal title={`Charge ${detail.client.name}`} sub={count ? plural(count, "appointment") : prepaid ? "Appointments paid for up front" : "A one-off amount"} onClose={busy ? () => {} : onClose}>
       <div style={{ ...PANEL, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-        {count ? (
+        {prepaid ? (<>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <label style={{ ...LABEL, flex: 1, minWidth: 140 }}>
+              How Many Appointments
+              <input value={howMany} onChange={e => setHowMany(e.target.value)} inputMode="numeric" placeholder="e.g. 10" autoFocus style={FIELD} />
+            </label>
+            <label style={{ ...LABEL, flex: 1, minWidth: 140 }}>
+              Price per Appointment
+              {savedPrice > 0
+                ? <span style={{ ...FIELD, background: "rgba(0,0,0,0.04)", fontWeight: 600 }}>{money(savedPrice)}</span>
+                : <input value={price} onChange={e => setPrice(e.target.value)} inputMode="decimal" placeholder="$0" style={FIELD} />}
+            </label>
+          </div>
+          {savedPrice <= 0 && <p style={{ fontSize: 12, color: MUTED, marginTop: -4 }}>This also becomes their price per appointment.</p>}
+        </>) : count ? (
           <label style={LABEL}>
             Price per Appointment
             <input value={price} onChange={e => setPrice(e.target.value)} inputMode="decimal" placeholder="$0" autoFocus={!price} style={FIELD} />
@@ -588,11 +613,11 @@ function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
           </label>
         )}
         <label style={LABEL}>
-          {count ? "Note on the invoice (optional)" : "What it's for"}
+          {count || prepaid ? "Note on the invoice (optional)" : "What it's for"}
           <input value={note} onChange={e => setNote(e.target.value)} maxLength={300}
-            placeholder={count ? `${plural(count, "appointment")}` : "e.g. Setup fee"} style={FIELD} />
+            placeholder={count ? `${plural(count, "appointment")}` : prepaid ? "e.g. November batch" : "e.g. Setup fee"} style={FIELD} />
         </label>
-        {detail.balance > 0 && (
+        {detail.balance > 0 && !prepaid && (
           <label style={LABEL}>
             Credit to Use — {money(detail.balance)} available
             <input value={creditText ?? (available ? String(available) : "")} onChange={e => setCreditText(e.target.value)}
@@ -602,7 +627,7 @@ function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
 
         <div style={{ borderTop: "1px solid rgba(0,0,0,0.07)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 5, fontSize: 13, color: MUTED }}>
           <div style={{ display: "flex" }}>
-            <span style={{ flex: 1 }}>{count ? `${count} × ${money(unit)}` : "Amount"}</span>
+            <span style={{ flex: 1 }}>{count ? `${count} × ${money(unit)}` : prepaid ? `${prepaidCount} × ${money(unit)}` : "Amount"}</span>
             <span style={NUM}>{money(subtotal)}</span>
           </div>
           {credit > 0 && (
@@ -615,8 +640,20 @@ function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
             <span style={{ flex: 1, fontWeight: 700 }}>Total</span>
             <span style={{ ...NUM, fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>{money(total)}</span>
           </div>
+          {prepaid && prepaidCount > 0 && (
+            <div style={{ display: "flex", marginTop: 2 }}>
+              <span style={{ flex: 1 }}>Credits they will hold once paid</span>
+              <span style={{ ...NUM, color: INK, fontWeight: 600 }}>{plural(detail.credits_owed + prepaidCount, "appointment")}</span>
+            </div>
+          )}
         </div>
       </div>
+
+      {prepaid && (
+        <Notice tone="warn">
+          {"Once this is paid they hold these as credits: each booking made from now on uses one and is marked Paid With Credit — it is not billed again. If the card fails, no credits are given. An emailed invoice gives them when it is paid."}
+        </Notice>
+      )}
 
       {covered ? (
         <Notice tone="good">Their credit covers all of it — nothing to collect.</Notice>
@@ -638,8 +675,8 @@ function ChargeModal({ detail, stripe, eventIds, onClose, onDone }: {
           <p style={{ fontSize: 14, fontWeight: 700, color: INK }}>{`Are you sure you want to bill ${detail.client.name}?`}</p>
           <p style={{ fontSize: 12.5, color: WARN }}>
             {effective === "card"
-              ? `This charges ${customer?.payment?.label ?? "their card"} ${money(total)} right now${count ? ` for ${plural(count, "appointment")}` : ""}.`
-              : `This emails ${customer?.email ?? "them"} an invoice for ${money(total)}${count ? ` for ${plural(count, "appointment")}` : ""}.`}
+              ? `This charges ${customer?.payment?.label ?? "their card"} ${money(total)} right now${count ? ` for ${plural(count, "appointment")}` : prepaid ? ` for ${plural(prepaidCount, "appointment")} up front` : ""}.`
+              : `This emails ${customer?.email ?? "them"} an invoice for ${money(total)}${count ? ` for ${plural(count, "appointment")}` : prepaid ? ` for ${plural(prepaidCount, "appointment")} up front` : ""}.`}
           </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button onClick={submit} disabled={busy} style={{ ...BTN_DARK, padding: "10px 18px", fontSize: 13, opacity: busy ? 0.35 : 1 }}>
@@ -1245,6 +1282,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   const [crediting, setCrediting] = useState<Appointment[] | null>(null);
   const [linking, setLinking] = useState(false);
   const [issuing, setIssuing] = useState(false);
+  const [prepaying, setPrepaying] = useState(false);                   // charging for appointments up front
   const [priceText, setPriceText] = useState("");
   const [busy, setBusy] = useState(false);
   const [creditAmount, setCreditAmount] = useState("");
@@ -1279,7 +1317,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   useEffect(() => { load(); }, [load]);
 
   const done = (text: string, failed?: boolean) => {
-    setCharging(null); setCrediting(null); setLinking(false); setIssuing(false);
+    setCharging(null); setCrediting(null); setLinking(false); setIssuing(false); setPrepaying(false);
     setPicked(new Set());
     setFlash({ text, bad: failed });
     load(); onChanged();
@@ -1360,6 +1398,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
         <button onClick={onBack} style={BTN_QUIET}>← All Clients</button>
         <h3 style={{ flex: 1, minWidth: 160, fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>{detail.client.name}</h3>
         <button onClick={() => setIssuing(true)} style={BTN_QUIET} title="Give this client credits: their next bookings are paid with them">Give Credits</button>
+        <button onClick={() => setPrepaying(true)} style={BTN_QUIET} title="Charge them for a number of appointments up front: once paid, those become credits and their next bookings are not billed">Charge Appointments</button>
         <button onClick={() => setCharging([])} style={BTN_QUIET}>Charge Another Amount</button>
       </div>
 
@@ -1643,6 +1682,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
       {charging && <ChargeModal detail={detail} stripe={stripe} eventIds={charging} onClose={() => setCharging(null)} onDone={done} />}
       {crediting && <CreditModal detail={detail} picked={crediting} onClose={() => setCrediting(null)} onDone={done} />}
       {linking && <StripeLinkModal detail={detail} onClose={() => setLinking(false)} onDone={done} />}
+      {prepaying && <ChargeModal detail={detail} stripe={stripe} eventIds={[]} prepaid onClose={() => setPrepaying(false)} onDone={done} />}
       {issuing && <IssueCreditsModal detail={detail} onClose={() => setIssuing(false)} onDone={done} />}
     </div>
   );

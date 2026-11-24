@@ -93,3 +93,10 @@ do $$ begin
       check (not_billed_reason is null or not_billed_reason in ('cancelled', 'no_show', 'card_declined'));
   end if;
 end $$;
+
+-- Charging for a number of appointments up front (NOTES.md 2026-11-23): the
+-- charge says how many it bought, and the credit it turns into once it is paid
+-- points back at it — unique, so one charge can never give its credits twice.
+alter table billing_charges add column if not exists prepaid_count integer not null default 0;
+alter table billing_credits add column if not exists charge_id uuid references billing_charges(id) on delete set null;
+create unique index if not exists billing_credits_charge_idx on billing_credits (charge_id) where charge_id is not null;

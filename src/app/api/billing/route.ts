@@ -107,7 +107,32 @@ async function release(service: Service, chargeId: string) {
 
 async function setCharge(service: Service, id: string, patch: Row) {
   const { data } = await service.from('billing_charges').update(patch).eq('id', id).select(CHARGE_COLS).single();
+  // Every way a charge becomes paid passes through here — recorded by hand, the
+  // card going through, or an emailed invoice found paid later — so this is
+  // where a prepaid charge turns into its credits.
+  if (patch.status === 'paid') await grantPrepaid(service, id);
   return data as Row | null;
+}
+
+// A charge for a number of appointments up front (`prepaid_count`): once it is
+// PAID, the client holds that many appointments in credit — worth what was
+// charged — and their next bookings are paid with it. Never before the money
+// is in: a declined card or an unpaid invoice gives nothing. The credit points
+// back at its charge (unique), so a charge cannot give its credits twice
+// however many times it is seen as paid.
+async function grantPrepaid(service: Service, chargeId: string): Promise<boolean> {
+  const { data: charge, error } = await service.from('billing_charges')
+    .select('id, client_id, status, subtotal, prepaid_count, created_by').eq('id', chargeId).maybeSingle();
+  if (error || !charge || !charge.client_id) return false;   // a database without prepaid charges yet
+  const count = num(charge.prepaid_count);
+  if (charge.status !== 'paid' || count < 1 || num(charge.subtotal) <= 0) return false;
+  const { error: creditError } = await service.from('billing_credits').insert({
+    client_id: charge.client_id, amount: num(charge.subtotal), charge_id: charge.id,
+    reason: `Prepaid — ${count} appointment${count === 1 ? '' : 's'} (charged)`, created_by: charge.created_by ?? null,
+  });
+  if (creditError) return false;                               // 23505 = already given
+  await tryCover(service, charge.client_id as string);
+  return true;
 }
 
 /* ── reschedules ── */
@@ -933,11 +958,34 @@ export async function POST(req: Request) {
     if (method !== 'card' && method !== 'invoice' && method !== 'manual') return bad('Choose how to charge');
     const requestId = typeof body.request_id === 'string' && body.request_id ? body.request_id : null;
 
-    const { data: client } = await service.from('clients').select('id, name').eq('id', clientId).maybeSingle();
+    const { data: client } = await service.from('clients').select('id, name, is_internal').eq('id', clientId).maybeSingle();
     if (!client) return bad('Client not found', 404);
 
-    const price = amount(body.price ?? 0);
-    const custom = amount(body.amount ?? 0);
+    // Prepaid: a number of appointments charged up front. No bookings are named;
+    // the charge becomes that many credits once it is paid (grantPrepaid).
+    const prepaid = body.prepaid_count === undefined || body.prepaid_count === null ? 0 : Number(body.prepaid_count);
+    if (body.prepaid_count !== undefined && body.prepaid_count !== null) {
+      if (eventIds.length) return bad('Prepaid appointments are charged on their own');
+      if (!Number.isInteger(prepaid) || prepaid < 1 || prepaid > 1000) return bad('Enter how many appointments');
+      if (client.is_internal) return bad('Client not found', 404);
+    }
+    let price = amount(body.price ?? 0);
+    let custom = amount(body.amount ?? 0);
+    if (prepaid) {
+      const { data: s, error: settingsError } = await service.from('billing_clients').select('price_per_appointment').eq('client_id', clientId).maybeSingle();
+      if (settingsError) return dbError(settingsError);
+      // A credit pays for whole appointments, so it is always their own price.
+      // No price yet: the one typed here becomes their price per appointment.
+      const saved = num(s?.price_per_appointment);
+      if (saved > 0) price = saved;
+      else {
+        if (price === null || price <= 0) return bad('Set a price per appointment first');
+        const { error } = await service.from('billing_clients')
+          .upsert({ client_id: clientId, price_per_appointment: price, updated_at: now() }, { onConflict: 'client_id' });
+        if (error) return dbError(error);
+      }
+      custom = round2((toCents(price as number) * prepaid) / 100);
+    }
     if (eventIds.length && (price === null || price <= 0)) return bad('Set a price per appointment first');
     if (!eventIds.length && (custom === null || custom <= 0)) return bad('Enter an amount');
 
@@ -954,7 +1002,8 @@ export async function POST(req: Request) {
     }
 
     const balance = await balanceOf(service, clientId);
-    const wanted = body.apply_credit === undefined || body.apply_credit === null ? undefined : amount(body.apply_credit);
+    // Credit is never spent on buying credit.
+    const wanted = prepaid ? 0 : body.apply_credit === undefined || body.apply_credit === null ? undefined : amount(body.apply_credit);
     if (wanted === null) return bad('Credit is not a number');
     const plan = planCharge({ count: eventIds.length, price: price ?? 0, customAmount: custom ?? 0, balance, applyCredit: wanted });
     // The confirm dialog shows a total; refuse if it no longer adds up to that.
@@ -979,7 +1028,10 @@ export async function POST(req: Request) {
 
     const typed = typeof body.description === 'string' ? body.description.trim().slice(0, 300) : '';
     const count = eventIds.length;
-    const description = typed || (count ? `${count} appointment${count === 1 ? '' : 's'}` : 'Charge');
+    const prepaidLabel = prepaid ? `Prepaid — ${prepaid} appointment${prepaid === 1 ? '' : 's'} × $${price}` : '';
+    const description = prepaid ? (typed ? `${prepaidLabel} — ${typed}` : prepaidLabel)
+      : typed || (count ? `${count} appointment${count === 1 ? '' : 's'}` : 'Charge');
+    const credits = prepaid ? `${prepaid} credit${prepaid === 1 ? '' : 's'}` : '';
 
     const { data: charge, error: insertError } = await service.from('billing_charges').insert({
       client_id: clientId, client_name: client.name,
@@ -989,9 +1041,11 @@ export async function POST(req: Request) {
       method: viaStripe ? method : 'manual', status: 'draft',
       stripe_customer_id: customer?.id ?? null,
       request_id: requestId, created_by: ctx.userId,
+      ...(prepaid ? { prepaid_count: prepaid } : {}),
     }).select(CHARGE_COLS).single();
     if (insertError || !charge) {
       if (insertError?.code === '23505') return bad('That charge was already submitted — refresh to see it', 409);
+      if (prepaid && isMissingColumn(insertError, 'prepaid_count')) return bad('Charging for appointments up front needs a one-off database update first', 503);
       return dbError(insertError ?? { message: 'Could not start the charge' });
     }
     const chargeId = charge.id as string;
@@ -1011,7 +1065,7 @@ export async function POST(req: Request) {
 
     if (!viaStripe) {
       const done = await setCharge(service, chargeId, { status: 'paid', paid_at: now() });
-      return NextResponse.json({ charge: done, message: plan.total > 0 ? 'Recorded' : 'Covered by credit' });
+      return NextResponse.json({ charge: done, message: prepaid ? `Recorded — ${credits} added` : plan.total > 0 ? 'Recorded' : 'Covered by credit' });
     }
 
     // ── Stripe ──
@@ -1059,7 +1113,7 @@ export async function POST(req: Request) {
       try {
         await sendInvoice(invoiceId, chargeId);
         const done = await setCharge(service, chargeId, { status: 'pending', stripe_invoice_url: url });
-        return NextResponse.json({ charge: done, message: `Invoice emailed to ${customer!.email}` });
+        return NextResponse.json({ charge: done, message: `Invoice emailed to ${customer!.email}${prepaid ? ` — the ${credits} are added once it is paid` : ''}` });
       } catch (e) {
         // The invoice exists and can be paid from its link; only the email failed.
         const done = await setCharge(service, chargeId, { status: 'pending', stripe_invoice_url: url, error: `Not emailed: ${text(e)}` });
@@ -1073,7 +1127,7 @@ export async function POST(req: Request) {
       const done = await setCharge(service, chargeId, paid.status === 'paid'
         ? { status: 'paid', paid_at: now(), stripe_invoice_url: paid.url ?? url }
         : { status: 'pending', stripe_invoice_url: paid.url ?? url });
-      return NextResponse.json({ charge: done, message: paid.status === 'paid' ? `Charged ${customer!.payment!.label}` : 'Payment started — it will show as paid once it clears' });
+      return NextResponse.json({ charge: done, message: paid.status === 'paid' ? `Charged ${customer!.payment!.label}${prepaid ? ` — ${credits} added` : ''}` : `Payment started — it will show as paid once it clears${prepaid ? `, and the ${credits} are added then` : ''}` });
     } catch (e) {
       if (e instanceof StripeError && !e.definite) {
         const done = await setCharge(service, chargeId, { status: 'pending', stripe_invoice_url: url, error: "Couldn't confirm the payment — reopen this client in a minute" });
@@ -1111,6 +1165,19 @@ export async function POST(req: Request) {
       }
     }
 
+    // A prepaid charge recorded by hand gave credits: undoing it takes them
+    // back, which only works while none of them has been used.
+    let prepaidCredit: string | null = null;
+    if (charge.client_id && charge.status === 'paid') {
+      const { data: given } = await service.from('billing_credits').select('id, amount').eq('charge_id', id).maybeSingle();
+      if (given) {
+        if ((await balanceOf(service, charge.client_id)) - num(given.amount) < -0.005) {
+          return bad('Some of the credits this charge gave have already been used — it can no longer be undone');
+        }
+        prepaidCredit = given.id as string;
+      }
+    }
+
     if (charge.stripe_invoice_id) {
       if (!stripeStatus().configured) return bad('Stripe is not connected', 503);
       try {
@@ -1127,6 +1194,7 @@ export async function POST(req: Request) {
     }
     await setCharge(service, id, { status: 'void' });
     await release(service, id);
+    if (prepaidCredit) await service.from('billing_credits').delete().eq('id', prepaidCredit);
     // A payment matched from Stripe carries a note of its appointments there;
     // the match is gone, so the note goes too. The money is not touched.
     const matched = typeof charge.request_id === 'string' && charge.request_id.startsWith('stripe:') ? charge.request_id.slice(7) : null;

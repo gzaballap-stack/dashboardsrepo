@@ -1,3 +1,34 @@
+## 2026-11-23 — Client Billing: charge for a number of appointments up front
+
+Owner: next to "charge a specific amount", charge a specific **number of
+appointments** — and those appointments are credited to the client.
+
+- **Charge Appointments** (client page, beside Give Credits and Charge Another
+  Amount): how many, at their price per appointment (fixed once they have one;
+  typed here it becomes their price). Card now, emailed invoice, or already
+  paid — the same window and the same "are you sure" as any other charge.
+  Credit they already hold is never spent on it.
+- **The credits follow the money.** The charge carries `prepaid_count`; the
+  moment it becomes **paid** it turns into a credit worth what was charged
+  (`grantPrepaid`, called from `setCharge`, the one place every charge becomes
+  paid: recorded by hand, card accepted, or an emailed invoice found paid when
+  the client is next opened). Card declined or invoice unpaid → no credits.
+  From then on it is the existing credit machinery: their next bookings are
+  "Paid With Credit", a bad one gives its credit back.
+- **Never twice:** `billing_credits.charge_id` (unique where set) ties the
+  credit to its charge. Checked on V1 with a test that undid itself.
+- **Undo:** a prepaid charge recorded by hand can be undone from Charges while
+  none of its credits is used; the credit goes with it. One paid through
+  Stripe is refunded in Stripe, as before (then delete the credit by hand).
+- Database (V1, 2026-11-23; `add_client_billing.sql` + `schema.sql`; not V2):
+  `billing_charges.prepaid_count`, `billing_credits.charge_id`. Without them
+  the button answers "needs a one-off database update".
+- **Give Credits is unchanged** — it gives credits without charging (optionally
+  recording a payment made elsewhere). This is the one that takes the money.
+- Not clicked through signed in (no session here): typecheck, lint and the
+  database rule only. The first real one is the test — start with "Already
+  Paid" or a small count.
+
 ## 2026-11-23 — SMS view: shows and no-shows come from Client Billing; "Not Billed" asks why
 
 Owner: the SMS view has Cost per Show, Show Rate, Shows and No Shows, but
