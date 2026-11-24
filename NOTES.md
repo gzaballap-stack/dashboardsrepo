@@ -1,3 +1,23 @@
+## 2026-11-24 — Client Billing: one Give Credits (the charge window), the old one removed
+
+Owner, the day after Charge Appointments shipped: the old Give Credits was the
+same thing as Charge Appointments with "already paid" picked, so keep one.
+
+- **Give Credits** (client page, and each client's row in Today) now opens the
+  charge window in its credits form: how many, at their price, then **charge
+  their card / email an invoice / already paid for these — just record it**.
+  Credits are given once it is paid (2026-11-23 entry: `prepaid_count`,
+  `grantPrepaid`). "Charge Appointments" is gone as a name.
+- **Removed from the screen:** the old Give Credits window (`IssueCreditsModal`),
+  which gave credits with no charge and an optional "also record the payment"
+  tick. The `issue_credits` API action is still there, unused by the screen.
+- **What that drops:** credits for nothing with no payment on record. For a
+  free or goodwill credit use **Add Credit** in the client's credit ledger (a
+  dollar amount) — "already paid" here always records the money as received.
+- Only `ClientBilling.tsx` changed. Committed from a clean copy because another
+  session had unfinished edits in the same file (credit reasons); those were
+  left in the working tree, uncommitted.
+
 ## 2026-11-23 — New Client Survey page one: daily or weekly billing
 
 Owner: set the billing cycle when making the client link. Page one now has

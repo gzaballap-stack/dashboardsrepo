@@ -529,7 +529,7 @@ function ChargeModal({ detail, stripe, eventIds, prepaid, onClose, onDone }: {
   const covered = subtotal > 0 && total === 0;
   const effective: Method = covered ? "manual" : method;
 
-  const blocked = prepaid && prepaidCount < 1 ? "Enter how many appointments"
+  const blocked = prepaid && prepaidCount < 1 ? "Enter how many credits"
     : prepaid && prepaidCount > 1000 ? "That is too many at once"
     : subtotal <= 0 ? (count || prepaid ? "Set a price per appointment" : "Enter an amount")
     : effective === "card" ? cardWhy
@@ -585,12 +585,13 @@ function ChargeModal({ detail, stripe, eventIds, prepaid, onClose, onDone }: {
   );
 
   return (
-    <Modal title={`Charge ${detail.client.name}`} sub={count ? plural(count, "appointment") : prepaid ? "Appointments paid for up front" : "A one-off amount"} onClose={busy ? () => {} : onClose}>
+    <Modal title={prepaid ? "Give Credits" : `Charge ${detail.client.name}`}
+      sub={count ? plural(count, "appointment") : prepaid ? `${detail.client.name} · one credit pays for one appointment` : "A one-off amount"} onClose={busy ? () => {} : onClose}>
       <div style={{ ...PANEL, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
         {prepaid ? (<>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <label style={{ ...LABEL, flex: 1, minWidth: 140 }}>
-              How Many Appointments
+              How Many Credits
               <input value={howMany} onChange={e => setHowMany(e.target.value)} inputMode="numeric" placeholder="e.g. 10" autoFocus style={FIELD} />
             </label>
             <label style={{ ...LABEL, flex: 1, minWidth: 140 }}>
@@ -661,7 +662,7 @@ function ChargeModal({ detail, stripe, eventIds, prepaid, onClose, onDone }: {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {option("card", "Charge Their Card Now", customer?.payment?.label ?? "", cardWhy)}
           {option("invoice", "Email an Invoice", customer?.email ? `To ${customer.email} — they pay from the link` : "", invoiceWhy)}
-          {option("manual", "Already Paid — Just Record It", "Nothing is sent to Stripe", null)}
+          {option("manual", prepaid ? "Already Paid for These — Just Record It" : "Already Paid — Just Record It", "Nothing is sent to Stripe", null)}
         </div>
       )}
 
@@ -739,100 +740,6 @@ function CreditModal({ detail, picked, onClose, onDone }: {
         <button onClick={submit} disabled={busy} style={{ ...BTN_DARK, padding: "10px 18px", fontSize: 13, opacity: busy ? 0.35 : 1 }}>
           {busy ? "Working…" : `Give ${plural(n, "credit")}`}
         </button>
-      </div>
-    </Modal>
-  );
-}
-
-/* ── prepaid credits ──────────────────────────────────────────────────────── */
-
-// A client who pays for a batch up front: issue that many appointments as
-// credit, and their next bookings are covered by it instead of billed.
-function IssueCreditsModal({ detail, onClose, onDone }: {
-  detail: Detail; onClose: () => void; onDone: (message: string) => void;
-}) {
-  const saved = detail.settings.price;
-  const [countText, setCountText] = useState("");
-  const [priceText, setPriceText] = useState("");
-  const [reason, setReason] = useState("");
-  const [record, setRecord] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [requestId, setRequestId] = useState(newRequestId);
-
-  const count = /^\d+$/.test(countText.trim()) ? Number(countText.trim()) : 0;
-  const price = saved > 0 ? saved : (parseAmount(priceText) ?? 0);
-  const value = (cents(price) * count) / 100;
-  const holding = detail.credits_owed;
-  const blocked = count < 1 ? "Enter how many appointments" : count > 1000 ? "That is too many at once" : price <= 0 ? "Set a price per appointment" : null;
-
-  const submit = async () => {
-    if (busy || blocked) return;
-    setBusy(true); setError(null);
-    try {
-      await api("/api/billing", {
-        action: "issue_credits", client_id: detail.client.id, count,
-        price: saved > 0 ? undefined : price, reason, record_payment: record, request_id: requestId,
-      });
-      onDone(`${plural(count, "credit")} given — their next ${count === 1 ? "booking" : `${count} bookings`} won't be billed${record ? `, and ${money(value)} recorded as paid` : ""}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong"); setBusy(false); setRequestId(newRequestId());
-    }
-  };
-
-  return (
-    <Modal title="Give Credits" sub={`${detail.client.name} · one credit pays for one appointment`} onClose={busy ? () => {} : onClose}>
-      <div style={{ ...PANEL, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <label style={{ ...LABEL, flex: 1, minWidth: 140 }}>
-            How Many Credits
-            <input value={countText} onChange={e => setCountText(e.target.value)} inputMode="numeric" placeholder="e.g. 10" autoFocus style={FIELD} />
-          </label>
-          <label style={{ ...LABEL, flex: 1, minWidth: 140 }}>
-            Price per Appointment
-            {saved > 0
-              ? <span style={{ ...FIELD, background: "rgba(0,0,0,0.04)", fontWeight: 600 }}>{money(saved)}</span>
-              : <input value={priceText} onChange={e => setPriceText(e.target.value)} inputMode="decimal" placeholder="$0" style={FIELD} />}
-          </label>
-        </div>
-        {saved <= 0 && <p style={{ fontSize: 12, color: MUTED, marginTop: -4 }}>This also becomes their price per appointment.</p>}
-        <label style={LABEL}>
-          Note (optional)
-          <input value={reason} onChange={e => setReason(e.target.value)} maxLength={300}
-            placeholder={count ? `Prepaid — ${plural(count, "appointment")}` : "e.g. Prepaid batch, November"} style={FIELD} />
-        </label>
-
-        <div style={{ borderTop: "1px solid rgba(0,0,0,0.07)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 5, fontSize: 13, color: MUTED }}>
-          <div style={{ display: "flex" }}>
-            <span style={{ flex: 1 }}>{count && price ? `${count} × ${money(price)}` : "Credit"}</span>
-            <span style={NUM}>{money(value)}</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "baseline", color: INK, marginTop: 4 }}>
-            <span style={{ flex: 1, fontWeight: 700 }}>Credits they will hold</span>
-            <span style={{ ...NUM, fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>{plural(holding + count, "appointment")}</span>
-          </div>
-          {holding > 0 && <p style={{ fontSize: 12, color: FAINT }}>{`${holding} already held + ${count} new`}</p>}
-        </div>
-      </div>
-
-      <Notice tone="warn">
-        {"Each booking made from now on uses one credit and is marked Paid with credit — it is not billed. If one turns out bad, press Return the credit on its card. Appointments already booked are not touched."}
-      </Notice>
-
-      <label style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: CARD, border: BORDER, cursor: "pointer" }}>
-        <input type="checkbox" checked={record} onChange={e => setRecord(e.target.checked)} style={{ marginTop: 3 }} />
-        <span style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: INK }}>{`Also record the payment${value > 0 ? ` — ${money(value)} already paid` : ""}`}</span>
-          <span style={{ display: "block", fontSize: 12, color: MUTED, marginTop: 1 }}>Nothing is sent to Stripe.</span>
-        </span>
-      </label>
-
-      {error && <Notice tone="bad">{error}</Notice>}
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={submit} disabled={busy || !!blocked} style={{ ...BTN_DARK, padding: "10px 18px", fontSize: 13, opacity: busy || blocked ? 0.35 : 1 }}>
-          {busy ? "Working…" : count ? `Give ${plural(count, "credit")}` : "Give Credits"}
-        </button>
-        {blocked && !busy && <span style={{ fontSize: 12.5, color: MUTED }}>{blocked}</span>}
       </div>
     </Modal>
   );
@@ -1227,7 +1134,7 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
                   title="Credits not used yet — their next bookings are paid with them instead of billed" />
               )}
               <button disabled={busy} onClick={() => withClient(first.client_id, setIssuing)} style={{ ...BTN_QUIET, opacity: busy ? 0.4 : 1 }}
-                title="Give this client credits: their next bookings are paid with them">Give Credits</button>
+                title="Give this client credits — charge their card, email an invoice, or record credits already paid for. Their next bookings are paid with them">Give Credits</button>
               {waiting.length > 1 && (
                 <button disabled={busy} onClick={() => bill(first.client_id, waiting.map(a => a.event_id))} style={{ ...BTN_DARK, opacity: busy ? 0.4 : 1 }}>
                   {`Bill All ${waiting.length}${first.price ? ` · ${money(waiting.length * first.price)}` : ""}`}
@@ -1255,8 +1162,9 @@ function TodayPanel({ stripe, tick, onChanged, onOpenClient }: {
           onDone={(message, failed) => { setCharging(null); if (failed) { setFlash(null); setError(message); } else setFlash(message); refresh(); }} />
       )}
       {issuing && (
-        <IssueCreditsModal detail={issuing} onClose={() => setIssuing(null)}
-          onDone={message => { setIssuing(null); setFlash(message); refresh(); }} />
+        <ChargeModal detail={issuing} stripe={stripe} eventIds={[]} prepaid
+          onClose={() => setIssuing(null)}
+          onDone={(message, failed) => { setIssuing(null); if (failed) { setFlash(null); setError(message); } else setFlash(message); refresh(); }} />
       )}
     </div>
   );
@@ -1281,8 +1189,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   const [charging, setCharging] = useState<string[] | null>(null);     // event ids; [] = one-off amount
   const [crediting, setCrediting] = useState<Appointment[] | null>(null);
   const [linking, setLinking] = useState(false);
-  const [issuing, setIssuing] = useState(false);
-  const [prepaying, setPrepaying] = useState(false);                   // charging for appointments up front
+  const [prepaying, setPrepaying] = useState(false);                   // Give Credits: charging for appointments up front
   const [priceText, setPriceText] = useState("");
   const [busy, setBusy] = useState(false);
   const [creditAmount, setCreditAmount] = useState("");
@@ -1317,7 +1224,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
   useEffect(() => { load(); }, [load]);
 
   const done = (text: string, failed?: boolean) => {
-    setCharging(null); setCrediting(null); setLinking(false); setIssuing(false); setPrepaying(false);
+    setCharging(null); setCrediting(null); setLinking(false); setPrepaying(false);
     setPicked(new Set());
     setFlash({ text, bad: failed });
     load(); onChanged();
@@ -1397,8 +1304,7 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button onClick={onBack} style={BTN_QUIET}>← All Clients</button>
         <h3 style={{ flex: 1, minWidth: 160, fontSize: 20, fontWeight: 700, color: INK, letterSpacing: "-0.02em" }}>{detail.client.name}</h3>
-        <button onClick={() => setIssuing(true)} style={BTN_QUIET} title="Give this client credits: their next bookings are paid with them">Give Credits</button>
-        <button onClick={() => setPrepaying(true)} style={BTN_QUIET} title="Charge them for a number of appointments up front: once paid, those become credits and their next bookings are not billed">Charge Appointments</button>
+        <button onClick={() => setPrepaying(true)} style={BTN_QUIET} title="Give this client credits — charge their card, email an invoice, or record credits already paid for. Their next bookings are paid with them, not billed">Give Credits</button>
         <button onClick={() => setCharging([])} style={BTN_QUIET}>Charge Another Amount</button>
       </div>
 
@@ -1683,7 +1589,6 @@ function ClientDetail({ clientId, period, stripe, onBack, onChanged, onOpenProfi
       {crediting && <CreditModal detail={detail} picked={crediting} onClose={() => setCrediting(null)} onDone={done} />}
       {linking && <StripeLinkModal detail={detail} onClose={() => setLinking(false)} onDone={done} />}
       {prepaying && <ChargeModal detail={detail} stripe={stripe} eventIds={[]} prepaid onClose={() => setPrepaying(false)} onDone={done} />}
-      {issuing && <IssueCreditsModal detail={detail} onClose={() => setIssuing(false)} onDone={done} />}
     </div>
   );
 }
