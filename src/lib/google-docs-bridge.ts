@@ -33,6 +33,9 @@ export const createCalendarEvent = (e: {
   title: string; start: string; end: string; description?: string; location?: string; guests?: string;
 }) => call({ action: 'create_event', ...e });
 
+/** Delete one (non-repeating) event from the calendar of the account the script runs as. */
+export const deleteCalendarEvent = (id: string) => call({ action: 'delete_event', id });
+
 /** Each event's colour in Google Calendar over a range, plus the calendar's own colour. */
 export async function listEventColors(start: string, end: string): Promise<
   { ok: true; calendar_color: string | null; events: { id: string; start: string; color: string }[] } | { ok: false; error: string }

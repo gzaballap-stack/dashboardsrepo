@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { parseIcs, type CalEvent } from '@/lib/ics';
+import { CALL_KIND_PRIORITY, callKindOf, isBookedHere } from '@/lib/call-kind';
 
 // Sales calls from the connected calendar, turned into non-negotiable task rows
 // for one week so they can be ticked off alongside the weekly ones.
@@ -76,14 +77,14 @@ export async function POST(req: Request) {
   };
 
   const rows = events
-    .filter(e => !e.allDay && (othersOn(e).length > 0 || !!e.meetUrl || /\|\s*follow-up call\s*$/i.test(e.title)))
+    .filter(e => !e.allDay && (othersOn(e).length > 0 || !!e.meetUrl || isBookedHere(e.title)))
     .map(e => ({ e, day: localDay(e.start) }))
     .filter((x): x is { e: CalEvent; day: string } => !!x.day)
     .map(({ e, day }) => ({
       user_id: ctx.userId,
       title: nameFor(e),
       bucket: 'A',
-      priority: 1,
+      priority: CALL_KIND_PRIORITY[callKindOf(e.title)],   // the call's kind — see call-kind.ts
       position: new Date(e.start).getTime(),
       scope: 'day',
       task_date: day,
@@ -97,6 +98,13 @@ export async function POST(req: Request) {
       .from('tasks')
       .upsert(rows, { onConflict: 'external_key', ignoreDuplicates: true });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Rows made before kinds existed were all marked as sales calls; correct
+    // the few follow-ups and dials among them.
+    const others = rows.filter(r => r.priority !== 1);
+    await Promise.all(others.map(r => ctx.service.from('tasks')
+      .update({ priority: r.priority })
+      .eq('user_id', ctx.userId).eq('external_key', r.external_key).neq('priority', r.priority)));
   }
 
   // A call cancelled or moved in the calendar leaves this week's list too —

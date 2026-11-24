@@ -2492,6 +2492,19 @@ when you make a call that a future session would otherwise have to re-derive.
 
 ## 2026-11-16 — Follow-up calls from the Calls panel go onto Google Calendar
 
+> **2026-11-24:** three kinds of call (`src/lib/call-kind.ts`), read from the
+> event title: **sales call** (booking tool), **follow-up** (`<Name> | Follow-up
+> call`, booked here *with* an email — the person is invited), **dial** (`<Name> |
+> Dial`, booked *without* an email — a reminder to ring them). On the calendar
+> task rows (`origin = 'calendar'`) the kind is stored in `priority` (1/2/3) —
+> those rows never sit in the ABCDE columns, and a schema change was avoided
+> because V1 migrations are blocked from sessions. Booking writes the
+> non-negotiable row at once, keyed as the sync keys it; the sync leaves rows
+> under 12 hours old alone while Google's feed catches up. The Calls panel can
+> **delete** a call (`DELETE /api/calendar/event`, bridge `delete_event`) — off
+> Google Calendar and off the non-negotiables; repeating events are refused.
+> The script needs `authorize()` run once in the editor for the Calendar permission.
+
 The Task Board's Calls panel has **+ Follow-up call** (name, date, time,
 length, optional guest email, note). It posts to `POST /api/calendar/event`,
 which calls the Apps Script bridge's new `create_event` action

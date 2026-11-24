@@ -37,6 +37,15 @@ function doPost(e) {
         .createEvent(req.title || 'Follow-up call', new Date(req.start), new Date(req.end), opts);
       return out({ ok: true, id: ev.getId() });
     }
+    if (req.action === 'delete_event') {
+      // Delete a call from the Task Board's Calls panel. A repeating event is
+      // never deleted from here, so a whole series can't go by accident.
+      const ev = CalendarApp.getDefaultCalendar().getEventById(req.id);
+      if (!ev) return out({ ok: false, error: 'not found' });
+      if (ev.isRecurringEvent()) return out({ ok: false, error: 'repeating event' });
+      ev.deleteEvent();
+      return out({ ok: true });
+    }
     if (req.action === 'list_event_colors') {
       // The colour each event has in Google Calendar — the private feed the
       // dashboard reads leaves colours out. Read-only.
@@ -58,3 +67,6 @@ function doPost(e) {
 
 function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function out(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+
+// Run once from the editor to grant the Calendar permission.
+function authorize() { CalendarApp.getDefaultCalendar(); }

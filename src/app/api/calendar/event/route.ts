@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
-import { createCalendarEvent } from '@/lib/google-docs-bridge';
+import { createCalendarEvent, deleteCalendarEvent } from '@/lib/google-docs-bridge';
+import { CALL_KIND_PRIORITY } from '@/lib/call-kind';
 
 // Books a follow-up call on Google Calendar from the Task Board's Calls panel.
 // The dashboard holds no Google credentials: the Apps Script bridge
@@ -25,10 +26,12 @@ export async function POST(req: Request) {
   if (guest && !EMAIL.test(guest)) return NextResponse.json({ error: 'That email does not look right.' }, { status: 400 });
 
   const end = new Date(start.getTime() + minutes * 60000);
+  // With their email it's a follow-up they're invited to; without, it's a dial —
+  // a reminder to ring them then. Same "Name | …" shape as the booking tool's
+  // titles, so the name is picked out the same way on the non-negotiables strip.
+  const kind = guest ? 'followup' : 'dial';
   const result = await createCalendarEvent({
-    // Same shape as the booking tool's titles, so the person's name is picked
-    // out the same way on the non-negotiables strip.
-    title: `${name} | Follow-up call`,
+    title: `${name} | ${kind === 'followup' ? 'Follow-up call' : 'Dial'}`,
     start: start.toISOString(),
     end: end.toISOString(),
     description: typeof body.note === 'string' ? body.note : '',
@@ -56,7 +59,7 @@ export async function POST(req: Request) {
       user_id: ctx.userId,
       title: name,
       bucket: 'A',
-      priority: 1,
+      priority: CALL_KIND_PRIORITY[kind],
       position: start.getTime(),
       scope: 'day',
       task_date: day,
@@ -70,4 +73,43 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({ ok: true, id: result.id ?? null, start: start.toISOString(), end: end.toISOString(), task });
+}
+
+/**
+ * Delete a call from the Calls panel: off Google Calendar, and off the
+ * non-negotiables. Repeating events are refused by the script.
+ */
+export async function DELETE(req: Request) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get('id');
+  const start = searchParams.get('start');
+  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+
+  const result = await deleteCalendarEvent(id);
+  if (!result.ok) {
+    const why = /unknown action/i.test(result.error)
+      ? 'The Google link needs its update before it can delete calls.'
+      : /repeating/i.test(result.error)
+      ? 'That one repeats — delete it in Google Calendar so the whole series is handled there.'
+      : /not found/i.test(result.error)
+      ? 'Google Calendar no longer has that event.'
+      : /permission|authori/i.test(result.error)
+      ? 'Google needs permission first: run "authorize" in the script once.'
+      : `Google Calendar said: ${result.error}`;
+    if (!/not found/i.test(result.error)) return NextResponse.json({ error: why }, { status: 502 });
+  }
+
+  // Its row on the non-negotiables goes with it.
+  let removed: string | null = null;
+  if (start) {
+    const externalKey = `cal:${ctx.userId}:${id}:${new Date(start).toISOString()}`;
+    const { data } = await ctx.service.from('tasks').delete()
+      .eq('user_id', ctx.userId).eq('external_key', externalKey).select('id').maybeSingle();
+    removed = data?.id ?? null;
+  }
+
+  return NextResponse.json({ ok: true, removed_task_id: removed });
 }

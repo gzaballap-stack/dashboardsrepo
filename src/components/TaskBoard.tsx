@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CalendarView from "./CalendarView";
+import { CALL_KIND_LABEL, PRIORITY_CALL_KIND } from "@/lib/call-kind";
 
 type Bucket = "A" | "B" | "C" | "D" | "E";
 type Scope = "day" | "week" | "backlog" | "inbox" | "skipped";
@@ -1546,6 +1547,7 @@ export default function TaskBoard() {
                 const task = t as Task;
                 setTasks(prev => (prev.some(x => x.id === task.id) ? prev : [...prev, task]));
               }}
+              onDeleted={id => setTasks(prev => prev.filter(x => x.id !== id))}
             />
           </div>
         </div>
@@ -2803,7 +2805,7 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
                 </button>
                 {t.origin === "calendar" && t.starts_at && (
                   <span style={{ fontSize: 9.5, fontWeight: 700, color: "#949494", whiteSpace: "nowrap" }}>
-                    {new Date(t.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase().replace(" ", "")} · call
+                    {new Date(t.starts_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase().replace(" ", "")} · {CALL_KIND_LABEL[PRIORITY_CALL_KIND[t.priority] ?? "sales"]}
                   </span>
                 )}
                 {live && (
@@ -2885,7 +2887,9 @@ function NonNegotiableStrip({ view, day, weekDays, copies, callLists, templateOf
                         <td style={{ padding: "5px 10px 5px 0", borderTop: BORDER, whiteSpace: "nowrap" }}>
                           <span style={{ fontSize: 12, fontWeight: 600, color: "#111111" }}>{title}</span>
                           {mine[0].origin === "calendar" && (
-                            <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: "#949494" }}>call</span>
+                            <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: "#949494" }}>
+                              {CALL_KIND_LABEL[PRIORITY_CALL_KIND[mine[0].priority] ?? "sales"]}
+                            </span>
                           )}
                           {live && live.list.count > 0 && (
                             <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, padding: "1px 5px", borderRadius: 4, background: "#111111", color: "#ffffff" }}>

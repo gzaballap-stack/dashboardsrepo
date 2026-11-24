@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { callKindOf, isBookedHere } from "@/lib/call-kind";
 
 type CalEvent = {
   uid: string;
@@ -38,7 +39,7 @@ const time = (s: string) =>
 // parser drops them.
 function isCall(e: CalEvent): boolean {
   if (e.allDay) return false;
-  if (/\|\s*follow-up call\s*$/i.test(e.title)) return true;
+  if (isBookedHere(e.title)) return true;
   return e.attendees.length > 0 || !!e.meetUrl;
 }
 
@@ -56,11 +57,13 @@ const field: React.CSSProperties = {
   padding: "8px 11px", fontSize: 12.5, color: "#111111", outline: "none", width: "100%",
 };
 
-export default function CalendarView({ embedded = false, date: startDate, onBooked }: {
+export default function CalendarView({ embedded = false, date: startDate, onBooked, onDeleted }: {
   embedded?: boolean;
   date?: string;
   /** A follow-up was booked; it comes back as that day's non-negotiable. */
   onBooked?: (task: unknown) => void;
+  /** A call was deleted; its non-negotiable row (if any) went with it. */
+  onDeleted?: (taskId: string) => void;
 } = {}) {
   const [date, setDate] = useState(() => startDate ?? iso(new Date()));
   const [events, setEvents] = useState<CalEvent[]>([]);
@@ -140,6 +143,27 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
     });
   }, [date]);
 
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
+
+  async function deleteCall(e: CalEvent) {
+    const name = e.title.split(/\s*\|\s*/)[0] || e.title;
+    if (!window.confirm(`Delete "${name}" at ${time(e.start)} from Google Calendar too? This can't be undone.`)) return;
+    setDeleting(e.uid + e.start); setDeleteMsg(null);
+    try {
+      const res = await fetch(`/api/calendar/event?id=${encodeURIComponent(e.uid)}&start=${encodeURIComponent(e.start)}`, { method: "DELETE" });
+      const d = await res.json();
+      if (!res.ok || d.error) setDeleteMsg(d.error ?? "Could not delete it.");
+      else {
+        setEvents(prev => prev.filter(x => !(x.uid === e.uid && x.start === e.start)));
+        if (d.removed_task_id) onDeleted?.(d.removed_task_id);
+      }
+    } catch {
+      setDeleteMsg("Could not reach Google Calendar.");
+    }
+    setDeleting(null);
+  }
+
   async function bookFollowUp() {
     const name = fuName.trim();
     const day = fuDate || date;
@@ -159,13 +183,15 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
         // Show it straight away; Google's feed can take a few minutes to catch up.
         if (day === date) {
           setEvents(prev => [...prev, {
-            uid: d.id ?? `fu-${start.getTime()}`, title: `${name} | Follow-up call`, start: d.start, end: d.end,
+            uid: d.id ?? `fu-${start.getTime()}`, title: `${name} | ${fuGuest ? "Follow-up call" : "Dial"}`, start: d.start, end: d.end,
             allDay: false, location: null, description: fuNote || null, organizer: null,
             attendees: fuGuest ? [fuGuest] : [], meetUrl: null, status: null, feed: null,
           }].sort((a, b) => a.start.localeCompare(b.start)));
         }
         if (d.task) onBooked?.(d.task);
-        setFuMsg({ ok: true, text: `Added to Google Calendar and to that day's non-negotiables${fuGuest ? " — invite sent" : ""}.` });
+        setFuMsg({ ok: true, text: fuGuest
+          ? "Follow-up added to Google Calendar and the non-negotiables — invite sent."
+          : "Dial added to Google Calendar and the non-negotiables." });
         setFuName(""); setFuGuest(""); setFuNote("");
         setTimeout(() => { setFuOpen(false); setFuMsg(null); }, 1600);
       }
@@ -269,7 +295,12 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
       {embedded && (
         fuOpen ? (
           <div style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
-            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: "#949494" }}>NEW FOLLOW-UP CALL</p>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", color: "#949494" }}>
+              {fuGuest.trim() ? "NEW FOLLOW-UP CALL" : "NEW DIAL"}
+            </p>
+            <p style={{ fontSize: 10.5, color: "#949494", lineHeight: 1.5 }}>
+              Add their email to invite them — that makes it a follow-up call. Leave it blank for a dial, a reminder for you to ring them.
+            </p>
             <input value={fuName} onChange={e => setFuName(e.target.value)} placeholder="Who with — e.g. Derick Garner" style={{ ...field, fontSize: 12 }} autoFocus />
             <div style={{ display: "flex", gap: 6 }}>
               <input type="date" value={fuDate || date} onChange={e => setFuDate(e.target.value)} style={{ ...field, fontSize: 11.5, flex: 1.3 }} />
@@ -299,7 +330,7 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
                   cursor: fuSaving || !fuName.trim() ? "default" : "pointer",
                 }}
               >
-                {fuSaving ? "Adding…" : "Add to Google Calendar"}
+                {fuSaving ? "Adding…" : fuGuest.trim() ? "Add follow-up" : "Add dial"}
               </button>
               <button onClick={() => { setFuOpen(false); setFuMsg(null); }} style={{ fontSize: 11, fontWeight: 700, color: "#767676", cursor: "pointer" }}>
                 Cancel
@@ -316,7 +347,7 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
                 background: "rgba(0,0,0,0.045)", border: "1px solid rgba(0,0,0,0.09)", color: "#111111",
               }}
             >
-              + Follow-up call
+              + Follow-up / Dial
             </button>
             <button
               onClick={() => setShowGcal(true)}
@@ -542,6 +573,9 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
             </p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column" }}>
+              {deleteMsg && (
+                <p style={{ fontSize: 11, color: "#c0392b", lineHeight: 1.5, padding: "6px 0" }}>{deleteMsg}</p>
+              )}
               {shown.map(e => {
                 const started = new Date(e.start).getTime();
                 const ended = new Date(e.end).getTime();
@@ -569,6 +603,15 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <p style={{ fontSize: 13.5, fontWeight: 700, color: "#111111", wordBreak: "break-word" }}>{e.title}</p>
+                        {isCall(e) && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 800, letterSpacing: "0.06em", padding: "2px 7px", borderRadius: 20,
+                            background: callKindOf(e.title) === "followup" ? "rgba(213,0,0,0.1)" : callKindOf(e.title) === "dial" ? "rgba(244,81,30,0.12)" : "rgba(0,0,0,0.06)",
+                            color: callKindOf(e.title) === "followup" ? "#D50000" : callKindOf(e.title) === "dial" ? "#c2410c" : "#4a4a4a",
+                          }}>
+                            {callKindOf(e.title) === "followup" ? "FOLLOW-UP" : callKindOf(e.title) === "dial" ? "DIAL" : "SALES CALL"}
+                          </span>
+                        )}
                         {live && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.06em", padding: "2px 7px", borderRadius: 20, background: "#000000", color: "#ffffff" }}>ON NOW</span>}
                         {isNext && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.06em", padding: "2px 7px", borderRadius: 20, background: "rgba(245,158,11,0.16)", color: "#000000" }}>NEXT</span>}
                       </div>
@@ -587,6 +630,21 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
                         </div>
                       )}
                     </div>
+
+                    {embedded && (
+                      <button
+                        onClick={() => deleteCall(e)}
+                        disabled={deleting === e.uid + e.start}
+                        title="Delete from Google Calendar"
+                        style={{ flexShrink: 0, alignSelf: "center", color: "#c2c2c2", cursor: "pointer", lineHeight: 0, padding: 4 }}
+                        onMouseEnter={ev => (ev.currentTarget as HTMLElement).style.color = "#c0392b"}
+                        onMouseLeave={ev => (ev.currentTarget as HTMLElement).style.color = "#c2c2c2"}
+                      >
+                        <svg style={{ width: 13, height: 13 }} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
 
                     {e.meetUrl && !past && (
                       <a
@@ -722,8 +780,8 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
 
   // An event's colour as Google shows it: its own, else the calendar's, else Google's blue.
   const colorOf = (e: CalEvent) =>
-    /\|\s*follow-up call\s*$/i.test(e.title)
-      ? "#D50000"                                   // follow-ups: Google's Tomato
+    callKindOf(e.title) === "followup" ? "#D50000"      // follow-ups: Google's Tomato
+      : callKindOf(e.title) === "dial" ? "#F4511E"         // dials: Google's Tangerine
       : colors.byEvent[`${e.uid}|${e.start}`] ?? colors.calendar ?? "#039BE5";
 
   // Open on the working day rather than at midnight.
@@ -848,7 +906,7 @@ function GoogleCalendarPopup({ startDate, onClose }: { startDate: string; onClos
                   </div>
                 )}
                 {timedOn(d).map(e => {
-                  const call = e.attendees.length > 0 || !!e.meetUrl || /\|\s*follow-up call\s*$/i.test(e.title);
+                  const call = e.attendees.length > 0 || !!e.meetUrl || isBookedHere(e.title);
                   const past = new Date(e.end).getTime() < now;
                   const c = colorOf(e);
                   return (
