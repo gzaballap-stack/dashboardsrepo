@@ -100,14 +100,18 @@ export async function POST(req: Request) {
   }
 
   // A call cancelled or moved in the calendar leaves this week's list too —
-  // but only from today on, and never once it has been ticked.
+  // but only from today on, and never once it has been ticked. A follow-up booked
+  // from the dashboard is written here straight away, before Google's private feed
+  // shows it (that can take hours), so anything added in the last 12 hours is left alone.
   const live = new Set(rows.map(r => r.external_key));
+  const fresh = Date.now() - 12 * 3600_000;
   const { data: existing } = await ctx.service
-    .from('tasks').select('id, external_key, task_date, done')
+    .from('tasks').select('id, external_key, task_date, done, created_at')
     .eq('user_id', ctx.userId).eq('origin', 'calendar')
     .gte('task_date', days[0]).lte('task_date', days[6]);
   const gone = (existing ?? [])
-    .filter(t => !t.done && t.task_date >= today && t.external_key && !live.has(t.external_key))
+    .filter(t => !t.done && t.task_date >= today && t.external_key && !live.has(t.external_key)
+      && new Date(t.created_at).getTime() < fresh)
     .map(t => t.id);
   if (gone.length) await ctx.service.from('tasks').delete().in('id', gone).eq('user_id', ctx.userId);
 

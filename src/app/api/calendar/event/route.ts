@@ -8,6 +8,8 @@ import { createCalendarEvent } from '@/lib/google-docs-bridge';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const TASK_COLS = 'id, title, notes, bucket, priority, position, done, due_date, delegate_to, created_at, completed_at, task_date, scope, from_list, origin, prev_dates, parked, template_id, template_date, external_key, starts_at';
+
 export async function POST(req: Request) {
   const ctx = await getAuthContext();
   if (isAuthError(ctx)) return ctx;
@@ -43,5 +45,29 @@ export async function POST(req: Request) {
     }, { status: 502 });
   }
 
-  return NextResponse.json({ ok: true, id: result.id ?? null, start: start.toISOString(), end: end.toISOString() });
+  // Put it on that day's non-negotiables straight away, keyed exactly as the
+  // calendar sync keys it (Google's event id is the feed's UID), so when the
+  // feed catches up it is the same row, never a second one.
+  let task = null;
+  const day = typeof body.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.day) ? body.day : null;
+  if (result.id && day) {
+    const externalKey = `cal:${ctx.userId}:${result.id}:${start.toISOString()}`;
+    await ctx.service.from('tasks').upsert([{
+      user_id: ctx.userId,
+      title: name,
+      bucket: 'A',
+      priority: 1,
+      position: start.getTime(),
+      scope: 'day',
+      task_date: day,
+      origin: 'calendar',
+      external_key: externalKey,
+      starts_at: start.toISOString(),
+    }], { onConflict: 'external_key', ignoreDuplicates: true });
+    const { data } = await ctx.service.from('tasks').select(TASK_COLS)
+      .eq('user_id', ctx.userId).eq('external_key', externalKey).maybeSingle();
+    task = data;
+  }
+
+  return NextResponse.json({ ok: true, id: result.id ?? null, start: start.toISOString(), end: end.toISOString(), task });
 }

@@ -1542,6 +1542,10 @@ export default function TaskBoard() {
               key={view === "day" ? dayDate : iso(new Date())}
               embedded
               date={view === "day" ? dayDate : iso(new Date())}
+              onBooked={t => {
+                const task = t as Task;
+                setTasks(prev => (prev.some(x => x.id === task.id) ? prev : [...prev, task]));
+              }}
             />
           </div>
         </div>

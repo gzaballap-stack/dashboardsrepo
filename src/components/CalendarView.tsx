@@ -56,7 +56,12 @@ const field: React.CSSProperties = {
   padding: "8px 11px", fontSize: 12.5, color: "#111111", outline: "none", width: "100%",
 };
 
-export default function CalendarView({ embedded = false, date: startDate }: { embedded?: boolean; date?: string } = {}) {
+export default function CalendarView({ embedded = false, date: startDate, onBooked }: {
+  embedded?: boolean;
+  date?: string;
+  /** A follow-up was booked; it comes back as that day's non-negotiable. */
+  onBooked?: (task: unknown) => void;
+} = {}) {
   const [date, setDate] = useState(() => startDate ?? iso(new Date()));
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [feeds, setFeeds] = useState<Feed[]>([]);
@@ -145,7 +150,7 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
       const res = await fetch("/api/calendar/event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, start: start.toISOString(), minutes: fuMinutes, guest: fuGuest, note: fuNote }),
+        body: JSON.stringify({ name, start: start.toISOString(), day, minutes: fuMinutes, guest: fuGuest, note: fuNote }),
       });
       const d = await res.json();
       if (!res.ok || d.error) {
@@ -159,7 +164,8 @@ export default function CalendarView({ embedded = false, date: startDate }: { em
             attendees: fuGuest ? [fuGuest] : [], meetUrl: null, status: null, feed: null,
           }].sort((a, b) => a.start.localeCompare(b.start)));
         }
-        setFuMsg({ ok: true, text: `Added to Google Calendar${fuGuest ? " — invite sent" : ""}.` });
+        if (d.task) onBooked?.(d.task);
+        setFuMsg({ ok: true, text: `Added to Google Calendar and to that day's non-negotiables${fuGuest ? " — invite sent" : ""}.` });
         setFuName(""); setFuGuest(""); setFuNote("");
         setTimeout(() => { setFuOpen(false); setFuMsg(null); }, 1600);
       }
