@@ -6,7 +6,7 @@
 import type { AuthContext } from './api-auth';
 import { canBill, round2, toCents } from './billing';
 import {
-  billingEmail, cashOf, cleanAnswers, contactName, mainPhone, prepaidOf, priceOf, serviceOf, str, surveyProblem,
+  billingCycleOf, billingEmail, cashOf, cleanAnswers, contactName, mainPhone, prepaidOf, priceOf, serviceOf, str, surveyProblem,
   type Answers,
 } from './client-survey';
 import { linkAdAccounts } from './ad-account-link';
@@ -284,6 +284,14 @@ export async function submitSurvey(ctx: AuthContext, body: Record<string, unknow
     const { error } = await service.from('billing_clients')
       .upsert({ client_id: clientId, price_per_appointment: price, updated_at: now() }, { onConflict: 'client_id' });
     if (error) warnings.push('The price per appointment could not be saved to Client Billing');
+  }
+  // Daily or weekly billing — its own write, so a database without the column
+  // (V2) still keeps the price above.
+  const cycle = billingCycleOf(a);
+  if (cycle) {
+    const { error } = await service.from('billing_clients')
+      .upsert({ client_id: clientId, billing_cycle: cycle, updated_at: now() }, { onConflict: 'client_id' });
+    if (error) warnings.push(`${cycle === 'weekly' ? 'Weekly' : 'Daily'} billing could not be saved — set it in Client Billing`);
   }
   // 4b. What they paid on signing: credits for the prepaid appointments, and the cash.
   const done: string[] = [];

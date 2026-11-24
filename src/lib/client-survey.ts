@@ -45,6 +45,10 @@ export const SURVEY_SECTIONS: SurveySection[] = [
       { key: 'service', label: 'Service', type: 'choice', required: true, wide: true,
         options: [{ value: 'facebook_ads', label: 'Facebook Ads' }, { value: 'sms', label: 'SMS' }, { value: 'both', label: 'Both' }] },
       { key: 'price_per_appointment', label: 'Price per appointment', type: 'money', placeholder: '0' },
+      // Client Billing's cycle. Not `required` so links made before it existed
+      // still submit (no answer = left as Client Billing has it, i.e. daily).
+      { key: 'billing_cycle', label: 'Billing', type: 'choice', wide: true,
+        options: [{ value: 'daily', label: 'Daily' }, { value: 'weekly', label: 'Weekly' }] },
       // What they paid on signing. Submitting turns these into Client Billing
       // records (credits, and a payment) — once: see applyPrepaid on the server.
       { key: 'prepaid_appointments', label: 'Prepaid appointments', type: 'text', placeholder: '0' },
@@ -119,6 +123,12 @@ export const SURVEY_SECTIONS: SurveySection[] = [
   },
 ];
 
+/** Daily or weekly billing, as picked on page one. Null = not answered. */
+export function billingCycleOf(a: Answers): 'daily' | 'weekly' | null {
+  const v = a.billing_cycle;
+  return v === 'daily' || v === 'weekly' ? v : null;
+}
+
 /** Page one's questions — ours, carried by the client's link. */
 export const SETUP_FIELDS: SurveyField[] = SURVEY_SECTIONS.filter(s => s.setup).flatMap(s => s.fields);
 /** The pages the client fills in. */
@@ -136,6 +146,7 @@ export function setupAnswers(a: Answers): Answers {
 /** What stops page one going out as a link. Null = fine. */
 export function setupProblem(a: Answers): string | null {
   if (!serviceOf(a)) return 'Pick the service';
+  if (!billingCycleOf(a)) return 'Pick daily or weekly billing';
   if (a.price_per_appointment && priceOf(a) === null) return 'Price per appointment should be a number';
   if (a.prepaid_appointments && prepaidOf(a) === null) return 'Prepaid appointments should be a whole number';
   if (a.cash_collected && cashOf(a) === null) return 'Cash collected should be a number';

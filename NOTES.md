@@ -1,3 +1,13 @@
+## 2026-11-23 — New Client Survey page one: daily or weekly billing
+
+Owner: set the billing cycle when making the client link. Page one now has
+**Billing: Daily / Weekly** (`billing_cycle` in `client-survey.ts`); a link
+can't be made without it. On submit it is written to
+`billing_clients.billing_cycle` as its own write (a database without the column
+only gets a warning; the price is still saved). Links made before this have no
+answer and leave Client Billing as it is (daily). The link summary and the
+waiting-links list show "billed daily / weekly".
+
 ## 2026-11-23 — Client Billing: charge for a number of appointments up front
 
 Owner: next to "charge a specific amount", charge a specific **number of

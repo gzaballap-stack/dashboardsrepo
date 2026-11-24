@@ -210,6 +210,7 @@ export function NewClientSurveyPage({ onSeeSubmitted }: { onSeeSubmitted?: () =>
   if (made) {
     const s = made.setup;
     const facts = [SERVICE_LABEL[String(s.service)] ?? null, money(s.price_per_appointment) && `${money(s.price_per_appointment)} per appointment`,
+      s.billing_cycle === "weekly" ? "billed weekly" : s.billing_cycle === "daily" ? "billed daily" : null,
       s.prepaid_appointments && `${s.prepaid_appointments} prepaid`, money(s.cash_collected) && `${money(s.cash_collected)} collected`].filter(Boolean).join(" · ");
     return (
       <div className="w-full max-w-2xl mx-auto space-y-4">
@@ -520,7 +521,8 @@ export function SubmittedSurveysPage() {
               <li key={l.id} className="py-3 space-y-2" style={{ borderTop: BORDER }}>
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5">
                   <span className="text-sm font-medium" style={{ color: "#111111" }}>
-                    {[SERVICE_LABEL[String(l.setup?.service)] ?? "Survey", money(l.setup?.price_per_appointment) && `${money(l.setup?.price_per_appointment)} per appointment`].filter(Boolean).join(" · ")}
+                    {[SERVICE_LABEL[String(l.setup?.service)] ?? "Survey", money(l.setup?.price_per_appointment) && `${money(l.setup?.price_per_appointment)} per appointment`,
+                      l.setup?.billing_cycle === "weekly" ? "billed weekly" : l.setup?.billing_cycle === "daily" ? "billed daily" : null].filter(Boolean).join(" · ")}
                   </span>
                   <span className="flex items-center gap-3 text-xs" style={{ color: "#949494" }}>
                     {[day(l.created_at), l.created_by_name].filter(Boolean).join(" · ")}
