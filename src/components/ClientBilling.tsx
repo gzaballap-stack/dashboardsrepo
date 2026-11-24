@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { displayName } from "@/lib/display-name";
-import { NOT_BILLED_LABEL, NOT_BILLED_REASONS, isNotBilledReason, type NotBilledReason } from "@/lib/billing-outcome";
+import { CREDIT_REASONS, NOT_BILLED_LABEL, NOT_BILLED_REASONS, isNotBilledReason, type CreditReason, type NotBilledReason } from "@/lib/billing-outcome";
 
 /* ────────────────────────────────────────────────────────────────────────────
    Client Billing
@@ -704,19 +704,20 @@ function ChargeModal({ detail, stripe, eventIds, prepaid, onClose, onDone }: {
 function CreditModal({ detail, picked, onClose, onDone }: {
   detail: Detail; picked: Appointment[]; onClose: () => void; onDone: (message: string) => void;
 }) {
-  const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const n = picked.length;
   const back = picked.reduce((s, a) => s + (a.billing?.price || detail.settings.price), 0);
 
-  const submit = async () => {
+  // Crediting asks what happened — the same question "Not Billed" asks — and
+  // the answer is the button: No-Show or Cancelled.
+  const submit = async (why: CreditReason) => {
     if (busy) return;
     setBusy(true); setError(null);
     try {
-      const res = await api("/api/billing", { action: "credit", client_id: detail.client.id, event_ids: picked.map(a => a.event_id), reason });
+      const res = await api("/api/billing", { action: "credit", client_id: detail.client.id, event_ids: picked.map(a => a.event_id), why });
       const covered = Number(res.covered ?? 0);
-      onDone(`${plural(n, "credit")} given`
+      onDone(`${NOT_BILLED_LABEL[why]} — ${plural(n, "credit")} given`
         + (covered > 0 ? ` — ${plural(covered, "booking")} now paid with credit` : ` — their next ${n === 1 ? "booking" : `${n} bookings`} won't be billed`));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong"); setBusy(false);
@@ -729,17 +730,16 @@ function CreditModal({ detail, picked, onClose, onDone }: {
         <p style={{ fontSize: 13, color: INK, lineHeight: 1.5 }}>
           {`${n === 1 ? "This was a bad appointment" : "These were bad appointments"}: ${detail.client.name} gets ${plural(n, "credit")} (${money(back)}), so their next ${n === 1 ? "booking is" : `${n} bookings are`} paid with credit instead of billed.`}
         </p>
-        <label style={LABEL}>
-          Reason (optional)
-          <input value={reason} onChange={e => setReason(e.target.value)} maxLength={300} placeholder="e.g. No-show, out of area" autoFocus
-            onKeyDown={e => { if (e.key === "Enter") submit(); }} style={FIELD} />
-        </label>
+        <p style={{ fontSize: 12.5, fontWeight: 600, color: MUTED }}>{n === 1 ? "What happened?" : "What happened to them?"}</p>
       </div>
       {error && <Notice tone="bad">{error}</Notice>}
-      <div>
-        <button onClick={submit} disabled={busy} style={{ ...BTN_DARK, padding: "10px 18px", fontSize: 13, opacity: busy ? 0.35 : 1 }}>
-          {busy ? "Working…" : `Give ${plural(n, "credit")}`}
-        </button>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {CREDIT_REASONS.map(r => (
+          <button key={r} onClick={() => submit(r)} disabled={busy} title="Counts as a no-show on the dashboard"
+            style={{ ...BTN_DARK, flex: 1, minWidth: 140, padding: "10px 18px", fontSize: 13, opacity: busy ? 0.35 : 1 }}>
+            {busy ? "Working…" : NOT_BILLED_LABEL[r]}
+          </button>
+        ))}
       </div>
     </Modal>
   );
@@ -890,7 +890,7 @@ function AppointmentCard({ a, price, busy, ticked, onTick, onBill, onCredit, onC
         text: why ? `${STATE.cancelled.label} · ${NOT_BILLED_LABEL[why]}` : STATE.cancelled.label, color: STATE.cancelled.color,
         hint: why === "card_declined" ? "Counts as a show — the appointment happened" : "Counts as a no-show",
       }
-    : b.state === "credited" ? { text: `${STATE.credited.label} · ${money(b.credit_amount)}`, color: STATE.credited.color, hint: STATE.credited.hint }
+    : b.state === "credited" ? { text: `${STATE.credited.label} · ${money(b.credit_amount)}${why ? ` · ${NOT_BILLED_LABEL[why]}` : ""}`, color: STATE.credited.color, hint: why ? "Counts as a no-show — the client got a credit for it" : STATE.credited.hint }
     : b.state === "covered" ? { text: STATE.covered.label, color: STATE.covered.color, hint: STATE.covered.hint }
     : { text: `Billed ${money(b.price)}${waiting ? " · awaiting payment" : ""}`, color: waiting ? WARN : GOOD, hint: "" };
   const small: React.CSSProperties = { padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", flex: 1 };

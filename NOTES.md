@@ -18,6 +18,30 @@ same thing as Charge Appointments with "already paid" picked, so keep one.
   session had unfinished edits in the same file (credit reasons); those were
   left in the working tree, uncommitted.
 
+## 2026-11-24 — Client Billing: crediting a billed appointment asks No-Show or Cancelled
+
+Owner (dictated, so partly a reading): "when you [credit] an appointment that's
+been billed, I want the same thing as when you click Not Billed, where the
+options are No Show or Cancelled — it lets us track whether someone actually
+showed up."
+
+- **Read as**: **Credit It** on a billed appointment. The dialog's free-text
+  "Reason (optional)" is replaced by the question, and the answer is the
+  button: **No-Show** or **Cancelled** (no Card Declined — it was billed, the
+  card worked). The other reading — keep it billed but mark it a no-show — was
+  **not** built; if that is what he meant, it is a different change (a billed
+  appointment that counts as a no-show while the money stays).
+- Stored in the same column Not Billed uses, `billing_appointments.not_billed_reason`
+  (`CREDIT_REASONS` in `lib/billing-outcome.ts`); the credit's reason in words
+  is set to match, so the Credits tab shows it. The card reads "Credit Given ·
+  $200 · No-Show". Undo Credit clears it. No schema change.
+- **Dashboard counts do not move**: a credited appointment was already a
+  no-show (`billedOutcome`), whichever of the two is picked. What is new is
+  that the reason is on record.
+- Not changed: **Credit** on an appointment not tracked yet (the backlog case)
+  still asks nothing; the bulk "Credit N" neither.
+- Tested on a simulated database (3 scenarios). Not looked at on screen.
+
 ## 2026-11-23 — New Client Survey page one: daily or weekly billing
 
 Owner: set the billing cycle when making the client link. Page one now has

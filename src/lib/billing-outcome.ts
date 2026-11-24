@@ -18,6 +18,14 @@ export const NOT_BILLED_LABEL: Record<NotBilledReason, string> = {
 export const isNotBilledReason = (v: unknown): v is NotBilledReason =>
   typeof v === 'string' && (NOT_BILLED_REASONS as readonly string[]).includes(v);
 
+// Why a BILLED appointment was credited: the same question "Not Billed" asks,
+// without Card Declined (it was billed, so the card worked). Kept in the same
+// column, `not_billed_reason`. Either way it counts as a no-show.
+export const CREDIT_REASONS = ['no_show', 'cancelled'] as const;
+export type CreditReason = (typeof CREDIT_REASONS)[number];
+export const isCreditReason = (v: unknown): v is CreditReason =>
+  typeof v === 'string' && (CREDIT_REASONS as readonly string[]).includes(v);
+
 type BillingRow = {
   charge_id?: unknown; credited_at?: unknown; cancelled_at?: unknown;
   credit_amount?: unknown; not_billed_reason?: unknown;

@@ -8,7 +8,7 @@ import {
   type Booking,
   type BillingState, type Source,
 } from '@/lib/billing';
-import { isNotBilledReason } from '@/lib/billing-outcome';
+import { isCreditReason, isNotBilledReason, NOT_BILLED_LABEL } from '@/lib/billing-outcome';
 import {
   StripeError, stripeStatus, getCustomer, createDraftInvoice, finalizeInvoice,
   payInvoice, sendInvoice, getInvoice, voidInvoice, deleteDraftInvoice, notePayment,
@@ -422,8 +422,9 @@ function billingView(a: Row | undefined, charge: Row | undefined) {
     credited_at: (a.credited_at as string | null) ?? null,
     credit_reason: (a.credit_reason as string | null) ?? null,
     cancelled_at: (a.cancelled_at as string | null) ?? null,
-    // Why it was not billed: cancelled / no_show / card_declined (null on older rows).
-    not_billed_reason: notBilled(a) ? ((a.not_billed_reason as string | null) ?? null) : null,
+    // Why it was not billed (cancelled / no_show / card_declined), or why a
+    // billed one was credited (no_show / cancelled). null on older rows.
+    not_billed_reason: notBilled(a) || a.credited_at ? ((a.not_billed_reason as string | null) ?? null) : null,
   };
 }
 
@@ -1208,7 +1209,17 @@ export async function POST(req: Request) {
     const clientId = String(body.client_id ?? '');
     const eventIds = strings(body.event_ids);
     if (!clientId || !eventIds.length) return bad('Pick at least one appointment');
-    const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 300) : '';
+    // Why the appointment is being credited: no_show or cancelled — the same
+    // question "Not Billed" asks. Kept in the same column; left off on a
+    // database without it yet. It also stands as the credit's reason in words.
+    const why = isCreditReason(body.why) ? body.why : null;
+    const reason = (typeof body.reason === 'string' ? body.reason.trim().slice(0, 300) : '') || (why ? NOT_BILLED_LABEL[why] : '');
+    let keepWhy = !!why;
+    if (keepWhy) {
+      const probe = await service.from('billing_appointments').select('not_billed_reason').limit(1);
+      if (probe.error) keepWhy = false;
+    }
+    const whyCol = keepWhy ? { not_billed_reason: why } : {};
 
     const loaded = await loadAppointments(service, clientId, eventIds);
     if (loaded.error) return bad(loaded.error, 409);
@@ -1236,12 +1247,12 @@ export async function POST(req: Request) {
         fresh.push({
           client_id: clientId, event_id: e.id, lead_name: e.lead_name,
           appointment_at: e.scheduled_at ?? e.occurred_at, charge_id: null,
-          price: clientPrice, credited_at: stamp, credit_amount: clientPrice, credit_reason: reason || null,
+          price: clientPrice, credited_at: stamp, credit_amount: clientPrice, credit_reason: reason || null, ...whyCol,
         });
         credited++; back += clientPrice;
       } else if (!row.credited_at) {
         const worth = worthOf(row);
-        const patch: Row = { credited_at: stamp, credit_amount: worth, credit_reason: reason || null, updated_at: stamp };
+        const patch: Row = { credited_at: stamp, credit_amount: worth, credit_reason: reason || null, updated_at: stamp, ...whyCol };
         if (row.cancelled_at) patch.cancelled_at = null;
         const { error } = await service.from('billing_appointments').update(patch).eq('id', row.id).is('credited_at', null);
         if (error) return dbError(error);
@@ -1270,8 +1281,11 @@ export async function POST(req: Request) {
       return bad('That credit has already been used on a charge');
     }
     for (const r of rows) {
+      // Back to billed: the reason it was credited goes with the credit
+      // (only where that column exists and something is in it).
+      const clearWhy = r.not_billed_reason ? { not_billed_reason: null } : {};
       const q = r.charge_id
-        ? service.from('billing_appointments').update({ credited_at: null, credit_amount: 0, credit_reason: null, updated_at: now() }).eq('id', r.id)
+        ? service.from('billing_appointments').update({ credited_at: null, credit_amount: 0, credit_reason: null, updated_at: now(), ...clearWhy }).eq('id', r.id)
         : service.from('billing_appointments').delete().eq('id', r.id);
       const { error } = await q;
       if (error) return dbError(error);
