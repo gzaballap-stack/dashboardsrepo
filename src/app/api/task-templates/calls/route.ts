@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { parseIcs, type CalEvent } from '@/lib/ics';
 import { CALL_KIND_PRIORITY, callKindOf, isBookedHere } from '@/lib/call-kind';
+import { applyCallChanges, callKey, loadCallChanges } from '@/lib/call-moves';
 
 // Sales calls from the connected calendar, turned into non-negotiable task rows
 // for one week so they can be ticked off alongside the weekly ones.
@@ -67,7 +68,8 @@ export async function POST(req: Request) {
     try {
       const res = await fetch(f.url, { cache: 'no-store', signal: AbortSignal.timeout(15000) });
       const text = await res.text();
-      if (text.includes('BEGIN:VCALENDAR')) events.push(...parseIcs(text, from, to, f.label ?? null));
+      // Two weeks either side, for calls moved into this week from another one.
+      if (text.includes('BEGIN:VCALENDAR')) events.push(...parseIcs(text, new Date(from.getTime() - 14 * 86400000), new Date(to.getTime() + 14 * 86400000), f.label ?? null));
     } catch { /* a dead feed just contributes nothing this time */ }
   }));
 
@@ -76,7 +78,11 @@ export async function POST(req: Request) {
     return days.find(d => ms >= midnight(d) && ms < midnight(addDays(d, 1))) ?? null;
   };
 
-  const rows = events
+  // Calls moved or deleted from the Calls panel, applied until the feed shows it.
+  const changes = await loadCallChanges(ctx.service, ctx.userId);
+  const rawKeys = new Set(events.map(e => callKey(ctx.userId, e.uid, e.start)));
+
+  const rows = applyCallChanges(events, ctx.userId, changes)
     .filter(e => !e.allDay && (othersOn(e).length > 0 || !!e.meetUrl || isBookedHere(e.title)))
     .map(e => ({ e, day: localDay(e.start) }))
     .filter((x): x is { e: CalEvent; day: string } => !!x.day)
@@ -111,7 +117,8 @@ export async function POST(req: Request) {
   // but only from today on, and never once it has been ticked. A follow-up booked
   // from the dashboard is written here straight away, before Google's private feed
   // shows it (that can take hours), so anything added in the last 12 hours is left alone.
-  const live = new Set(rows.map(r => r.external_key));
+  // A hidden moved/deleted marker stays while the feed still has the old copy.
+  const live = new Set([...rows.map(r => r.external_key), ...rawKeys]);
   const fresh = Date.now() - 12 * 3600_000;
   const { data: existing } = await ctx.service
     .from('tasks').select('id, external_key, task_date, done, created_at')

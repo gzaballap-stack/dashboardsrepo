@@ -4,7 +4,7 @@
 // the docs (`scripts/google-docs-bridge.gs`, deployed as "Execute as: Me").
 // Env: GOOGLE_DOCS_SCRIPT_URL (the /exec URL); the script checks DIRECT_WEBHOOK_TOKEN.
 
-type BridgeResult = { ok: true; id?: string; replaced?: number } | { ok: false; error: string };
+type BridgeResult = { ok: true; id?: string; replaced?: number; start?: string; end?: string } | { ok: false; error: string };
 
 async function call(body: Record<string, unknown>): Promise<BridgeResult> {
   const url = process.env.GOOGLE_DOCS_SCRIPT_URL;
@@ -35,6 +35,9 @@ export const createCalendarEvent = (e: {
 
 /** Delete one (non-repeating) event from the calendar of the account the script runs as. */
 export const deleteCalendarEvent = (id: string) => call({ action: 'delete_event', id });
+
+/** Move one (non-repeating) event to a new start, keeping its length. */
+export const moveCalendarEvent = (id: string, start: string) => call({ action: 'move_event', id, start });
 
 /** Each event's colour in Google Calendar over a range, plus the calendar's own colour. */
 export async function listEventColors(start: string, end: string): Promise<

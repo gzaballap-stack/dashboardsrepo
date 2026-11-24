@@ -2504,6 +2504,15 @@ when you make a call that a future session would otherwise have to re-derive.
 > **delete** a call (`DELETE /api/calendar/event`, bridge `delete_event`) — off
 > Google Calendar and off the non-negotiables; repeating events are refused.
 > The script needs `authorize()` run once in the editor for the Calendar permission.
+>
+> **Change a call's time** (2026-11-24): click a call in the Calls panel → date +
+> time → `PATCH /api/calendar/event` → bridge `move_event` (keeps the length,
+> refuses repeating events). Google's private feed lags hours, so a moved or
+> deleted call leaves its old task row behind **hidden** (`scope = 'skipped'`,
+> `notes = 'moved:<new ISO>'` or `'deleted'`) — `src/lib/call-moves.ts` applies
+> those markers to every feed read (Calls panel and the non-negotiables sync,
+> both now parse ±14 days so cross-day moves show). A marker stays while the
+> feed still has the old copy, then the sync's cleanup removes it.
 
 The Task Board's Calls panel has **+ Follow-up call** (name, date, time,
 length, optional guest email, note). It posts to `POST /api/calendar/event`,

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
-import { createCalendarEvent, deleteCalendarEvent } from '@/lib/google-docs-bridge';
-import { CALL_KIND_PRIORITY } from '@/lib/call-kind';
+import { createCalendarEvent, deleteCalendarEvent, moveCalendarEvent } from '@/lib/google-docs-bridge';
+import { CALL_KIND_PRIORITY, PRIORITY_CALL_KIND, callKindOf } from '@/lib/call-kind';
+import { callKey } from '@/lib/call-moves';
 
 // Books a follow-up call on Google Calendar from the Task Board's Calls panel.
 // The dashboard holds no Google credentials: the Apps Script bridge
@@ -102,14 +103,95 @@ export async function DELETE(req: Request) {
     if (!/not found/i.test(result.error)) return NextResponse.json({ error: why }, { status: 502 });
   }
 
-  // Its row on the non-negotiables goes with it.
+  // Its row leaves the non-negotiables but stays behind hidden, marked deleted,
+  // so Google's slow feed can't bring the call back meanwhile (see call-moves.ts).
   let removed: string | null = null;
   if (start) {
-    const externalKey = `cal:${ctx.userId}:${id}:${new Date(start).toISOString()}`;
-    const { data } = await ctx.service.from('tasks').delete()
-      .eq('user_id', ctx.userId).eq('external_key', externalKey).select('id').maybeSingle();
-    removed = data?.id ?? null;
+    const key = callKey(ctx.userId, id, start);
+    const { data: row } = await ctx.service.from('tasks').select('id')
+      .eq('user_id', ctx.userId).eq('external_key', key).maybeSingle();
+    if (row) {
+      await ctx.service.from('tasks').update({ scope: 'skipped', notes: 'deleted' })
+        .eq('id', row.id).eq('user_id', ctx.userId);
+      removed = row.id;
+    } else {
+      const day = searchParams.get('day');
+      await ctx.service.from('tasks').upsert([{
+        user_id: ctx.userId, title: searchParams.get('name') || 'Call', bucket: 'A', priority: 1,
+        position: new Date(start).getTime(), scope: 'skipped', notes: 'deleted',
+        task_date: day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : new Date(start).toISOString().slice(0, 10),
+        origin: 'calendar', external_key: key, starts_at: new Date(start).toISOString(),
+      }], { onConflict: 'external_key', ignoreDuplicates: true });
+    }
   }
 
   return NextResponse.json({ ok: true, removed_task_id: removed });
+}
+
+/**
+ * Change a call's time from the Calls panel: moved in Google Calendar (same
+ * length), and on the non-negotiables to its new day. The old row stays behind
+ * hidden, marked with where it went, until Google's feed catches up.
+ */
+export async function PATCH(req: Request) {
+  const ctx = await getAuthContext();
+  if (isAuthError(ctx)) return ctx;
+
+  const body = await req.json();
+  const id = typeof body.id === 'string' ? body.id : '';
+  const from = new Date(body.start);
+  const to = new Date(body.new_start);
+  const day = typeof body.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.day) ? body.day : null;
+  const oldDay = typeof body.old_day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.old_day) ? body.old_day : null;
+  const title = typeof body.title === 'string' ? body.title : '';
+  if (!id || Number.isNaN(from.getTime())) return NextResponse.json({ error: 'Which call?' }, { status: 400 });
+  if (Number.isNaN(to.getTime()) || !day) return NextResponse.json({ error: 'Pick a date and time.' }, { status: 400 });
+  if (to.getTime() === from.getTime()) return NextResponse.json({ ok: true, unchanged: true });
+
+  const result = await moveCalendarEvent(id, to.toISOString());
+  if (!result.ok) {
+    const why = /unknown action/i.test(result.error)
+      ? 'The Google link needs its update before it can move calls.'
+      : /repeating/i.test(result.error)
+      ? 'That one repeats — change it in Google Calendar so the whole series is handled there.'
+      : /not found/i.test(result.error)
+      ? 'Google Calendar no longer has that event.'
+      : /permission|authori/i.test(result.error)
+      ? 'Google needs permission first: run "authorize" in the script once.'
+      : `Google Calendar said: ${result.error}`;
+    return NextResponse.json({ error: why }, { status: 502 });
+  }
+  const newStart = typeof result.start === 'string' ? result.start : to.toISOString();
+  const newEnd = typeof result.end === 'string' ? result.end : null;
+
+  const oldKey = callKey(ctx.userId, id, from.toISOString());
+  const newKey = callKey(ctx.userId, id, newStart);
+  const { data: old } = await ctx.service.from('tasks').select('id, title, priority')
+    .eq('user_id', ctx.userId).eq('external_key', oldKey).maybeSingle();
+
+  const name = old?.title ?? (title.split(/\s*\|\s*/)[0] || title || 'Call');
+  const priority = old?.priority && PRIORITY_CALL_KIND[old.priority] ? old.priority : CALL_KIND_PRIORITY[callKindOf(title)];
+
+  if (old) {
+    await ctx.service.from('tasks').update({ scope: 'skipped', notes: `moved:${newStart}` })
+      .eq('id', old.id).eq('user_id', ctx.userId);
+  } else {
+    await ctx.service.from('tasks').upsert([{
+      user_id: ctx.userId, title: name, bucket: 'A', priority, position: from.getTime(),
+      scope: 'skipped', notes: `moved:${newStart}`, task_date: oldDay ?? day,
+      origin: 'calendar', external_key: oldKey, starts_at: from.toISOString(),
+    }], { onConflict: 'external_key', ignoreDuplicates: true });
+  }
+
+  await ctx.service.from('tasks').upsert([{
+    user_id: ctx.userId, title: name, bucket: 'A', priority, position: new Date(newStart).getTime(),
+    scope: 'day', task_date: day, origin: 'calendar', external_key: newKey, starts_at: newStart,
+  }], { onConflict: 'external_key', ignoreDuplicates: true });
+  // Moved back onto a slot it had left: that row is live again.
+  await ctx.service.from('tasks').update({ scope: 'day', notes: null, task_date: day })
+    .eq('user_id', ctx.userId).eq('external_key', newKey).eq('scope', 'skipped');
+  const { data: task } = await ctx.service.from('tasks').select(TASK_COLS)
+    .eq('user_id', ctx.userId).eq('external_key', newKey).maybeSingle();
+
+  return NextResponse.json({ ok: true, start: newStart, end: newEnd, removed_task_id: old?.id ?? null, task });
 }

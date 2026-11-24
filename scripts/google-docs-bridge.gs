@@ -46,6 +46,16 @@ function doPost(e) {
       ev.deleteEvent();
       return out({ ok: true });
     }
+    if (req.action === 'move_event') {
+      // Change a call's time from the Calls panel, keeping its length.
+      const ev = CalendarApp.getDefaultCalendar().getEventById(req.id);
+      if (!ev) return out({ ok: false, error: 'not found' });
+      if (ev.isRecurringEvent()) return out({ ok: false, error: 'repeating event' });
+      const len = ev.getEndTime().getTime() - ev.getStartTime().getTime();
+      const start = new Date(req.start);
+      ev.setTime(start, new Date(start.getTime() + len));
+      return out({ ok: true, start: start.toISOString(), end: new Date(start.getTime() + len).toISOString() });
+    }
     if (req.action === 'list_event_colors') {
       // The colour each event has in Google Calendar — the private feed the
       // dashboard reads leaves colours out. Read-only.

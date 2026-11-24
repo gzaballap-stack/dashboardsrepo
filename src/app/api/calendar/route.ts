@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthContext, isAuthError } from '@/lib/api-auth';
 import { parseIcs } from '@/lib/ics';
+import { applyCallChanges, loadCallChanges } from '@/lib/call-moves';
 
 // The feed URL is a secret that grants read access to the whole calendar, so it
 // is only ever read server-side and never sent back to the browser.
@@ -57,7 +58,10 @@ export async function GET(req: Request) {
       if (!res.ok) throw new Error(`Calendar returned ${res.status}`);
       const body = await res.text();
       if (!body.includes('BEGIN:VCALENDAR')) throw new Error('That link did not return a calendar');
-      return { feed: f, events: parseIcs(body, from, to, f.label ?? null), error: null as string | null };
+      // Read two weeks either side: a call moved here from another day is still
+      // at its old time in Google's slow feed until it catches up.
+      const wide = parseIcs(body, new Date(from.getTime() - 14 * 86400000), new Date(to.getTime() + 14 * 86400000), f.label ?? null);
+      return { feed: f, events: wide, error: null as string | null };
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Could not reach the calendar';
       return { feed: f, events: [], error: message };
@@ -71,9 +75,13 @@ export async function GET(req: Request) {
     .eq('id', r.feed.id)
     .eq('user_id', ctx.userId)));
 
+  const changes = await loadCallChanges(ctx.service, ctx.userId);
+
   return NextResponse.json({
     feeds: results.map(r => ({ id: r.feed.id, label: r.feed.label, error: r.error, calendar_id: calendarIdOf(r.feed.url) })),
-    events: results.flatMap(r => r.events).sort((a, b) => a.start.localeCompare(b.start)),
+    events: applyCallChanges(results.flatMap(r => r.events), ctx.userId, changes)
+      .filter(e => new Date(e.end).getTime() > from.getTime() && new Date(e.start).getTime() <= to.getTime())
+      .sort((a, b) => a.start.localeCompare(b.start)),
   });
 }
 

@@ -1545,7 +1545,7 @@ export default function TaskBoard() {
               date={view === "day" ? dayDate : iso(new Date())}
               onBooked={t => {
                 const task = t as Task;
-                setTasks(prev => (prev.some(x => x.id === task.id) ? prev : [...prev, task]));
+                setTasks(prev => [...prev.filter(x => x.id !== task.id), task]);
               }}
               onDeleted={id => setTasks(prev => prev.filter(x => x.id !== id))}
             />

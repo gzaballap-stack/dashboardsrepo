@@ -151,7 +151,7 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
     if (!window.confirm(`Delete "${name}" at ${time(e.start)} from Google Calendar too? This can't be undone.`)) return;
     setDeleting(e.uid + e.start); setDeleteMsg(null);
     try {
-      const res = await fetch(`/api/calendar/event?id=${encodeURIComponent(e.uid)}&start=${encodeURIComponent(e.start)}`, { method: "DELETE" });
+      const res = await fetch(`/api/calendar/event?id=${encodeURIComponent(e.uid)}&start=${encodeURIComponent(e.start)}&day=${iso(new Date(e.start))}&name=${encodeURIComponent(name)}`, { method: "DELETE" });
       const d = await res.json();
       if (!res.ok || d.error) setDeleteMsg(d.error ?? "Could not delete it.");
       else {
@@ -162,6 +162,56 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
       setDeleteMsg("Could not reach Google Calendar.");
     }
     setDeleting(null);
+  }
+
+  // Click a call to change its time — moved in Google Calendar and on the non-negotiables.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [edDate, setEdDate] = useState("");
+  const [edTime, setEdTime] = useState("");
+  const [edSaving, setEdSaving] = useState(false);
+  const [edMsg, setEdMsg] = useState<string | null>(null);
+
+  function openEdit(e: CalEvent) {
+    if (editing === e.uid + e.start) { setEditing(null); return; }
+    const d = new Date(e.start);
+    setEditing(e.uid + e.start);
+    setEdDate(iso(d));
+    setEdTime(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
+    setEdMsg(null);
+  }
+
+  async function saveTime(e: CalEvent) {
+    if (!edDate || !edTime) return;
+    const newStart = new Date(`${edDate}T${edTime}:00`);
+    if (newStart.getTime() === new Date(e.start).getTime()) { setEditing(null); return; }
+    setEdSaving(true); setEdMsg(null);
+    try {
+      const res = await fetch("/api/calendar/event", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: e.uid, start: e.start, new_start: newStart.toISOString(),
+          day: edDate, old_day: iso(new Date(e.start)), title: e.title,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok || d.error) setEdMsg(d.error ?? "Could not move it.");
+      else {
+        const len = new Date(e.end).getTime() - new Date(e.start).getTime();
+        const start = d.start ?? newStart.toISOString();
+        const end = d.end ?? new Date(new Date(start).getTime() + len).toISOString();
+        setEvents(prev => prev
+          .filter(x => !(x.uid === e.uid && x.start === e.start))
+          .concat(edDate === date ? [{ ...e, start, end }] : [])
+          .sort((a, b) => a.start.localeCompare(b.start)));
+        if (d.removed_task_id) onDeleted?.(d.removed_task_id);
+        if (d.task) onBooked?.(d.task);
+        setEditing(null);
+      }
+    } catch {
+      setEdMsg("Could not reach Google Calendar.");
+    }
+    setEdSaving(false);
   }
 
   async function bookFollowUp() {
@@ -600,7 +650,14 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
                       background: live ? "#000000" : isNext ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.13)",
                     }} />
 
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{ flex: 1, minWidth: 0, cursor: embedded && isCall(e) ? "pointer" : undefined }}
+                      title={embedded && isCall(e) ? "Click to change the time" : undefined}
+                      onClick={embedded && isCall(e) ? ev => {
+                        if ((ev.target as HTMLElement).closest("[data-edit]")) return;
+                        openEdit(e);
+                      } : undefined}
+                    >
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <p style={{ fontSize: 13.5, fontWeight: 700, color: "#111111", wordBreak: "break-word" }}>{e.title}</p>
                         {isCall(e) && (
@@ -627,6 +684,24 @@ export default function CalendarView({ embedded = false, date: startDate, onBook
                             </span>
                           )}
                           {e.feed && <span style={{ fontSize: 11, color: "#a8a8a8" }}>{e.feed}</span>}
+                        </div>
+                      )}
+
+                      {editing === e.uid + e.start && (
+                        <div data-edit style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6, cursor: "default" }}>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <input type="date" value={edDate} onChange={ev => setEdDate(ev.target.value)} style={{ ...field, padding: "6px 8px", fontSize: 12 }} />
+                            <input type="time" value={edTime} onChange={ev => setEdTime(ev.target.value)} style={{ ...field, padding: "6px 8px", fontSize: 12, width: 110, flexShrink: 0 }}
+                              onKeyDown={ev => { if (ev.key === "Enter") saveTime(e); if (ev.key === "Escape") setEditing(null); }} />
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <button onClick={() => saveTime(e)} disabled={edSaving} style={{
+                              background: "#000000", color: "#ffffff", fontSize: 11.5, fontWeight: 700, padding: "6px 12px",
+                              borderRadius: 6, cursor: "pointer", opacity: edSaving ? 0.5 : 1,
+                            }}>{edSaving ? "Moving…" : "Change time"}</button>
+                            <button onClick={() => setEditing(null)} style={{ fontSize: 11.5, color: "#767676", padding: "6px 8px", cursor: "pointer" }}>Cancel</button>
+                          </div>
+                          {edMsg && <p style={{ fontSize: 11, color: "#c0392b", lineHeight: 1.5 }}>{edMsg}</p>}
                         </div>
                       )}
                     </div>
