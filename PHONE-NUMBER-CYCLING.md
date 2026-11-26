@@ -54,6 +54,17 @@ below says where to look). You'll need this list after buying the new number.
 and 2. Keep `1.` as the kept old number, buy the new one as `2. <Company>`,
 and move the workflows to it (steps 3–5).
 
+**SMS-only clients (owner, 2026-11-25)** — one number only, named just
+`<Company>` (no `1.` / `2.`). Cycle: buy the new one (step 3, same area code)
+named `<Company>`, give it the old one's settings (step 4), switch the
+workflows (step 5), then delete the old one. Nothing is kept. First done on
+D and B Construction. Check `clients.service` in the dashboard (`sms` /
+`facebook_ads` / `both`) to tell which kind a client is.
+
+**Safer order (used 2026-11-25):** buy and set up the new number and switch
+the workflows *before* deleting or renaming anything — nothing is ever left
+pointing at a deleted number.
+
 ---
 
 ## Steps
@@ -88,7 +99,11 @@ number's Edit Configuration and note its three tabs. Then on the new number
   itself).
 - Advanced Settings: match the old number. New clients get **Whisper
   Message** = `{{contact.client_name}}`, but older clients may have it off
-  (Luxury Renovations did) — then leave it off. Call Connect is on by default.
+  (Luxury Renovations did) — then leave it off. SAS, Super Floor and D and B
+  had `{{contact.name}} from {{contact.client_name}}` (shown with a stray
+  `undefined` in front — leave that out). Call Connect is on by default.
+- Check the list afterwards: one Save silently didn't take (the window
+  resized mid-edit) and the number was still `Tomsi's number`.
 - Call Forwarding: match the old (usually empty). Save.
 
 ### 5. Switch every workflow from the old number to the NEW number
