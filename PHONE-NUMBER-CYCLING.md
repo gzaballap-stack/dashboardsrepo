@@ -120,6 +120,10 @@ look at **From number**. A client's sending number can be in:
 | `<Client> Send Message To Contractor …`, `<Client> Fill In Data` | Qualified / New Lead Stuff | Check the Settings tab too — usually none |
 | Any other workflow with the client's name | — | Settings tab, and any SMS step whose message starts with `#from:+1…` |
 
+Switch **every** workflow of the client that has a From number — even one
+pointing at an older number that no longer exists (owner, 2026-11-26: D and B
+New Lead).
+
 For each: click **From number**, type the new number's digits to filter,
 pick it, then click **Save** top right (it does **not** save by itself) —
 "Saved!" appears. Published workflows stay published — don't touch the
